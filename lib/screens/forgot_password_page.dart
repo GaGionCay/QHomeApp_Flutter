@@ -18,7 +18,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   int _step = 1;
   bool _isLoading = false;
 
-  // --- Step 1: Request OTP via Email ---
+  // --- Step 1: Request OTP ---
   void _requestOtpEmail() async {
     final email = _emailController.text.trim();
     if (email.isEmpty) {
@@ -32,15 +32,12 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     final result = await _authService.requestOtp(email);
     setState(() => _isLoading = false);
 
-    if (result == null) {
+    // ✅ Luôn consistent, không tiết lộ email có tồn tại hay không
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(result ?? "Có lỗi xảy ra")),
+    );
+    if (result != null && result.contains("OTP đã được gửi")) {
       setState(() => _step = 2);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('📩 OTP đã được gửi đến email')),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ $result')),
-      );
     }
   }
 
@@ -105,88 +102,47 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   // --- UI Steps ---
   Widget _buildStepContent() {
     if (_step == 1) {
-      // Step 1: Nhập Email
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Email', style: TextStyle(fontSize: 14, color: Colors.black87)),
-          TextField(
-            controller: _emailController,
-            decoration: const InputDecoration(border: UnderlineInputBorder()),
-          ),
+          const Text('Email', style: TextStyle(fontSize: 14)),
+          TextField(controller: _emailController),
           const SizedBox(height: 40),
           if (_isLoading)
             const Center(child: CircularProgressIndicator())
           else
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _requestOtpEmail,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('📩 Gửi OTP qua Email'),
-              ),
+            ElevatedButton(
+              onPressed: _requestOtpEmail,
+              child: const Text('📩 Gửi OTP qua Email'),
             ),
         ],
       );
     } else if (_step == 2) {
-      // Step 2: Nhập OTP
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('OTP', style: TextStyle(fontSize: 14, color: Colors.black87)),
-          TextField(
-            controller: _otpController,
-            decoration: const InputDecoration(border: UnderlineInputBorder()),
-          ),
+          const Text('OTP', style: TextStyle(fontSize: 14)),
+          TextField(controller: _otpController),
           const SizedBox(height: 40),
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton(
-              onPressed: _verifyOtp,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.black,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Xác minh OTP'),
-            ),
+          ElevatedButton(
+            onPressed: _verifyOtp,
+            child: const Text('Xác minh OTP'),
           ),
         ],
       );
     } else {
-      // Step 3: Reset Password
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Mật khẩu mới', style: TextStyle(fontSize: 14)),
-          TextField(
-            controller: _newPasswordController,
-            obscureText: true,
-            decoration: const InputDecoration(border: UnderlineInputBorder()),
-          ),
+          const Text('Mật khẩu mới'),
+          TextField(controller: _newPasswordController, obscureText: true),
           const SizedBox(height: 20),
-          const Text('Xác nhận mật khẩu', style: TextStyle(fontSize: 14)),
-          TextField(
-            controller: _confirmPasswordController,
-            obscureText: true,
-            decoration: const InputDecoration(border: UnderlineInputBorder()),
-          ),
+          const Text('Xác nhận mật khẩu'),
+          TextField(controller: _confirmPasswordController, obscureText: true),
           const SizedBox(height: 40),
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton(
-              onPressed: _resetPassword,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.black,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Xác nhận đặt lại mật khẩu'),
-            ),
+          ElevatedButton(
+            onPressed: _resetPassword,
+            child: const Text('Xác nhận đặt lại mật khẩu'),
           ),
         ],
       );

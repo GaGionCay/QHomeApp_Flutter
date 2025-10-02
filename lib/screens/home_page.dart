@@ -30,12 +30,21 @@ class _HomePageState extends State<HomePage> {
   List<News> _newsList = [];
   bool _loadingSummary = true;
   bool _loadingNews = true;
+  String? _token;
 
   @override
   void initState() {
     super.initState();
+    _loadToken();
     _loadMonthlySummary();
     _loadNews();
+  }
+
+  Future<void> _loadToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _token = prefs.getString('jwt');
+    });
   }
 
   void _loadMonthlySummary() async {
@@ -73,20 +82,20 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _logout() async {
-    final result = await _authService.logout();
     final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('jwt');
+
+    if (token != null) {
+      await _authService.logout(token);
+    }
+
     await prefs.clear();
 
-    if (result == null) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginPage()),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result)),
-      );
-    }
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+    );
   }
 
   void _goToServiceRegistration() {
