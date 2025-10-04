@@ -6,8 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 class HomePage extends StatefulWidget {
   final int userId;
   final String email;
-
-  const HomePage({super.key, required this.userId, required this.email});
+  final String username;
+  const HomePage({super.key, required this.userId, required this.email, required this.username});
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -31,7 +31,7 @@ class _HomePageState extends State<HomePage> {
       context,
       MaterialPageRoute(
         builder: (_) =>
-            NotificationPage(userId: widget.userId, email: widget.email),
+            NotificationPage(userId: widget.userId, email: widget.email, username: widget.username),
       ),
     );
   }
@@ -101,7 +101,7 @@ class _HomePageState extends State<HomePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Xin chào, ${widget.email}',
+                  'Xin chào, ${widget.username}',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 16,

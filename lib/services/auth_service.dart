@@ -19,6 +19,7 @@ class AuthService {
           'id': data['id'],
           'email': data['email'],
           'token': data['token'],
+          'name': data['name'],
         };
       } else {
         return null;

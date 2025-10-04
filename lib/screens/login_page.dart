@@ -43,7 +43,7 @@ class _LoginPageState extends State<LoginPage> {
       final id = userData['id'];
       final email = userData['email'];
       final token = userData['token'];
-
+      final username = userData['name'] ?? 'Người dùng';
       _saveSession(email, id, token);
 
       if (!mounted) return;
@@ -53,6 +53,7 @@ class _LoginPageState extends State<LoginPage> {
           builder: (_) => HomePage(
             userId: id,
             email: email,
+            username: username,
           ),
         ),
       );
@@ -98,7 +99,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
                   const Text(
-                    'Your Luxury Apartment',
+                    'Quản lý căn hộ thông minh',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.black87,
