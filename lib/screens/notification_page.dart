@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models/news.dart';
+import 'package:flutter_application_1/screens/home_page.dart';
 import 'package:flutter_application_1/screens/login_page.dart';
 import 'package:flutter_application_1/services/news_service.dart';
 
 class NotificationPage extends StatefulWidget {
   final int userId;
   final String email;
-  final String username; // thêm username để hiển thị header
+  final String username;
 
   const NotificationPage({
     super.key,
@@ -121,6 +122,15 @@ class _NotificationPageState extends State<NotificationPage> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => const LoginPage()),
+    );
+  }
+
+  void _goHome() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => HomePage(userId: widget.userId, email: widget.email, username: widget.username),
+      ),
     );
   }
 
@@ -245,33 +255,42 @@ class _NotificationPageState extends State<NotificationPage> {
               ],
             ),
           ),
-          Stack(
+          Row(
             children: [
               IconButton(
-                icon: const Icon(Icons.logout),
+                icon: const Icon(Icons.home),
                 color: Colors.white,
-                onPressed: _logout,
+                onPressed: _goHome,
               ),
-              if (_unreadCount > 0)
-                Positioned(
-                  right: 12,
-                  top: 12,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: Colors.red,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      '$_unreadCount',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
+              Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.logout),
+                    color: Colors.white,
+                    onPressed: _logout,
+                  ),
+                  if (_unreadCount > 0)
+                    Positioned(
+                      right: 12,
+                      top: 12,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '$_unreadCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
+                ],
+              ),
             ],
           ),
         ],

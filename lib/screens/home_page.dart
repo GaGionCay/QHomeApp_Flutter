@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens/login_page.dart';
 import 'package:flutter_application_1/screens/notification_page.dart';
+import 'package:flutter_application_1/screens/service_registration.dart'; // import page mới
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HomePage extends StatefulWidget {
@@ -30,8 +31,17 @@ class _HomePageState extends State<HomePage> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            NotificationPage(userId: widget.userId, email: widget.email, username: widget.username),
+        builder: (_) => NotificationPage(
+            userId: widget.userId, email: widget.email, username: widget.username),
+      ),
+    );
+  }
+
+  void _openServiceRegistration() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ServiceRegistrationPage(userId: widget.userId),
       ),
     );
   }
@@ -43,10 +53,7 @@ class _HomePageState extends State<HomePage> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header
             _buildHeader(),
-
-            // Content
             Expanded(
               child: Container(
                 decoration: const BoxDecoration(
@@ -62,8 +69,6 @@ class _HomePageState extends State<HomePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildBalanceCard(),
-                        const SizedBox(height: 24),
                         _buildSectionTitle('Dịch vụ'),
                         const SizedBox(height: 16),
                         _buildServicesGrid(),
@@ -118,7 +123,6 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
           ),
-          // Notification Icon
           Stack(
             children: [
               IconButton(
@@ -140,99 +144,10 @@ class _HomePageState extends State<HomePage> {
               ),
             ],
           ),
-          // Logout Icon
           IconButton(
             icon: const Icon(Icons.logout),
             color: Colors.white,
             onPressed: _logout,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBalanceCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFFFF8E1), Color(0xFFFFECB3)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.orange.withOpacity(0.2),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Số dư trong ví của bạn',
-            style: TextStyle(
-              color: Colors.grey[700],
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            '3.560.000 VNĐ',
-            style: TextStyle(
-              color: Colors.orange,
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {},
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.orange),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  child: const Text(
-                    'Chi tiết',
-                    style: TextStyle(
-                      color: Colors.orange,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () {},
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    elevation: 0,
-                  ),
-                  child: const Text(
-                    'Nạp tiền',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ],
           ),
         ],
       ),
@@ -256,7 +171,12 @@ class _HomePageState extends State<HomePage> {
       {'icon': '💡', 'label': 'Đóng tiền\nđiện', 'color': const Color(0xFFFFF9C4)},
       {'icon': '📦', 'label': 'Gửi đồ', 'color': const Color(0xFFE1F5FE)},
       {'icon': '🧹', 'label': 'Mày lành', 'color': const Color(0xFFE0F2F1)},
-      {'icon': '📚', 'label': 'Bộ đồ\ndùng', 'color': const Color(0xFFE8EAF6)},
+      {
+        'icon': '💳',
+        'label': 'Đăng ký thẻ',
+        'color': const Color(0xFFE8EAF6),
+        'action': _openServiceRegistration
+      },
       {'icon': '💧', 'label': 'Bộ đồ\ndùng', 'color': const Color(0xFFE1F5FE)},
       {'icon': '🛠️', 'label': 'Hỗ trợ', 'color': const Color(0xFFFFF9C4)},
       {'icon': '🏢', 'label': 'Dịch vụ\nnước', 'color': const Color(0xFFE3F2FD)},
@@ -273,10 +193,39 @@ class _HomePageState extends State<HomePage> {
       ),
       itemCount: services.length,
       itemBuilder: (context, index) {
-        return _buildServiceItem(
-          services[index]['icon'] as String,
-          services[index]['label'] as String,
-          services[index]['color'] as Color,
+        final service = services[index];
+        return GestureDetector(
+          onTap: service['action'] != null
+              ? service['action'] as void Function()
+              : () {},
+          child: Column(
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: service['color'] as Color,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    service['icon'] as String,
+                    style: const TextStyle(fontSize: 28),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                service['label'] as String,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Colors.black87,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -301,46 +250,39 @@ class _HomePageState extends State<HomePage> {
       ),
       itemCount: utilities.length,
       itemBuilder: (context, index) {
-        return _buildServiceItem(
-          utilities[index]['icon'] as String,
-          utilities[index]['label'] as String,
-          utilities[index]['color'] as Color,
+        final util = utilities[index];
+        return GestureDetector(
+          onTap: () {},
+          child: Column(
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: util['color'] as Color,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    util['icon'] as String,
+                    style: const TextStyle(fontSize: 28),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                util['label'] as String,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Colors.black87,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
         );
       },
-    );
-  }
-
-  Widget _buildServiceItem(String emoji, String label, Color bgColor) {
-    return GestureDetector(
-      onTap: () {},
-      child: Column(
-        children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Center(
-              child: Text(
-                emoji,
-                style: const TextStyle(fontSize: 28),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 11,
-              color: Colors.black87,
-              height: 1.2,
-            ),
-          ),
-        ],
-      ),
     );
   }
 

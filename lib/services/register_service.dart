@@ -1,54 +1,39 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+/// Service để gửi request đăng ký dịch vụ cư dân
 class RegisterService {
-  final String baseUrl = 'http://192.168.100.46:8080/api/services';
+  final String baseUrl = 'http://localhost:8080/api/register-service';
 
-  /// Đăng ký dịch vụ mới
-  Future<String?> registerService({
-    required int id,
-    required String email,
+  /// Gửi đăng ký dịch vụ
+  /// userId: id người dùng
+  /// serviceType: tên dịch vụ đã chọn
+  /// note: ghi chú/ lý do (có thể null)
+  Future<bool> registerService({
+    required int userId,
     required String serviceType,
-    required String details,
+    String? note,
   }) async {
     try {
+      final url = Uri.parse(baseUrl);
+
       final response = await http.post(
-        Uri.parse('$baseUrl/register'),
-        headers: {'Content-Type': 'application/json'},
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          // nếu sau này có jwt token thì thêm header Authorization
+        },
         body: jsonEncode({
-          'id': id.toString(),
-          'email': email,
+          'userId': userId,
           'serviceType': serviceType,
-          'details': details,
+          'note': note ?? '',
         }),
       );
 
-      if (response.statusCode == 200) {
-        return null; // Thành công
-      } else {
-        return response.body; // Trả về lỗi từ server
-      }
+      return response.statusCode == 200;
     } catch (e) {
-      return 'Lỗi kết nối: $e';
-    }
-  }
-
-  /// Lấy danh sách dịch vụ đã đăng ký của user
-  Future<List<Map<String, dynamic>>> getUserServices(int userId) async {
-    try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/user/$userId'),
-        headers: {'Content-Type': 'application/json'},
-      );
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        return data.cast<Map<String, dynamic>>();
-      } else {
-        throw Exception('Lỗi: ${response.body}');
-      }
-    } catch (e) {
-      throw Exception('Lỗi kết nối: $e');
+      print('Error registering service: $e');
+      return false;
     }
   }
 }
