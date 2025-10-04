@@ -15,11 +15,13 @@ class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _authService = AuthService();
+  bool _loading = false;
 
-  void _saveSession(String email, int id) async {
+  void _saveSession(String email, int id, String token) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('email', email);
     await prefs.setInt('id', id);
+    await prefs.setString('jwt', token);
   }
 
   void _login() async {
@@ -33,24 +35,29 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
+    setState(() => _loading = true);
     final userData = await _authService.login(email, password);
+    setState(() => _loading = false);
 
     if (userData != null) {
       final id = userData['id'];
       final email = userData['email'];
+      final token = userData['token'];
 
-      _saveSession(email, id);
+      _saveSession(email, id, token);
 
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (_) => HomePage(
-            id: id,
+            userId: id,
             email: email,
           ),
         ),
       );
     } else {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Đăng nhập thất bại")),
       );
@@ -187,7 +194,7 @@ class _LoginPageState extends State<LoginPage> {
                           width: double.infinity,
                           height: 50,
                           child: ElevatedButton(
-                            onPressed: _login,
+                            onPressed: _loading ? null : _login,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.black,
                               foregroundColor: Colors.white,
@@ -196,13 +203,17 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                               elevation: 0,
                             ),
-                            child: const Text(
-                              'Log In',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
+                            child: _loading
+                                ? const CircularProgressIndicator(
+                                    color: Colors.white,
+                                  )
+                                : const Text(
+                                    'Log In',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
                           ),
                         ),
                         const SizedBox(height: 40),

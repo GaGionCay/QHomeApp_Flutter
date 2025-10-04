@@ -1,96 +1,125 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/models/news.dart';
+import 'package:flutter_application_1/screens/login_page.dart';
+import 'package:flutter_application_1/services/news_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../services/auth_service.dart';
-import '../services/bill_service.dart';
-import '../services/news_service.dart';
-import 'login_page.dart';
-import '../screens/service_registration_service.dart';
-import '../screens/bill_list_page.dart';
-import '../screens/notification_page.dart';
-import '../models/monthly_bill_summary.dart';
-import '../models/news.dart';
-import '../widgets/monthly_bill_chart.dart';
 
 class HomePage extends StatefulWidget {
-  final int id;
+  final int userId;
   final String email;
 
-  const HomePage({super.key, required this.id, required this.email});
+  const HomePage({super.key, required this.userId, required this.email});
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
-  final _authService = AuthService();
-  final _billService = BillService();
-  final _newsService = NewsService();
+  final NewsService _newsService = NewsService();
 
-  List<MonthlyBillSummary> _summary = [];
   List<News> _newsList = [];
-  bool _loadingSummary = true;
+  int _unreadCount = 0;
   bool _loadingNews = true;
-  String? _token;
+  String? _errorMsg;
 
   @override
   void initState() {
     super.initState();
-    _loadToken();
-    _loadMonthlySummary();
     _loadNews();
+    _loadUnreadCount();
   }
 
-  Future<void> _loadToken() async {
-    final prefs = await SharedPreferences.getInstance();
+  Future<void> _loadNews() async {
     setState(() {
-      _token = prefs.getString('jwt');
+      _loadingNews = true;
+      _errorMsg = null;
     });
-  }
 
-  void _loadMonthlySummary() async {
     try {
-      final result = await _billService.fetchMonthlySummary(widget.id);
-      setState(() {
-        _summary = result;
-        _loadingSummary = false;
-      });
-    } catch (e) {
-      setState(() {
-        _loadingSummary = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi tải biểu đồ: $e')),
+      final news = await _newsService.fetchNews(
+        userId: widget.userId,
+        page: 0,
+        size: 20,
       );
-    }
-  }
 
-  void _loadNews() async {
-    try {
-      final result = await _newsService.fetchNews();
+      debugPrint('Fetched ${news.length} news'); // log số lượng
+      for (var n in news) {
+        debugPrint('News: ${n.title}, read: ${n.read}');
+      }
+
       setState(() {
-        _newsList = result;
+        _newsList = news;
         _loadingNews = false;
       });
     } catch (e) {
       setState(() {
         _loadingNews = false;
+        _errorMsg = 'Lỗi khi tải news: $e';
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi tải bảng tin: $e')),
-      );
     }
+  }
+
+  Future<void> _loadUnreadCount() async {
+    try {
+      final count = await _newsService.fetchUnreadCount(widget.userId);
+      setState(() => _unreadCount = count);
+    } catch (e) {
+      debugPrint('Failed to fetch unread count: $e');
+    }
+  }
+
+  Future<void> _markAsRead(News news) async {
+    if (!news.read) {
+      final success = await _newsService.markNewsAsRead(news.id, widget.userId);
+      if (!mounted) return;
+      if (success) {
+        setState(() {
+          news.read = true;
+          _unreadCount = (_unreadCount - 1).clamp(0, 9999);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Đã đánh dấu là đã đọc')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('⚠️ Không thể đánh dấu đã đọc')),
+        );
+      }
+    }
+  }
+
+  void _openNewsDetail(News news) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(news.title),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(news.content),
+              const SizedBox(height: 12),
+              Text(
+                "✍️ ${news.author ?? 'Unknown'} | 🕒 ${news.createdAt != null ? news.createdAt!.toLocal() : 'N/A'}",
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Đóng"),
+          ),
+        ],
+      ),
+    );
+    _markAsRead(news);
   }
 
   void _logout() async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('jwt');
-
-    if (token != null) {
-      await _authService.logout(token);
-    }
-
     await prefs.clear();
-
     if (!mounted) return;
     Navigator.pushReplacement(
       context,
@@ -98,114 +127,22 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _goToServiceRegistration() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) =>
-            ServiceRegistrationPage(id: widget.id, email: widget.email),
-      ),
-    );
-  }
-
-  void _goToBills() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => BillListPage(userId: widget.id)),
-    );
-  }
-
-  void _goToNotifications() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => NotificationPage(newsList: _newsList),
-      ),
-    );
-  }
-
-  Widget _buildMonthlySummary() {
-    if (_loadingSummary) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_summary.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: Text('Chưa có dữ liệu hóa đơn hàng tháng'),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        MonthlyBillBarChart(data: _summary),
-        const SizedBox(height: 16),
-        const Padding(
-          padding: EdgeInsets.all(16),
-          child: Text(
-            'Chi tiết tổng tiền từng tháng:',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-        ),
-        ..._summary.map(
-          (item) => ListTile(
-            leading: const Icon(Icons.bar_chart),
-            title: Text('Tháng ${item.month}/${item.year}'),
-            subtitle: Text(
-              'Tổng tiền: ${item.totalAmount.toStringAsFixed(0)} VND',
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildNewsSection() {
-    if (_loadingNews) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_newsList.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: Text('Chưa có bảng tin nào'),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.all(16),
-          child: Text('📢 Bảng tin cư dân:',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        ),
-        ..._newsList.map((news) => ListTile(
-              leading: const Icon(Icons.announcement),
-              title: Text(news.title),
-              subtitle: Text(news.content),
-              trailing: Text(news.author),
-            )),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final unreadCount = _newsList.where((n) => !n.isRead).length;
+    final sortedNews = [..._newsList]
+      ..sort(
+        (a, b) => (b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0))
+            .compareTo(a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0)),
+      );
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Trang chính'),
+        title: Text('Xin chào, ${widget.email}'),
         actions: [
           Stack(
             children: [
-              IconButton(
-                icon: const Icon(Icons.notifications),
-                onPressed: _goToNotifications,
-              ),
-              if (unreadCount > 0)
+              IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
+              if (_unreadCount > 0)
                 Positioned(
                   right: 8,
                   top: 8,
@@ -216,84 +153,65 @@ class _HomePageState extends State<HomePage> {
                       shape: BoxShape.circle,
                     ),
                     child: Text(
-                      '$unreadCount',
+                      '$_unreadCount',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 12,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
                 ),
             ],
           ),
-          IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
         ],
       ),
-      body: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            color: Colors.blue.shade50,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Hello, ${widget.email} 👋',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+      body: _loadingNews
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMsg != null
+          ? Center(
+              child: Text(
+                _errorMsg!,
+                style: const TextStyle(color: Colors.red, fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+            )
+          : ListView.builder(
+              itemCount: sortedNews.length,
+              itemBuilder: (context, index) {
+                final news = sortedNews[index];
+                return Card(
+                  color: news.read ? Colors.white : Colors.blue.shade50,
+                  margin: const EdgeInsets.symmetric(
+                    vertical: 4,
+                    horizontal: 8,
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Email: ${widget.email}',
-                  style: const TextStyle(fontSize: 14, color: Colors.black54),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                _buildNewsSection(),
-                const Divider(),
-                _buildMonthlySummary(),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _goToBills,
-                    icon: const Icon(Icons.receipt_long),
-                    label: const Text('Khoản thu'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(50),
+                  child: ListTile(
+                    leading: Icon(
+                      news.read ? Icons.drafts : Icons.markunread,
+                      color: news.read ? Colors.grey : Colors.blue,
                     ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _goToServiceRegistration,
-                    icon: const Icon(Icons.app_registration),
-                    label: const Text('Đăng ký dịch vụ'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(50),
+                    title: Text(
+                      news.title,
+                      style: TextStyle(
+                        fontWeight: news.read
+                            ? FontWeight.normal
+                            : FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
+                    subtitle: Text(
+                      news.summary?.isNotEmpty == true
+                          ? news.summary!
+                          : news.content,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onTap: () => _openNewsDetail(news),
                   ),
-                ),
-              ],
+                );
+              },
             ),
-          ),
-        ],
-      ),
     );
   }
 }

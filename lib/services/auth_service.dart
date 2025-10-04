@@ -50,7 +50,10 @@ class AuthService {
   }
 
   /// Lấy dịch vụ user
-  Future<List<Map<String, dynamic>>> getUserServices(int userId, String token) async {
+  Future<List<Map<String, dynamic>>> getUserServices(
+    int userId,
+    String token,
+  ) async {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/user/$userId'),
@@ -86,14 +89,15 @@ class AuthService {
     }
   }
 
-  /// Đổi mật khẩu bằng OTP
-  Future<String?> confirmReset(String email, String otp, String newPassword) async {
+  Future<String?> confirmReset(
+    String email,
+    String otp,
+    String newPassword,
+  ) async {
     try {
-      // Kiểm tra password policy trước khi gửi lên backend
+      // Check password policy trước khi gửi lên
       final error = validatePassword(newPassword);
-      if (error != null) {
-        return error; // Ngắt sớm nếu password không đạt policy
-      }
+      if (error != null) return error;
 
       final response = await http.post(
         Uri.parse('$baseUrl/confirm-reset'),
@@ -106,9 +110,11 @@ class AuthService {
       );
 
       if (response.statusCode == 200) {
-        return null;
+        return null; // thành công
       } else {
-        return 'OTP không hợp lệ hoặc mật khẩu không đạt yêu cầu';
+        final data = jsonDecode(response.body);
+        return data['message'] ??
+            'OTP không hợp lệ hoặc mật khẩu không đạt yêu cầu';
       }
     } catch (e) {
       return 'Lỗi kết nối: $e';

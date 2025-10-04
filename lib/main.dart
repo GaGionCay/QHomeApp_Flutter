@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/screens/login_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'screens/login_page.dart';
-import 'screens/home_page.dart';
+import 'services/auth_service.dart';
+import 'services/news_service.dart';
+import 'models/news.dart';
 
 void main() {
   runApp(const MyApp());
@@ -10,33 +12,12 @@ void main() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  Future<Widget> _getInitialPage() async {
-    final prefs = await SharedPreferences.getInstance();
-    final id = prefs.getInt('id');
-    final email = prefs.getString('email');
-
-    if (id != null && email != null) {
-      return HomePage(id: id, email: email);
-    } else {
-      return const LoginPage();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'QHome Auth',
+      title: 'QHomeApp',
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: FutureBuilder(
-        future: _getInitialPage(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(body: Center(child: CircularProgressIndicator()));
-          } else {
-            return snapshot.data as Widget;
-          }
-        },
-      ),
+      home: const LoginPage(),
     );
   }
 }
