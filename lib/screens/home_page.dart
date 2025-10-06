@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/screens/login_page.dart';
+import 'package:flutter_application_1/screens/notification_page.dart';
+import 'package:flutter_application_1/screens/service_registration.dart'; // import page mới
 import 'package:shared_preferences/shared_preferences.dart';
-// Sử dụng đường dẫn tương đối cho các màn hình
-import 'login_page.dart';
-import 'notification_page.dart'; 
-import 'service_registration.dart'; 
 
 class HomePage extends StatefulWidget {
   final int userId;
@@ -18,19 +17,16 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
 
-  /// Xóa session đã lưu trong SharedPreferences và chuyển về màn hình đăng nhập
   void _logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
     if (!mounted) return;
-    // Sử dụng pushReplacement để ngăn người dùng quay lại trang Home
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => const LoginPage()),
     );
   }
 
-  /// Mở trang thông báo
   void _openNotificationPage() {
     Navigator.push(
       context,
@@ -41,7 +37,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// Mở trang đăng ký dịch vụ (khi bấm vào ô 'Đăng ký thẻ')
   void _openServiceRegistration() {
     Navigator.push(
       context,
@@ -54,7 +49,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF2C3E50), // Màu nền Header (Xanh đậm)
+      backgroundColor: const Color(0xFF2C3E50),
       body: SafeArea(
         child: Column(
           children: [
@@ -128,7 +123,6 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
           ),
-          // Nút thông báo
           Stack(
             children: [
               IconButton(
@@ -136,17 +130,20 @@ class _HomePageState extends State<HomePage> {
                 color: Colors.white,
                 onPressed: _openNotificationPage,
               ),
-              const Positioned(
+              Positioned(
                 right: 12,
                 top: 12,
-                child: Badge(
-                  backgroundColor: Colors.red,
-                  smallSize: 8,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
                 ),
               ),
             ],
           ),
-          // Nút đăng xuất
           IconButton(
             icon: const Icon(Icons.logout),
             color: Colors.white,
@@ -169,7 +166,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildServicesGrid() {
-    // Danh sách các dịch vụ
     final services = [
       {'icon': '🏠', 'label': 'Dịch vụ\nnước', 'color': const Color(0xFFE3F2FD)},
       {'icon': '💡', 'label': 'Đóng tiền\nđiện', 'color': const Color(0xFFFFF9C4)},
@@ -179,7 +175,7 @@ class _HomePageState extends State<HomePage> {
         'icon': '💳',
         'label': 'Đăng ký thẻ',
         'color': const Color(0xFFE8EAF6),
-        'action': _openServiceRegistration // Gán hành động khi bấm
+        'action': _openServiceRegistration
       },
       {'icon': '💧', 'label': 'Bộ đồ\ndùng', 'color': const Color(0xFFE1F5FE)},
       {'icon': '🛠️', 'label': 'Hỗ trợ', 'color': const Color(0xFFFFF9C4)},
@@ -201,9 +197,7 @@ class _HomePageState extends State<HomePage> {
         return GestureDetector(
           onTap: service['action'] != null
               ? service['action'] as void Function()
-              : () {
-                  // Xử lý hành động mặc định
-                },
+              : () {},
           child: Column(
             children: [
               Container(
@@ -312,7 +306,7 @@ class _HomePageState extends State<HomePage> {
           });
         },
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF2196F3), // Màu xanh dương
+        selectedItemColor: const Color(0xFF2196F3),
         unselectedItemColor: Colors.grey,
         selectedFontSize: 12,
         unselectedFontSize: 12,

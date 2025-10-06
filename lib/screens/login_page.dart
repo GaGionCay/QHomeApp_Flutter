@@ -17,13 +17,6 @@ class _LoginPageState extends State<LoginPage> {
   final _authService = AuthService();
   bool _loading = false;
 
-  @override
-  void initState() {
-    super.initState();
-    // Optional: Load previously saved email if needed
-  }
-
-	/// Lưu trữ thông tin session (ID và JWT Token)
   void _saveSession(String email, int id, String token) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('email', email);
@@ -31,17 +24,9 @@ class _LoginPageState extends State<LoginPage> {
     await prefs.setString('jwt', token);
   }
 
-	/// Xử lý đăng nhập
   void _login() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
-
-    if (email.isEmpty || password.isEmpty) {
-       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Vui lòng điền đầy đủ email và mật khẩu.")),
-      );
-      return;
-    }
 
     if (!email.endsWith('@gmail.com')) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -51,23 +36,17 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     setState(() => _loading = true);
-		// Chờ kết quả đăng nhập từ AuthService
-    final result = await _authService.login(email, password); 
+    final userData = await _authService.login(email, password);
     setState(() => _loading = false);
 
-    if (!mounted) return;
-
-    if (result != null && !result.containsKey('error')) {
-      // --- ĐĂNG NHẬP THÀNH CÔNG ---
-			// Ép kiểu dữ liệu an toàn
-      final id = result['id'] as int;
-      final email = result['email'] as String;
-      final token = result['token'] as String;
-      final username = result['name'] as String? ?? 'Người dùng';
-      
+    if (userData != null) {
+      final id = userData['id'];
+      final email = userData['email'];
+      final token = userData['token'];
+      final username = userData['name'] ?? 'Người dùng';
       _saveSession(email, id, token);
 
-      // Chuyển sang HomePage
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -79,11 +58,9 @@ class _LoginPageState extends State<LoginPage> {
         ),
       );
     } else {
-      // --- ĐĂNG NHẬP THẤT BẠI ---
-      // Lấy thông báo lỗi chi tiết từ AuthService (ví dụ: Lỗi 401, lỗi kết nối)
-      final errorMessage = result?['error'] as String? ?? "Đã xảy ra lỗi không xác định.";
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(errorMessage)),
+        const SnackBar(content: Text("Đăng nhập thất bại")),
       );
     }
   }
@@ -168,7 +145,6 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                         TextField(
                           controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
                           decoration: const InputDecoration(
                             hintText: 'raziul.cse@gmail.com',
                             border: UnderlineInputBorder(),
@@ -230,15 +206,15 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                             child: _loading
                                 ? const CircularProgressIndicator(
-                                      color: Colors.white,
-                                    )
+                                    color: Colors.white,
+                                  )
                                 : const Text(
-                                      'Log In',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w500,
-                                      ),
+                                    'Log In',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w500,
                                     ),
+                                  ),
                           ),
                         ),
                         const SizedBox(height: 40),
