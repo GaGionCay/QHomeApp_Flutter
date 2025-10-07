@@ -1,23 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/screens/login_page.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
-import 'services/news_service.dart';
-import 'models/news.dart';
 
 void main() {
-  runApp(const MyApp());
+  WidgetsFlutterBinding.ensureInitialized();
+
+  final authService = AuthService(); // apiClient được khởi tạo tự động trong AuthService
+
+  runApp(MyApp(authService: authService));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final AuthService authService;
+  const MyApp({super.key, required this.authService});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'QHomeApp',
+      title: 'Resident App',
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: const LoginPage(),
+      debugShowCheckedModeBanner: false,
+      home: LoginScreen(authService: authService),
     );
   }
 }
