@@ -25,14 +25,12 @@ class ApiInterceptor {
     final uri = Uri.parse('$baseUrl$path');
     http.Response response;
 
-    // Gửi request lần đầu
     if (method == 'GET') {
       response = await http.get(uri, headers: headers);
     } else {
       response = await http.post(uri, headers: headers, body: jsonEncode(body));
     }
 
-    // Nếu 401 → refresh token
     if (response.statusCode == 401) {
       bool refreshed = await _refreshToken();
       if (refreshed) {
@@ -47,7 +45,6 @@ class ApiInterceptor {
           response = await http.post(uri, headers: retryHeaders, body: jsonEncode(body));
         }
       } else {
-        // refresh token hết hạn → logout
         await _authService.logout();
       }
     }

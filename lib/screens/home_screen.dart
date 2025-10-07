@@ -3,10 +3,11 @@ import '../services/auth_service.dart';
 import '../services/news_service.dart';
 import 'news_list_screen.dart';
 import 'login_screen.dart';
+import 'register_service_screen.dart'; 
 
 class HomeScreen extends StatefulWidget {
   final AuthService authService;
-  final NewsService newsService; // nhận từ LoginScreen
+  final NewsService newsService;
 
   const HomeScreen({
     super.key,
@@ -27,17 +28,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _fetchUnreadCount();
   }
 
-  // Lấy số lượng thông báo chưa đọc
   void _fetchUnreadCount() async {
     try {
       final count = await widget.newsService.unreadCount();
       setState(() => unreadNotifications = count);
     } catch (e) {
-      // Ignore lỗi
     }
   }
 
-  // Đăng xuất
   void logout() async {
     await widget.authService.logout();
     Navigator.pushAndRemoveUntil(
@@ -57,6 +55,16 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (_) => NewsListScreen(newsService: widget.newsService),
       ),
     ).then((_) => _fetchUnreadCount()); // refresh badge khi quay lại
+  }
+
+  // Chuyển sang màn hình đăng ký dịch vụ
+  void goToRegisterService() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MyRegisterServiceScreen(authService: widget.authService),
+      ),
+    );
   }
 
   @override
@@ -98,7 +106,20 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: const Center(child: Text('Welcome Resident!')),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text('Welcome Resident!'),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: goToRegisterService,
+              icon: const Icon(Icons.add_box),
+              label: const Text('Register Service'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
