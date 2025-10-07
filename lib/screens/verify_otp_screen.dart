@@ -3,10 +3,10 @@ import '../services/auth_service.dart';
 import 'reset_password_screen.dart';
 
 class VerifyOtpScreen extends StatefulWidget {
-  final String email;
   final AuthService authService;
+  final String email;
 
-  const VerifyOtpScreen({super.key, required this.email, required this.authService});
+  const VerifyOtpScreen({super.key, required this.authService, required this.email});
 
   @override
   State<VerifyOtpScreen> createState() => _VerifyOtpScreenState();
@@ -25,16 +25,11 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => ResetPasswordScreen(
-            email: widget.email,
-            otp: otpController.text.trim(),
-            authService: widget.authService,
-          ),
+          builder: (_) => ResetPasswordScreen(authService: widget.authService, email: widget.email, otp: otpController.text.trim()),
         ),
       );
     } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Invalid OTP')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid OTP')));
     }
   }
 
@@ -46,20 +41,11 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            TextField(
-              controller: otpController,
-              decoration: const InputDecoration(labelText: 'OTP'),
-            ),
+            TextField(controller: otpController, decoration: const InputDecoration(labelText: 'OTP')),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: loading ? null : verifyOtp,
-              child: loading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Verify'),
+              child: loading ? const CircularProgressIndicator() : const Text('Verify'),
             ),
           ],
         ),

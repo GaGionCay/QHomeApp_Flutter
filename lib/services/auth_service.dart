@@ -6,9 +6,34 @@ import 'api_client.dart';
 class AuthService {
   late final ApiClient apiClient;
 
-  AuthService() {
-    // Khởi tạo apiClient ngay trong constructor để tránh LateInitializationError
-    apiClient = ApiClient(authService: this);
+  AuthService();
+
+  void setApiClient(ApiClient client) {
+    apiClient = client;
+  }
+
+  Future<Map<String, dynamic>?> login(String email, String password) async {
+    final response = await apiClient.post('/auth/login', body: {
+      'email': email,
+      'password': password,
+    });
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      await SecureStorageUtil.write('accessToken', data['accessToken']);
+      await SecureStorageUtil.write('refreshToken', data['refreshToken']);
+      return data;
+    }
+    return null;
+  }
+
+  Future<bool> logout() async {
+    final response = await apiClient.post('/auth/logout');
+    if (response.statusCode == 200) {
+      await SecureStorageUtil.deleteAll();
+      return true;
+    }
+    return false;
   }
 
   Future<bool> refreshToken() async {
@@ -29,30 +54,6 @@ class AuthService {
       await logout();
       return false;
     }
-  }
-
-  Future<bool> logout() async {
-    final response = await apiClient.post('/auth/logout');
-    if (response.statusCode == 200) {
-      await SecureStorageUtil.deleteAll();
-      return true;
-    }
-    return false;
-  }
-
-  Future<Map<String, dynamic>?> login(String email, String password) async {
-    final response = await apiClient.post('/auth/login', body: {
-      'email': email,
-      'password': password,
-    });
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      await SecureStorageUtil.write('accessToken', data['accessToken']);
-      await SecureStorageUtil.write('refreshToken', data['refreshToken']);
-      return data;
-    }
-    return null;
   }
 
   Future<bool> requestReset(String email) async {

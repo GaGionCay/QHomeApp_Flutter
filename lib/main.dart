@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
-import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
+import 'services/api_client.dart';
+import 'screens/login_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final authService = AuthService(); // apiClient được khởi tạo tự động trong AuthService
+  final authService = AuthService();
+  final apiClient = ApiClient(authService: authService);
+  authService.setApiClient(apiClient);
 
   runApp(MyApp(authService: authService));
 }

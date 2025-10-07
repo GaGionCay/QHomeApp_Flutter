@@ -3,7 +3,7 @@ import '../services/auth_service.dart';
 import 'verify_otp_screen.dart';
 
 class RequestResetScreen extends StatefulWidget {
-  final AuthService authService; // lưu AuthService
+  final AuthService authService;
 
   const RequestResetScreen({super.key, required this.authService});
 
@@ -24,15 +24,11 @@ class _RequestResetScreenState extends State<RequestResetScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => VerifyOtpScreen(
-            email: emailController.text.trim(),
-            authService: widget.authService, // truyền tiếp AuthService
-          ),
+          builder: (_) => VerifyOtpScreen(authService: widget.authService, email: emailController.text.trim()),
         ),
       );
     } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Failed to request OTP')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to request OTP')));
     }
   }
 
@@ -44,20 +40,11 @@ class _RequestResetScreenState extends State<RequestResetScreen> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            TextField(
-              controller: emailController,
-              decoration: const InputDecoration(labelText: 'Email'),
-            ),
+            TextField(controller: emailController, decoration: const InputDecoration(labelText: 'Email')),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: loading ? null : requestReset,
-              child: loading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Send OTP'),
+              child: loading ? const CircularProgressIndicator() : const Text('Send OTP'),
             ),
           ],
         ),

@@ -22,10 +22,7 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Home'),
         actions: [
-          IconButton(
-            onPressed: () => logout(context),
-            icon: const Icon(Icons.logout),
-          )
+          IconButton(onPressed: () => logout(context), icon: const Icon(Icons.logout))
         ],
       ),
       body: const Center(child: Text('Welcome Resident!')),

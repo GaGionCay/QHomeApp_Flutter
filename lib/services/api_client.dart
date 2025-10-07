@@ -19,6 +19,7 @@ class ApiClient {
 
   Future<http.Response> _sendRequest(String method, String path, {Map<String, dynamic>? body}) async {
     String? accessToken = await SecureStorageUtil.read('accessToken');
+
     final headers = {
       'Content-Type': 'application/json',
       if (accessToken != null) 'Authorization': 'Bearer $accessToken',
@@ -33,7 +34,7 @@ class ApiClient {
       response = await http.post(uri, headers: headers, body: jsonEncode(body));
     }
 
-    // Nếu 401 → refresh token
+    // Auto refresh token if 401
     if (response.statusCode == 401) {
       bool refreshed = await authService.refreshToken();
       if (refreshed) {
