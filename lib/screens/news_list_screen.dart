@@ -23,11 +23,18 @@ class _NewsListScreenState extends State<NewsListScreen> {
 
   void _loadNews() async {
     setState(() => loading = true);
-    final list = await widget.newsService.listNews();
-    setState(() {
-      newsList = list;
-      loading = false;
-    });
+    try {
+      final list = await widget.newsService.listNews();
+      setState(() {
+        newsList = list;
+        loading = false;
+      });
+    } catch (e) {
+      setState(() => loading = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to load news')));
+    }
   }
 
   @override
@@ -43,7 +50,9 @@ class _NewsListScreenState extends State<NewsListScreen> {
                 final read = news['read'] ?? false;
                 return ListTile(
                   title: Text(news['title'] ?? ''),
-                  subtitle: Text(news['summary'] ?? ''),
+                  subtitle: Text(
+                    'By ${news['author'] ?? 'Unknown'} - ${formatDateTime(news['createdAt'])}',
+                  ),
                   trailing: Icon(
                     read ? Icons.check : Icons.mark_email_unread,
                     color: read ? Colors.green : null,
@@ -52,9 +61,12 @@ class _NewsListScreenState extends State<NewsListScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => NewsDetailScreen(newsService: widget.newsService, newsId: news['id']),
+                        builder: (_) => NewsDetailScreen(
+                          newsService: widget.newsService,
+                          newsId: news['id'],
+                        ),
                       ),
-                    ).then((_) => _loadNews()); // refresh khi quay lại
+                    ).then((_) => _loadNews());
                   },
                 );
               },
