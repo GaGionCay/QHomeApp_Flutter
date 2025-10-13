@@ -1,29 +1,44 @@
 import 'package:flutter/material.dart';
-import 'services/auth_service.dart';
-import 'services/api_client.dart';
-import 'screens/login_screen.dart';
+import 'package:provider/provider.dart';
+import 'auth/auth_provider.dart';
+import 'auth/screens/login_screen.dart';
+import 'home/home_screen.dart';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  final authService = AuthService();
-  final apiClient = ApiClient(authService: authService);
-  authService.setApiClient(apiClient);
-
-  runApp(MyApp(authService: authService));
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => AuthProvider(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
-  final AuthService authService;
-  const MyApp({super.key, required this.authService});
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+
+    Widget home;
+    if (auth.isLoading) {
+      home = const SplashScreen();
+    } else {
+      home = auth.isAuthenticated ? const HomeScreen() : const LoginScreen();
+    }
+
     return MaterialApp(
-      title: 'Resident App',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      debugShowCheckedModeBanner: false,
-      home: LoginScreen(authService: authService),
+      title: 'QHomeBase App',
+      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.blue),
+      home: home,
     );
   }
+}
+
+class SplashScreen extends StatelessWidget {
+  const SplashScreen({super.key});
+  @override
+  Widget build(BuildContext context) => const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
 }
