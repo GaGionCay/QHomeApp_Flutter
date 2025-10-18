@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../notifications/notification_screen.dart';
 import '../news/widgets/unread_badge.dart';
+import '../../profile/profile_screen.dart';
 
 class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
@@ -20,6 +21,16 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
     return AppBar(
       title: Text(title),
       actions: [
+        IconButton(
+          icon: const Icon(Icons.person_outline),
+          tooltip: 'Hồ sơ',
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ProfileScreen()),
+            );
+          },
+        ),
         IconButton(
           icon: const Icon(Icons.home),
           onPressed: onHomeTap,

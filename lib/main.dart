@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'auth/auth_provider.dart';
-import 'auth/screens/login_screen.dart';
-import 'home/home_screen.dart';
+import 'splash_screen.dart';
 
 void main() {
   runApp(
@@ -18,27 +17,15 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-
-    Widget home;
-    if (auth.isLoading) {
-      home = const SplashScreen();
-    } else {
-      home = auth.isAuthenticated ? const HomeScreen() : const LoginScreen();
-    }
-
     return MaterialApp(
       title: 'QHomeBase App',
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.blue),
-      home: home,
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.teal,
+        scaffoldBackgroundColor: Colors.white,
+      ),
+      home: const SplashScreen(),
     );
   }
-}
-
-class SplashScreen extends StatelessWidget {
-  const SplashScreen({super.key});
-  @override
-  Widget build(BuildContext context) => const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
 }

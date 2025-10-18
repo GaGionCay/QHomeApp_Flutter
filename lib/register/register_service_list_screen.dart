@@ -48,7 +48,6 @@ class _RegisterServiceListScreenState extends State<RegisterServiceListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Lịch sử đăng ký')),
       body: RefreshIndicator(
         onRefresh: _load,
         child: loading

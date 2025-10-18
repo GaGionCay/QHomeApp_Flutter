@@ -5,7 +5,7 @@ import 'auth_service.dart';
 
 class ApiClient {
   static const String BASE_URL = 'http://192.168.100.33:8080/api';
-
+  //static const String BASE_URL = 'http://localhost:8080/api';
   final Dio dio;
   final TokenStorage _storage;
   final AuthService _authService;
