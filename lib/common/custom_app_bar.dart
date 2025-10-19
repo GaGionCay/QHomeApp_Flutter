@@ -6,11 +6,13 @@ import '../../profile/profile_screen.dart';
 class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final VoidCallback? onHomeTap;
+  final bool showHomeIcon; 
 
   const CustomAppBar({
     super.key,
     required this.title,
     this.onHomeTap,
+    this.showHomeIcon = false,
   });
 
   @override
@@ -19,7 +21,22 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     return AppBar(
-      title: Text(title),
+      automaticallyImplyLeading: false, 
+      title: Text(
+        title,
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ),
+      centerTitle: true,
+      leading: showHomeIcon
+          ? IconButton(
+              icon: const Icon(Icons.home),
+              tooltip: 'Trang chủ',
+              onPressed: onHomeTap ??
+                  () {
+                    Navigator.popUntil(context, (route) => route.isFirst);
+                  },
+            )
+          : null,
       actions: [
         IconButton(
           icon: const Icon(Icons.person_outline),
@@ -32,11 +49,8 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
           },
         ),
         IconButton(
-          icon: const Icon(Icons.home),
-          onPressed: onHomeTap,
-        ),
-        IconButton(
           icon: const UnreadBadge(),
+          tooltip: 'Thông báo',
           onPressed: () {
             Navigator.push(
               context,

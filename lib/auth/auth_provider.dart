@@ -26,11 +26,9 @@ class AuthProvider extends ChangeNotifier {
     final token = await storage.readAccessToken();
 
     if (token != null) {
-      // Nếu token chưa hết hạn
       if (!JwtDecoder.isExpired(token)) {
         _isAuthenticated = true;
       } else {
-        // Nếu hết hạn -> thử refresh
         try {
           await authService.refreshToken();
           _isAuthenticated = true;
@@ -62,17 +60,13 @@ class AuthProvider extends ChangeNotifier {
 
 Future<void> logout(BuildContext context) async {
   try {
-    // Gọi API logout tới Spring Boot
     await authService.logout();
   } catch (e) {
-    // Nếu lỗi (ví dụ mất mạng) vẫn tiếp tục logout local
   } finally {
-    // Dù thế nào cũng xóa token local
     await storage.deleteAll();
     _isAuthenticated = false;
     notifyListeners();
 
-    // Chuyển về LoginScreen và xóa toàn bộ navigation stack
     if (context.mounted) {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -83,7 +77,6 @@ Future<void> logout(BuildContext context) async {
 }
 
 
-  // OTP helpers
   Future<void> requestReset(String email) => authService.requestReset(email);
   Future<void> verifyOtp(String email, String otp) => authService.verifyOtp(email, otp);
   Future<void> confirmReset(String email, String otp, String newPassword) =>
