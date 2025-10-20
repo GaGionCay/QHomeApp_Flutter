@@ -5,11 +5,12 @@ import '../register/register_service_list_screen.dart';
 import '../register/register_service_screen.dart';
 
 class MainShell extends StatefulWidget {
-  const MainShell({super.key});
-
+  final int initialIndex;
+  const MainShell({super.key, this.initialIndex = 0});
   @override
   State<MainShell> createState() => _MainShellState();
 }
+
 
 class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   int _selectedIndex = 0;
@@ -39,10 +40,10 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   late List<Animation<double>> _iconScales;
   late List<Animation<double>> _labelFades;
   late PageController _pageController;
-
   @override
   void initState() {
     super.initState();
+      _selectedIndex = widget.initialIndex; 
     _pageController = PageController(initialPage: _selectedIndex);
 
     _controllers = List.generate(_pages.length, (index) {

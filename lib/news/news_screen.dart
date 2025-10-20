@@ -46,7 +46,6 @@ class _NewsScreenState extends State<NewsScreen> {
         setState(() => items = updated);
       }
     } catch (e) {
-      // ignore
     }
   }
 
@@ -92,10 +91,8 @@ class _NewsScreenState extends State<NewsScreen> {
                           overflow: TextOverflow.ellipsis,
                         ),
                         onTap: () async {
-                          // 🔹 Đánh dấu đọc ngay lập tức
                           await _markRead(n['id']);
 
-                          // 🔹 Mở chi tiết và refresh sau khi quay lại
                           await Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -103,7 +100,7 @@ class _NewsScreenState extends State<NewsScreen> {
                             ),
                           );
 
-                          _fetch(); // Cập nhật lại danh sách sau khi quay về
+                          _fetch(); 
                         },
                       ),
                     );
