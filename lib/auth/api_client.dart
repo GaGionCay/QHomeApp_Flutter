@@ -4,8 +4,13 @@ import 'token_storage.dart';
 import 'auth_service.dart';
 
 class ApiClient {
+  //Home
   static const String BASE_URL = 'http://192.168.100.33:8080/api';
+  
   //static const String BASE_URL = 'http://localhost:8080/api';
+  
+  //FBT
+  //static const String BASE_URL = 'http://10.33.63.155:8080/api';
   final Dio dio;
   final TokenStorage _storage;
   final AuthService _authService;

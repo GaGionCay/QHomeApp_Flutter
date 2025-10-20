@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../common/main_shell.dart';
 import '../auth_provider.dart';
 import '../../home/home_screen.dart';
 import 'forgot_password_screen.dart';
@@ -22,9 +23,9 @@ class _LoginScreenState extends State<LoginScreen> {
     final auth = context.read<AuthProvider>();
 
     return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(), // 👈 Ẩn bàn phím khi chạm ngoài
+      onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        resizeToAvoidBottomInset: true, // 👈 Cho phép giao diện đẩy lên khi bàn phím hiện
+        resizeToAvoidBottomInset: true, 
         body: Container(
           width: double.infinity,
           height: double.infinity,
@@ -63,7 +64,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             children: [
                               const SizedBox(height: 80),
 
-                              // ✅ Hero Logo QHOME
                               Hero(
                                 tag: 'qhome-logo',
                                 child: Container(
@@ -110,7 +110,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                               const SizedBox(height: 50),
 
-                              // Tiêu đề Login
                               const Text(
                                 'Login',
                                 style: TextStyle(
@@ -123,7 +122,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                               const SizedBox(height: 40),
 
-                              // Email
                               _inputField(
                                 controller: emailCtrl,
                                 hint: 'Email',
@@ -132,7 +130,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                               const SizedBox(height: 16),
 
-                              // Password
                               _inputField(
                                 controller: passCtrl,
                                 hint: 'Password',
@@ -178,7 +175,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                               const SizedBox(height: 24),
 
-                              // Login button
                               SizedBox(
                                 width: double.infinity,
                                 height: 56,
@@ -187,7 +183,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       ? null
                                       : () async {
                                           FocusScope.of(context)
-                                              .unfocus(); // Ẩn bàn phím khi nhấn
+                                              .unfocus(); 
                                           setState(() => loading = true);
                                           final ok = await auth.login(
                                             emailCtrl.text.trim(),
@@ -200,7 +196,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                               context,
                                               MaterialPageRoute(
                                                 builder: (_) =>
-                                                    const HomeScreen(),
+                                                    const MainShell(),
                                               ),
                                             );
                                           } else {
@@ -244,7 +240,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
 
-                              const Spacer(), // 👈 đảm bảo nút login luôn có khoảng trống để scroll tới
+                              const Spacer(),
                               const SizedBox(height: 40),
                             ],
                           ),

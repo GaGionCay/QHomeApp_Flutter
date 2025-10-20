@@ -38,4 +38,5 @@ class ProfileService {
     }
     return avatarUrl;
   }
+  
 }

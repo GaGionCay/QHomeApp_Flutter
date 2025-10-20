@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'auth/auth_provider.dart';
+import 'common/main_shell.dart';
 import 'splash_screen.dart';
 
 void main() {
@@ -26,6 +27,9 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.white,
       ),
       home: const SplashScreen(),
+      routes: {
+        '/main': (_) => const MainShell(),
+      },
     );
   }
 }

@@ -48,7 +48,6 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    // ⏱ Sau animation → sang LoginScreen
     Future.delayed(const Duration(seconds: 3), () {
       Navigator.pushReplacement(
         context,
@@ -75,7 +74,6 @@ class _SplashScreenState extends State<SplashScreen>
       tag: 'qhome-logo',
       flightShuttleBuilder:
           (flightContext, animation, direction, fromContext, toContext) {
-        // Hiệu ứng khi chuyển trang
         return ScaleTransition(
           scale: Tween<double>(begin: 1.0, end: 0.9).animate(animation),
           child: toContext.widget,
