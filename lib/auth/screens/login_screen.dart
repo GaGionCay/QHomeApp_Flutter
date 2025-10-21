@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../common/main_shell.dart';
 import '../auth_provider.dart';
-import '../../home/home_screen.dart';
 import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -25,7 +24,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        resizeToAvoidBottomInset: true, 
+        resizeToAvoidBottomInset: true,
         body: Container(
           width: double.infinity,
           height: double.infinity,
@@ -63,7 +62,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: Column(
                             children: [
                               const SizedBox(height: 80),
-
                               Hero(
                                 tag: 'qhome-logo',
                                 child: Container(
@@ -107,9 +105,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                               ),
-
                               const SizedBox(height: 50),
-
                               const Text(
                                 'Login',
                                 style: TextStyle(
@@ -119,17 +115,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                   letterSpacing: 1,
                                 ),
                               ),
-
                               const SizedBox(height: 40),
-
                               _inputField(
                                 controller: emailCtrl,
                                 hint: 'Email',
                                 icon: Icons.email_outlined,
                               ),
-
                               const SizedBox(height: 16),
-
                               _inputField(
                                 controller: passCtrl,
                                 hint: 'Password',
@@ -149,9 +141,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   },
                                 ),
                               ),
-
                               const SizedBox(height: 16),
-
                               Align(
                                 alignment: Alignment.centerRight,
                                 child: TextButton(
@@ -172,9 +162,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                               ),
-
                               const SizedBox(height: 24),
-
                               SizedBox(
                                 width: double.infinity,
                                 height: 56,
@@ -182,8 +170,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   onPressed: loading
                                       ? null
                                       : () async {
-                                          FocusScope.of(context)
-                                              .unfocus(); 
+                                          FocusScope.of(context).unfocus();
                                           setState(() => loading = true);
                                           final ok = await auth.login(
                                             emailCtrl.text.trim(),
@@ -239,7 +226,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                         ),
                                 ),
                               ),
-
                               const Spacer(),
                               const SizedBox(height: 40),
                             ],

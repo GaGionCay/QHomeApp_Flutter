@@ -5,7 +5,6 @@ import 'package:image_picker/image_picker.dart';
 import '../auth/api_client.dart';
 import '../common/main_shell.dart';
 import '../models/register_service_request.dart';
-import 'register_service_list_screen.dart';
 
 class RegisterServiceScreen extends StatefulWidget {
   const RegisterServiceScreen({super.key});
@@ -41,7 +40,6 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> {
     super.dispose();
   }
 
-  // 🧩 Popup cảnh báo khi rời khỏi trang mà chưa lưu
   Future<bool> _confirmLeaveWithoutSaving() async {
     if (_isEditing ||
         (!_isRegistered &&
@@ -81,7 +79,7 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> {
   Future<void> _pickMultipleImages() async {
     final List<XFile> picked = await _picker.pickMultiImage(imageQuality: 75);
     if (picked.isEmpty) return;
-    await _uploadImages(picked); // ✅ bỏ setState thêm ảnh
+    await _uploadImages(picked); 
   }
 
   Future<void> _takePhoto() async {

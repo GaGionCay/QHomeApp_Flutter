@@ -1,116 +1,130 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
 import '../auth/api_client.dart';
-import 'package:intl/intl.dart';
+import '../common/main_shell.dart'; // để dùng NewsAttachmentDto
 
 class NewsDetailScreen extends StatefulWidget {
   final int id;
-  const NewsDetailScreen({required this.id, super.key});
+  const NewsDetailScreen({super.key, required this.id});
 
   @override
   State<NewsDetailScreen> createState() => _NewsDetailScreenState();
 }
 
 class _NewsDetailScreenState extends State<NewsDetailScreen> {
-  final ApiClient api = ApiClient();
-  Map<String, dynamic>? data;
-  bool loading = false;
+  Map<String, dynamic>? news;
+  bool loading = true;
+
+  static const String host = 'http://192.168.100.33:8080';
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _fetchNews();
   }
 
-  Future<void> _load() async {
-    setState(() => loading = true);
+  Future<void> _fetchNews() async {
     try {
-      // ✅ Gọi API lấy tin
-      final res = await api.dio.get('/news/${widget.id}');
-      data = Map<String, dynamic>.from(res.data);
-
-      // ✅ Nếu tin chưa đọc thì đánh dấu luôn
-      if (data?['isRead'] != true) {
-        await api.dio.post('/news/${widget.id}/read');
-        data?['isRead'] = true;
-      }
+      final client = ApiClient();
+      final res = await client.dio.get('/news/${widget.id}');
+      setState(() {
+        news = res.data;
+        loading = false;
+      });
     } catch (e) {
-      // ignore
-    } finally {
+      print(e);
       setState(() => loading = false);
     }
   }
 
-  String _formatDate(String? dateStr) {
-    if (dateStr == null) return '';
-    try {
-      final date = DateTime.parse(dateStr);
-      return DateFormat('dd/MM/yyyy HH:mm').format(date);
-    } catch (_) {
-      return dateStr;
-    }
+  Future<void> _handleAttachment(String url) async {
+    final filename = url.split('/').last;
+    final fullUrl = ApiClient.fileUrl(url);
+
+    showModalBottomSheet(
+      context: context,
+      builder: (_) {
+        return Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.download),
+              title: const Text('Tải về máy'),
+              onTap: () async {
+                Navigator.pop(context);
+                final dir = await getApplicationDocumentsDirectory();
+                final filePath = '${dir.path}/$filename';
+                final response = await http.get(Uri.parse(fullUrl));
+                final file = File(filePath);
+                await file.writeAsBytes(response.bodyBytes);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Đã tải về $filename')),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.visibility),
+              title: const Text('Xem trực tiếp'),
+              onTap: () async {
+                Navigator.pop(context);
+                final tempDir = await getTemporaryDirectory();
+                final filePath = '${tempDir.path}/$filename';
+                final response = await http.get(Uri.parse(fullUrl));
+                final file = File(filePath);
+                await file.writeAsBytes(response.bodyBytes);
+                await OpenFile.open(filePath);
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (news == null) {
+      return const Scaffold(
+        body: Center(child: Text('Không tìm thấy tin')),
+      );
+    }
+
+    final attachmentsData = news!['attachments'] as List<dynamic>? ?? [];
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Chi tiết tin')),
-      body: loading
-          ? const Center(child: CircularProgressIndicator())
-          : data == null
-              ? const Center(child: Text('Không tìm thấy tin tức'))
-              : Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          data!['title'] ?? '',
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        if (data!['createdAt'] != null)
-                          Text(
-                            _formatDate(data!['createdAt']),
-                            style: const TextStyle(color: Colors.grey),
-                          ),
-                        const SizedBox(height: 16),
-                        Text(
-                          data!['content'] ?? '',
-                          style: const TextStyle(fontSize: 16, height: 1.4),
-                        ),
-                        if (data!['attachments'] != null &&
-                            (data!['attachments'] as List).isNotEmpty)
-                          ...[
-                            const SizedBox(height: 20),
-                            const Text(
-                              'Tệp đính kèm:',
-                              style: TextStyle(
-                                  fontSize: 16, fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 8),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: (data!['attachments'] as List)
-                                  .map<Widget>((att) => Padding(
-                                        padding:
-                                            const EdgeInsets.only(bottom: 4),
-                                        child: Text(
-                                          att['filename'] ?? '',
-                                          style: const TextStyle(
-                                              color: Colors.blueAccent),
-                                        ),
-                                      ))
-                                  .toList(),
-                            ),
-                          ],
-                      ],
-                    ),
-                  ),
-                ),
+      appBar: AppBar(title: Text(news!['title'] ?? '')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(news!['summary'] ?? '', style: const TextStyle(fontSize: 16)),
+            const SizedBox(height: 12),
+            Text(news!['content'] ?? ''),
+            const SizedBox(height: 20),
+            if (attachmentsData.isNotEmpty)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: attachmentsData.map((a) {
+                  final attachment = NewsAttachmentDto.fromJson(a);
+                  return TextButton.icon(
+                    icon: const Icon(Icons.attach_file),
+                    label: Text(attachment.filename),
+                    onPressed: () => _handleAttachment(attachment.url),
+                  );
+                }).toList(),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 class RegisterServiceRequest {
   final int? id;
   final String? serviceType;

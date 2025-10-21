@@ -76,7 +76,6 @@ Future<void> logout(BuildContext context) async {
   }
 }
 
-
   Future<void> requestReset(String email) => authService.requestReset(email);
   Future<void> verifyOtp(String email, String otp) => authService.verifyOtp(email, otp);
   Future<void> confirmReset(String email, String otp, String newPassword) =>
