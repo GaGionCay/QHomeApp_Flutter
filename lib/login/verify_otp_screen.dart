@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../auth_provider.dart';
-import 'verify_otp_screen.dart';
+import '../auth/auth_provider.dart';
+import 'reset_password_screen.dart';
 
-class ForgotPasswordScreen extends StatefulWidget {
-  const ForgotPasswordScreen({super.key});
+class VerifyOtpScreen extends StatefulWidget {
+  final String email;
+  const VerifyOtpScreen({required this.email, super.key});
 
   @override
-  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
+  State<VerifyOtpScreen> createState() => _VerifyOtpScreenState();
 }
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
-  final emailCtrl = TextEditingController();
+class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
+  final otpCtrl = TextEditingController();
   bool loading = false;
 
   @override
@@ -46,7 +47,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             child: SafeArea(
               child: LayoutBuilder(
                 builder: (context, constraints) => SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
                   child: ConstrainedBox(
                     constraints: BoxConstraints(minHeight: constraints.maxHeight),
                     child: IntrinsicHeight(
@@ -56,7 +56,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                           children: [
                             const SizedBox(height: 80),
                             const Text(
-                              'Forgot Password',
+                              'Verify OTP',
                               style: TextStyle(
                                 fontSize: 32,
                                 fontWeight: FontWeight.bold,
@@ -67,9 +67,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                             const SizedBox(height: 40),
 
                             _inputField(
-                              controller: emailCtrl,
-                              hint: 'Email',
-                              icon: Icons.email_outlined,
+                              controller: otpCtrl,
+                              hint: 'Mã OTP',
+                              icon: Icons.lock_open_outlined,
                             ),
 
                             const SizedBox(height: 24),
@@ -84,19 +84,21 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                         FocusScope.of(context).unfocus();
                                         setState(() => loading = true);
                                         try {
-                                          await auth.requestReset(emailCtrl.text.trim());
+                                          await auth.verifyOtp(widget.email, otpCtrl.text.trim());
                                           if (!mounted) return;
                                           Navigator.push(
                                             context,
                                             MaterialPageRoute(
-                                              builder: (_) =>
-                                                  VerifyOtpScreen(email: emailCtrl.text.trim()),
+                                              builder: (_) => ResetPasswordScreen(
+                                                email: widget.email,
+                                                otp: otpCtrl.text.trim(),
+                                              ),
                                             ),
                                           );
                                         } catch (_) {
                                           ScaffoldMessenger.of(context).showSnackBar(
                                             const SnackBar(
-                                              content: Text('Yêu cầu thất bại'),
+                                              content: Text('OTP không hợp lệ'),
                                               backgroundColor: Colors.red,
                                             ),
                                           );
@@ -108,7 +110,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                 child: loading
                                     ? const CircularProgressIndicator(color: Colors.white)
                                     : const Text(
-                                        'Gửi OTP',
+                                        'Xác thực',
                                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                                       ),
                               ),
@@ -134,7 +136,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         foregroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         elevation: 8,
-        shadowColor: const Color(0xFF26A69A).withOpacity(0.5),
       );
 
   Widget _inputField({
@@ -156,8 +157,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       ),
       child: TextField(
         controller: controller,
-        keyboardType: TextInputType.emailAddress,
-        style: const TextStyle(color: Colors.black87, fontSize: 16),
+        style: const TextStyle(fontSize: 16, color: Colors.black87),
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: TextStyle(color: Colors.black.withOpacity(0.4)),
@@ -171,7 +171,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   void dispose() {
-    emailCtrl.dispose();
+    otpCtrl.dispose();
     super.dispose();
   }
 }

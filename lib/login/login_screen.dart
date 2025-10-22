@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../common/main_shell.dart';
-import '../auth_provider.dart';
+import '../common/main_shell.dart';
+import '../auth/auth_provider.dart';
 import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {

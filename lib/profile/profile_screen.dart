@@ -68,7 +68,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 radius: 50,
                 backgroundImage: _profile!['avatarUrl'] != null
                     ? NetworkImage(
-                        "${_profile!['avatarUrl']}?v=${DateTime.now().millisecondsSinceEpoch}") // cache busting
+                        "${_profile!['avatarUrl']}?v=${DateTime.now().millisecondsSinceEpoch}")
                     : null,
                 child: _profile!['avatarUrl'] == null
                     ? const Icon(Icons.person, size: 50)

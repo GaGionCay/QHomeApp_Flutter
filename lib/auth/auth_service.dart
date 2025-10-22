@@ -47,27 +47,27 @@ class AuthService {
     }
   }
 
-Future<void> logout() async {
-  await ensureDeviceId();
-  final deviceId = await storage.readDeviceId();
-  final accessToken = await storage.readAccessToken();
+  Future<void> logout() async {
+    await ensureDeviceId();
+    final deviceId = await storage.readDeviceId();
+    final accessToken = await storage.readAccessToken();
 
-  try {
-    await dio.post(
-      '/auth/logout',
-      options: Options(
-        headers: {
-          if (accessToken != null) 'Authorization': 'Bearer $accessToken',
-          if (deviceId != null) 'X-Device-Id': deviceId,
-        },
-      ),
-    );
-  } catch (e) {
-    print('Logout failed: $e');
-  } finally {
-    await storage.deleteAll();
+    try {
+      await dio.post(
+        '/auth/logout',
+        options: Options(
+          headers: {
+            if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+            if (deviceId != null) 'X-Device-Id': deviceId,
+          },
+        ),
+      );
+    } catch (e) {
+      print('Logout failed: $e');
+    } finally {
+      await storage.deleteAll();
+    }
   }
-}
 
   Future<void> requestReset(String email) async {
     await dio.post('/auth/request-reset', data: {'email': email});
@@ -77,7 +77,8 @@ Future<void> logout() async {
     await dio.post('/auth/verify-otp', data: {'email': email, 'otp': otp});
   }
 
-  Future<void> confirmReset(String email, String otp, String newPassword) async {
+  Future<void> confirmReset(
+      String email, String otp, String newPassword) async {
     await dio.post('/auth/confirm-reset',
         data: {'email': email, 'otp': otp, 'newPassword': newPassword});
   }

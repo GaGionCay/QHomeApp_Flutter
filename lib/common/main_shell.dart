@@ -1,18 +1,17 @@
 import 'dart:convert';
 import 'dart:io';
-
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/news/news_screen.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
 import 'package:http/http.dart' as http;
-
+import '../core/event_bus.dart';
 import '../home/home_screen.dart';
 import '../news/news_detail_screen.dart';
-import '../profile/profile_screen.dart';
-import '../register/register_service_list_screen.dart';
 import '../register/register_service_screen.dart';
 import '../auth/api_client.dart';
+import 'menu_screen.dart';
 
 class NewsAttachmentDto {
   final String filename;
@@ -31,36 +30,14 @@ class NewsAttachmentDto {
 class MainShell extends StatefulWidget {
   final int initialIndex;
   const MainShell({super.key, this.initialIndex = 0});
+
   @override
   State<MainShell> createState() => _MainShellState();
 }
 
 class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   int _selectedIndex = 0;
-  final List<Widget> _pages = const [
-    HomeScreen(),
-    RegisterServiceScreen(),
-    RegisterServiceListScreen(),
-    ProfileScreen(),
-  ];
-  final List<IconData> _icons = [
-    Icons.home,
-    Icons.build,
-    Icons.list_alt,
-    Icons.person,
-  ];
-  final List<String> _labels = [
-    'Trang chủ',
-    'Đăng ký',
-    'Danh sách',
-    'Hồ sơ',
-  ];
-
-  late List<AnimationController> _controllers;
-  late List<Animation<double>> _iconScales;
-  late List<Animation<double>> _labelFades;
-  late PageController _pageController;
-
+  late final List<Widget> _pages;
   StompClient? _stompClient;
   final ApiClient _api = ApiClient();
 
@@ -68,109 +45,105 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _selectedIndex = widget.initialIndex;
-    _pageController = PageController(initialPage: _selectedIndex);
-
-    _controllers = List.generate(_pages.length, (index) {
-      return AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 250),
-      );
-    });
-    _iconScales = _controllers
-        .map((c) => Tween<double>(begin: 1.0, end: 1.25).animate(
-              CurvedAnimation(parent: c, curve: Curves.easeOutBack),
-            ))
-        .toList();
-    _labelFades = _controllers
-        .map((c) => Tween<double>(begin: 0.0, end: 1.0).animate(c))
-        .toList();
-    _controllers[_selectedIndex].forward();
-
     _connectWebSocket();
+
+    _pages = [
+      HomeScreen(onNavigateToTab: _onItemTapped),
+      const NewsScreen(),
+      const RegisterServiceScreen(),
+      const MenuScreen(),
+    ];
   }
 
   void _connectWebSocket() async {
     final token = await _api.storage.readAccessToken();
-    print('🔑 Token: $token'); // debug
+    if (token == null) {
+      debugPrint('⚠️ Không có token, bỏ qua kết nối WebSocket');
+      return;
+    }
 
     _stompClient = StompClient(
-      config: StompConfig(
-        url: 'ws://192.168.100.33:8080/ws',
+      config: StompConfig.sockJS(
+        url: 'http://192.168.100.33:8080/ws',
         onConnect: (frame) {
-          print('✅ WebSocket connected!');
+          debugPrint('✅ WebSocket connected');
+
           _stompClient?.subscribe(
             destination: '/topic/news',
             callback: (frame) {
-              print('📩 Received: ${frame.body}');
               if (frame.body != null) {
                 final data = json.decode(frame.body!);
                 _showNotificationPopup(data);
+
+                AppEventBus().emit('news_update');
               }
             },
           );
         },
-        onWebSocketError: (dynamic error) => print('❌ WS error: $error'),
-        onDisconnect: (frame) => print('🔌 Disconnected from WebSocket'),
-        stompConnectHeaders: {
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
+        onWebSocketError: (error) => debugPrint('❌ WS error: $error'),
+        stompConnectHeaders: {'Authorization': 'Bearer $token'},
+        webSocketConnectHeaders: {'Authorization': 'Bearer $token'},
+        reconnectDelay: const Duration(seconds: 5),
+        heartbeatIncoming: const Duration(seconds: 10),
+        heartbeatOutgoing: const Duration(seconds: 10),
       ),
     );
 
-    _stompClient?.activate();
+    try {
+      _stompClient?.activate();
+    } catch (e) {
+      debugPrint('❗ Failed to activate WebSocket: $e');
+    }
   }
 
   void _showNotificationPopup(Map<String, dynamic> data) {
     if (!mounted) return;
-
     final attachments = (data['attachments'] as List<dynamic>?)
         ?.map((a) => NewsAttachmentDto.fromJson(a))
         .toList();
 
     showDialog(
       context: context,
-      builder: (_) {
-        return AlertDialog(
-          title: Text(data['title'] ?? 'Thông báo mới'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
+      builder: (_) => AlertDialog(
+        title: Text(data['title'] ?? 'Thông báo mới'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(data['summary'] ?? ''),
               if (attachments != null && attachments.isNotEmpty)
-                Column(
-                  children: attachments.map((a) {
-                    return TextButton.icon(
-                      icon: const Icon(Icons.attach_file),
-                      label: Text(a.filename),
-                      onPressed: () => _handleAttachment(a.url),
-                    );
-                  }).toList(),
+                ...attachments.map(
+                  (a) => TextButton.icon(
+                    icon: const Icon(Icons.attach_file),
+                    label: Text(a.filename),
+                    onPressed: () => _handleAttachment(a.url),
+                  ),
                 ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Đóng'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                final newsId = data['newsId'];
-                if (newsId != null) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => NewsDetailScreen(id: newsId),
-                    ),
-                  );
-                }
-              },
-              child: const Text('Xem chi tiết'),
-            ),
-          ],
-        );
-      },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Đóng'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              final newsId = data['newsId'];
+              if (newsId != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => NewsDetailScreen(id: newsId),
+                  ),
+                );
+              }
+            },
+            child: const Text('Xem chi tiết'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -193,6 +166,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
                 final response = await http.get(Uri.parse(fullUrl));
                 final file = File(filePath);
                 await file.writeAsBytes(response.bodyBytes);
+                if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Đã tải về $filename')),
                 );
@@ -217,123 +191,76 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
     );
   }
 
+  void _onItemTapped(int index) {
+    setState(() => _selectedIndex = index);
+  }
+
   @override
   void dispose() {
-    _pageController.dispose();
-    for (var c in _controllers) c.dispose();
     _stompClient?.deactivate();
     super.dispose();
-  }
-
-  void _onItemTapped(int index) {
-    if (index != _selectedIndex) {
-      _controllers[_selectedIndex].reverse();
-      _controllers[index].forward();
-      setState(() => _selectedIndex = index);
-      _pageController.animateToPage(
-        index,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOutCubic,
-      );
-    }
-  }
-
-  Widget _buildGradientIcon(IconData icon) {
-    return ShaderMask(
-      shaderCallback: (bounds) => const LinearGradient(
-        colors: [Color(0xFF4DB6AC), Color(0xFF26A69A), Color(0xFF00897B)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ).createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
-      child: Icon(icon, color: Colors.white),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: PageView(
-        controller: _pageController,
-        physics: const NeverScrollableScrollPhysics(),
-        onPageChanged: (index) {
-          setState(() => _selectedIndex = index);
-        },
-        children: List.generate(
-          _pages.length,
-          (index) => AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            transitionBuilder: (child, anim) => FadeTransition(
-              opacity: anim,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0.05, 0),
-                  end: Offset.zero,
-                ).animate(anim),
-                child: child,
-              ),
-            ),
-            child: _pages[index],
-          ),
-        ),
-      ),
+      body: IndexedStack(index: _selectedIndex, children: _pages),
       bottomNavigationBar: Container(
-        height: 70,
         decoration: BoxDecoration(
           color: Colors.white,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.08),
+              color: Colors.black.withOpacity(0.05),
               blurRadius: 10,
+              offset: const Offset(0, -2),
             ),
           ],
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
+        ),
+        child: SafeArea(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildNavItem(0, Icons.home_outlined, Icons.home, 'Trang chủ'),
+              _buildNavItem(1, Icons.article_outlined, Icons.article, 'Tin tức'),
+              _buildNavItem(2, Icons.app_registration_outlined,
+                  Icons.app_registration, 'Đăng ký'),
+              _buildNavItem(3, Icons.menu_outlined, Icons.menu, 'Menu'),
+            ],
           ),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: List.generate(_pages.length, (index) {
-            final isSelected = _selectedIndex == index;
-            return Expanded(
-              child: InkWell(
-                onTap: () => _onItemTapped(index),
-                borderRadius: BorderRadius.circular(16),
-                splashColor: Colors.teal.withOpacity(0.2),
-                highlightColor: Colors.transparent,
-                child: AnimatedBuilder(
-                  animation: _controllers[index],
-                  builder: (context, child) {
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Transform.scale(
-                          scale: _iconScales[index].value,
-                          child: isSelected
-                              ? _buildGradientIcon(_icons[index])
-                              : Icon(_icons[index],
-                                  color: Colors.grey, size: 24),
-                        ),
-                        const SizedBox(height: 4),
-                        Opacity(
-                          opacity: _labelFades[index].value,
-                          child: Text(
-                            _labels[index],
-                            style: TextStyle(
-                              color: isSelected ? Colors.teal : Colors.grey,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
+      ),
+    );
+  }
+
+  Widget _buildNavItem(
+      int index, IconData icon, IconData activeIcon, String label) {
+    final isSelected = _selectedIndex == index;
+    return Expanded(
+      child: InkWell(
+        onTap: () => _onItemTapped(index),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isSelected ? activeIcon : icon,
+                color: isSelected ? const Color(0xFF26A69A) : Colors.grey[600],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color:
+                      isSelected ? const Color(0xFF26A69A) : Colors.grey[600],
+                  fontWeight:
+                      isSelected ? FontWeight.w600 : FontWeight.normal,
                 ),
               ),
-            );
-          }),
+            ],
+          ),
         ),
       ),
     );

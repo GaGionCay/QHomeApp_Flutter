@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../auth/api_client.dart';
 import '../news/news_detail_screen.dart';
+import '../news/notification_item.dart';
 
 class NotificationService {
   final ApiClient api;
-  final BuildContext context;
+final BuildContext context; // thêm context
 
   NotificationService({required this.api, required this.context});
 
@@ -58,5 +59,15 @@ class NotificationService {
         ],
       ),
     );
+  }
+
+  Future<List<NotificationItem>> getUnreadNotifications() async {
+    try {
+      final res = await api.dio.get('/news/unread');
+      final data = res.data as List<dynamic>? ?? [];
+      return data.map((json) => NotificationItem.fromJson(json)).toList();
+    } catch (e) {
+      return [];
+    }
   }
 }

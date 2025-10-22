@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
-import 'screens/login_screen.dart';
+import '../login/login_screen.dart';
 import 'token_storage.dart';
 import 'api_client.dart';
 import 'auth_service.dart';

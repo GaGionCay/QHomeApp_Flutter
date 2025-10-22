@@ -1,20 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../auth_provider.dart';
+import '../auth/auth_provider.dart';
+import 'verify_otp_screen.dart';
 
-class ResetPasswordScreen extends StatefulWidget {
-  final String email;
-  final String otp;
-  const ResetPasswordScreen({required this.email, required this.otp, super.key});
+class ForgotPasswordScreen extends StatefulWidget {
+  const ForgotPasswordScreen({super.key});
 
   @override
-  State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
+  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
 }
 
-class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
-  final passCtrl = TextEditingController();
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+  final emailCtrl = TextEditingController();
   bool loading = false;
-  bool obscure = true;
 
   @override
   Widget build(BuildContext context) {
@@ -48,6 +46,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             child: SafeArea(
               child: LayoutBuilder(
                 builder: (context, constraints) => SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
                   child: ConstrainedBox(
                     constraints: BoxConstraints(minHeight: constraints.maxHeight),
                     child: IntrinsicHeight(
@@ -57,7 +56,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                           children: [
                             const SizedBox(height: 80),
                             const Text(
-                              'Reset Password',
+                              'Forgot Password',
                               style: TextStyle(
                                 fontSize: 32,
                                 fontWeight: FontWeight.bold,
@@ -68,19 +67,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                             const SizedBox(height: 40),
 
                             _inputField(
-                              controller: passCtrl,
-                              hint: 'Mật khẩu mới',
-                              icon: Icons.lock_outline,
-                              obscure: obscure,
-                              suffix: IconButton(
-                                icon: Icon(
-                                  obscure
-                                      ? Icons.visibility_off_outlined
-                                      : Icons.visibility_outlined,
-                                  color: Colors.black.withOpacity(0.6),
-                                ),
-                                onPressed: () => setState(() => obscure = !obscure),
-                              ),
+                              controller: emailCtrl,
+                              hint: 'Email',
+                              icon: Icons.email_outlined,
                             ),
 
                             const SizedBox(height: 24),
@@ -95,23 +84,19 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                                         FocusScope.of(context).unfocus();
                                         setState(() => loading = true);
                                         try {
-                                          await auth.confirmReset(
-                                            widget.email,
-                                            widget.otp,
-                                            passCtrl.text.trim(),
-                                          );
+                                          await auth.requestReset(emailCtrl.text.trim());
                                           if (!mounted) return;
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(
-                                              content: Text('Đặt lại mật khẩu thành công!'),
-                                              backgroundColor: Colors.green,
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  VerifyOtpScreen(email: emailCtrl.text.trim()),
                                             ),
                                           );
-                                          Navigator.popUntil(context, (r) => r.isFirst);
                                         } catch (_) {
                                           ScaffoldMessenger.of(context).showSnackBar(
                                             const SnackBar(
-                                              content: Text('Thất bại'),
+                                              content: Text('Yêu cầu thất bại'),
                                               backgroundColor: Colors.red,
                                             ),
                                           );
@@ -123,12 +108,11 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                                 child: loading
                                     ? const CircularProgressIndicator(color: Colors.white)
                                     : const Text(
-                                        'Đổi mật khẩu',
+                                        'Gửi OTP',
                                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                                       ),
                               ),
                             ),
-
                             const Spacer(),
                             const SizedBox(height: 40),
                           ],
@@ -150,14 +134,13 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         foregroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         elevation: 8,
+        shadowColor: const Color(0xFF26A69A).withOpacity(0.5),
       );
 
   Widget _inputField({
     required TextEditingController controller,
     required String hint,
     required IconData icon,
-    bool obscure = false,
-    Widget? suffix,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -173,13 +156,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       ),
       child: TextField(
         controller: controller,
-        obscureText: obscure,
-        style: const TextStyle(fontSize: 16, color: Colors.black87),
+        keyboardType: TextInputType.emailAddress,
+        style: const TextStyle(color: Colors.black87, fontSize: 16),
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: TextStyle(color: Colors.black.withOpacity(0.4)),
           prefixIcon: Icon(icon, color: Colors.black.withOpacity(0.6)),
-          suffixIcon: suffix,
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         ),
@@ -189,7 +171,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   @override
   void dispose() {
-    passCtrl.dispose();
+    emailCtrl.dispose();
     super.dispose();
   }
 }

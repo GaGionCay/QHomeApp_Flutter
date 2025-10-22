@@ -168,6 +168,12 @@ class BillDto {
       dueDate: json['paymentDate'] ?? '',
     );
   }
+
+  get billingMonth => null;
+
+  get paymentDate => null;
+
+  String? get description => null;
 }
 
 class BillStatistics {

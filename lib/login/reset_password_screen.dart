@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../auth_provider.dart';
-import 'reset_password_screen.dart';
+import '../auth/auth_provider.dart';
 
-class VerifyOtpScreen extends StatefulWidget {
+class ResetPasswordScreen extends StatefulWidget {
   final String email;
-  const VerifyOtpScreen({required this.email, super.key});
+  final String otp;
+  const ResetPasswordScreen({required this.email, required this.otp, super.key});
 
   @override
-  State<VerifyOtpScreen> createState() => _VerifyOtpScreenState();
+  State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
 }
 
-class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
-  final otpCtrl = TextEditingController();
+class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
+  final passCtrl = TextEditingController();
   bool loading = false;
+  bool obscure = true;
 
   @override
   Widget build(BuildContext context) {
@@ -56,7 +57,7 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
                           children: [
                             const SizedBox(height: 80),
                             const Text(
-                              'Verify OTP',
+                              'Reset Password',
                               style: TextStyle(
                                 fontSize: 32,
                                 fontWeight: FontWeight.bold,
@@ -67,9 +68,19 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
                             const SizedBox(height: 40),
 
                             _inputField(
-                              controller: otpCtrl,
-                              hint: 'Mã OTP',
-                              icon: Icons.lock_open_outlined,
+                              controller: passCtrl,
+                              hint: 'Mật khẩu mới',
+                              icon: Icons.lock_outline,
+                              obscure: obscure,
+                              suffix: IconButton(
+                                icon: Icon(
+                                  obscure
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  color: Colors.black.withOpacity(0.6),
+                                ),
+                                onPressed: () => setState(() => obscure = !obscure),
+                              ),
                             ),
 
                             const SizedBox(height: 24),
@@ -84,21 +95,23 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
                                         FocusScope.of(context).unfocus();
                                         setState(() => loading = true);
                                         try {
-                                          await auth.verifyOtp(widget.email, otpCtrl.text.trim());
+                                          await auth.confirmReset(
+                                            widget.email,
+                                            widget.otp,
+                                            passCtrl.text.trim(),
+                                          );
                                           if (!mounted) return;
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) => ResetPasswordScreen(
-                                                email: widget.email,
-                                                otp: otpCtrl.text.trim(),
-                                              ),
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Đặt lại mật khẩu thành công!'),
+                                              backgroundColor: Colors.green,
                                             ),
                                           );
+                                          Navigator.popUntil(context, (r) => r.isFirst);
                                         } catch (_) {
                                           ScaffoldMessenger.of(context).showSnackBar(
                                             const SnackBar(
-                                              content: Text('OTP không hợp lệ'),
+                                              content: Text('Thất bại'),
                                               backgroundColor: Colors.red,
                                             ),
                                           );
@@ -110,11 +123,12 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
                                 child: loading
                                     ? const CircularProgressIndicator(color: Colors.white)
                                     : const Text(
-                                        'Xác thực',
+                                        'Đổi mật khẩu',
                                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                                       ),
                               ),
                             ),
+
                             const Spacer(),
                             const SizedBox(height: 40),
                           ],
@@ -142,6 +156,8 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
     required TextEditingController controller,
     required String hint,
     required IconData icon,
+    bool obscure = false,
+    Widget? suffix,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -157,11 +173,13 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
       ),
       child: TextField(
         controller: controller,
+        obscureText: obscure,
         style: const TextStyle(fontSize: 16, color: Colors.black87),
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: TextStyle(color: Colors.black.withOpacity(0.4)),
           prefixIcon: Icon(icon, color: Colors.black.withOpacity(0.6)),
+          suffixIcon: suffix,
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         ),
@@ -171,7 +189,7 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
 
   @override
   void dispose() {
-    otpCtrl.dispose();
+    passCtrl.dispose();
     super.dispose();
   }
 }

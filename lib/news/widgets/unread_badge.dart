@@ -66,7 +66,6 @@ class _UnreadBadgeState extends State<UnreadBadge> {
         ],
       ),
       onPressed: () async {
-        // Khi bấm vào icon -> mở NotificationScreen
         if (context.mounted) {
           await Navigator.pushNamed(context, '/notifications');
           _fetch();

@@ -18,8 +18,6 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
   Map<String, dynamic>? news;
   bool loading = true;
 
-  static const String host = 'http://192.168.100.33:8080';
-
   @override
   void initState() {
     super.initState();
@@ -34,8 +32,9 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
         news = res.data;
         loading = false;
       });
+      await client.dio.post('/news/${widget.id}/read');
     } catch (e) {
-      print(e);
+      debugPrint('❌ Lỗi tải chi tiết: $e');
       setState(() => loading = false);
     }
   }

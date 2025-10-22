@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import '../../bills/bill_service.dart';
-import '../../bills/bill_month_detail_screen.dart';
+import 'bill_service.dart';
+import 'bill_month_detail_screen.dart';
 
 class BillChart extends StatelessWidget {
   final List<BillStatistics> stats;
