@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'bill_service.dart';
 
 class BillMonthDetailScreen extends StatefulWidget {
@@ -17,54 +18,42 @@ class BillMonthDetailScreen extends StatefulWidget {
   State<BillMonthDetailScreen> createState() => _BillMonthDetailScreenState();
 }
 
-class _BillMonthDetailScreenState extends State<BillMonthDetailScreen> {
+class _BillMonthDetailScreenState extends State<BillMonthDetailScreen>
+    with TickerProviderStateMixin {
   late Future<List<BillDto>> _futureBills;
+  late AnimationController _totalController;
 
   @override
   void initState() {
     super.initState();
-    _loadBills();
+    _futureBills = widget.billService
+        .getBillsByMonthAndType(widget.month, widget.billType);
+    _totalController =
+        AnimationController(vsync: this, duration: const Duration(seconds: 1));
   }
 
-  void _loadBills() {
-    _futureBills = widget.billService.getBillsByMonthAndType(
-      widget.month,
-      widget.billType,
-    );
-  }
+  String _formatAmount(double a) =>
+      NumberFormat('#,###', 'vi_VN').format(a).replaceAll(',', '.');
 
   Future<void> _refresh() async {
-    _loadBills();
-    setState(() {});
-  }
-
-  void _payBill(BillDto bill) async {
-    try {
-      await widget.billService.payBill(bill.id);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Thanh toán thành công!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      await _refresh();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Thanh toán thất bại: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+    setState(() {
+      _futureBills = widget.billService
+          .getBillsByMonthAndType(widget.month, widget.billType);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
         title: Text(
-          'Chi tiết ${widget.billType} tháng ${widget.month}',
+          'Chi tiết ${widget.billType} - ${widget.month}',
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0,
       ),
       body: FutureBuilder<List<BillDto>>(
         future: _futureBills,
@@ -72,75 +61,127 @@ class _BillMonthDetailScreenState extends State<BillMonthDetailScreen> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
+
           if (snapshot.hasError) {
             return Center(
-              child: Text(
-                '⚠️ Lỗi tải dữ liệu: ${snapshot.error}',
-                style: const TextStyle(color: Colors.red),
-              ),
+              child: Text('Lỗi: ${snapshot.error}',
+                  style: const TextStyle(color: Colors.red)),
             );
           }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+
+          final bills = snapshot.data ?? [];
+          if (bills.isEmpty) {
             return const Center(child: Text('Không có hóa đơn nào.'));
           }
 
-          final bills = snapshot.data!;
           final total = bills.fold<double>(0, (sum, b) => sum + b.amount);
+          final totalAnim =
+              Tween<double>(begin: 0, end: total).animate(_totalController);
+          _totalController.forward(from: 0);
 
           return RefreshIndicator(
             onRefresh: _refresh,
             child: Column(
               children: [
                 Expanded(
-                  child: ListView.separated(
+                  child: ListView.builder(
                     padding: const EdgeInsets.all(12),
                     itemCount: bills.length,
-                    separatorBuilder: (_, __) => const Divider(),
-                    itemBuilder: (_, i) {
+                    itemBuilder: (context, i) {
                       final bill = bills[i];
                       final paid = bill.status.toUpperCase() == 'PAID';
-                      return ListTile(
-                        leading: Icon(
-                          paid ? Icons.receipt_long : Icons.pending_actions,
-                          color: paid ? Colors.green : Colors.orange,
+
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        margin: const EdgeInsets.symmetric(vertical: 6),
+                        decoration: BoxDecoration(
+                          color: paid
+                              ? Colors.green.shade50
+                              : Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 6,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
                         ),
-                        title: Text(
-                          '${bill.billType} - ${bill.month}',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        child: ListTile(
+                          leading: Icon(
+                            paid
+                                ? Icons.check_circle
+                                : Icons.pending_actions_rounded,
+                            color: paid ? Colors.green : Colors.orange,
+                            size: 36,
+                          ),
+                          title: Text(
+                            bill.billType,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text(
+                            'Số tiền: ${_formatAmount(bill.amount)} VNĐ',
+                          ),
+                          trailing: paid
+                              ? const Icon(Icons.receipt_long,
+                                  color: Colors.blue)
+                              : ElevatedButton.icon(
+                                  icon: const Icon(Icons.payment),
+                                  onPressed: () async {
+                                    await widget.billService.payBill(bill.id);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Thanh toán thành công!'),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                    await _refresh();
+                                  },
+                                  label: const Text('Thanh toán'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blueAccent,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                  ),
+                                ),
                         ),
-                        subtitle: Text(
-                          'Số tiền: ${bill.amount.toStringAsFixed(0)} VNĐ',
-                        ),
-                        trailing: paid
-                            ? const Icon(Icons.check_circle, color: Colors.green)
-                            : ElevatedButton(
-                                onPressed: () => _payBill(bill),
-                                child: const Text('Trả tiền'),
-                              ),
                       );
                     },
                   ),
                 ),
                 Container(
-                  color: Colors.blue.shade50,
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Tổng chi tiêu:',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
-                      Text(
-                        '${total.toStringAsFixed(0)} VNĐ',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: Colors.blue,
-                        ),
-                      ),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    boxShadow: [
+                      BoxShadow(
+                          blurRadius: 10,
+                          color: Colors.black12,
+                          spreadRadius: 1)
                     ],
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  child: AnimatedBuilder(
+                    animation: totalAnim,
+                    builder: (_, __) => Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Tổng chi tiêu:',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          '${_formatAmount(totalAnim.value)} VNĐ',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blueAccent,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -149,5 +190,11 @@ class _BillMonthDetailScreenState extends State<BillMonthDetailScreen> {
         },
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _totalController.dispose();
+    super.dispose();
   }
 }

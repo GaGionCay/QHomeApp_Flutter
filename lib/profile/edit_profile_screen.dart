@@ -1,100 +1,81 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import '../auth/api_client.dart';
 import 'profile_service.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final Map<String, dynamic> initialData;
-
   const EditProfileScreen({super.key, required this.initialData});
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
-class _EditProfileScreenState extends State<EditProfileScreen> {
+class _EditProfileScreenState extends State<EditProfileScreen>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
-  late ProfileService _profileService;
-
-  final _fullNameCtrl = TextEditingController();
-  final _phoneCtrl = TextEditingController();
-  final _addressCtrl = TextEditingController();
-  final _citizenIdCtrl = TextEditingController();
-  final _apartmentNameCtrl = TextEditingController();
-  final _buildingBlockCtrl = TextEditingController();
-  final _unitNumberCtrl = TextEditingController();
-  final _floorNumberCtrl = TextEditingController();
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _phoneCtrl;
+  late final TextEditingController _addressCtrl;
   String _gender = 'OTHER';
   DateTime? _dob;
-
-  File? _selectedImage;
-  final ImagePicker _picker = ImagePicker();
+  File? _avatar;
+  late AnimationController _anim;
+  final picker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
-    _initControllers();
-  }
-
-  void _initControllers() {
-    final data = widget.initialData;
-    _fullNameCtrl.text = data['fullName'] ?? '';
-    _phoneCtrl.text = data['phoneNumber'] ?? '';
-    _addressCtrl.text = data['address'] ?? '';
-    _citizenIdCtrl.text = data['citizenId'] ?? '';
-    _apartmentNameCtrl.text = data['apartmentName'] ?? '';
-    _buildingBlockCtrl.text = data['buildingBlock'] ?? '';
-    _unitNumberCtrl.text = data['unitNumber'] ?? '';
-    _floorNumberCtrl.text = data['floorNumber']?.toString() ?? '';
-    _gender = data['gender'] ?? 'OTHER';
-    if (data['dateOfBirth'] != null) {
-      _dob = DateTime.tryParse(data['dateOfBirth']);
+    _anim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 500))
+      ..forward();
+    _nameCtrl =
+        TextEditingController(text: widget.initialData['fullName'] ?? '');
+    _phoneCtrl =
+        TextEditingController(text: widget.initialData['phoneNumber'] ?? '');
+    _addressCtrl =
+        TextEditingController(text: widget.initialData['address'] ?? '');
+    _gender = widget.initialData['gender'] ?? 'OTHER';
+    if (widget.initialData['dateOfBirth'] != null) {
+      _dob = DateTime.tryParse(widget.initialData['dateOfBirth']);
     }
   }
 
-  Future<void> _pickImage() async {
+  Future<void> _pickAvatar() async {
     final picked =
-        await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
-    if (picked != null) {
-      setState(() => _selectedImage = File(picked.path));
-    }
+        await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (picked != null) setState(() => _avatar = File(picked.path));
   }
 
-  Future<void> _saveProfile() async {
+  Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    final apiClient = await ApiClient.create();
-    _profileService = ProfileService(apiClient.dio);
+    final api = await ApiClient.create();
+    final service = ProfileService(api.dio);
 
-    // Upload avatar nếu người dùng chọn ảnh mới
-    String? avatarUrl = widget.initialData['avatarUrl'];
-    if (_selectedImage != null) {
-      avatarUrl = await _profileService.uploadAvatar(_selectedImage!.path);
-      setState(() {
-        widget.initialData['avatarUrl'] = avatarUrl;
-      });
+    String? avatarUrl;
+    if (_avatar != null) {
+      // Upload file avatar
+      avatarUrl = await service.uploadAvatar(_avatar!.path);
     }
 
-    final payload = {
-      "fullName": _fullNameCtrl.text.trim(),
+    // Gọi updateProfile, thêm avatarUrl nếu có
+    final data = {
+      "fullName": _nameCtrl.text.trim(),
+      "phoneNumber": _phoneCtrl.text.trim(),
+      "address": _addressCtrl.text.trim(),
       "gender": _gender,
       "dateOfBirth":
           _dob != null ? DateFormat('yyyy-MM-dd').format(_dob!) : null,
-      "phoneNumber": _phoneCtrl.text.trim(),
-      "avatarUrl": avatarUrl,
-      "apartmentName": _apartmentNameCtrl.text.trim(),
-      "buildingBlock": _buildingBlockCtrl.text.trim(),
-      "floorNumber": int.tryParse(_floorNumberCtrl.text),
-      "unitNumber": _unitNumberCtrl.text.trim(),
-      "address": _addressCtrl.text.trim(),
-      "citizenId": _citizenIdCtrl.text.trim(),
     };
+    if (avatarUrl != null) data["avatarUrl"] = avatarUrl;
 
-    await _profileService.updateProfile(payload);
+    await service.updateProfile(data);
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cập nhật hồ sơ thành công!')),
+        const SnackBar(content: Text('Cập nhật thành công!')),
       );
       Navigator.pop(context, true);
     }
@@ -102,162 +83,143 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final readOnlyDecoration = InputDecoration(
-      filled: true,
-      fillColor: Colors.grey.shade100,
-      suffixIcon: const Icon(Icons.lock, color: Colors.grey),
-      border: const OutlineInputBorder(),
+    final gradient = const LinearGradient(
+      colors: [Color(0xFF26A69A), Color(0xFF80CBC4)],
+      begin: Alignment.centerLeft,
+      end: Alignment.centerRight,
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Chỉnh sửa hồ sơ')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              // ======= Avatar chọn ảnh =======
-              Center(
-                child: Stack(
-                  children: [
-                    CircleAvatar(
-                      radius: 55,
-                      backgroundImage: _selectedImage != null
-                          ? FileImage(_selectedImage!)
-                          : (widget.initialData['avatarUrl'] != null
-                              ? NetworkImage(widget.initialData['avatarUrl'])
-                              : null) as ImageProvider?,
-                      child: (_selectedImage == null &&
-                              widget.initialData['avatarUrl'] == null)
-                          ? const Icon(Icons.person, size: 50)
-                          : null,
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: InkWell(
-                        onTap: _pickImage,
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: const Text("Chỉnh sửa hồ sơ"),
+        centerTitle: true,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0.5,
+      ),
+      body: FadeTransition(
+        opacity: _anim,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              children: [
+                GestureDetector(
+                  onTap: _pickAvatar,
+                  child: Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 60,
+                        backgroundImage: _avatar != null
+                            ? FileImage(_avatar!)
+                            : (widget.initialData['avatarUrl'] != null
+                                ? NetworkImage(widget.initialData['avatarUrl'])
+                                : null) as ImageProvider?,
+                        backgroundColor: Colors.grey.shade100,
+                        child: (_avatar == null &&
+                                widget.initialData['avatarUrl'] == null)
+                            ? const Icon(Icons.person,
+                                size: 60, color: Colors.grey)
+                            : null,
+                      ),
+                      Positioned(
+                        bottom: 4,
+                        right: 4,
                         child: Container(
-                          padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
-                            color: Colors.blue,
-                            borderRadius: BorderRadius.circular(20),
+                            gradient: gradient,
+                            shape: BoxShape.circle,
                           ),
+                          padding: const EdgeInsets.all(6),
                           child: const Icon(Icons.camera_alt,
-                              color: Colors.white, size: 20),
+                              color: Colors.white, size: 18),
                         ),
                       ),
-                    )
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                _buildField(_nameCtrl, "Họ và tên"),
+                _buildField(_phoneCtrl, "Số điện thoại",
+                    keyboardType: TextInputType.phone),
+                _buildField(_addressCtrl, "Địa chỉ"),
+
+                const SizedBox(height: 15),
+                DropdownButtonFormField<String>(
+                  value: _gender,
+                  decoration: _inputDecoration("Giới tính"),
+                  items: const [
+                    DropdownMenuItem(value: "MALE", child: Text("Nam")),
+                    DropdownMenuItem(value: "FEMALE", child: Text("Nữ")),
+                    DropdownMenuItem(value: "OTHER", child: Text("Khác")),
                   ],
+                  onChanged: (v) => setState(() => _gender = v ?? 'OTHER'),
                 ),
-              ),
-              const SizedBox(height: 20),
+                const SizedBox(height: 15),
 
-              // ======= Form nhập thông tin =======
-              TextFormField(
-                controller: _fullNameCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Họ và tên',
-                  border: OutlineInputBorder(),
+                // Save button
+                ElevatedButton(
+                  onPressed: _save,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                  ),
+                  child: Ink(
+                    decoration: BoxDecoration(
+                      gradient: gradient,
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                    child: const SizedBox(
+                      width: double.infinity,
+                      child: Center(
+                        child: Text(
+                          "💾 Lưu thay đổi",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-                validator: (v) =>
-                    v == null || v.isEmpty ? 'Không được bỏ trống' : null,
-              ),
-              const SizedBox(height: 10),
-
-              DropdownButtonFormField<String>(
-                value: _gender,
-                decoration: readOnlyDecoration.copyWith(labelText: 'Giới tính'),
-                items: const [
-                  DropdownMenuItem(value: 'MALE', child: Text('Nam')),
-                  DropdownMenuItem(value: 'FEMALE', child: Text('Nữ')),
-                  DropdownMenuItem(value: 'OTHER', child: Text('Khác')),
-                ],
-                onChanged: null, // disable chọn giới tính
-              ),
-              const SizedBox(height: 10),
-
-              TextFormField(
-                readOnly: true,
-                controller: TextEditingController(
-                  text: _dob != null
-                      ? DateFormat('dd/MM/yyyy').format(_dob!)
-                      : 'Chưa chọn ngày sinh',
-                ),
-                decoration: readOnlyDecoration.copyWith(
-                  labelText: 'Ngày sinh',
-                ),
-              ),
-              const SizedBox(height: 10),
-
-              TextFormField(
-                controller: _phoneCtrl,
-                readOnly: true,
-                decoration:
-                    readOnlyDecoration.copyWith(labelText: 'Số điện thoại'),
-                keyboardType: TextInputType.phone,
-              ),
-              const SizedBox(height: 10),
-
-              TextFormField(
-                controller: _addressCtrl,
-                readOnly: true,
-                decoration: readOnlyDecoration.copyWith(labelText: 'Địa chỉ'),
-              ),
-              const SizedBox(height: 10),
-
-              TextFormField(
-                controller: _citizenIdCtrl,
-                readOnly: true,
-                decoration:
-                    readOnlyDecoration.copyWith(labelText: 'CMND/CCCD'),
-              ),
-              const SizedBox(height: 10),
-
-              TextFormField(
-                controller: _apartmentNameCtrl,
-                readOnly: true,
-                decoration:
-                    readOnlyDecoration.copyWith(labelText: 'Tên căn hộ'),
-              ),
-              const SizedBox(height: 10),
-
-              TextFormField(
-                controller: _buildingBlockCtrl,
-                readOnly: true,
-                decoration:
-                    readOnlyDecoration.copyWith(labelText: 'Tòa nhà'),
-              ),
-              const SizedBox(height: 10),
-
-              TextFormField(
-                controller: _floorNumberCtrl,
-                readOnly: true,
-                decoration: readOnlyDecoration.copyWith(labelText: 'Tầng'),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 10),
-
-              TextFormField(
-                controller: _unitNumberCtrl,
-                readOnly: true,
-                decoration: readOnlyDecoration.copyWith(labelText: 'Số phòng'),
-              ),
-              const SizedBox(height: 25),
-
-              ElevatedButton.icon(
-                onPressed: _saveProfile,
-                icon: const Icon(Icons.save),
-                label: const Text('Lưu thay đổi'),
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(45),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
+
+  Widget _buildField(TextEditingController ctrl, String label,
+      {TextInputType keyboardType = TextInputType.text}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: TextFormField(
+        controller: ctrl,
+        keyboardType: keyboardType,
+        decoration: _inputDecoration(label),
+        validator: (v) =>
+            v == null || v.isEmpty ? "Vui lòng nhập $label" : null,
+      ),
+    );
+  }
+
+  InputDecoration _inputDecoration(String label) => InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(fontSize: 14),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+        filled: true,
+        fillColor: Colors.grey.shade50,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      );
 }

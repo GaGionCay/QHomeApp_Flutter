@@ -33,7 +33,8 @@ dependencies:
   url_launcher: ^6.1.10
   path_provider: ^2.0.15
   open_file: ^3.2.1
-  
+  animations: ^2.0.7
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

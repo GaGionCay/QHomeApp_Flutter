@@ -10,8 +10,10 @@ class ProfileService {
     final res = await dio.get('/users/me');
     final data = Map<String, dynamic>.from(res.data);
 
-    if (data['avatarUrl'] != null && !data['avatarUrl'].toString().startsWith('http')) {
-      data['avatarUrl'] = ApiClient.BASE_URL.replaceFirst('/api', '') + data['avatarUrl'];
+    if (data['avatarUrl'] != null &&
+        !data['avatarUrl'].toString().startsWith('http')) {
+      data['avatarUrl'] =
+          ApiClient.BASE_URL.replaceFirst('/api', '') + data['avatarUrl'];
     }
     return data;
   }
@@ -20,23 +22,48 @@ class ProfileService {
     final res = await dio.put('/users/me', data: data);
     final updated = Map<String, dynamic>.from(res.data);
 
-    if (updated['avatarUrl'] != null && !updated['avatarUrl'].toString().startsWith('http')) {
-      updated['avatarUrl'] = ApiClient.BASE_URL.replaceFirst('/api', '') + updated['avatarUrl'];
+    if (updated['avatarUrl'] != null &&
+        !updated['avatarUrl'].toString().startsWith('http')) {
+      updated['avatarUrl'] =
+          ApiClient.BASE_URL.replaceFirst('/api', '') + updated['avatarUrl'];
     }
     return updated;
   }
 
   Future<String> uploadAvatar(String filePath) async {
-    final formData = FormData.fromMap({
-      'file': await MultipartFile.fromFile(filePath, filename: 'avatar.jpg'),
-    });
-    final res = await dio.post('/users/me/avatar', data: formData);
+    try {
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(filePath, filename: 'avatar.jpg'),
+      });
 
-    String avatarUrl = res.data['avatarUrl'];
-    if (!avatarUrl.startsWith('http')) {
-      avatarUrl = ApiClient.BASE_URL.replaceFirst('/api', '') + avatarUrl;
+      print('Uploading avatar: $filePath'); // log đường dẫn file
+
+      final res = await dio.post(
+        '/users/me/avatar',
+        data: formData,
+        options: Options(
+          headers: {
+            'Content-Type': 'multipart/form-data', // đảm bảo đúng header
+          },
+        ),
+      );
+
+      print('Response status: ${res.statusCode}');
+      print('Response data: ${res.data}');
+
+      String avatarUrl = res.data['avatarUrl'];
+      if (!avatarUrl.startsWith('http')) {
+        avatarUrl = ApiClient.BASE_URL.replaceFirst('/api', '') + avatarUrl;
+      }
+      return avatarUrl;
+    } on DioError catch (e) {
+      print('DioError: ${e.response?.statusCode}');
+      print('DioError data: ${e.response?.data}');
+      print('DioError message: ${e.message}');
+      rethrow;
+    } catch (e) {
+      print('Unexpected error: $e');
+      rethrow;
     }
-    return avatarUrl;
   }
-  
 }

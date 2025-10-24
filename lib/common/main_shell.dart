@@ -204,28 +204,38 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       body: IndexedStack(index: _selectedIndex, children: _pages),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildNavItem(0, Icons.home_outlined, Icons.home, 'Trang chủ'),
-              _buildNavItem(1, Icons.article_outlined, Icons.article, 'Tin tức'),
-              _buildNavItem(2, Icons.app_registration_outlined,
-                  Icons.app_registration, 'Đăng ký'),
-              _buildNavItem(3, Icons.menu_outlined, Icons.menu, 'Menu'),
+
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.95),
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
             ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: SafeArea(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildNavItem(0, Icons.home_outlined, Icons.home, 'Trang chủ'),
+                _buildNavItem(
+                    1, Icons.article_outlined, Icons.article, 'Tin tức'),
+                _buildNavItem(2, Icons.app_registration_outlined,
+                    Icons.app_registration, 'Dịch vụ'),
+                _buildNavItem(3, Icons.menu_outlined, Icons.menu, 'Menu'),
+              ],
+            ),
           ),
         ),
       ),
@@ -235,31 +245,49 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   Widget _buildNavItem(
       int index, IconData icon, IconData activeIcon, String label) {
     final isSelected = _selectedIndex == index;
+
     return Expanded(
-      child: InkWell(
+      child: GestureDetector(
         onTap: () => _onItemTapped(index),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutQuad,
           padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isSelected ? activeIcon : icon,
-                color: isSelected ? const Color(0xFF26A69A) : Colors.grey[600],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  color:
-                      isSelected ? const Color(0xFF26A69A) : Colors.grey[600],
-                  fontWeight:
-                      isSelected ? FontWeight.w600 : FontWeight.normal,
+          decoration: BoxDecoration(
+            color: isSelected
+                ? const Color(0xFF26A69A).withOpacity(0.1)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: AnimatedScale(
+            scale: isSelected ? 1.15 : 1.0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutBack,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isSelected ? activeIcon : icon,
+                  color: isSelected
+                      ? const Color(0xFF26A69A)
+                      : Colors.grey.shade600,
+                  size: isSelected ? 26 : 24,
                 ),
-              ),
-            ],
+                const SizedBox(height: 4),
+                AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 250),
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: isSelected
+                        ? const Color(0xFF26A69A)
+                        : Colors.grey.shade600,
+                    fontWeight:
+                        isSelected ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                  child: Text(label),
+                ),
+              ],
+            ),
           ),
         ),
       ),

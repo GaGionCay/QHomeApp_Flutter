@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../auth/api_client.dart';
-import '../core/event_bus.dart'; // 👈 thêm import này
+import '../core/event_bus.dart';
 import 'news_detail_screen.dart';
 
 class NewsScreen extends StatefulWidget {
@@ -10,19 +11,18 @@ class NewsScreen extends StatefulWidget {
   State<NewsScreen> createState() => _NewsScreenState();
 }
 
-class _NewsScreenState extends State<NewsScreen> {
+class _NewsScreenState extends State<NewsScreen>
+    with SingleTickerProviderStateMixin {
   final ApiClient _api = ApiClient();
+  final AppEventBus _bus = AppEventBus();
+
   List<dynamic> items = [];
   bool loading = false;
-  late final AppEventBus _bus; // 👈 để lắng nghe sự kiện real-time
 
   @override
   void initState() {
     super.initState();
-    _bus = AppEventBus();
     _fetch();
-
-    // 👇 Lắng nghe sự kiện "news_update" từ MainShell
     _bus.on('news_update', (_) {
       debugPrint('🔔 Nhận sự kiện news_update → reload NewsScreen');
       _fetch();
@@ -59,69 +59,152 @@ class _NewsScreenState extends State<NewsScreen> {
 
   @override
   void dispose() {
-    // 👇 Hủy lắng nghe khi screen bị dispose
     _bus.off('news_update');
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Tin tức & Thông báo')),
-      body: RefreshIndicator(
-        onRefresh: _fetch,
-        child: loading
-            ? const Center(child: CircularProgressIndicator())
-            : items.isEmpty
-                ? const Center(child: Text('Không có thông báo nào'))
-                : ListView.builder(
-                    itemCount: items.length,
-                    itemBuilder: (context, i) {
-                      final n = items[i];
-                      final bool isRead =
-                          n['isRead'] == true || n['read'] == true;
+    final theme = Theme.of(context);
 
-                      return Card(
-                        color: isRead ? Colors.grey[100] : Colors.white,
-                        elevation: isRead ? 0 : 2,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        margin: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        child: ListTile(
-                          leading: Icon(
-                            isRead
-                                ? Icons.notifications_none
-                                : Icons.notifications_active,
-                            color: isRead ? Colors.grey : Colors.blue,
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7F9),
+      appBar: AppBar(
+        title: const Text('Tin tức & Thông báo'),
+        elevation: 2,
+        backgroundColor: const Color(0xFF26A69A),
+        foregroundColor: Colors.white,
+      ),
+      body: RefreshIndicator(
+        color: const Color(0xFF26A69A),
+        onRefresh: _fetch,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 400),
+          child: loading
+              ? const Center(child: CircularProgressIndicator())
+              : items.isEmpty
+                  ? _buildEmptyState()
+                  : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      itemCount: items.length,
+                      itemBuilder: (context, i) {
+                        final n = items[i];
+                        final bool isRead =
+                            n['isRead'] == true || n['read'] == true;
+                        final String date = n['createdDate'] != null
+                            ? DateFormat('dd/MM/yyyy')
+                                .format(DateTime.parse(n['createdDate']))
+                            : '';
+
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: isRead ? Colors.white : Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              if (!isRead)
+                                BoxShadow(
+                                  color: Colors.teal.withOpacity(0.15),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                ),
+                            ],
                           ),
-                          title: Text(
-                            n['title'] ?? '',
-                            style: TextStyle(
-                              fontWeight:
-                                  isRead ? FontWeight.normal : FontWeight.bold,
-                            ),
-                          ),
-                          subtitle: Text(
-                            n['summary'] ?? n['content'] ?? '',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          onTap: () async {
-                            await _markRead(n['id']);
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => NewsDetailScreen(id: n['id']),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 10),
+                            leading: CircleAvatar(
+                              radius: 22,
+                              backgroundColor: isRead
+                                  ? Colors.grey[300]
+                                  : const Color(0xFF26A69A).withOpacity(0.15),
+                              child: Icon(
+                                isRead
+                                    ? Icons.notifications_none
+                                    : Icons.notifications_active,
+                                color: isRead
+                                    ? Colors.grey[700]
+                                    : const Color(0xFF26A69A),
                               ),
-                            );
-                            _fetch();
-                          },
-                        ),
-                      );
-                    },
-                  ),
+                            ),
+                            title: Text(
+                              n['title'] ?? '',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight:
+                                    isRead ? FontWeight.w500 : FontWeight.bold,
+                                color: isRead
+                                    ? Colors.grey[800]
+                                    : const Color(0xFF004D40),
+                              ),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 4),
+                                Text(
+                                  n['summary'] ?? n['content'] ?? '',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.grey[700],
+                                    fontSize: 13,
+                                    height: 1.4,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  date,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey[500],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            onTap: () async {
+                              await _markRead(n['id']);
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => NewsDetailScreen(id: n['id']),
+                                ),
+                              );
+                              _fetch();
+                            },
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.inbox_outlined,
+              size: 80, color: Color(0xFFB0BEC5)),
+          const SizedBox(height: 16),
+          Text(
+            'Không có thông báo nào',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey[700],
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Kéo xuống để làm mới danh sách',
+            style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+          ),
+        ],
       ),
     );
   }
