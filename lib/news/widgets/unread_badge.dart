@@ -4,8 +4,6 @@ import 'dart:async';
 
 class UnreadBadge extends StatefulWidget {
   const UnreadBadge({super.key});
-
-  // cho phép các màn khác gọi refreshBadge
   static final _notifier = ValueNotifier<int>(0);
 
   static void refreshGlobal() {

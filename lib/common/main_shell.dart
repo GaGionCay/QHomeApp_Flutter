@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import '../core/event_bus.dart';
 import '../home/home_screen.dart';
 import '../news/news_detail_screen.dart';
+import '../profile/profile_service.dart';
 import '../register/register_service_screen.dart';
 import '../auth/api_client.dart';
 import 'menu_screen.dart';
@@ -57,14 +58,14 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
 
   void _connectWebSocket() async {
     final token = await _api.storage.readAccessToken();
-    if (token == null) {
-      debugPrint('⚠️ Không có token, bỏ qua kết nối WebSocket');
-      return;
-    }
+    if (token == null) return;
+
+    final profile = await ProfileService(_api.dio).getProfile();
+    final userId = profile['id']?.toString() ?? '';
 
     _stompClient = StompClient(
       config: StompConfig.sockJS(
-        url: 'http://192.168.100.33:8080/ws',
+        url: '${ApiClient.FILE_BASE_URL}/ws',
         onConnect: (frame) {
           debugPrint('✅ WebSocket connected');
 
@@ -74,26 +75,34 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
               if (frame.body != null) {
                 final data = json.decode(frame.body!);
                 _showNotificationPopup(data);
-
                 AppEventBus().emit('news_update');
               }
             },
           );
+
+          if (userId.isNotEmpty) {
+            _stompClient?.subscribe(
+              destination: '/topic/notifications/$userId',
+              callback: (frame) {
+                if (frame.body != null) {
+                  final data = json.decode(frame.body!);
+                  debugPrint('📨 Update read state: $data');
+                  AppEventBus().emit('news_update');
+                }
+              },
+            );
+          } else {
+            debugPrint('⚠️ userId trống — không đăng ký kênh cá nhân');
+          }
         },
         onWebSocketError: (error) => debugPrint('❌ WS error: $error'),
         stompConnectHeaders: {'Authorization': 'Bearer $token'},
         webSocketConnectHeaders: {'Authorization': 'Bearer $token'},
         reconnectDelay: const Duration(seconds: 5),
-        heartbeatIncoming: const Duration(seconds: 10),
-        heartbeatOutgoing: const Duration(seconds: 10),
       ),
     );
 
-    try {
-      _stompClient?.activate();
-    } catch (e) {
-      debugPrint('❗ Failed to activate WebSocket: $e');
-    }
+    _stompClient?.activate();
   }
 
   void _showNotificationPopup(Map<String, dynamic> data) {
@@ -130,12 +139,12 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              final newsId = data['newsId'];
-              if (newsId != null) {
+              final newsUuid = data['newsUuid'];
+              if (newsUuid != null) {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => NewsDetailScreen(id: newsId),
+                    builder: (_) => NewsDetailScreen(id: newsUuid.toString()),
                   ),
                 );
               }
@@ -198,6 +207,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   @override
   void dispose() {
     _stompClient?.deactivate();
+    AppEventBus().clear();
     super.dispose();
   }
 
@@ -206,7 +216,6 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
     return Scaffold(
       extendBody: true,
       body: IndexedStack(index: _selectedIndex, children: _pages),
-
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
         child: AnimatedContainer(

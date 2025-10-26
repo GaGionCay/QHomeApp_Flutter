@@ -10,6 +10,11 @@ class ProfileService {
     final res = await dio.get('/users/me');
     final data = Map<String, dynamic>.from(res.data);
 
+    // ✅ Ép kiểu id sang String để tránh lỗi type
+    if (data['id'] != null) {
+      data['id'] = data['id'].toString();
+    }
+
     if (data['avatarUrl'] != null &&
         !data['avatarUrl'].toString().startsWith('http')) {
       data['avatarUrl'] =

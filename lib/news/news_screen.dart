@@ -37,24 +37,26 @@ class _NewsScreenState extends State<NewsScreen>
         items = List.from(res.data['content']);
       } else if (res.data is List) {
         items = List.from(res.data);
+      } else {
+        items = [];
       }
+      debugPrint('✅ Loaded ${items.length} news items');
     } catch (e) {
       debugPrint('⚠️ Lỗi tải tin tức: $e');
+      items = [];
     } finally {
       if (mounted) setState(() => loading = false);
     }
   }
 
-  Future<void> _markRead(int id) async {
+  Future<void> _markRead(String? uuid) async {
+    if (uuid == null) return;
     try {
-      await _api.dio.post('/news/$id/read');
-      final index = items.indexWhere((e) => e['id'] == id);
-      if (index != -1) {
-        final updated = [...items];
-        updated[index] = {...updated[index], 'isRead': true};
-        if (mounted) setState(() => items = updated);
-      }
-    } catch (_) {}
+      debugPrint('🔔 Marking news $uuid as read');
+      await _api.dio.post('/news/$uuid/read');
+    } catch (e) {
+      debugPrint('⚠️ Lỗi markRead: $e');
+    }
   }
 
   @override
@@ -93,16 +95,23 @@ class _NewsScreenState extends State<NewsScreen>
                         final n = items[i];
                         final bool isRead =
                             n['isRead'] == true || n['read'] == true;
-                        final String date = n['createdDate'] != null
+
+                        final String date = n['publishAt'] != null
                             ? DateFormat('dd/MM/yyyy')
-                                .format(DateTime.parse(n['createdDate']))
-                            : '';
+                                .format(DateTime.parse(n['publishAt']))
+                            : (n['createdAt'] != null
+                                ? DateFormat('dd/MM/yyyy')
+                                    .format(DateTime.parse(n['createdAt']))
+                                : '');
+
+                        final String? uuid =
+                            n['news_uuid']?.toString() ?? n['id']?.toString();
 
                         return AnimatedContainer(
                           duration: const Duration(milliseconds: 300),
                           margin: const EdgeInsets.only(bottom: 10),
                           decoration: BoxDecoration(
-                            color: isRead ? Colors.white : Colors.white,
+                            color: Colors.white,
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               if (!isRead)
@@ -164,16 +173,33 @@ class _NewsScreenState extends State<NewsScreen>
                                 ),
                               ],
                             ),
-                            onTap: () async {
-                              await _markRead(n['id']);
-                              await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => NewsDetailScreen(id: n['id']),
-                                ),
-                              );
-                              _fetch();
-                            },
+                            onTap: uuid == null
+                                ? null
+                                : () async {
+                                    // Cập nhật trạng thái đọc ngay trên UI
+                                    final index = items.indexWhere((e) =>
+                                        e['news_uuid']?.toString() == uuid);
+                                    if (index != -1) {
+                                      final updated = [...items];
+                                      updated[index] = {
+                                        ...updated[index],
+                                        'isRead': true
+                                      };
+                                      if (mounted) setState(() => items = updated);
+                                    }
+
+                                    // Gọi backend đánh dấu đã đọc (real-time)
+                                    _markRead(uuid);
+
+                                    // Mở detail
+                                    await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            NewsDetailScreen(id: uuid),
+                                      ),
+                                    );
+                                  },
                           ),
                         );
                       },
@@ -188,8 +214,7 @@ class _NewsScreenState extends State<NewsScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.inbox_outlined,
-              size: 80, color: Color(0xFFB0BEC5)),
+          const Icon(Icons.inbox_outlined, size: 80, color: Color(0xFFB0BEC5)),
           const SizedBox(height: 16),
           Text(
             'Không có thông báo nào',

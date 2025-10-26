@@ -96,7 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final profileFuture = ProfileService(_apiClient.dio).getProfile();
-      final notiFuture = NotificationService(api: _apiClient, context: context)
+      final notiFuture = NewsService(api: _apiClient, context: context)
           .getUnreadNotifications();
       final billFuture = _billService.getUnpaidBills();
       final statFuture = _billService.getStatistics();

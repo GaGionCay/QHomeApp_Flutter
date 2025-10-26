@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import '../auth/auth_service.dart';
+import '../core/event_bus.dart';
 import '../login/login_screen.dart';
 import '../profile/profile_screen.dart';
 import '../profile/profile_service.dart';
@@ -79,10 +80,12 @@ class _MenuScreenState extends State<MenuScreen> {
     if (confirm == true && context.mounted) {
       try {
         await _authService.logout();
+        AppEventBus().clear();
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Đăng xuất thành công!')),
           );
+
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const LoginScreen()),
             (route) => false,

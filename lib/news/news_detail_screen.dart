@@ -8,7 +8,7 @@ import '../auth/api_client.dart';
 import '../common/main_shell.dart';
 
 class NewsDetailScreen extends StatefulWidget {
-  final int id;
+  final String id;
   const NewsDetailScreen({super.key, required this.id});
 
   @override
@@ -34,7 +34,14 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
         news = res.data;
         loading = false;
       });
-      await client.dio.post('/news/${widget.id}/read');
+
+      // Mark as read nếu chưa đọc
+      if (!(news?['isRead'] ?? false)) {
+        await client.dio.post('/news/${widget.id}/read');
+        setState(() {
+          news!['isRead'] = true; // cập nhật UI ngay
+        });
+      }
     } catch (e) {
       debugPrint('❌ Lỗi tải chi tiết: $e');
       setState(() => loading = false);
@@ -42,42 +49,20 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
   }
 
   Future<void> _handleAttachment(String url) async {
-    final filename = url.split('/').last;
-    final fullUrl = ApiClient.fileUrl(url);
+    try {
+      final filename = url.split('/').last;
+      final fullUrl = ApiClient.fileUrl(url);
+      final tempDir = await getTemporaryDirectory();
+      final filePath = '${tempDir.path}/$filename';
 
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) {
-        return SafeArea(
-          child: Wrap(
-            children: [
-              // Bỏ ListTile tải về máy
-              // ListTile(
-              //   leading: const Icon(Icons.download, color: Color(0xFF26A69A)),
-              //   title: const Text('Tải về máy'),
-              //   onTap: () async { ... },
-              // ),
-              ListTile(
-                leading: const Icon(Icons.visibility, color: Color(0xFF26A69A)),
-                title: const Text('Xem trực tiếp'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final tempDir = await getTemporaryDirectory();
-                  final filePath = '${tempDir.path}/$filename';
-                  final response = await http.get(Uri.parse(fullUrl));
-                  final file = File(filePath);
-                  await file.writeAsBytes(response.bodyBytes);
-                  await OpenFile.open(filePath);
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
+      final response = await http.get(Uri.parse(fullUrl));
+      final file = File(filePath);
+      await file.writeAsBytes(response.bodyBytes);
+
+      await OpenFile.open(filePath);
+    } catch (e) {
+      debugPrint('❌ Lỗi mở file: $e');
+    }
   }
 
   @override
@@ -94,12 +79,13 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
       );
     }
 
-    final attachments = news!['attachments'] as List<dynamic>? ?? [];
-    final dateStr = news!['createdDate'] != null
-        ? DateFormat('dd/MM/yyyy').format(DateTime.parse(news!['createdDate']))
+    final attachments = (news!['attachments'] as List<dynamic>?) ?? [];
+    final dateStr = news!['createdAt'] != null
+        ? DateFormat('dd/MM/yyyy').format(DateTime.parse(news!['createdAt']))
         : '';
+
     final thumbnail =
-        news!['thumbnailUrl'] ?? news!['image'] ?? news!['thumbnail'] ?? null;
+        news!['thumbnailUrl'] ?? news!['image'] ?? news!['thumbnail'];
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F9),
@@ -112,7 +98,6 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
         },
         child: CustomScrollView(
           slivers: [
-            // 🖼 Banner có hiệu ứng co giãn khi cuộn
             SliverAppBar(
               expandedHeight: thumbnail != null ? 180 : kToolbarHeight + 10,
               pinned: true,
@@ -180,8 +165,6 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                     : Container(color: Colors.transparent),
               ),
             ),
-
-            // 📄 Nội dung chi tiết
             SliverToBoxAdapter(
               child: Padding(
                 padding:
@@ -189,7 +172,6 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 🧭 Ngày đăng
                     Row(
                       children: [
                         const Icon(Icons.calendar_today,
@@ -204,22 +186,16 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                         ),
                       ],
                     ),
-
                     const SizedBox(height: 12),
-
-                    // 📖 Nội dung
                     Text(
-                      news!['content'] ?? '',
+                      news!['bodyHtml'] ?? news!['summary'] ?? '',
                       style: const TextStyle(
                         fontSize: 16,
                         height: 1.6,
                         color: Colors.black87,
                       ),
                     ),
-
                     const SizedBox(height: 24),
-
-                    // 📎 File đính kèm
                     if (attachments.isNotEmpty) ...[
                       const Text(
                         "Tệp đính kèm",

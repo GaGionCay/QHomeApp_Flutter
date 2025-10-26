@@ -5,14 +5,13 @@ import '../auth/api_client.dart';
 import 'news_detail_screen.dart';
 import 'news_item.dart';
 
-class NotificationService {
+class NewsService {
   final ApiClient api;
   final BuildContext context;
   StompClient? _stompClient;
 
-  NotificationService({required this.api, required this.context});
+  NewsService({required this.api, required this.context});
 
-  /// Kết nối STOMP WebSocket
   Future<void> connect() async {
     final token = await api.dio.options.headers['Authorization'];
     if (token == null) return;
@@ -47,7 +46,6 @@ class NotificationService {
     );
   }
 
-  /// Hiển thị popup notification
   void _showPopup(Map<String, dynamic> data) {
     final title = data['title'] ?? '';
     final summary = data['summary'] ?? '';
@@ -70,7 +68,8 @@ class NotificationService {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => NewsDetailScreen(id: newsId)),
+                    builder: (_) => NewsDetailScreen(id: newsId.toString()),
+                  ),
                 );
               },
               child: const Text('Xem chi tiết'),
@@ -80,7 +79,6 @@ class NotificationService {
     );
   }
 
-  /// Lấy danh sách unread từ backend
   Future<List<NotificationItem>> getUnreadNotifications() async {
     try {
       final res = await api.dio.get('/news/unread');
@@ -91,7 +89,6 @@ class NotificationService {
     }
   }
 
-  /// Ngắt kết nối WebSocket
   void disconnect() {
     _stompClient?.deactivate();
   }

@@ -1,5 +1,5 @@
 class NotificationItem {
-  final int id;
+  final String id;
   final String title;
   final String body;
   final DateTime date;
@@ -8,7 +8,7 @@ class NotificationItem {
 
 factory NotificationItem.fromJson(Map<String, dynamic> json) {
     return NotificationItem(
-      id: json['id'] ?? 0,
+      id: json['id'].toString(),
       title: json['title'] ?? '',
       body: json['summary'] ?? json['content'] ?? '',
       date: DateTime.parse(json['createdAt'] ?? DateTime.now().toIso8601String()),

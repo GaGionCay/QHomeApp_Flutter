@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
-import 'token_storage.dart';
 import 'package:uuid/uuid.dart';
+import 'token_storage.dart';
 
 class AuthService {
   final Dio dio;
@@ -19,14 +19,26 @@ class AuthService {
   Future<Map<String, dynamic>> login(String email, String password) async {
     await ensureDeviceId();
     final deviceId = await storage.readDeviceId();
-    final res = await dio.post('/auth/login',
-        data: {'email': email, 'password': password},
-        options: Options(headers: {'X-Device-Id': deviceId}));
+
+    final res = await dio.post(
+      '/auth/login',
+      data: {'email': email, 'password': password},
+      options: Options(headers: {'X-Device-Id': deviceId}),
+    );
+
     final data = Map<String, dynamic>.from(res.data);
+
+    // Ép kiểu tất cả giá trị quan trọng thành String để an toàn
     if (data['accessToken'] != null) {
-      await storage.writeAccessToken(data['accessToken']);
-      await storage.writeRefreshToken(data['refreshToken']);
+      await storage.writeAccessToken(data['accessToken'].toString());
+      await storage.writeRefreshToken(data['refreshToken']?.toString());
     }
+
+    // ⚠️ Ép userId về String để tránh lỗi “int is not a subtype of String”
+    if (data['userId'] != null) {
+      data['userId'] = data['userId'].toString();
+    }
+
     return data;
   }
 
@@ -40,8 +52,8 @@ class AuthService {
         options: Options(headers: {'X-Device-Id': deviceId}));
     final data = Map<String, dynamic>.from(res.data);
     if (data['accessToken'] != null) {
-      await storage.writeAccessToken(data['accessToken']);
-      await storage.writeRefreshToken(data['refreshToken']);
+      await storage.writeAccessToken(data['accessToken'].toString());
+      await storage.writeRefreshToken(data['refreshToken']?.toString());
     } else {
       throw Exception('Refresh failed');
     }
