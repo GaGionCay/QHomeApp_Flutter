@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_application_1/news/news_detail_screen.dart';
 import 'package:flutter_application_1/news/news_screen.dart';
+import 'package:flutter_application_1/post/post_feed_screen.dart';
 import 'package:intl/intl.dart';
 import '../auth/api_client.dart';
 import '../auth/token_storage.dart';
@@ -445,6 +446,13 @@ class _HomeScreenState extends State<HomeScreen> {
         'color': Colors.green,
         'onTap': () => Navigator.push(context,
             MaterialPageRoute(builder: (_) => const BillPaidListScreen())),
+      },
+      {
+        'icon': Icons.post_add,
+        'label': 'Đăng bài',
+        'color': Colors.orangeAccent,
+        'onTap': () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const PostFeedScreen())),
       },
     ];
 

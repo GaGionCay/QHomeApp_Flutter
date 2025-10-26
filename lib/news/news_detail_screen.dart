@@ -54,23 +54,12 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
         return SafeArea(
           child: Wrap(
             children: [
-              ListTile(
-                leading: const Icon(Icons.download, color: Color(0xFF26A69A)),
-                title: const Text('Tải về máy'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final dir = await getApplicationDocumentsDirectory();
-                  final filePath = '${dir.path}/$filename';
-                  final response = await http.get(Uri.parse(fullUrl));
-                  final file = File(filePath);
-                  await file.writeAsBytes(response.bodyBytes);
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('✅ Đã tải về $filename')),
-                    );
-                  }
-                },
-              ),
+              // Bỏ ListTile tải về máy
+              // ListTile(
+              //   leading: const Icon(Icons.download, color: Color(0xFF26A69A)),
+              //   title: const Text('Tải về máy'),
+              //   onTap: () async { ... },
+              // ),
               ListTile(
                 leading: const Icon(Icons.visibility, color: Color(0xFF26A69A)),
                 title: const Text('Xem trực tiếp'),
@@ -188,9 +177,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                           ),
                         ],
                       )
-                    : Container(
-                        color: Colors
-                            .transparent),
+                    : Container(color: Colors.transparent),
               ),
             ),
 

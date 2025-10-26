@@ -29,7 +29,6 @@ class _MenuScreenState extends State<MenuScreen> {
 
   Future<void> _initServices() async {
     try {
-      // ✅ Dùng ApiClient.create() để đảm bảo token được gắn vào header
       final api = await ApiClient.create();
       _dio = api.dio;
       _profileService = ProfileService(_dio);
