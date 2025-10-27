@@ -79,11 +79,11 @@ class NewsService {
     );
   }
 
-  Future<List<NotificationItem>> getUnreadNotifications() async {
+  Future<List<NewsItem>> getUnreadNotifications() async {
     try {
       final res = await api.dio.get('/news/unread');
       final data = res.data as List<dynamic>? ?? [];
-      return data.map((json) => NotificationItem.fromJson(json)).toList();
+      return data.map((json) => NewsItem.fromJson(json)).toList();
     } catch (e) {
       return [];
     }

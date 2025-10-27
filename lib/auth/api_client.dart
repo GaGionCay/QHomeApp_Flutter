@@ -4,10 +4,12 @@ import 'token_storage.dart';
 import 'auth_service.dart';
 
 class ApiClient {
+  //home
   static const String BASE_URL = 'http://192.168.100.33:8080/api';
   static const String FILE_BASE_URL = 'http://192.168.100.33:8080';
   //FBT
   //static const String BASE_URL = 'http://10.33.63.155:8080/api';
+  //static const String FILE_BASE_URL = 'http://10.33.63.155:8080';
   final Dio dio;
   final TokenStorage _storage;
   final AuthService _authService;
@@ -74,7 +76,6 @@ class ApiClient {
     return ApiClient._(dio, storage, authService);
   }
 
-  /// Trả về URL đầy đủ cho attachment
   static String fileUrl(String path) {
     if (path.startsWith('http')) return path;
     return '$FILE_BASE_URL$path';

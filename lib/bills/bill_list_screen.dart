@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../auth/api_client.dart';
 import 'bill_detail_screen.dart';
 import 'bill_service.dart';
+import '../core/event_bus.dart';
 
 class BillListScreen extends StatefulWidget {
   const BillListScreen({super.key});
@@ -178,6 +179,8 @@ class _BillListScreenState extends State<BillListScreen> {
                             onPressed: () async {
                               await _service.payBill(bill.id);
                               if (!context.mounted) return;
+                              AppEventBus().emit('bill_update');
+
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(
@@ -185,6 +188,7 @@ class _BillListScreenState extends State<BillListScreen> {
                                   behavior: SnackBarBehavior.floating,
                                 ),
                               );
+
                               setState(() {
                                 _futureBills = _service.getUnpaidBills();
                               });

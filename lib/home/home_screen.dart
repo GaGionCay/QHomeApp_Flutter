@@ -1,9 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_application_1/news/news_detail_screen.dart';
-import 'package:flutter_application_1/news/news_screen.dart';
-import 'package:flutter_application_1/post/post_feed_screen.dart';
 import 'package:intl/intl.dart';
 import '../auth/api_client.dart';
 import '../auth/token_storage.dart';
@@ -15,9 +12,12 @@ import '../bills/bill_service.dart';
 import '../core/event_bus.dart';
 import '../news/news_item.dart';
 import '../news/news_service.dart';
+import '../news/news_detail_screen.dart';
+import '../news/news_screen.dart';
 import '../profile/profile_service.dart';
 import '../register/register_service_list_screen.dart';
 import '../websocket/web_socket_service.dart';
+import '../post/post_feed_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final void Function(int)? onNavigateToTab;
@@ -34,10 +34,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final _tokenStorage = TokenStorage();
   final _eventBus = AppEventBus();
 
-  StreamSubscription<String>? _eventSub;
-
   Map<String, dynamic>? _profile;
-  List<NotificationItem> _notifications = [];
+  List<NewsItem> _notifications = [];
   List<BillItem> _unpaidBills = [];
   List<BillStatistics> _stats = [];
 
@@ -52,15 +50,16 @@ class _HomeScreenState extends State<HomeScreen> {
     _billService = BillService(_apiClient);
     _wsService = WebSocketService();
     _initialize();
+
     _eventBus.on('news_update', (_) async {
       debugPrint('🔔 HomeScreen nhận event news_update -> reload dữ liệu...');
       await _refreshAll();
     });
 
-    // _eventBus.on('bill_update', (_) async {
-    //   debugPrint('💰 HomeScreen nhận event bill_update -> reload dữ liệu...');
-    //   await _refreshAll();
-    // });
+    _eventBus.on('bill_update', (_) async {
+      debugPrint('💰 HomeScreen nhận event bill_update -> reload dữ liệu...');
+      await _refreshAll();
+    });
   }
 
   Future<void> _initialize() async {
@@ -78,8 +77,21 @@ class _HomeScreenState extends State<HomeScreen> {
         token: token,
         userId: userId,
         onNotification: (data) {
-          debugPrint('🔔 Real-time notification received');
-          _eventBus.emit('news_update');
+          debugPrint('🔔 Realtime notification received: $data');
+
+          final newNoti = NewsItem(
+            id: data['newsId'].toString(),
+            title: data['title'] ?? '',
+            body: data['summary'] ?? '',
+            date: DateTime.parse(
+                data['publishAt'] ?? DateTime.now().toIso8601String()),
+            isRead: false,
+          );
+
+          setState(() {
+            _notifications.insert(0, newNoti);
+            _notifications.sort((a, b) => b.date.compareTo(a.date));
+          });
         },
         onBill: (data) {
           debugPrint('💰 Real-time bill update received');
@@ -93,7 +105,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadAllData() async {
     setState(() => _loading = true);
-
     try {
       final profileFuture = ProfileService(_apiClient.dio).getProfile();
       final notiFuture = NewsService(api: _apiClient, context: context)
@@ -109,7 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ]);
 
       final profile = results[0] as Map<String, dynamic>;
-      final notis = results[1] as List<NotificationItem>;
+      final notis = results[1] as List<NewsItem>;
       final billDtos = results[2] as List;
       final stats = results[3] as List<BillStatistics>;
 
@@ -163,9 +174,10 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadAllData();
   }
 
+  int get unreadCount => _notifications.where((n) => !n.isRead).length;
+
   @override
   void dispose() {
-    _eventSub?.cancel();
     _wsService.disconnect();
     super.dispose();
   }
@@ -198,10 +210,13 @@ class _HomeScreenState extends State<HomeScreen> {
                           .fadeIn(duration: 600.ms)
                           .slideY(begin: -0.2, curve: Curves.easeOutCubic),
                       SizedBox(height: size.height * 0.03),
-                      _buildNotificationSection(size),
-                      SizedBox(height: size.height * 0.03),
-                      _buildUnpaidBillSection(size),
-                      SizedBox(height: size.height * 0.03),
+                      if (_notifications.any((n) => !n.isRead) ||
+                          _unpaidBills.isNotEmpty) ...[
+                        _buildNotificationSection(size),
+                        SizedBox(height: size.height * 0.03),
+                        _buildUnpaidBillSection(size),
+                        SizedBox(height: size.height * 0.03),
+                      ],
                       _buildStatisticsSection(size),
                       SizedBox(height: size.height * 0.03),
                       _buildCompactFeatureRow(size),
@@ -266,60 +281,90 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildNotificationSection(Size size) {
-    if (_notifications.isEmpty) {
-      return Card(
-        child: const Padding(
-          padding: EdgeInsets.all(12),
-          child: Text('Không có thông báo mới'),
-        ),
-      );
-    }
+    // Nếu không có thông báo chưa đọc, ẩn hoàn toàn section
+    final unreadNotifications = _notifications.where((n) => !n.isRead).toList();
+    if (unreadNotifications.isEmpty) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            const Text('Thông báo mới',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const Spacer(),
-            CircleAvatar(
-              backgroundColor: Colors.redAccent,
-              radius: 14,
-              child: Text(
-                '${_notifications.length}',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold),
+            const Text(
+              'Thông báo mới',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 17,
+                color: Color(0xFF1A1A1A),
               ),
-            )
+            ),
+            const Spacer(),
+            if (unreadCount > 0)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '$unreadCount mới',
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+              ),
           ],
         ),
-        ..._notifications.take(3).map((n) => Card(
+        const SizedBox(height: 8),
+        ...unreadNotifications.take(3).map((n) => Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 6,
+                    offset: const Offset(0, 3),
+                  )
+                ],
+              ),
               child: ListTile(
-                title: Text(n.title),
+                leading: const Icon(Icons.notifications_active,
+                    color: Color(0xFF26A69A)),
+                title: Text(
+                  n.title,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, color: Colors.black87),
+                ),
                 subtitle: Text(
                   n.body,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.black54),
                 ),
                 trailing: Text(
-                  DateFormat('dd/MM/yyyy').format(n.date),
+                  DateFormat('dd/MM').format(n.date),
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
-                onTap: () => Navigator.push(
+                onTap: () async {
+                  if (!n.isRead) {
+                    setState(() => n.isRead = true);
+                  }
+                  await Navigator.push(
                     context,
                     MaterialPageRoute(
-                        builder: (_) => NewsDetailScreen(id: n.id))),
+                        builder: (_) => NewsDetailScreen(id: n.id)),
+                  );
+                },
               ),
             )),
-        if (_notifications.length > 3)
+        if (unreadNotifications.length > 3)
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const NewsScreen())),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NewsScreen()),
+              ),
               child: const Text('Xem tất cả'),
             ),
           ),
@@ -328,45 +373,73 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildUnpaidBillSection(Size size) {
-    if (_unpaidBills.isEmpty) {
-      return const Card(
-          child: Padding(
-              padding: EdgeInsets.all(12),
-              child: Text('Không có hóa đơn cần thanh toán')));
-    }
+    if (_unpaidBills.isEmpty) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            const Text('Hóa đơn cần thanh toán',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Text(
+              'Hóa đơn cần thanh toán',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 17,
+                color: Color(0xFF1A1A1A),
+              ),
+            ),
             const Spacer(),
             TextButton(
-              onPressed: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const BillListScreen())),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const BillListScreen()),
+              ),
               child: const Text('Xem tất cả'),
             ),
           ],
         ),
-        ..._unpaidBills.take(3).map((b) => Card(
+        const SizedBox(height: 8),
+        ..._unpaidBills.take(3).map((b) => Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 6,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
               child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.teal.withOpacity(0.1),
+                  child:
+                      const Icon(Icons.receipt_long, color: Color(0xFF26A69A)),
+                ),
                 title: Text(
-                    '${b.billType} - ${NumberFormat.currency(locale: "vi_VN", symbol: "₫").format(b.amount)}'),
+                  '${b.billType} - ${NumberFormat.currency(locale: "vi_VN", symbol: "₫").format(b.amount)}',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 subtitle: Text(
-                    'Hạn: ${DateFormat('dd/MM/yyyy').format(b.billingMonth)}'),
+                  'Hạn: ${DateFormat('dd/MM/yyyy').format(b.billingMonth)}',
+                  style: const TextStyle(color: Colors.black54),
+                ),
                 trailing: Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                      color: Colors.redAccent.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(4)),
-                  child: Text(b.status,
-                      style: const TextStyle(
-                          color: Colors.redAccent,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12)),
+                    color: Colors.redAccent.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'Chưa TT',
+                    style: TextStyle(
+                        color: Colors.redAccent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
             )),
@@ -451,8 +524,8 @@ class _HomeScreenState extends State<HomeScreen> {
         'icon': Icons.post_add,
         'label': 'Đăng bài',
         'color': Colors.orangeAccent,
-        'onTap': () => Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const PostFeedScreen())),
+        'onTap': () => Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const PostFeedScreen())),
       },
     ];
 
