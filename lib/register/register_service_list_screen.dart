@@ -151,7 +151,6 @@ class _RegisterServiceListScreenState extends State<RegisterServiceListScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isTablet = MediaQuery.of(context).size.width > 600;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),

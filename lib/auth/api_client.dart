@@ -2,47 +2,70 @@ import 'package:dio/dio.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'token_storage.dart';
 import 'auth_service.dart';
+import 'dart:io' show Platform;
 
 class ApiClient {
-  //home
-  static const String BASE_URL = 'http://192.168.100.33:8080/api';
-  static const String FILE_BASE_URL = 'http://192.168.100.33:8080';
-  //FBT
-  //static const String BASE_URL = 'http://10.33.63.155:8080/api';
-  //static const String FILE_BASE_URL = 'http://10.33.63.155:8080';
+  
+  static const String LAN_HOST_IP = '192.168.100.33'; 
+  static const int API_PORT = 8080;
+  static const int TIMEOUT_SECONDS = 10;
+  
+  static final String HOST_IP = LAN_HOST_IP; 
+
+  static final String BASE_URL = 'http://$HOST_IP:$API_PORT/api';
+  
+  static final String FILE_BASE_URL = 'http://$HOST_IP:$API_PORT'; 
+
   final Dio dio;
+  final Dio _authDio;
   final TokenStorage _storage;
   final AuthService _authService;
+  
+  bool isRefreshing = false; 
+
   TokenStorage get storage => _storage;
 
-  ApiClient._(this.dio, this._storage, this._authService) {
+  ApiClient._(this.dio, this._storage, this._authService, this._authDio) {
     _setupInterceptors();
   }
 
   factory ApiClient() {
     final storage = TokenStorage();
-    final dio = Dio(BaseOptions(baseUrl: BASE_URL));
-    final authService = AuthService(dio, storage);
-    return ApiClient._(dio, storage, authService);
+    
+    final dio = Dio(BaseOptions(
+      baseUrl: BASE_URL,
+      connectTimeout: const Duration(seconds: TIMEOUT_SECONDS), 
+      receiveTimeout: const Duration(seconds: TIMEOUT_SECONDS),
+    ));
+
+    final authDio = Dio(BaseOptions(
+      baseUrl: BASE_URL,
+      connectTimeout: const Duration(seconds: TIMEOUT_SECONDS), 
+      receiveTimeout: const Duration(seconds: TIMEOUT_SECONDS),
+    ));
+
+    final authService = AuthService(authDio, storage); 
+    
+    return ApiClient._(dio, storage, authService, authDio);
   }
 
   void _setupInterceptors() {
+    dio.interceptors.add(LogInterceptor(
+      request: true,
+      requestHeader: true,
+      requestBody: true,
+      responseHeader: true,
+      responseBody: true,
+      error: true,
+      logPrint: (obj) => print('🔍 DIO LOG: $obj'),
+    ));
     dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
         final token = await _storage.readAccessToken();
         if (token != null) {
-          if (JwtDecoder.isExpired(token)) {
-            try {
-              await _authService.refreshToken();
-            } catch (_) {
-              await _storage.deleteAll();
-            }
-          }
-          final newToken = await _storage.readAccessToken();
-          if (newToken != null) {
-            options.headers['Authorization'] = 'Bearer $newToken';
-          }
+          options.headers['Authorization'] = 'Bearer $token';
         }
+        
         final deviceId = await _storage.readDeviceId();
         if (deviceId != null) {
           options.headers['X-Device-Id'] = deviceId;
@@ -50,30 +73,59 @@ class ApiClient {
         return handler.next(options);
       },
       onError: (err, handler) async {
+        final options = err.requestOptions;
+        
+        if (err.response == null) {
+           print('⚠️ DIO CONNECTION ERROR: ${err.error}');
+        }
+        
         if (err.response?.statusCode == 401) {
-          try {
-            await _authService.refreshToken();
-            final newAccess = await _storage.readAccessToken();
-            if (newAccess != null) {
-              final requestOptions = err.requestOptions;
-              requestOptions.headers['Authorization'] = 'Bearer $newAccess';
-              final cloned = await dio.fetch(requestOptions);
-              return handler.resolve(cloned);
-            }
-          } catch (_) {
+          final refreshToken = await _storage.readRefreshToken();
+          
+          if (refreshToken == null || isRefreshing) {
             await _storage.deleteAll();
+            return handler.next(err); 
+          }
+
+          try {
+            isRefreshing = true;
+            
+            await _authService.refreshToken();
+            
+            final newAccessToken = await _storage.readAccessToken();
+            if (newAccessToken != null) {
+              options.headers['Authorization'] = 'Bearer $newAccessToken';
+              // Gọi lại yêu cầu API gốc với token mới
+              final clonedResponse = await dio.fetch(options);
+              return handler.resolve(clonedResponse);
+            }
+          } on DioException catch (e) {
+            print('🔥 REFRESH FAILED: Token will be deleted.');
+            await _storage.deleteAll();
+            return handler.next(e); 
+          } finally {
+            isRefreshing = false;
           }
         }
         return handler.next(err);
       },
     ));
   }
-
+  
   static Future<ApiClient> create() async {
     final storage = TokenStorage();
-    final dio = Dio(BaseOptions(baseUrl: BASE_URL));
-    final authService = AuthService(dio, storage);
-    return ApiClient._(dio, storage, authService);
+    final dio = Dio(BaseOptions(
+        baseUrl: BASE_URL,
+        connectTimeout: const Duration(seconds: TIMEOUT_SECONDS),
+        receiveTimeout: const Duration(seconds: TIMEOUT_SECONDS),
+    ));
+    final authDio = Dio(BaseOptions(
+        baseUrl: BASE_URL,
+        connectTimeout: const Duration(seconds: TIMEOUT_SECONDS),
+        receiveTimeout: const Duration(seconds: TIMEOUT_SECONDS),
+    ));
+    final authService = AuthService(authDio, storage);
+    return ApiClient._(dio, storage, authService, authDio);
   }
 
   static String fileUrl(String path) {
