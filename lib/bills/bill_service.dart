@@ -1,14 +1,17 @@
 import 'dart:developer';
 import '../auth/api_client.dart';
+// import các DTO nếu chúng ở file riêng
+// import 'bill_dtos.dart'; 
 
 class BillService {
   final ApiClient apiClient;
   BillService(this.apiClient);
 
-  /// Lấy danh sách hóa đơn chưa thanh toán
+  /// Lấy danh sách hóa đơn chưa thanh toán.
   Future<List<BillDto>> getUnpaidBills() async {
     try {
       final res = await apiClient.dio.get('/bills/unpaid');
+      // API trả về Map<String, dynamic> với key 'data' chứa List
       return (res.data['data'] as List)
           .map((json) => BillDto.fromJson(json))
           .toList();
@@ -18,7 +21,7 @@ class BillService {
     }
   }
 
-  /// Lấy danh sách hóa đơn đã thanh toán
+  /// Lấy danh sách hóa đơn đã thanh toán.
   Future<List<BillDto>> getPaidBills() async {
     try {
       final res = await apiClient.dio.get('/bills/paid');
@@ -31,20 +34,24 @@ class BillService {
     }
   }
 
-  /// Thanh toán hóa đơn
-  Future<void> payBill(int billId) async {
+  /// Thanh toán hóa đơn theo ID.
+  /// Spring Controller trả về Bill, nên Service nên trả về BillDto đã thanh toán.
+  Future<BillDto> payBill(int billId) async {
     try {
-      await apiClient.dio.post('/bills/$billId/pay');
+      final res = await apiClient.dio.post('/bills/$billId/pay');
+      // Controller trả về Map có key 'data' chứa đối tượng Bill đã thanh toán
+      return BillDto.fromJson(res.data['data']);
     } catch (e, s) {
       log('❌ Lỗi payBill($billId): $e\n$s');
       rethrow;
     }
   }
 
-  /// Chi tiết hóa đơn
+  /// Lấy chi tiết hóa đơn theo ID.
   Future<BillDto> getBillDetail(int id) async {
     try {
       final res = await apiClient.dio.get('/bills/$id');
+      // Controller trả về Map có key 'data' chứa đối tượng Bill
       return BillDto.fromJson(res.data['data']);
     } catch (e, s) {
       log('❌ Lỗi getBillDetail($id): $e\n$s');
@@ -52,14 +59,18 @@ class BillService {
     }
   }
 
-  /// Thống kê hóa đơn theo loại (truyền 'Tất cả' nếu muốn lấy toàn bộ)
+  /// Lấy thống kê hóa đơn theo tháng và loại.
   Future<List<BillStatistics>> getStatistics({String billType = 'Tất cả'}) async {
     try {
-      final mappedType = _mapBillType(billType);
+      // mappedType là null nếu là 'Tất cả', API Spring Controller sẽ dùng defaultValue='ALL'
+      final mappedType = _mapBillType(billType); 
+      
       final res = await apiClient.dio.get(
         '/bills/statistics',
         queryParameters: {
           if (mappedType != null) 'billType': mappedType,
+          // Nếu mappedType là null, query parameter 'billType' sẽ không được gửi, 
+          // và Controller sẽ dùng defaultValue "ALL".
         },
       );
 
@@ -77,8 +88,8 @@ class BillService {
     }
   }
 
-  /// Lấy hóa đơn theo tháng và loại (backend: /bills/by-month)
-  Future<List<BillDto>> getBillsByMonthAndType(String month, String billType) async {
+  /// Lấy danh sách hóa đơn theo tháng và loại.
+  Future<List<BillDto>> getBillsByMonthAndType(String month, {String billType = 'Tất cả'}) async {
     try {
       final mappedType = _mapBillType(billType);
       log('📡 [BillService] Fetching bills => month: $month | type: $mappedType');
@@ -88,21 +99,18 @@ class BillService {
         queryParameters: {
           'month': month,
           if (mappedType != null) 'billType': mappedType,
+          // Nếu mappedType là null, billType sẽ không được gửi
         },
       );
 
       if (res.statusCode != 200) {
         log('⚠️ API trả mã ${res.statusCode}: ${res.data}');
-        throw Exception('Server trả lỗi ${res.statusCode}');
+        // Nếu API trả lỗi (400), ném Exception với message từ server nếu có
+        throw Exception(res.data['message'] ?? 'Server trả lỗi ${res.statusCode}');
       }
 
-      if (res.data == null || res.data['data'] == null) {
-        log('⚠️ API trả về null khi getBillsByMonthAndType($month, $billType)');
-        return [];
-      }
-
-      final data = res.data['data'] as List;
-      if (data.isEmpty) {
+      final data = res.data['data'] as List?;
+      if (data == null || data.isEmpty) {
         log('ℹ️ Không có hóa đơn nào cho tháng $month và loại $billType');
         return [];
       }
@@ -114,8 +122,7 @@ class BillService {
     }
   }
 
-  /// ------------------------- HELPER -------------------------
-  /// Map loại hóa đơn tiếng Việt → backend code
+  /// Hàm ánh xạ loại hóa đơn từ ngôn ngữ người dùng sang enum/String của API.
   String? _mapBillType(String type) {
     switch (type.toUpperCase()) {
       case 'ĐIỆN':
@@ -132,48 +139,46 @@ class BillService {
       case 'TẤT CẢ':
       case 'TAT CA':
       case 'ALL':
-        return null;
+        return null; // Trả về null để không thêm query param, API sẽ dùng ALL mặc định.
       default:
         return null;
     }
   }
 }
 
-/// ------------------------- DTO -------------------------
+// --- DTO Cập Nhật ---
 
 class BillDto {
   final int id;
   final String billType;
   final double amount;
   final String status;
-  final String month;   // mapping từ billingMonth
-  final String dueDate; // mapping từ paymentDate hoặc để ''
+  final String billingMonth; // Đổi tên biến để khớp hơn với JSON
+  final String paymentDate; // Đổi tên biến để khớp hơn với JSON
+  final String? description; // Thêm trường có thể có
 
   BillDto({
     required this.id,
     required this.billType,
     required this.amount,
     required this.status,
-    required this.month,
-    required this.dueDate,
+    required this.billingMonth,
+    required this.paymentDate,
+    this.description,
   });
 
   factory BillDto.fromJson(Map<String, dynamic> json) {
     return BillDto(
-      id: json['id'] ?? 0,
+      // ID từ Long (Java) sang int (Dart)
+      id: (json['id'] is String) ? int.tryParse(json['id']) ?? 0 : json['id'] ?? 0, 
       billType: json['billType'] ?? '',
-      amount: (json['amount'] ?? 0).toDouble(),
+      amount: (json['amount'] is num) ? json['amount'].toDouble() : 0.0,
       status: json['status'] ?? 'UNKNOWN',
-      month: json['billingMonth'] ?? '',
-      dueDate: json['paymentDate'] ?? '',
+      billingMonth: json['billingMonth'] ?? '', // Khớp với tên trường trong API
+      paymentDate: json['paymentDate'] ?? '', // Khớp với tên trường trong API
+      description: json['description'],
     );
   }
-
-  get billingMonth => null;
-
-  get paymentDate => null;
-
-  String? get description => null;
 }
 
 class BillStatistics {
@@ -191,7 +196,7 @@ class BillStatistics {
     return BillStatistics(
       month: json['month'] ?? '',
       billType: json['billType'] ?? '',
-      totalAmount: (json['totalAmount'] ?? 0).toDouble(),
+      totalAmount: (json['totalAmount'] is num) ? json['totalAmount'].toDouble() : 0.0,
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'bill_service.dart';
+// Đảm bảo BillService, BillDto, và BillStatistics được import
+import 'bill_service.dart'; 
 
 class BillMonthDetailScreen extends StatefulWidget {
   final String month;
@@ -26,8 +27,10 @@ class _BillMonthDetailScreenState extends State<BillMonthDetailScreen>
   @override
   void initState() {
     super.initState();
-    _futureBills = widget.billService
-        .getBillsByMonthAndType(widget.month, widget.billType);
+    _futureBills = widget.billService.getBillsByMonthAndType(
+      widget.month,
+      billType: widget.billType,
+    );
     _totalController =
         AnimationController(vsync: this, duration: const Duration(seconds: 1));
   }
@@ -37,8 +40,10 @@ class _BillMonthDetailScreenState extends State<BillMonthDetailScreen>
 
   Future<void> _refresh() async {
     setState(() {
-      _futureBills = widget.billService
-          .getBillsByMonthAndType(widget.month, widget.billType);
+      _futureBills = widget.billService.getBillsByMonthAndType(
+        widget.month,
+        billType: widget.billType,
+      );
     });
   }
 
@@ -77,7 +82,11 @@ class _BillMonthDetailScreenState extends State<BillMonthDetailScreen>
           final total = bills.fold<double>(0, (sum, b) => sum + b.amount);
           final totalAnim =
               Tween<double>(begin: 0, end: total).animate(_totalController);
-          _totalController.forward(from: 0);
+          
+          if (_totalController.status != AnimationStatus.forward) {
+             _totalController.forward(from: 0);
+          }
+
 
           return RefreshIndicator(
             onRefresh: _refresh,
@@ -116,11 +125,11 @@ class _BillMonthDetailScreenState extends State<BillMonthDetailScreen>
                             size: 36,
                           ),
                           title: Text(
-                            bill.billType,
+                            'Tháng ${bill.billingMonth}', 
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                           subtitle: Text(
-                            'Số tiền: ${_formatAmount(bill.amount)} VNĐ',
+                            'Số tiền: ${_formatAmount(bill.amount)} VNĐ | Loại: ${bill.billType}',
                           ),
                           trailing: paid
                               ? const Icon(Icons.receipt_long,
@@ -128,14 +137,32 @@ class _BillMonthDetailScreenState extends State<BillMonthDetailScreen>
                               : ElevatedButton.icon(
                                   icon: const Icon(Icons.payment),
                                   onPressed: () async {
-                                    await widget.billService.payBill(bill.id);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Thanh toán thành công!'),
-                                        backgroundColor: Colors.green,
-                                      ),
-                                    );
-                                    await _refresh();
+                                    try {
+                                       await widget.billService.payBill(bill.id);
+                                       
+                                        if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(
+                                                content: Text('Thanh toán thành công!'),
+                                                backgroundColor: Colors.green,
+                                              ),
+                                            );
+                                        }
+
+                                       // Refresh danh sách
+                                       await _refresh();
+
+                                    } catch (e) {
+                                       // Xử lý lỗi khi thanh toán
+                                       if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text('Thanh toán thất bại: ${e.toString()}'),
+                                                backgroundColor: Colors.red,
+                                              ),
+                                            );
+                                       }
+                                    }
                                   },
                                   label: const Text('Thanh toán'),
                                   style: ElevatedButton.styleFrom(

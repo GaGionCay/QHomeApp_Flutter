@@ -1,8 +1,6 @@
 import 'package:dio/dio.dart';
-import 'package:jwt_decoder/jwt_decoder.dart';
 import 'token_storage.dart';
 import 'auth_service.dart';
-import 'dart:io' show Platform;
 
 class ApiClient {
   
@@ -17,6 +15,7 @@ class ApiClient {
   static final String FILE_BASE_URL = 'http://$HOST_IP:$API_PORT'; 
 
   final Dio dio;
+  // ignore: unused_field
   final Dio _authDio;
   final TokenStorage _storage;
   final AuthService _authService;
@@ -95,7 +94,6 @@ class ApiClient {
             final newAccessToken = await _storage.readAccessToken();
             if (newAccessToken != null) {
               options.headers['Authorization'] = 'Bearer $newAccessToken';
-              // Gọi lại yêu cầu API gốc với token mới
               final clonedResponse = await dio.fetch(options);
               return handler.resolve(clonedResponse);
             }

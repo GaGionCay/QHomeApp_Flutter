@@ -126,7 +126,7 @@ class _BillPaidListScreenState extends State<BillPaidListScreen>
                                     ),
                                   ),
                                   Text(
-                                    'Tháng ${bill.month}',
+                                    'Tháng ${bill.billingMonth}',
                                     style: TextStyle(
                                       color: Colors.grey.shade600,
                                     ),

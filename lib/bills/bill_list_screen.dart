@@ -149,7 +149,7 @@ class _BillListScreenState extends State<BillListScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  'Tháng ${bill.month}',
+                                  'Tháng ${bill.billingMonth}',
                                   style: const TextStyle(
                                     fontSize: 13,
                                     color: Colors.black54,
@@ -184,7 +184,7 @@ class _BillListScreenState extends State<BillListScreen> {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(
-                                      '✅ Đã thanh toán ${bill.billType.toLowerCase()} tháng ${bill.month}'),
+                                      '✅ Đã thanh toán ${bill.billType.toLowerCase()} tháng ${bill.billingMonth}'),
                                   behavior: SnackBarBehavior.floating,
                                 ),
                               );

@@ -352,7 +352,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   await Navigator.push(
                     context,
                     MaterialPageRoute(
-                        builder: (_) => NewsDetailScreen(id: n.id)),
+                        builder: (_) => NewsDetailScreen(news: {
+                              'id': n.id,
+                              'title': n.title,
+                              'summary': n.body,
+                              'publishAt': n.date.toIso8601String(),
+                              'receivedAt': '',
+                              'status': '',
+                              'coverImageUrl': '',
+                            })),
                   );
                 },
               ),

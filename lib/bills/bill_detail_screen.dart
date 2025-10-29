@@ -144,7 +144,7 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    'Tháng ${bill.month}',
+                                    'Tháng ${bill.billingMonth}',
                                     style: const TextStyle(
                                       fontSize: 14,
                                       color: Colors.black54,
@@ -157,7 +157,7 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
                         ),
                         const Divider(height: 24, thickness: 0.7),
                         _infoRow('Số tiền', _formatMoney(bill.amount)),
-                        _infoRow('Hạn thanh toán', _formatDate(bill.dueDate)),
+                        _infoRow('Hạn thanh toán', _formatDate(bill.paymentDate)),
                         _infoRow(
                           'Trạng thái',
                           bill.status == 'PAID'

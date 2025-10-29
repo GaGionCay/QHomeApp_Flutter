@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../auth/api_client.dart';
@@ -13,6 +15,8 @@ class NewsScreen extends StatefulWidget {
 
 class _NewsScreenState extends State<NewsScreen>
     with SingleTickerProviderStateMixin {
+  late final AnimationController _bellController;
+  late final Animation<double> _bellAnimation;
   final ApiClient _api = ApiClient();
   final AppEventBus _bus = AppEventBus();
 
@@ -22,8 +26,27 @@ class _NewsScreenState extends State<NewsScreen>
   @override
   void initState() {
     super.initState();
+    _bellController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+    _bellAnimation = Tween<double>(begin: -0.15, end: 0.15)
+        .chain(CurveTween(curve: Curves.elasticIn))
+        .animate(_bellController);
+    _bellController.repeat(reverse: true);
     _fetch();
-    _bus.on('news_update', (_) {
+    _bus.on('news_update', (data) {
+      try {
+        if (data is String) {
+          final parsed = jsonDecode(data);
+          debugPrint('📨 Parsed event data: $parsed');
+        } else if (data is Map) {
+          debugPrint('📨 Event data (Map): $data');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Parse error: $e');
+      }
+
       debugPrint('🔔 Nhận sự kiện news_update → reload NewsScreen');
       _fetch();
     });
@@ -60,8 +83,20 @@ class _NewsScreenState extends State<NewsScreen>
   }
 
   @override
+  void didUpdateWidget(covariant NewsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    bool hasUnread = items.any((n) => n['isRead'] != true && n['read'] != true);
+    if (hasUnread) {
+      _bellController.repeat(reverse: true);
+    } else {
+      _bellController.stop();
+    }
+  }
+
+  @override
   void dispose() {
     _bus.off('news_update');
+    _bellController.dispose();
     super.dispose();
   }
 
@@ -72,7 +107,7 @@ class _NewsScreenState extends State<NewsScreen>
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F9),
       appBar: AppBar(
-        title: const Text('Tin tức & Thông báo'),
+        title: const Text('Thông báo'),
         elevation: 2,
         backgroundColor: const Color(0xFF26A69A),
         foregroundColor: Colors.white,
@@ -104,6 +139,11 @@ class _NewsScreenState extends State<NewsScreen>
                                     .format(DateTime.parse(n['createdAt']))
                                 : '');
 
+                        // Lấy URL ảnh đầy đủ từ ApiClient
+                        final String? coverImageUrl = n['coverImageUrl'] != null
+                            ? ApiClient.fileUrl(n['coverImageUrl'])
+                            : null;
+
                         final String? uuid =
                             n['news_uuid']?.toString() ?? n['id']?.toString();
 
@@ -111,7 +151,8 @@ class _NewsScreenState extends State<NewsScreen>
                           duration: const Duration(milliseconds: 300),
                           margin: const EdgeInsets.only(bottom: 10),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color:
+                                isRead ? Colors.white : const Color(0xFFE0F2F1),
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               if (!isRead)
@@ -123,20 +164,47 @@ class _NewsScreenState extends State<NewsScreen>
                             ],
                           ),
                           child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 10),
-                            leading: CircleAvatar(
-                              radius: 22,
-                              backgroundColor: isRead
-                                  ? Colors.grey[300]
-                                  : const Color(0xFF26A69A).withOpacity(0.15),
-                              child: Icon(
-                                isRead
-                                    ? Icons.notifications_none
-                                    : Icons.notifications_active,
-                                color: isRead
-                                    ? Colors.grey[700]
-                                    : const Color(0xFF26A69A),
+                            contentPadding: const EdgeInsets.only(
+                                left: 16, top: 10, right: 16, bottom: 10),
+                            leading: Hero(
+                              tag: 'news_${n['id'] ?? n['newsUuid']}',
+                              child: Stack(
+                                alignment: Alignment.topRight,
+                                children: [
+                                  CircleAvatar(
+                                    radius: 26,
+                                    backgroundColor: Colors.white,
+                                    child: AnimatedBuilder(
+                                      animation: _bellController,
+                                      builder: (context, child) {
+                                        return Transform.rotate(
+                                          angle:
+                                              isRead ? 0 : _bellAnimation.value,
+                                          child: Icon(
+                                            isRead
+                                                ? Icons.notifications_none
+                                                : Icons.notifications_active,
+                                            color: const Color(0xFF26A69A),
+                                            size: 28,
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                  if (!isRead)
+                                    Positioned(
+                                      right: 2,
+                                      top: 2,
+                                      child: Container(
+                                        width: 10,
+                                        height: 10,
+                                        decoration: const BoxDecoration(
+                                          color: Colors.redAccent,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
                             title: Text(
@@ -149,56 +217,26 @@ class _NewsScreenState extends State<NewsScreen>
                                     : const Color(0xFF004D40),
                               ),
                             ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 4),
-                                Text(
-                                  n['summary'] ?? n['content'] ?? '',
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: Colors.grey[700],
-                                    fontSize: 13,
-                                    height: 1.4,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  date,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey[500],
-                                  ),
-                                ),
-                              ],
-                            ),
                             onTap: uuid == null
                                 ? null
                                 : () async {
-                                    // Cập nhật trạng thái đọc ngay trên UI
-                                    final index = items.indexWhere((e) =>
-                                        e['news_uuid']?.toString() == uuid);
-                                    if (index != -1) {
-                                      final updated = [...items];
-                                      updated[index] = {
-                                        ...updated[index],
-                                        'isRead': true
-                                      };
-                                      if (mounted) setState(() => items = updated);
-                                    }
-
-                                    // Gọi backend đánh dấu đã đọc (real-time)
                                     _markRead(uuid);
 
-                                    // Mở detail
-                                    await Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            NewsDetailScreen(id: uuid),
+                                    // Cập nhật lại trạng thái isRead ngay lập tức (tùy chọn)
+                                    setState(() {
+                                      n['isRead'] = true;
+                                      n['read'] = true;
+                                    });
+
+                                    Navigator.of(context).push(PageRouteBuilder(
+                                      transitionDuration:
+                                          const Duration(milliseconds: 500),
+                                      pageBuilder: (_, animation, __) =>
+                                          FadeTransition(
+                                        opacity: animation,
+                                        child: NewsDetailScreen(news: n),
                                       ),
-                                    );
+                                    ));
                                   },
                           ),
                         );
