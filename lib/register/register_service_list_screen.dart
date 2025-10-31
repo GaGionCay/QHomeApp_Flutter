@@ -3,8 +3,10 @@ import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:animations/animations.dart';
+import 'dart:developer';
 import '../auth/api_client.dart';
 import '../models/register_service_request.dart';
+import '../bills/vnpay_payment_screen.dart';
 
 class RegisterServiceListScreen extends StatefulWidget {
   const RegisterServiceListScreen({super.key});
@@ -142,6 +144,103 @@ class _RegisterServiceListScreenState extends State<RegisterServiceListScreen>
         ],
       ),
     );
+  }
+
+  Widget _buildPaymentStatusChip(String? paymentStatus) {
+    Color color;
+    IconData icon;
+    String label;
+
+    if (paymentStatus == 'PAID') {
+      color = Colors.green.shade600;
+      icon = Icons.payment;
+      label = 'Đã thanh toán';
+    } else {
+      color = Colors.red.shade600;
+      icon = Icons.payment_outlined;
+      label = 'Chưa thanh toán';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+                color: color, fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _payRegistration(RegisterServiceRequest registration) async {
+    if (registration.id == null) return;
+
+    try {
+      log('💳 [RegisterList] Tạo VNPAY URL cho registration: ${registration.id}');
+      
+      // Tạo VNPAY payment URL cho registration đã tồn tại
+      final res = await api.dio.post('/register-service/${registration.id}/vnpay-url');
+      
+      if (res.statusCode != 200) {
+        throw Exception(res.data['message'] ?? 'Lỗi tạo URL thanh toán');
+      }
+
+      final paymentUrl = res.data['paymentUrl'] as String;
+      
+      // Mở VNPAY payment screen
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => VnpayPaymentScreen(
+            paymentUrl: paymentUrl,
+            billId: 0,
+            registrationId: registration.id,
+          ),
+        ),
+      );
+
+      // Refresh danh sách sau khi thanh toán
+      if (mounted) {
+        if (result is Map && result['responseCode'] == '00') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Thanh toán thành công!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _refresh();
+        } else if (result == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ Thanh toán đã bị hủy'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          _refresh();
+        }
+      }
+    } catch (e) {
+      log('❌ [RegisterList] Lỗi thanh toán: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi thanh toán: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _goToPage(int page) {
@@ -316,7 +415,13 @@ class _RegisterServiceListScreenState extends State<RegisterServiceListScreen>
                 const SizedBox(height: 4),
                 Text('${s.vehicleBrand ?? '—'} - ${s.vehicleColor ?? '—'}'),
                 const SizedBox(height: 4),
-                _buildStatusChip(s.status),
+                Row(
+                  children: [
+                    _buildStatusChip(s.status),
+                    const SizedBox(width: 8),
+                    _buildPaymentStatusChip(s.paymentStatus),
+                  ],
+                ),
                 const SizedBox(height: 6),
                 Text(
                   'Đăng ký: ${formatDate(s.createdAt)}',
@@ -361,7 +466,33 @@ class _RegisterServiceListScreenState extends State<RegisterServiceListScreen>
                 fontSize: 20, fontWeight: FontWeight.bold, color: Colors.teal),
           ),
           const SizedBox(height: 8),
-          _buildStatusChip(s.status),
+          Row(
+            children: [
+              _buildStatusChip(s.status),
+              const SizedBox(width: 8),
+              _buildPaymentStatusChip(s.paymentStatus),
+            ],
+          ),
+          // Hiển thị button thanh toán nếu chưa thanh toán
+          if (s.paymentStatus == 'UNPAID') ...[
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _payRegistration(s),
+                icon: const Icon(Icons.payment),
+                label: const Text('Thanh toán (30.000 VNĐ)'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF26A69A),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ],
           const Divider(height: 30),
           _detailRow('Hãng xe', s.vehicleBrand),
           _detailRow('Màu xe', s.vehicleColor),

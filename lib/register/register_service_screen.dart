@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -30,10 +31,12 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
   String _vehicleType = 'Car';
   bool _submitting = false;
   bool _showList = false;
-  bool _confirmed = false;
-  String? _editingField;
+  bool _confirmed = false; // Đã confirm để check thông tin
+  String? _editingField; // Field đang được edit
+  bool _hasEditedAfterConfirm = false; // Đã edit sau khi confirm
   final ImagePicker _picker = ImagePicker();
   List<String> _uploadedImageUrls = [];
+  static const int maxImages = 6; // Giới hạn tối đa 6 ảnh
   
   // Auto-save tracking
   bool _hasUnsavedChanges = false;
@@ -202,13 +205,52 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
 
   // ==================== IMAGE UPLOAD ====================
   Future<void> _pickMultipleImages() async {
+    // Kiểm tra số lượng ảnh hiện tại
+    final remainingSlots = maxImages - _uploadedImageUrls.length;
+    if (remainingSlots <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⚠️ Bạn chỉ được tải tối đa $maxImages ảnh'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
     final picked = await _picker.pickMultiImage(imageQuality: 75);
     if (picked.isEmpty) return;
-    await _uploadImages(picked);
+
+    // Giới hạn số lượng ảnh có thể chọn
+    final imagesToUpload = picked.take(remainingSlots).toList();
+    if (picked.length > remainingSlots && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('⚠️ Chỉ có thể tải thêm $remainingSlots ảnh (tối đa $maxImages ảnh). Đã chọn $remainingSlots ảnh đầu tiên.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    }
+
+    await _uploadImages(imagesToUpload);
     await _autoSave();
   }
 
   Future<void> _takePhoto() async {
+    // Kiểm tra số lượng ảnh hiện tại
+    if (_uploadedImageUrls.length >= maxImages) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⚠️ Bạn chỉ được tải tối đa $maxImages ảnh'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
     final photo = await _picker.pickImage(source: ImageSource.camera, imageQuality: 80);
     if (photo != null) {
       await _uploadImages([photo]);
@@ -231,7 +273,7 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Đã tải lên ${urls.length} ảnh thành công!')),
+          SnackBar(content: Text('Đã tải lên ${urls.length} ảnh thành công! (${_uploadedImageUrls.length}/$maxImages)')),
         );
       }
     } catch (e) {
@@ -263,8 +305,6 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
         'imageUrls': _uploadedImageUrls,
       };
 
-  bool _isEditable(String field) => !_confirmed || _editingField == field;
-
   void _removeImageAt(int i) {
     setState(() => _uploadedImageUrls.removeAt(i));
     _autoSave();
@@ -277,39 +317,135 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
 
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Xác nhận đăng ký'),
-        content: const Text(
-          'Bạn chắc chắn với thông tin đăng ký xe này chứ?\n\n'
-          'Sau khi xác nhận, bạn sẽ cần thanh toán phí đăng ký 30.000 VNĐ.',
+    // Kiểm tra số lượng ảnh
+    if (_uploadedImageUrls.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Vui lòng tải lên ít nhất 1 ảnh xe'),
+          backgroundColor: Colors.orange,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Hủy'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Xác nhận', style: TextStyle(color: Colors.teal)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      setState(() => _confirmed = true);
-      await _saveAndPay();
+      );
+      return;
     }
+
+    // Nếu chưa confirm lần nào → hiển thị thông báo check lại thông tin
+    if (!_confirmed) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Vui lòng check lại thông tin'),
+          content: const Text(
+            'Vui lòng kiểm tra lại các thông tin đã nhập.\n\n'
+            'Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi bạn double-click vào field.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Hủy'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Đã kiểm tra', style: TextStyle(color: Colors.teal)),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm == true) {
+        setState(() {
+          _confirmed = true;
+          _editingField = null; // Reset editing field
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Vui lòng kiểm tra lại thông tin. Double-click vào field để chỉnh sửa.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+      return;
+    }
+
+    // Đã confirm rồi:
+    // - Nếu đã edit sau khi confirm → hiển thị lại thông báo check
+    // - Nếu chưa edit → cho thanh toán luôn
+    if (_hasEditedAfterConfirm) {
+      // User đã edit → yêu cầu check lại
+      final confirmAgain = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Vui lòng check lại thông tin'),
+          content: const Text(
+            'Bạn đã chỉnh sửa thông tin. Vui lòng kiểm tra lại các thông tin đã nhập.\n\n'
+            'Nếu cần chỉnh sửa, double-click vào field.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Hủy'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Đã kiểm tra', style: TextStyle(color: Colors.teal)),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmAgain == true) {
+        setState(() {
+          _hasEditedAfterConfirm = false; // Reset flag
+          _editingField = null; // Reset editing field
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Vui lòng kiểm tra lại thông tin. Double-click vào field để chỉnh sửa.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+      return;
+    }
+
+    // Không có edit → cho thanh toán luôn
+    await _saveAndPay();
   }
 
   Future<void> _requestEditField(String field) async {
-    if (!_confirmed) return;
+    if (!_confirmed) return; // Chưa confirm thì không cần hỏi
+    
+    // Đang edit field khác thì hỏi trước
+    if (_editingField != null && _editingField != field) {
+      final wantSwitch = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Đang chỉnh sửa field khác'),
+          content: const Text('Bạn đang chỉnh sửa một field khác. Bạn có muốn chuyển sang field này không?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Hủy'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Chuyển', style: TextStyle(color: Colors.teal)),
+            ),
+          ],
+        ),
+      );
+      if (wantSwitch != true) return;
+    }
+
     final wantEdit = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Sửa thông tin'),
+        title: Text('Chỉnh sửa ${_getFieldLabel(field)}'),
         content: const Text('Bạn có muốn chỉnh sửa thông tin này không?'),
         actions: [
           TextButton(
@@ -318,53 +454,212 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('OK', style: TextStyle(color: Colors.teal)),
+            child: const Text('Có', style: TextStyle(color: Colors.teal)),
           ),
         ],
       ),
     );
+    
     if (wantEdit == true) {
-      setState(() => _editingField = field);
+      setState(() {
+        _editingField = field;
+        _hasEditedAfterConfirm = true; // Ghi nhớ đã edit
+      });
     }
   }
+
+  String _getFieldLabel(String fieldKey) {
+    switch (fieldKey) {
+      case 'license':
+        return 'biển số xe';
+      case 'brand':
+        return 'hãng xe';
+      case 'color':
+        return 'màu xe';
+      case 'note':
+        return 'ghi chú';
+      default:
+        return 'thông tin';
+    }
+  }
+
+  bool _canRemoveImage(int index) {
+    // Có thể xóa ảnh nếu:
+    // - Chưa confirm, hoặc
+    // - Đang edit ảnh đó (double click)
+    return !_confirmed || _editingField == 'image_$index';
+  }
+
+  Future<void> _requestDeleteImage(int index) async {
+    if (!_confirmed) {
+      // Chưa confirm thì cho xóa luôn
+      _removeImageAt(index);
+      return;
+    }
+
+    // Đã confirm thì hỏi trước
+    final wantDelete = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Xóa ảnh'),
+        content: const Text('Bạn có muốn xóa ảnh này không?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Xóa', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (wantDelete == true) {
+      setState(() {
+        _editingField = 'image_$index';
+        _hasEditedAfterConfirm = true;
+      });
+      _removeImageAt(index);
+      // Sau khi xóa, reset editingField sau 1 giây
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          setState(() => _editingField = null);
+        }
+      });
+    }
+  }
+
+  bool _isEditable(String field) => !_confirmed || _editingField == field;
 
   // ==================== SAVE & PAYMENT ====================
   Future<void> _saveAndPay() async {
     setState(() => _submitting = true);
+    int? registrationId; // Lưu để có thể hủy nếu user out
+    
     try {
       final payload = _collectPayload();
-      final res = await api.dio.post('/register-service', data: payload);
       
-      final registrationId = res.data['id'] as int;
+      // Tạo temporary registration và VNPAY URL cùng lúc
+      // Chỉ lưu vào DB khi thanh toán thành công
+      final res = await api.dio.post('/register-service/vnpay-url', data: payload);
       
-      if (mounted) {
-        // Tạo VNPAY payment URL
-        final paymentRes = await api.dio.post('/register-service/$registrationId/vnpay-url');
-        final paymentUrl = paymentRes.data['paymentUrl'] as String;
-        
+      registrationId = res.data['registrationId'] as int?;
+      final paymentUrl = res.data['paymentUrl'] as String;
+      
+      if (mounted && registrationId != null) {
         // Mở VNPAY payment screen
-        await Navigator.push(
+        final result = await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => VnpayPaymentScreen(
               paymentUrl: paymentUrl,
-              billId: 0, // Không dùng billId, dùng registrationId
+              billId: 0, // Không dùng billId
+              registrationId: registrationId, // Truyền registrationId để có thể hủy
             ),
           ),
         );
         
-        // Không cần clear form ở đây vì sẽ được xử lý trong callback
+        // Kiểm tra kết quả thanh toán
+        if (mounted) {
+          if (result == null) {
+            // User đã bấm back/out khỏi payment screen → update payment_status thành UNPAID
+            // Registration vẫn được giữ lại trong DB để thanh toán sau
+            await _cancelRegistration(registrationId);
+            
+            // Hiển thị thông báo thanh toán bị hủy
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('⚠️ Thanh toán đã bị hủy. Bạn có thể thanh toán lại từ danh sách thẻ xe.'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 4),
+              ),
+            );
+          } else if (result is Map) {
+            final responseCode = result['responseCode'] as String?;
+            debugPrint('💰 [RegisterService] Payment result - ResponseCode: $responseCode, Result: $result');
+            
+            if (responseCode == '00') {
+              // Thanh toán thành công
+              debugPrint('✅ [RegisterService] Payment successful!');
+              
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('✅ Đăng ký và thanh toán thành công!'),
+                  backgroundColor: Colors.green,
+                  duration: Duration(seconds: 3),
+                ),
+              );
+              
+              // Clear form và reset state
+              _clearForm();
+              _clearSavedData();
+              
+              // Navigate về màn hình trước (danh sách thẻ xe) sau một chút delay
+              if (mounted) {
+                Future.delayed(const Duration(milliseconds: 500), () {
+                  if (mounted) {
+                    Navigator.pop(context, true); // Return true để parent screen biết đã thành công
+                  }
+                });
+              }
+            } else {
+              // Thanh toán thất bại
+              debugPrint('❌ [RegisterService] Payment failed - ResponseCode: $responseCode');
+              
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('❌ Thanh toán thất bại (Code: $responseCode)'),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+            }
+          } else {
+            debugPrint('⚠️ [RegisterService] Unexpected result type: ${result.runtimeType}');
+          }
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Lỗi: $e')),
         );
-        setState(() => _confirmed = false);
+        
+        // Nếu đã tạo temporary registration nhưng có lỗi → hủy
+        if (registrationId != null) {
+          await _cancelRegistration(registrationId);
+        }
       }
     } finally {
       setState(() => _submitting = false);
     }
+  }
+
+  Future<void> _cancelRegistration(int registrationId) async {
+    try {
+      log('🗑️ [RegisterService] Hủy registration: $registrationId');
+      await api.dio.delete('/register-service/$registrationId/cancel');
+      log('✅ [RegisterService] Đã hủy registration thành công');
+    } catch (e) {
+      log('❌ [RegisterService] Lỗi khi hủy registration: $e');
+    }
+  }
+
+  void _clearForm() {
+    setState(() {
+      _licenseCtrl.clear();
+      _brandCtrl.clear();
+      _colorCtrl.clear();
+      _noteCtrl.clear();
+      _vehicleType = 'Car';
+      _uploadedImageUrls.clear();
+      _confirmed = false;
+      _editingField = null;
+      _hasEditedAfterConfirm = false;
+      _hasUnsavedChanges = false;
+    });
   }
 
   // ==================== UI ====================
@@ -475,10 +770,16 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                                     DropdownMenuItem(value: 'Car', child: Text('Ô tô')),
                                     DropdownMenuItem(value: 'Motorbike', child: Text('Xe máy')),
                                   ],
-                                  onChanged: _confirmed
+                                  onChanged: (_confirmed && _editingField != 'vehicleType')
                                       ? null
                                       : (v) {
-                                          setState(() => _vehicleType = v ?? 'Car');
+                                          setState(() {
+                                            _vehicleType = v ?? 'Car';
+                                            if (_confirmed) {
+                                              _editingField = 'vehicleType';
+                                              _hasEditedAfterConfirm = true;
+                                            }
+                                          });
                                           _autoSave();
                                         },
                                 ),
@@ -521,9 +822,22 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                             ),
                           ),
                           const SizedBox(height: 24),
-                          const Text(
-                            'Ảnh xe của bạn',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Ảnh xe của bạn',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                              ),
+                              Text(
+                                '${_uploadedImageUrls.length}/$maxImages',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: _uploadedImageUrls.length >= maxImages ? Colors.orange : Colors.grey.shade700,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 10),
                           _uploadedImageUrls.isEmpty
@@ -539,68 +853,97 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                                   spacing: 8,
                                   runSpacing: 8,
                                   children: List.generate(_uploadedImageUrls.length, (i) {
-                                    return Stack(
-                                      children: [
-                                        ClipRRect(
-                                          borderRadius: BorderRadius.circular(10),
-                                          child: Image.network(
-                                            _makeFullImageUrl(_uploadedImageUrls[i]),
-                                            width: 110,
-                                            height: 110,
-                                            fit: BoxFit.cover,
-                                          ),
-                                        ),
-                                        Positioned(
-                                          right: 0,
-                                          top: 0,
-                                          child: GestureDetector(
-                                            onTap: () => _removeImageAt(i),
-                                            child: Container(
-                                              decoration: const BoxDecoration(
-                                                color: Colors.black54,
-                                                shape: BoxShape.circle,
+                                    final canRemove = _canRemoveImage(i);
+                                    return GestureDetector(
+                                      onDoubleTap: () => _requestDeleteImage(i),
+                                      child: Stack(
+                                        children: [
+                                          ClipRRect(
+                                            borderRadius: BorderRadius.circular(10),
+                                            child: Opacity(
+                                              opacity: canRemove ? 1.0 : 0.7,
+                                              child: Image.network(
+                                                _makeFullImageUrl(_uploadedImageUrls[i]),
+                                                width: 110,
+                                                height: 110,
+                                                fit: BoxFit.cover,
                                               ),
-                                              padding: const EdgeInsets.all(4),
-                                              child: const Icon(Icons.close, size: 16, color: Colors.white),
                                             ),
                                           ),
-                                        ),
-                                      ],
+                                          // Chỉ hiển thị close button khi có thể xóa
+                                          if (canRemove)
+                                            Positioned(
+                                              right: 0,
+                                              top: 0,
+                                              child: Container(
+                                                decoration: const BoxDecoration(
+                                                  color: Colors.black54,
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                padding: const EdgeInsets.all(4),
+                                                child: const Icon(Icons.close, size: 16, color: Colors.white),
+                                              ),
+                                            ),
+                                          // Hiển thị hint khi đã confirm và không thể xóa
+                                          if (_confirmed && !canRemove)
+                                            Positioned(
+                                              bottom: 0,
+                                              left: 0,
+                                              right: 0,
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.black54,
+                                                  borderRadius: const BorderRadius.only(
+                                                    bottomLeft: Radius.circular(10),
+                                                    bottomRight: Radius.circular(10),
+                                                  ),
+                                                ),
+                                                child: const Text(
+                                                  'Double-tap để xóa',
+                                                  textAlign: TextAlign.center,
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 9,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
                                     );
                                   }),
                                 ),
                           const SizedBox(height: 16),
                           Row(
                             children: [
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: _confirmed
-                                      ? null
-                                      : _submitting
-                                          ? null
-                                          : _pickMultipleImages,
-                                  icon: const Icon(Icons.photo_library),
-                                  label: const Text('Chọn ảnh'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.teal.shade400,
-                                  ),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _confirmed || _submitting || _uploadedImageUrls.length >= maxImages
+                                    ? null
+                                    : _pickMultipleImages,
+                                icon: const Icon(Icons.photo_library),
+                                label: Text(_uploadedImageUrls.length >= maxImages ? 'Đã đủ ($maxImages ảnh)' : 'Chọn ảnh'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.teal.shade400,
+                                  disabledBackgroundColor: Colors.grey.shade300,
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: _confirmed
-                                      ? null
-                                      : _submitting
-                                          ? null
-                                          : _takePhoto,
-                                  icon: const Icon(Icons.camera_alt),
-                                  label: const Text('Chụp ảnh'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.teal.shade600,
-                                  ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _confirmed || _submitting || _uploadedImageUrls.length >= maxImages
+                                    ? null
+                                    : _takePhoto,
+                                icon: const Icon(Icons.camera_alt),
+                                label: Text(_uploadedImageUrls.length >= maxImages ? 'Đã đủ ($maxImages ảnh)' : 'Chụp ảnh'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.teal.shade600,
+                                  disabledBackgroundColor: Colors.grey.shade300,
                                 ),
                               ),
+                            ),
                             ],
                           ),
                           const SizedBox(height: 30),
@@ -623,9 +966,13 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                                       color: Colors.white,
                                       strokeWidth: 2,
                                     )
-                                  : const Text(
-                                      'Đăng ký và thanh toán (30.000 VNĐ)',
-                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                  : Text(
+                                      _confirmed
+                                          ? (_hasEditedAfterConfirm
+                                              ? 'Xác nhận và thanh toán'
+                                              : 'Đăng ký và thanh toán (30.000 VNĐ)')
+                                          : 'Đăng ký và thanh toán (30.000 VNĐ)',
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                                     ),
                             ),
                           ),
@@ -648,13 +995,14 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
     int maxLines = 1,
   }) {
     final editable = _isEditable(fieldKey);
+    final isEditing = _editingField == fieldKey;
 
     return GestureDetector(
       onDoubleTap: () => _requestEditField(fieldKey),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         decoration: BoxDecoration(
-          boxShadow: _editingField == fieldKey
+          boxShadow: isEditing
               ? [
                   BoxShadow(
                     color: Colors.teal.withOpacity(0.4),
@@ -674,11 +1022,49 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
               readOnly: !editable,
               validator: validator,
               maxLines: maxLines,
+              onTap: () {
+                // Nếu đang edit field này, không làm gì
+                if (isEditing) return;
+                
+                // Nếu đã confirm nhưng chưa được phép edit, hỏi user
+                if (_confirmed && !editable) {
+                  _requestEditField(fieldKey);
+                }
+              },
+              onEditingComplete: () {
+                // Khi user nhấn Done/Enter, finish editing
+                if (isEditing && mounted) {
+                  FocusScope.of(context).unfocus();
+                  setState(() {
+                    _editingField = null;
+                  });
+                  _autoSave();
+                }
+              },
+              onFieldSubmitted: (_) {
+                // Khi user submit field, finish editing
+                if (isEditing && mounted) {
+                  FocusScope.of(context).unfocus();
+                  setState(() {
+                    _editingField = null;
+                  });
+                  _autoSave();
+                }
+              },
+              onChanged: (value) {
+                // Ghi nhớ đã edit khi user thay đổi giá trị
+                if (isEditing) {
+                  _autoSave();
+                }
+              },
               decoration: InputDecoration(
                 labelText: label,
                 prefixIcon: Icon(icon),
                 filled: true,
                 fillColor: editable ? Colors.white : Colors.grey.shade200,
+                hintText: _confirmed && !editable ? 'Double-click để chỉnh sửa' : null,
+                helperText: isEditing ? 'Đang chỉnh sửa... (Nhấn Done để hoàn tất)' : null,
+                helperMaxLines: 2,
               ),
             ),
           ),
