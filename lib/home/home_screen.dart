@@ -17,6 +17,7 @@ import '../news/news_screen.dart';
 import '../profile/profile_service.dart';
 import '../register/register_service_list_screen.dart';
 import '../websocket/web_socket_service.dart';
+import '../invoices/invoice_list_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final void Function(int)? onNavigateToTab;
@@ -527,7 +528,22 @@ class _HomeScreenState extends State<HomeScreen> {
         'onTap': () => Navigator.push(context,
             MaterialPageRoute(builder: (_) => const BillPaidListScreen())),
       },
-      
+      {
+        'icon': Icons.description,
+        'label': 'Hóa đơn mới',
+        'color': Colors.purple,
+        'onTap': () {
+          // TODO: Lấy unitId từ profile hoặc API
+          // Tạm thời hardcode để test - BẠN CẦN THAY ĐỔI unitId này
+          const testUnitId = '550e8400-e29b-41d4-a716-446655440011';
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => InvoiceListScreen(unitId: testUnitId),
+            ),
+          );
+        },
+      },
     ];
 
     return Row(
