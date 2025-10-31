@@ -533,13 +533,10 @@ class _HomeScreenState extends State<HomeScreen> {
         'label': 'Hóa đơn mới',
         'color': Colors.purple,
         'onTap': () {
-          // TODO: Lấy unitId từ profile hoặc API
-          // Tạm thời hardcode để test - BẠN CẦN THAY ĐỔI unitId này
-          const testUnitId = '550e8400-e29b-41d4-a716-446655440011';
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => InvoiceListScreen(unitId: testUnitId),
+              builder: (_) => const InvoiceListScreen(),
             ),
           );
         },

@@ -7,8 +7,43 @@ class InvoiceService {
   
   InvoiceService(this.apiClient);
 
-  /// Lấy danh sách invoice lines theo unitId
+  /// Lấy danh sách invoice lines của user đang đăng nhập
+  /// GET /api/invoices/me
+  /// Lấy unitId từ user profile trong database
+  Future<List<InvoiceLineResponseDto>> getMyInvoices() async {
+    try {
+      log('🔍 [InvoiceService] Lấy invoices của user hiện tại');
+      
+      final res = await apiClient.dio.get('/invoices/me');
+      
+      if (res.statusCode != 200) {
+        log('⚠️ API trả mã ${res.statusCode}: ${res.data}');
+        throw Exception(
+            res.data['message'] ?? 'Server trả lỗi ${res.statusCode}');
+      }
+
+      final data = res.data['data'] as List?;
+      if (data == null || data.isEmpty) {
+        log('ℹ️ Không có invoice nào cho user hiện tại');
+        return [];
+      }
+
+      final invoices = (data as List)
+          .map((json) => InvoiceLineResponseDto.fromJson(json))
+          .toList();
+
+      log('✅ [InvoiceService] Lấy được ${invoices.length} invoices cho user hiện tại');
+      
+      return invoices;
+    } catch (e, s) {
+      log('❌ [InvoiceService] Lỗi getMyInvoices(): $e\n$s');
+      rethrow;
+    }
+  }
+
+  /// Lấy danh sách invoice lines theo unitId (deprecated - nên dùng getMyInvoices)
   /// GET /api/invoices/unit/{unitId}
+  @Deprecated('Use getMyInvoices() instead')
   Future<List<InvoiceLineResponseDto>> getInvoiceLinesByUnitId(String unitId) async {
     try {
       log('🔍 [InvoiceService] Lấy invoices cho unitId: $unitId');

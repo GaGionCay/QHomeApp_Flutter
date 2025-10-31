@@ -9,12 +9,7 @@ import 'invoice_service.dart';
 import '../bills/vnpay_payment_screen.dart';
 
 class InvoiceListScreen extends StatefulWidget {
-  final String unitId;
-  
-  const InvoiceListScreen({
-    super.key,
-    required this.unitId,
-  });
+  const InvoiceListScreen({super.key});
 
   @override
   State<InvoiceListScreen> createState() => _InvoiceListScreenState();
@@ -30,7 +25,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
   void initState() {
     super.initState();
     _service = InvoiceService(ApiClient());
-    _futureInvoices = _service.getInvoiceLinesByUnitId(widget.unitId);
+    _futureInvoices = _service.getMyInvoices();
     _listenForPaymentResult();
   }
 
@@ -55,7 +50,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
             ),
           );
           setState(() {
-            _futureInvoices = _service.getInvoiceLinesByUnitId(widget.unitId);
+            _futureInvoices = _service.getMyInvoices();
           });
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -196,7 +191,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
         // Refresh danh sách sau khi thanh toán
         if (result != null && mounted) {
           setState(() {
-            _futureInvoices = _service.getInvoiceLinesByUnitId(widget.unitId);
+            _futureInvoices = _service.getMyInvoices();
           });
         }
       }
@@ -248,8 +243,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                   ElevatedButton(
                     onPressed: () {
                       setState(() {
-                        _futureInvoices =
-                            _service.getInvoiceLinesByUnitId(widget.unitId);
+                        _futureInvoices = _service.getMyInvoices();
                       });
                     },
                     child: const Text('Thử lại'),
@@ -272,8 +266,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
           return RefreshIndicator(
             onRefresh: () async {
               setState(() {
-                _futureInvoices =
-                    _service.getInvoiceLinesByUnitId(widget.unitId);
+                _futureInvoices = _service.getMyInvoices();
               });
             },
             child: ListView.builder(
