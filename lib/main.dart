@@ -4,7 +4,9 @@ import 'auth/auth_provider.dart';
 import 'common/main_shell.dart';
 import 'splash_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
   runApp(
     ChangeNotifierProvider(
       create: (_) => AuthProvider(),
@@ -12,6 +14,7 @@ void main() {
     ),
   );
 }
+
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});

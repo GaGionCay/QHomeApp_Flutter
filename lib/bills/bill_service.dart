@@ -1,17 +1,15 @@
 import 'dart:developer';
+import 'package:url_launcher/url_launcher.dart';
+
 import '../auth/api_client.dart';
-// import các DTO nếu chúng ở file riêng
-// import 'bill_dtos.dart'; 
 
 class BillService {
   final ApiClient apiClient;
   BillService(this.apiClient);
 
-  /// Lấy danh sách hóa đơn chưa thanh toán.
   Future<List<BillDto>> getUnpaidBills() async {
     try {
       final res = await apiClient.dio.get('/bills/unpaid');
-      // API trả về Map<String, dynamic> với key 'data' chứa List
       return (res.data['data'] as List)
           .map((json) => BillDto.fromJson(json))
           .toList();
@@ -21,7 +19,6 @@ class BillService {
     }
   }
 
-  /// Lấy danh sách hóa đơn đã thanh toán.
   Future<List<BillDto>> getPaidBills() async {
     try {
       final res = await apiClient.dio.get('/bills/paid');
@@ -34,12 +31,9 @@ class BillService {
     }
   }
 
-  /// Thanh toán hóa đơn theo ID.
-  /// Spring Controller trả về Bill, nên Service nên trả về BillDto đã thanh toán.
   Future<BillDto> payBill(int billId) async {
     try {
       final res = await apiClient.dio.post('/bills/$billId/pay');
-      // Controller trả về Map có key 'data' chứa đối tượng Bill đã thanh toán
       return BillDto.fromJson(res.data['data']);
     } catch (e, s) {
       log('❌ Lỗi payBill($billId): $e\n$s');
@@ -47,11 +41,9 @@ class BillService {
     }
   }
 
-  /// Lấy chi tiết hóa đơn theo ID.
   Future<BillDto> getBillDetail(int id) async {
     try {
       final res = await apiClient.dio.get('/bills/$id');
-      // Controller trả về Map có key 'data' chứa đối tượng Bill
       return BillDto.fromJson(res.data['data']);
     } catch (e, s) {
       log('❌ Lỗi getBillDetail($id): $e\n$s');
@@ -59,18 +51,15 @@ class BillService {
     }
   }
 
-  /// Lấy thống kê hóa đơn theo tháng và loại.
-  Future<List<BillStatistics>> getStatistics({String billType = 'Tất cả'}) async {
+  Future<List<BillStatistics>> getStatistics(
+      {String billType = 'Tất cả'}) async {
     try {
-      // mappedType là null nếu là 'Tất cả', API Spring Controller sẽ dùng defaultValue='ALL'
-      final mappedType = _mapBillType(billType); 
-      
+      final mappedType = _mapBillType(billType);
+
       final res = await apiClient.dio.get(
         '/bills/statistics',
         queryParameters: {
           if (mappedType != null) 'billType': mappedType,
-          // Nếu mappedType là null, query parameter 'billType' sẽ không được gửi, 
-          // và Controller sẽ dùng defaultValue "ALL".
         },
       );
 
@@ -88,8 +77,8 @@ class BillService {
     }
   }
 
-  /// Lấy danh sách hóa đơn theo tháng và loại.
-  Future<List<BillDto>> getBillsByMonthAndType(String month, {String billType = 'Tất cả'}) async {
+  Future<List<BillDto>> getBillsByMonthAndType(String month,
+      {String billType = 'Tất cả'}) async {
     try {
       final mappedType = _mapBillType(billType);
       log('📡 [BillService] Fetching bills => month: $month | type: $mappedType');
@@ -99,14 +88,13 @@ class BillService {
         queryParameters: {
           'month': month,
           if (mappedType != null) 'billType': mappedType,
-          // Nếu mappedType là null, billType sẽ không được gửi
         },
       );
 
       if (res.statusCode != 200) {
         log('⚠️ API trả mã ${res.statusCode}: ${res.data}');
-        // Nếu API trả lỗi (400), ném Exception với message từ server nếu có
-        throw Exception(res.data['message'] ?? 'Server trả lỗi ${res.statusCode}');
+        throw Exception(
+            res.data['message'] ?? 'Server trả lỗi ${res.statusCode}');
       }
 
       final data = res.data['data'] as List?;
@@ -122,7 +110,40 @@ class BillService {
     }
   }
 
-  /// Hàm ánh xạ loại hóa đơn từ ngôn ngữ người dùng sang enum/String của API.
+  Future<String> createVnpayPaymentUrl(int billId) async {
+    try {
+      final res = await apiClient.dio.post('/bills/$billId/vnpay-url');
+      log('📡 Response tạo URL: ${res.data}');
+
+      if (res.statusCode == 200 && res.data['paymentUrl'] != null) {
+        return res.data['paymentUrl'];
+      } else {
+        throw Exception(res.data['message'] ?? 'Không thể tạo URL thanh toán');
+      }
+    } catch (e, s) {
+      log('❌ Lỗi tạo URL: $e\n$s');
+      rethrow;
+    }
+  }
+
+  Future<void> openVnpayPayment(int billId) async {
+    try {
+      log('🔄 Đang tạo URL thanh toán cho billId: $billId...');
+      final url = await createVnpayPaymentUrl(billId);
+
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        log('🌐 Đã mở trình duyệt để thanh toán');
+      } else {
+        throw Exception('Không thể mở liên kết thanh toán');
+      }
+    } catch (e, s) {
+      log('❌ Lỗi khi mở VNPAY: $e\n$s');
+      rethrow;
+    }
+  }
+
   String? _mapBillType(String type) {
     switch (type.toUpperCase()) {
       case 'ĐIỆN':
@@ -139,23 +160,22 @@ class BillService {
       case 'TẤT CẢ':
       case 'TAT CA':
       case 'ALL':
-        return null; // Trả về null để không thêm query param, API sẽ dùng ALL mặc định.
+        return null;
       default:
         return null;
     }
   }
 }
 
-// --- DTO Cập Nhật ---
 
 class BillDto {
   final int id;
   final String billType;
   final double amount;
   final String status;
-  final String billingMonth; // Đổi tên biến để khớp hơn với JSON
-  final String paymentDate; // Đổi tên biến để khớp hơn với JSON
-  final String? description; // Thêm trường có thể có
+  final String billingMonth; 
+  final String paymentDate; 
+  final String? description; 
 
   BillDto({
     required this.id,
@@ -170,12 +190,14 @@ class BillDto {
   factory BillDto.fromJson(Map<String, dynamic> json) {
     return BillDto(
       // ID từ Long (Java) sang int (Dart)
-      id: (json['id'] is String) ? int.tryParse(json['id']) ?? 0 : json['id'] ?? 0, 
+      id: (json['id'] is String)
+          ? int.tryParse(json['id']) ?? 0
+          : json['id'] ?? 0,
       billType: json['billType'] ?? '',
       amount: (json['amount'] is num) ? json['amount'].toDouble() : 0.0,
       status: json['status'] ?? 'UNKNOWN',
-      billingMonth: json['billingMonth'] ?? '', // Khớp với tên trường trong API
-      paymentDate: json['paymentDate'] ?? '', // Khớp với tên trường trong API
+      billingMonth: json['billingMonth'] ?? '',
+      paymentDate: json['paymentDate'] ?? '',
       description: json['description'],
     );
   }
@@ -196,7 +218,8 @@ class BillStatistics {
     return BillStatistics(
       month: json['month'] ?? '',
       billType: json['billType'] ?? '',
-      totalAmount: (json['totalAmount'] is num) ? json['totalAmount'].toDouble() : 0.0,
+      totalAmount:
+          (json['totalAmount'] is num) ? json['totalAmount'].toDouble() : 0.0,
     );
   }
 }

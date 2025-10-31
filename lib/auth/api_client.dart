@@ -1,18 +1,20 @@
 import 'package:dio/dio.dart';
 import 'token_storage.dart';
 import 'auth_service.dart';
-
+import 'package:flutter/foundation.dart' show kIsWeb; 
 class ApiClient {
   
-  static const String LAN_HOST_IP = '192.168.100.33'; 
+static const String LAN_HOST_IP = '192.168.100.33'; 
+  static const String LOCALHOST_IP = 'localhost'; // <-- Thêm hằng số này
   static const int API_PORT = 8080;
   static const int TIMEOUT_SECONDS = 10;
-  
-  static final String HOST_IP = LAN_HOST_IP; 
+
+  // SỬA DÒNG NÀY: Dùng localhost nếu là web, ngược lại dùng IP LAN
+  static final String HOST_IP = kIsWeb ? LOCALHOST_IP : LAN_HOST_IP; 
 
   static final String BASE_URL = 'http://$HOST_IP:$API_PORT/api';
   
-  static final String FILE_BASE_URL = 'http://$HOST_IP:$API_PORT'; 
+  static final String FILE_BASE_URL = 'http://$HOST_IP:$API_PORT';
 
   final Dio dio;
   // ignore: unused_field

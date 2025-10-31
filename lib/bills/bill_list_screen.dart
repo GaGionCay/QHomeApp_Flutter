@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
+import 'package:app_links/app_links.dart';
 import '../auth/api_client.dart';
 import 'bill_detail_screen.dart';
 import 'bill_service.dart';
-import '../core/event_bus.dart';
+import 'vnpay_payment_screen.dart';
 
 class BillListScreen extends StatefulWidget {
   const BillListScreen({super.key});
@@ -15,12 +17,63 @@ class BillListScreen extends StatefulWidget {
 class _BillListScreenState extends State<BillListScreen> {
   late final BillService _service;
   late Future<List<BillDto>> _futureBills;
+  StreamSubscription<Uri?>? _sub;
+  final AppLinks _appLinks = AppLinks();
 
   @override
   void initState() {
     super.initState();
     _service = BillService(ApiClient());
     _futureBills = _service.getUnpaidBills();
+
+    _listenForPaymentResult();
+  }
+
+  void _listenForPaymentResult() async {
+    // ✅ Bắt link khi app đang chạy
+    _sub = _appLinks.uriLinkStream.listen((Uri? uri) async {
+      if (uri == null) return;
+      print('🔗 Nhận deep link: $uri');
+
+      if (uri.scheme == 'qhomeapp' && uri.host == 'vnpay-result') {
+        final billId = uri.queryParameters['billId'];
+        final responseCode = uri.queryParameters['responseCode'];
+
+        if (!mounted) return;
+
+        if (responseCode == '00') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ Thanh toán hóa đơn #$billId thành công!'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          setState(() {
+            _futureBills = _service.getUnpaidBills();
+          });
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Thanh toán hóa đơn #$billId thất bại'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    }, onError: (err) {
+      print('❌ Lỗi khi nhận deep link: $err');
+    });
+
+    final initialUri = await _appLinks.getInitialLink();
+    if (initialUri != null) {
+      print('🚀 App được mở từ link: $initialUri');
+    }
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
   }
 
   IconData _iconForType(String type) {
@@ -177,21 +230,24 @@ class _BillListScreenState extends State<BillListScreen> {
                               ),
                             ),
                             onPressed: () async {
-                              await _service.payBill(bill.id);
-                              if (!context.mounted) return;
-                              AppEventBus().emit('bill_update');
-
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                      '✅ Đã thanh toán ${bill.billType.toLowerCase()} tháng ${bill.billingMonth}'),
-                                  behavior: SnackBarBehavior.floating,
-                                ),
-                              );
-
-                              setState(() {
-                                _futureBills = _service.getUnpaidBills();
-                              });
+                              try {
+                                final paymentUrl = await _service
+                                    .createVnpayPaymentUrl(bill.id);
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => VnpayPaymentScreen(
+                                      paymentUrl: paymentUrl,
+                                      billId: bill.id,
+                                    ),
+                                  ),
+                                );
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text('❌ Lỗi thanh toán: $e')),
+                                );
+                              }
                             },
                             child: const Text(
                               'Thanh toán',

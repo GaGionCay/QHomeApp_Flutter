@@ -17,7 +17,6 @@ import '../news/news_screen.dart';
 import '../profile/profile_service.dart';
 import '../register/register_service_list_screen.dart';
 import '../websocket/web_socket_service.dart';
-import '../post/post_feed_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final void Function(int)? onNavigateToTab;
@@ -528,13 +527,7 @@ class _HomeScreenState extends State<HomeScreen> {
         'onTap': () => Navigator.push(context,
             MaterialPageRoute(builder: (_) => const BillPaidListScreen())),
       },
-      {
-        'icon': Icons.post_add,
-        'label': 'Đăng bài',
-        'color': Colors.orangeAccent,
-        'onTap': () => Navigator.push(
-            context, MaterialPageRoute(builder: (_) => const PostFeedScreen())),
-      },
+      
     ];
 
     return Row(
