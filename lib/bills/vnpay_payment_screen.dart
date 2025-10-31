@@ -28,25 +28,40 @@ class _VnpayPaymentScreenState extends State<VnpayPaymentScreen> {
         onPageStarted: (_) => setState(() => isLoading = true),
         onPageFinished: (_) => setState(() => isLoading = false),
         onNavigationRequest: (req) {
-          // Khi VNPAY redirect về deep link app
+          // Khi VNPAY redirect về deep link app (invoice)
           if (req.url.startsWith('qhomeapp://vnpay-result')) {
             final uri = Uri.parse(req.url);
             final billId = uri.queryParameters['billId'];
+            final invoiceId = uri.queryParameters['invoiceId'];
             final responseCode = uri.queryParameters['responseCode'];
 
-            debugPrint(
-                '✅ Thanh toán hoàn tất - BillID: $billId, Code: $responseCode');
+            debugPrint('✅ Thanh toán hoàn tất - BillID: $billId, InvoiceID: $invoiceId, Code: $responseCode');
 
             Navigator.pop(context, {
               'billId': billId,
+              'invoiceId': invoiceId,
               'responseCode': responseCode,
             });
             return NavigationDecision.prevent;
           }
 
-          if (req.url.contains('/vnpay/return')) {
-            debugPrint(
-                '✅ Redirect về return URL (trường hợp test nội bộ): ${req.url}');
+          // Khi VNPAY redirect về deep link app (registration)
+          if (req.url.startsWith('qhomeapp://vnpay-registration-result')) {
+            final uri = Uri.parse(req.url);
+            final registrationId = uri.queryParameters['registrationId'];
+            final responseCode = uri.queryParameters['responseCode'];
+
+            debugPrint('✅ Thanh toán đăng ký xe hoàn tất - RegistrationID: $registrationId, Code: $responseCode');
+
+            Navigator.pop(context, {
+              'registrationId': registrationId,
+              'responseCode': responseCode,
+            });
+            return NavigationDecision.prevent;
+          }
+
+          if (req.url.contains('/vnpay/return') || req.url.contains('/vnpay/redirect')) {
+            debugPrint('✅ Redirect về return URL (trường hợp test nội bộ): ${req.url}');
             Navigator.pop(context, true);
             return NavigationDecision.prevent;
           }
