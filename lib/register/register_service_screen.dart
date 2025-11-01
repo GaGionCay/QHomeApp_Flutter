@@ -8,6 +8,8 @@ import 'package:app_links/app_links.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import '../auth/api_client.dart';
+import '../core/event_bus.dart';
+import '../common/main_shell.dart';
 import 'register_guide_screen.dart';
 import 'register_service_list_screen.dart';
 
@@ -49,12 +51,36 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
     _loadSavedData();
     _listenForPaymentResult();
     _setupAutoSave();
+    _listenForShowListEvent();
+  }
+
+  void _listenForShowListEvent() {
+    AppEventBus().on('show_register_list', (data) {
+      if (mounted) {
+        setState(() => _showList = true);
+      }
+    });
+    
+    // Listen cho payment success để hiển thị snackbar
+    AppEventBus().on('show_payment_success', (message) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Thanh toán thành công! ${message ?? "Đăng ký xe đã được lưu."}'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _paymentSub?.cancel();
+    AppEventBus().off('show_register_list');
+    AppEventBus().off('show_payment_success');
     _licenseCtrl.dispose();
     _brandCtrl.dispose();
     _colorCtrl.dispose();
@@ -172,20 +198,26 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
         if (responseCode == '00') {
           await _clearSavedData();
           
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ Thanh toán thành công! Đăng ký xe đã được lưu.'),
-              backgroundColor: Colors.green,
-            ),
-          );
+          if (!mounted) return;
           
-          Navigator.pushReplacement(
+          // Navigate về MainShell với tab Dịch vụ (index = 2)
+          Navigator.pushAndRemoveUntil(
             context,
-            MaterialPageRoute(builder: (_) => RegisterServiceListScreen(
-              onBackPressed: () => Navigator.pop(context),
-            )),
-          );
+            MaterialPageRoute(
+              builder: (_) => const MainShell(initialIndex: 2),
+            ),
+            (route) => false, // Xóa tất cả routes trước đó
+          ).then((_) {
+            // Emit event để RegisterServiceScreen hiển thị list và snackbar
+            // Sau khi navigate hoàn tất
+            Future.delayed(const Duration(milliseconds: 100), () {
+              AppEventBus().emit('show_register_list');
+              // Emit event để hiển thị snackbar thành công
+              AppEventBus().emit('show_payment_success', 'Đăng ký xe đã được lưu');
+            });
+          });
         } else {
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('❌ Thanh toán thất bại. Vui lòng thử lại.'),
