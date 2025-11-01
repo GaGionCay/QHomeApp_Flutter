@@ -596,11 +596,16 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
               _clearForm();
               _clearSavedData();
               
-              // Navigate về màn hình trước (danh sách thẻ xe) sau một chút delay
+              // Navigate về register_service_list_screen sau một chút delay
               if (mounted) {
                 Future.delayed(const Duration(milliseconds: 500), () {
                   if (mounted) {
-                    Navigator.pop(context, true); // Return true để parent screen biết đã thành công
+                    // Push replacement để về list screen và remove các màn hình trước đó
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (_) => const RegisterServiceListScreen()),
+                      (route) => false, // Remove tất cả routes trước đó
+                    );
                   }
                 });
               }

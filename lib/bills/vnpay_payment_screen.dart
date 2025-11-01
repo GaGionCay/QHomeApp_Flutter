@@ -57,10 +57,25 @@ class _VnpayPaymentScreenState extends State<VnpayPaymentScreen> {
             debugPrint('✅ Thanh toán đăng ký xe hoàn tất - RegistrationID: $registrationId, Code: $responseCode');
             debugPrint('✅ Backend đã xử lý callback và redirect về deep link');
 
-            // Navigate back sau một chút delay để đảm bảo backend đã xử lý xong
-            Future.delayed(const Duration(milliseconds: 500), () {
+            // Load trang trống để stop WebView loading trước khi navigate back
+            // Fix màn hình đen do WebView vẫn đang load
+            Future.microtask(() async {
+              if (mounted) {
+                try {
+                  // Load blank page để stop WebView
+                  await controller.loadRequest(Uri.parse('about:blank'));
+                  debugPrint('✅ WebView đã load blank page');
+                } catch (e) {
+                  debugPrint('⚠️ Lỗi khi load blank page: $e');
+                }
+              }
+            });
+
+            // Navigate back sau delay để đảm bảo WebView đã stop và backend đã xử lý xong
+            Future.delayed(const Duration(milliseconds: 800), () {
               if (mounted) {
                 setState(() => isLoading = false);
+                debugPrint('✅ Navigating back with payment result');
                 Navigator.pop(context, {
                   'registrationId': registrationId,
                   'responseCode': responseCode,
