@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:app_links/app_links.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import '../auth/api_client.dart';
-import '../bills/vnpay_payment_screen.dart';
 import 'register_guide_screen.dart';
 import 'register_service_list_screen.dart';
 
@@ -31,14 +31,13 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
   String _vehicleType = 'Car';
   bool _submitting = false;
   bool _showList = false;
-  bool _confirmed = false; // Đã confirm để check thông tin
-  String? _editingField; // Field đang được edit
-  bool _hasEditedAfterConfirm = false; // Đã edit sau khi confirm
+  bool _confirmed = false;
+  String? _editingField; 
+  bool _hasEditedAfterConfirm = false; 
   final ImagePicker _picker = ImagePicker();
   List<String> _uploadedImageUrls = [];
-  static const int maxImages = 6; // Giới hạn tối đa 6 ảnh
+  static const int maxImages = 6; 
   
-  // Auto-save tracking
   bool _hasUnsavedChanges = false;
   StreamSubscription<Uri?>? _paymentSub;
   final AppLinks _appLinks = AppLinks();
@@ -66,14 +65,11 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      // Auto-save khi app bị minimize hoặc pause
       _autoSave();
     }
   }
 
-  // ==================== AUTO-SAVE & LOAD ====================
   void _setupAutoSave() {
-    // Auto-save khi user thay đổi text
     _licenseCtrl.addListener(_autoSave);
     _brandCtrl.addListener(_autoSave);
     _colorCtrl.addListener(_autoSave);
@@ -157,13 +153,12 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
     );
 
     if (shouldExit == true) {
-      await _autoSave(); // Lưu trước khi thoát
+      await _autoSave();
     }
 
     return shouldExit ?? false;
   }
 
-  // ==================== VNPAY INTEGRATION ====================
   void _listenForPaymentResult() {
     _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
       if (uri == null) return;
@@ -175,7 +170,7 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
         if (!mounted) return;
 
         if (responseCode == '00') {
-          await _clearSavedData(); // Clear saved data sau khi thanh toán thành công
+          await _clearSavedData();
           
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -184,10 +179,11 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
             ),
           );
           
-          // Chuyển sang danh sách
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const RegisterServiceListScreen()),
+            MaterialPageRoute(builder: (_) => RegisterServiceListScreen(
+              onBackPressed: () => Navigator.pop(context),
+            )),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -203,9 +199,7 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
     });
   }
 
-  // ==================== IMAGE UPLOAD ====================
   Future<void> _pickMultipleImages() async {
-    // Kiểm tra số lượng ảnh hiện tại
     final remainingSlots = maxImages - _uploadedImageUrls.length;
     if (remainingSlots <= 0) {
       if (mounted) {
@@ -222,7 +216,6 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
     final picked = await _picker.pickMultiImage(imageQuality: 75);
     if (picked.isEmpty) return;
 
-    // Giới hạn số lượng ảnh có thể chọn
     final imagesToUpload = picked.take(remainingSlots).toList();
     if (picked.length > remainingSlots && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -238,7 +231,6 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
   }
 
   Future<void> _takePhoto() async {
-    // Kiểm tra số lượng ảnh hiện tại
     if (_uploadedImageUrls.length >= maxImages) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -287,7 +279,6 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
     }
   }
 
-  // ==================== LOGIC ====================
   String _makeFullImageUrl(String? url) {
     if (url == null || url.isEmpty) return '';
     if (url.startsWith('http')) return url;
@@ -312,12 +303,10 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
 
   void _toggleList() => setState(() => _showList = !_showList);
 
-  // ==================== VALIDATION + CONFIRMATION ====================
   Future<void> _handleRegisterPressed() async {
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
 
-    // Kiểm tra số lượng ảnh
     if (_uploadedImageUrls.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -328,7 +317,6 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
       return;
     }
 
-    // Nếu chưa confirm lần nào → hiển thị thông báo check lại thông tin
     if (!_confirmed) {
       final confirm = await showDialog<bool>(
         context: context,
@@ -354,7 +342,7 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
       if (confirm == true) {
         setState(() {
           _confirmed = true;
-          _editingField = null; // Reset editing field
+          _editingField = null;
         });
         
         if (mounted) {
@@ -369,11 +357,7 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
       return;
     }
 
-    // Đã confirm rồi:
-    // - Nếu đã edit sau khi confirm → hiển thị lại thông báo check
-    // - Nếu chưa edit → cho thanh toán luôn
     if (_hasEditedAfterConfirm) {
-      // User đã edit → yêu cầu check lại
       final confirmAgain = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
@@ -397,8 +381,8 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
 
       if (confirmAgain == true) {
         setState(() {
-          _hasEditedAfterConfirm = false; // Reset flag
-          _editingField = null; // Reset editing field
+          _hasEditedAfterConfirm = false;
+          _editingField = null;
         });
         
         if (mounted) {
@@ -413,14 +397,12 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
       return;
     }
 
-    // Không có edit → cho thanh toán luôn
     await _saveAndPay();
   }
 
   Future<void> _requestEditField(String field) async {
-    if (!_confirmed) return; // Chưa confirm thì không cần hỏi
+    if (!_confirmed) return;
     
-    // Đang edit field khác thì hỏi trước
     if (_editingField != null && _editingField != field) {
       final wantSwitch = await showDialog<bool>(
         context: context,
@@ -463,7 +445,7 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
     if (wantEdit == true) {
       setState(() {
         _editingField = field;
-        _hasEditedAfterConfirm = true; // Ghi nhớ đã edit
+        _hasEditedAfterConfirm = true; 
       });
     }
   }
@@ -484,20 +466,15 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
   }
 
   bool _canRemoveImage(int index) {
-    // Có thể xóa ảnh nếu:
-    // - Chưa confirm, hoặc
-    // - Đang edit ảnh đó (double click)
     return !_confirmed || _editingField == 'image_$index';
   }
 
   Future<void> _requestDeleteImage(int index) async {
     if (!_confirmed) {
-      // Chưa confirm thì cho xóa luôn
       _removeImageAt(index);
       return;
     }
 
-    // Đã confirm thì hỏi trước
     final wantDelete = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -522,7 +499,6 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
         _hasEditedAfterConfirm = true;
       });
       _removeImageAt(index);
-      // Sau khi xóa, reset editingField sau 1 giây
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) {
           setState(() => _editingField = null);
@@ -533,92 +509,33 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
 
   bool _isEditable(String field) => !_confirmed || _editingField == field;
 
-  // ==================== SAVE & PAYMENT ====================
   Future<void> _saveAndPay() async {
     setState(() => _submitting = true);
-    int? registrationId; // Lưu để có thể hủy nếu user out
+    int? registrationId; 
     
     try {
       final payload = _collectPayload();
       
-      // Tạo temporary registration và VNPAY URL cùng lúc
-      // Chỉ lưu vào DB khi thanh toán thành công
       final res = await api.dio.post('/register-service/vnpay-url', data: payload);
       
       registrationId = res.data['registrationId'] as int?;
       final paymentUrl = res.data['paymentUrl'] as String;
       
       if (mounted && registrationId != null) {
-        // Mở VNPAY payment screen
-        final result = await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => VnpayPaymentScreen(
-              paymentUrl: paymentUrl,
-              billId: 0, // Không dùng billId
-              registrationId: registrationId, // Truyền registrationId để có thể hủy
+        // Mở VNPAY trong external browser
+        final uri = Uri.parse(paymentUrl);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          // App sẽ quay lại qua deep link khi thanh toán xong
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Không thể mở trình duyệt thanh toán'),
+              backgroundColor: Colors.red,
             ),
-          ),
-        );
-        
-        // Kiểm tra kết quả thanh toán
-        if (mounted) {
-          if (result == null) {
-            // User đã bấm back/out khỏi payment screen → update payment_status thành UNPAID
-            // Registration vẫn được giữ lại trong DB để thanh toán sau
-            await _cancelRegistration(registrationId);
-            
-            // Hiển thị thông báo thanh toán bị hủy
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('⚠️ Thanh toán đã bị hủy. Bạn có thể thanh toán lại từ danh sách thẻ xe.'),
-                backgroundColor: Colors.orange,
-                duration: Duration(seconds: 4),
-              ),
-            );
-          } else if (result is Map) {
-            final responseCode = result['responseCode'] as String?;
-            debugPrint('💰 [RegisterService] Payment result - ResponseCode: $responseCode, Result: $result');
-            
-            if (responseCode == '00') {
-              // Thanh toán thành công
-              debugPrint('✅ [RegisterService] Payment successful!');
-              
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('✅ Đăng ký và thanh toán thành công!'),
-                  backgroundColor: Colors.green,
-                  duration: Duration(seconds: 3),
-                ),
-              );
-              
-              // Clear form và reset state
-              _clearForm();
-              _clearSavedData();
-              
-              // Sau khi thanh toán thành công, toggle sang list screen để hiển thị danh sách
-              // Vẫn giữ mainshell (không pop, chỉ toggle)
-              if (mounted) {
-                setState(() {
-                  _showList = true; // Hiển thị list screen
-                });
-              }
-            } else {
-              // Thanh toán thất bại
-              debugPrint('❌ [RegisterService] Payment failed - ResponseCode: $responseCode');
-              
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('❌ Thanh toán thất bại (Code: $responseCode)'),
-                  backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 4),
-                ),
-              );
-            }
-          } else {
-            debugPrint('⚠️ [RegisterService] Unexpected result type: ${result.runtimeType}');
-          }
+          );
         }
+        // Deep link sẽ được xử lý trong _listenForPaymentResult()
       }
     } catch (e) {
       if (mounted) {
@@ -626,7 +543,6 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
           SnackBar(content: Text('Lỗi: $e')),
         );
         
-        // Nếu đã tạo temporary registration nhưng có lỗi → hủy
         if (registrationId != null) {
           await _cancelRegistration(registrationId);
         }
@@ -661,7 +577,6 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
     });
   }
 
-  // ==================== UI ====================
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -686,7 +601,9 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                     onPressed: _toggleList,
                   ),
                 ),
-                body: const RegisterServiceListScreen(),
+                body: RegisterServiceListScreen(
+                  onBackPressed: _toggleList,
+                ),
               )
             : Scaffold(
                 key: const ValueKey('form'),
@@ -869,7 +786,6 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                                               ),
                                             ),
                                           ),
-                                          // Chỉ hiển thị close button khi có thể xóa
                                           if (canRemove)
                                             Positioned(
                                               right: 0,
@@ -883,7 +799,6 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                                                 child: const Icon(Icons.close, size: 16, color: Colors.white),
                                               ),
                                             ),
-                                          // Hiển thị hint khi đã confirm và không thể xóa
                                           if (_confirmed && !canRemove)
                                             Positioned(
                                               bottom: 0,
@@ -1022,16 +937,13 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
               validator: validator,
               maxLines: maxLines,
               onTap: () {
-                // Nếu đang edit field này, không làm gì
                 if (isEditing) return;
                 
-                // Nếu đã confirm nhưng chưa được phép edit, hỏi user
                 if (_confirmed && !editable) {
                   _requestEditField(fieldKey);
                 }
               },
               onEditingComplete: () {
-                // Khi user nhấn Done/Enter, finish editing
                 if (isEditing && mounted) {
                   FocusScope.of(context).unfocus();
                   setState(() {

@@ -7,7 +7,9 @@
         android:label="QHomeBase"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        android:enableOnBackInvokedCallback="true"
+        android:hardwareAccelerated="true">
 
         <activity
             android:name=".MainActivity"
@@ -27,13 +29,23 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <intent-filter android:autoVerify="true">
+            <!-- Deep link cho VNPAY bill/invoice payment result -->
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="qhomeapp"
                     android:host="vnpay-result" />
+            </intent-filter>
+            <!-- Deep link cho VNPAY registration payment result -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="qhomeapp"
+                    android:host="vnpay-registration-result" />
             </intent-filter>
         </activity>
 

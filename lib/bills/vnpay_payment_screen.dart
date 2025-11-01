@@ -19,151 +19,81 @@ class VnpayPaymentScreen extends StatefulWidget {
 
 class _VnpayPaymentScreenState extends State<VnpayPaymentScreen> {
   bool isLoading = true;
-  late final WebViewController controller;
+  WebViewController? controller;
 
   @override
   void initState() {
     super.initState();
+
     controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(NavigationDelegate(
-        onPageStarted: (_) => setState(() => isLoading = true),
-        onPageFinished: (_) => setState(() => isLoading = false),
-        onNavigationRequest: (req) {
-          if (req.url.startsWith('qhomeapp://vnpay-result')) {
-            final uri = Uri.parse(req.url);
-            final billId = uri.queryParameters['billId'];
-            final invoiceId = uri.queryParameters['invoiceId'];
-            final responseCode = uri.queryParameters['responseCode'];
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (_) => setState(() => isLoading = true),
+          onPageFinished: (_) => setState(() => isLoading = false),
+          onNavigationRequest: (req) {
+            // ✅ Khi callback về app (deep link)
+            if (req.url.startsWith('qhomeapp://vnpay-result') ||
+                req.url.startsWith('qhomeapp://vnpay-registration-result')) {
+              _handlePaymentCallback(req.url);
+              return NavigationDecision.prevent;
+            }
 
-            debugPrint('✅ Thanh toán hoàn tất - BillID: $billId, InvoiceID: $invoiceId, Code: $responseCode');
-
-            Navigator.pop(context, {
-              'billId': billId,
-              'invoiceId': invoiceId,
-              'responseCode': responseCode,
-            });
-            return NavigationDecision.prevent;
-          }
-
-          if (req.url.startsWith('qhomeapp://vnpay-registration-result')) {
-            final uri = Uri.parse(req.url);
-            final registrationId = uri.queryParameters['registrationId'];
-            final responseCode = uri.queryParameters['responseCode'];
-
-            debugPrint('✅ Thanh toán đăng ký xe hoàn tất - RegistrationID: $registrationId, Code: $responseCode');
-            debugPrint('✅ Backend đã xử lý callback và redirect về deep link');
-
-            Future.microtask(() async {
-              if (mounted) {
-                try {
-                  await controller.loadRequest(Uri.parse('about:blank'));
-                  debugPrint('✅ WebView đã load blank page');
-                } catch (e) {
-                  debugPrint('⚠️ Lỗi khi load blank page: $e');
-                }
-              }
-            });
-
-            Future.delayed(const Duration(milliseconds: 800), () {
-              if (mounted) {
-                setState(() => isLoading = false);
-                debugPrint('✅ Navigating back with payment result');
-                Navigator.pop(context, {
-                  'registrationId': registrationId,
-                  'responseCode': responseCode,
-                });
-              }
-            });
-            return NavigationDecision.prevent;
-          }
-
-          if (req.url.contains('/vnpay/redirect') || req.url.contains('/vnpay/return')) {
-            debugPrint('✅ Redirect về return URL (cho phép load để backend xử lý callback): ${req.url}');
-            
-            try {
-              final uri = Uri.parse(req.url);
-              final params = uri.queryParameters;
-              
-              final responseCode = params['vnp_ResponseCode'] ?? '99';
-              final transactionStatus = params['vnp_TransactionStatus'] ?? '99';
-              final txnRef = params['vnp_TxnRef'] ?? '';
-              
-              debugPrint('✅ Parsed params - ResponseCode: $responseCode, TransactionStatus: $transactionStatus, TxnRef: $txnRef');
-              
-              String? registrationId;
-              String? invoiceId;
-              String? billId;
-              
-              if (txnRef.isNotEmpty && txnRef.contains('_')) {
-                final idStr = txnRef.split('_')[0];
-                
-                try {
-                  final id = int.parse(idStr);
-                  if (widget.registrationId != null) {
-                    registrationId = widget.registrationId.toString();
-                    debugPrint('✅ Using registrationId from context: $registrationId (txnRef ID: $id)');
-                  } else {
-                    registrationId = id.toString();
-                    debugPrint('✅ Using registrationId from txnRef: $registrationId');
-                  }
-                  if (widget.billId > 0 && registrationId == null) {
-                    billId = widget.billId.toString();
-                  }
-                } catch (e) {
-                  invoiceId = idStr;
-                  debugPrint('✅ Using invoiceId from txnRef: $invoiceId');
-                }
-              } else if (widget.registrationId != null) {
-                registrationId = widget.registrationId.toString();
-                debugPrint('✅ Using registrationId from context (no txnRef): $registrationId');
-              }
-              
-              debugPrint('✅ Extracted - RegistrationID: $registrationId, InvoiceID: $invoiceId, BillID: $billId');
-              
-              Map<String, dynamic> resultData;
-              if (registrationId != null) {
-                resultData = {
-                  'registrationId': registrationId,
-                  'responseCode': responseCode,
-                  'transactionStatus': transactionStatus,
-                };
-              } else if (invoiceId != null) {
-                resultData = {
-                  'invoiceId': invoiceId,
-                  'responseCode': responseCode,
-                };
-              } else if (billId != null) {
-                resultData = {
-                  'billId': billId,
-                  'responseCode': responseCode,
-                };
-              } else {
-                resultData = {
-                  'responseCode': responseCode,
-                  'success': responseCode == '00',
-                };
-              }
-              
-              return NavigationDecision.navigate;
-            } catch (e) {
-              debugPrint('❌ Lỗi khi parse redirect URL: $e');
+            // ✅ Cho phép backend redirect để xử lý callback
+            if (req.url.contains('/vnpay/redirect') ||
+                req.url.contains('/vnpay/return')) {
+              debugPrint('✅ Cho phép redirect: ${req.url}');
               return NavigationDecision.navigate;
             }
-          }
 
-          return NavigationDecision.navigate;
-        },
-      ))
+            return NavigationDecision.navigate;
+          },
+        ),
+      )
       ..loadRequest(Uri.parse(widget.paymentUrl));
+  }
+
+  Future<void> _handlePaymentCallback(String url) async {
+    final uri = Uri.parse(url);
+    final responseCode = uri.queryParameters['responseCode'];
+    final registrationId = uri.queryParameters['registrationId'];
+    final billId = uri.queryParameters['billId'];
+    final invoiceId = uri.queryParameters['invoiceId'];
+
+    debugPrint('✅ Payment callback: $url');
+
+    // 🔒 Ngăn WebView bị crash khi back bằng cách load blank page trước khi pop
+    try {
+      await controller?.loadRequest(Uri.parse('about:blank'));
+      await Future.delayed(const Duration(milliseconds: 300));
+    } catch (e) {
+      debugPrint('⚠️ Lỗi khi clear WebView: $e');
+    }
+
+    if (!mounted) return;
+
+    Navigator.pop(context, {
+      'billId': billId,
+      'registrationId': registrationId,
+      'invoiceId': invoiceId,
+      'responseCode': responseCode,
+    });
+  }
+
+  @override
+  void dispose() {
+    // ✅ Dọn WebView đúng cách tránh crash renderer
+    controller?.clearCache();
+    controller = null;
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false,
+      canPop: true, // ✅ Cho phép back vật lý hoạt động
       onPopInvoked: (didPop) async {
-        if (!didPop) {
+        if (!didPop && mounted) {
           final confirm = await showDialog<bool>(
             context: context,
             builder: (_) => AlertDialog(
@@ -183,6 +113,10 @@ class _VnpayPaymentScreenState extends State<VnpayPaymentScreen> {
           );
 
           if (confirm == true && mounted) {
+            try {
+              await controller?.loadRequest(Uri.parse('about:blank'));
+              await Future.delayed(const Duration(milliseconds: 200));
+            } catch (_) {}
             Navigator.pop(context, null);
           }
         }
@@ -194,7 +128,7 @@ class _VnpayPaymentScreenState extends State<VnpayPaymentScreen> {
         ),
         body: Stack(
           children: [
-            WebViewWidget(controller: controller),
+            if (controller != null) WebViewWidget(controller: controller!),
             if (isLoading)
               const Center(
                 child: CircularProgressIndicator(color: Color(0xFF26A69A)),
