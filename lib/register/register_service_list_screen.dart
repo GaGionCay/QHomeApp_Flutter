@@ -195,7 +195,7 @@ class _RegisterServiceListScreenState extends State<RegisterServiceListScreen>
   Widget build(BuildContext context) {
 
     return PopScope(
-      canPop: false,
+      canPop: true,
       onPopInvoked: (didPop) async {
         // Khi hardware back button được nhấn, gọi callback để toggle về form view
         if (!didPop && mounted && widget.onBackPressed != null) {

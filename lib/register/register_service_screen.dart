@@ -24,6 +24,7 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
   final ApiClient api = ApiClient();
   final _formKey = GlobalKey<FormState>();
   final _storageKey = 'register_service_draft';
+  final _pendingPaymentKey = 'pending_registration_payment';
 
   final TextEditingController _licenseCtrl = TextEditingController();
   final TextEditingController _brandCtrl = TextEditingController();
@@ -52,6 +53,7 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
     _listenForPaymentResult();
     _setupAutoSave();
     _listenForShowListEvent();
+    _checkPendingPayment();
   }
 
   void _listenForShowListEvent() {
@@ -92,6 +94,92 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       _autoSave();
+    }
+    // Khi app resume từ background, check pending payment
+    if (state == AppLifecycleState.resumed) {
+      _checkPendingPayment();
+    }
+  }
+
+  /// Kiểm tra payment status của registration đang pending
+  Future<void> _checkPendingPayment() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pendingRegistrationId = prefs.getString(_pendingPaymentKey);
+      
+      if (pendingRegistrationId == null) return;
+      
+      final registrationId = int.tryParse(pendingRegistrationId);
+      if (registrationId == null) {
+        await prefs.remove(_pendingPaymentKey);
+        return;
+      }
+
+      // Check payment status với backend
+      final res = await api.dio.get('/register-service/$registrationId');
+      final data = res.data;
+      final paymentStatus = data['paymentStatus'] as String?;
+      
+      // Nếu đã thanh toán thành công, xóa pending và navigate về list
+      if (paymentStatus == 'PAID') {
+        await prefs.remove(_pendingPaymentKey);
+        if (mounted) {
+          // Navigate về MainShell với tab Dịch vụ và show list
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const MainShell(initialIndex: 2),
+            ),
+            (route) => false,
+          ).then((_) {
+            Future.delayed(const Duration(milliseconds: 100), () {
+              AppEventBus().emit('show_register_list');
+              AppEventBus().emit('show_payment_success', 'Thanh toán đã hoàn tất');
+            });
+          });
+        }
+      } 
+      // Nếu chưa thanh toán, hiển thị thông báo và cho phép thanh toán lại
+      else if (paymentStatus == 'UNPAID') {
+        if (mounted) {
+          final shouldPay = await showDialog<bool>(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('Thanh toán chưa hoàn tất'),
+              content: Text(
+                'Đăng ký xe #$registrationId chưa được thanh toán.\n\n'
+                'Bạn có muốn thanh toán ngay bây giờ không?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Hủy'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Thanh toán', style: TextStyle(color: Colors.teal)),
+                ),
+              ],
+            ),
+          );
+
+          if (shouldPay == true && mounted) {
+            // Navigate đến list screen để thanh toán lại
+            setState(() => _showList = true);
+            AppEventBus().emit('pay_registration', registrationId);
+          } else {
+            // Xóa pending nếu user không muốn thanh toán
+            await prefs.remove(_pendingPaymentKey);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Lỗi check pending payment: $e');
+      // Nếu có lỗi (ví dụ registration không tồn tại), xóa pending
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_pendingPaymentKey);
+      } catch (_) {}
     }
   }
 
@@ -197,6 +285,14 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
 
         if (responseCode == '00') {
           await _clearSavedData();
+          
+          // Xóa pending payment vì đã thanh toán thành công
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove(_pendingPaymentKey);
+          } catch (e) {
+            debugPrint('❌ Lỗi xóa pending payment: $e');
+          }
           
           if (!mounted) return;
           
@@ -554,12 +650,18 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
       final paymentUrl = res.data['paymentUrl'] as String;
       
       if (mounted && registrationId != null) {
+        // Lưu registrationId đang pending payment để check sau khi app resume
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_pendingPaymentKey, registrationId.toString());
+        
         // Mở VNPAY trong external browser
         final uri = Uri.parse(paymentUrl);
         if (await canLaunchUrl(uri)) {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
           // App sẽ quay lại qua deep link khi thanh toán xong
         } else {
+          // Xóa pending nếu không mở được browser
+          await prefs.remove(_pendingPaymentKey);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Không thể mở trình duyệt thanh toán'),
@@ -575,8 +677,15 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
           SnackBar(content: Text('Lỗi: $e')),
         );
         
-        if (registrationId != null) {
+          if (registrationId != null) {
           await _cancelRegistration(registrationId);
+          // Xóa pending payment nếu có lỗi
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove(_pendingPaymentKey);
+          } catch (e) {
+            debugPrint('❌ Lỗi xóa pending payment: $e');
+          }
         }
       }
     } finally {
