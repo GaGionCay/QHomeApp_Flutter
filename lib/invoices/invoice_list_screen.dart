@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'dart:developer';
 import 'package:app_links/app_links.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import '../auth/api_client.dart';
 import '../models/invoice_line.dart';
 import 'invoice_service.dart';
-import '../bills/vnpay_payment_screen.dart';
 
 class InvoiceListScreen extends StatefulWidget {
   const InvoiceListScreen({super.key});
@@ -15,18 +16,109 @@ class InvoiceListScreen extends StatefulWidget {
   State<InvoiceListScreen> createState() => _InvoiceListScreenState();
 }
 
-class _InvoiceListScreenState extends State<InvoiceListScreen> {
+class _InvoiceListScreenState extends State<InvoiceListScreen> with WidgetsBindingObserver {
   late final InvoiceService _service;
   late Future<List<InvoiceLineResponseDto>> _futureInvoices;
   StreamSubscription<Uri?>? _sub;
   final AppLinks _appLinks = AppLinks();
+  final String _pendingInvoicePaymentKey = 'pending_invoice_payment';
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _service = InvoiceService(ApiClient());
     _futureInvoices = _service.getMyInvoices();
     _listenForPaymentResult();
+    _checkPendingPayment();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Khi app resume từ background, check pending payment
+    if (state == AppLifecycleState.resumed) {
+      _checkPendingPayment();
+    }
+  }
+
+  /// Kiểm tra payment status của invoice đang pending
+  Future<void> _checkPendingPayment() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pendingInvoiceId = prefs.getString(_pendingInvoicePaymentKey);
+      
+      if (pendingInvoiceId == null) return;
+
+      // Check payment status với backend - cần tìm invoice trong list
+      final invoices = await _futureInvoices;
+      final invoice = invoices.firstWhere(
+        (inv) => inv.invoiceId == pendingInvoiceId,
+        orElse: () => throw Exception('Invoice not found'),
+      );
+      
+      // Nếu đã thanh toán thành công, xóa pending và refresh
+      if (invoice.status == 'PAID') {
+        await prefs.remove(_pendingInvoicePaymentKey);
+        if (mounted) {
+          setState(() {
+            _futureInvoices = _service.getMyInvoices();
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Thanh toán hóa đơn đã hoàn tất'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } 
+      // Nếu chưa thanh toán, hiển thị thông báo và cho phép thanh toán lại
+      else if (invoice.status == 'UNPAID' || invoice.status == 'DRAFT') {
+        if (mounted) {
+          final shouldPay = await showDialog<bool>(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('Thanh toán chưa hoàn tất'),
+              content: Text(
+                'Hóa đơn ${invoice.invoiceId} chưa được thanh toán.\n\n'
+                'Bạn có muốn thanh toán ngay bây giờ không?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Hủy'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Thanh toán', style: TextStyle(color: Colors.teal)),
+                ),
+              ],
+            ),
+          );
+
+          if (shouldPay == true && mounted) {
+            // Thanh toán lại
+            await _payInvoice(invoice);
+          } else {
+            // Xóa pending nếu user không muốn thanh toán
+            await prefs.remove(_pendingInvoicePaymentKey);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Lỗi check pending invoice payment: $e');
+      // Nếu có lỗi, xóa pending
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_pendingInvoicePaymentKey);
+      } catch (_) {}
+    }
   }
 
   void _listenForPaymentResult() async {
@@ -41,9 +133,17 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
 
         if (!mounted) return;
 
+        // Xóa pending payment vì đã có kết quả (thành công hoặc thất bại)
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove(_pendingInvoicePaymentKey);
+        } catch (e) {
+          debugPrint('❌ Lỗi xóa pending invoice payment: $e');
+        }
+
         if (responseCode == '00') {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
+            const SnackBar(
               content: Text('✅ Thanh toán hóa đơn thành công!'),
               behavior: SnackBarBehavior.floating,
               backgroundColor: Colors.green,
@@ -54,7 +154,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
           });
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
+            const SnackBar(
               content: Text('❌ Thanh toán hóa đơn thất bại'),
               behavior: SnackBarBehavior.floating,
               backgroundColor: Colors.red,
@@ -72,11 +172,6 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
-  }
 
   IconData _iconForServiceCode(String serviceCode) {
     switch (serviceCode.toUpperCase()) {
@@ -172,32 +267,41 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
 
     if (confirmed != true) return;
 
+    await _payInvoice(invoice);
+  }
+
+  Future<void> _payInvoice(InvoiceLineResponseDto invoice) async {
     try {
+      // Lưu invoiceId đang pending payment
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_pendingInvoicePaymentKey, invoice.invoiceId);
+      
       // Tạo VNPAY payment URL
       final paymentUrl = await _service.createVnpayPaymentUrl(invoice.invoiceId);
       
-      // Mở VNPAY payment screen
-      if (mounted) {
-        final result = await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => VnpayPaymentScreen(
-              paymentUrl: paymentUrl,
-              billId: 0, // Không dùng billId cho invoice, chỉ cần URL
+      // Mở VNPAY trong external browser
+      final uri = Uri.parse(paymentUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        // Xóa pending nếu không mở được browser
+        await prefs.remove(_pendingInvoicePaymentKey);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Không thể mở trình duyệt thanh toán'),
+              backgroundColor: Colors.red,
             ),
-          ),
-        );
-
-        // Refresh danh sách sau khi thanh toán
-        if (result != null && mounted) {
-          setState(() {
-            _futureInvoices = _service.getMyInvoices();
-          });
+          );
         }
       }
     } catch (e) {
-      log('❌ Lỗi thanh toán VNPAY: $e');
-
+      // Xóa pending nếu có lỗi
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_pendingInvoicePaymentKey);
+      } catch (_) {}
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:developer';
 import '../auth/api_client.dart';
 import '../models/register_service_request.dart';
@@ -24,21 +25,107 @@ class RegisterServiceDetailScreen extends StatefulWidget {
 }
 
 class _RegisterServiceDetailScreenState
-    extends State<RegisterServiceDetailScreen> {
+    extends State<RegisterServiceDetailScreen> with WidgetsBindingObserver {
   final ApiClient api = ApiClient();
   final AppLinks _appLinks = AppLinks();
   StreamSubscription<Uri?>? _paymentSub;
+  final String _pendingPaymentKey = 'pending_registration_payment';
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _listenForPaymentResult();
+    _checkPendingPayment();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _paymentSub?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Khi app resume từ background, check pending payment
+    if (state == AppLifecycleState.resumed) {
+      _checkPendingPayment();
+    }
+  }
+
+  /// Kiểm tra payment status của registration đang pending
+  Future<void> _checkPendingPayment() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pendingRegistrationId = prefs.getString(_pendingPaymentKey);
+      
+      if (pendingRegistrationId == null) return;
+      
+      final registrationId = int.tryParse(pendingRegistrationId);
+      if (registrationId == null || registrationId != widget.registration.id) {
+        return; // Không phải registration này
+      }
+
+      // Check payment status với backend
+      final res = await api.dio.get('/register-service/$registrationId');
+      final data = res.data;
+      final paymentStatus = data['paymentStatus'] as String?;
+      
+      // Nếu đã thanh toán thành công, xóa pending và refresh
+      if (paymentStatus == 'PAID') {
+        await prefs.remove(_pendingPaymentKey);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Thanh toán đã hoàn tất'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context, true); // Pop về list để refresh
+        }
+      } 
+      // Nếu chưa thanh toán, hiển thị thông báo và cho phép thanh toán lại
+      else if (paymentStatus == 'UNPAID') {
+        if (mounted) {
+          final shouldPay = await showDialog<bool>(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('Thanh toán chưa hoàn tất'),
+              content: Text(
+                'Đăng ký xe #$registrationId chưa được thanh toán.\n\n'
+                'Bạn có muốn thanh toán ngay bây giờ không?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Hủy'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Thanh toán', style: TextStyle(color: Colors.teal)),
+                ),
+              ],
+            ),
+          );
+
+          if (shouldPay == true && mounted) {
+            // Thanh toán lại
+            await _payRegistration(widget.registration);
+          } else {
+            // Xóa pending nếu user không muốn thanh toán
+            await prefs.remove(_pendingPaymentKey);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Lỗi check pending payment: $e');
+      // Nếu có lỗi, xóa pending
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_pendingPaymentKey);
+      } catch (_) {}
+    }
   }
 
   void _listenForPaymentResult() {
@@ -50,6 +137,14 @@ class _RegisterServiceDetailScreenState
         final responseCode = uri.queryParameters['responseCode'];
 
         if (!mounted) return;
+
+        // Xóa pending payment vì đã có kết quả (thành công hoặc thất bại)
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove(_pendingPaymentKey);
+        } catch (e) {
+          debugPrint('❌ Lỗi xóa pending payment: $e');
+        }
 
         if (responseCode == '00') {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -188,10 +283,16 @@ class _RegisterServiceDetailScreenState
     try {
       log('💳 [RegisterDetail] Tạo VNPAY URL cho registration: ${registration.id}');
       
+      // Lưu registrationId đang pending payment
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_pendingPaymentKey, registration.id.toString());
+      
       // Tạo VNPAY payment URL cho registration đã tồn tại
       final res = await api.dio.post('/register-service/${registration.id}/vnpay-url');
       
       if (res.statusCode != 200) {
+        // Xóa pending nếu có lỗi
+        await prefs.remove(_pendingPaymentKey);
         throw Exception(res.data['message'] ?? 'Lỗi tạo URL thanh toán');
       }
 
@@ -203,6 +304,8 @@ class _RegisterServiceDetailScreenState
         await launchUrl(uri, mode: LaunchMode.externalApplication);
         // App sẽ quay lại qua deep link khi thanh toán xong
       } else {
+        // Xóa pending nếu không mở được browser
+        await prefs.remove(_pendingPaymentKey);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -214,6 +317,12 @@ class _RegisterServiceDetailScreenState
       }
     } catch (e) {
       log('❌ [RegisterDetail] Lỗi thanh toán: $e');
+      // Xóa pending nếu có lỗi
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_pendingPaymentKey);
+      } catch (_) {}
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

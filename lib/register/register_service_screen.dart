@@ -654,6 +654,9 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_pendingPaymentKey, registrationId.toString());
         
+        // Clear form sau khi bấm đăng ký và thanh toán lần 2 (sau khi check thông tin)
+        _clearForm();
+        
         // Mở VNPAY trong external browser
         final uri = Uri.parse(paymentUrl);
         if (await canLaunchUrl(uri)) {
