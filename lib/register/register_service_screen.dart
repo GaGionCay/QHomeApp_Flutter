@@ -596,17 +596,11 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
               _clearForm();
               _clearSavedData();
               
-              // Navigate về register_service_list_screen sau một chút delay
+              // Sau khi thanh toán thành công, toggle sang list screen để hiển thị danh sách
+              // Vẫn giữ mainshell (không pop, chỉ toggle)
               if (mounted) {
-                Future.delayed(const Duration(milliseconds: 500), () {
-                  if (mounted) {
-                    // Push replacement để về list screen và remove các màn hình trước đó
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const RegisterServiceListScreen()),
-                      (route) => false, // Remove tất cả routes trước đó
-                    );
-                  }
+                setState(() {
+                  _showList = true; // Hiển thị list screen
                 });
               }
             } else {

@@ -4,7 +4,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 class VnpayPaymentScreen extends StatefulWidget {
   final String paymentUrl;
   final int billId;
-  final int? registrationId; // Registration ID để có thể hủy nếu user out
+  final int? registrationId;
 
   const VnpayPaymentScreen({
     super.key,
@@ -30,7 +30,6 @@ class _VnpayPaymentScreenState extends State<VnpayPaymentScreen> {
         onPageStarted: (_) => setState(() => isLoading = true),
         onPageFinished: (_) => setState(() => isLoading = false),
         onNavigationRequest: (req) {
-          // Khi VNPAY redirect về deep link app (invoice)
           if (req.url.startsWith('qhomeapp://vnpay-result')) {
             final uri = Uri.parse(req.url);
             final billId = uri.queryParameters['billId'];
@@ -47,8 +46,6 @@ class _VnpayPaymentScreenState extends State<VnpayPaymentScreen> {
             return NavigationDecision.prevent;
           }
 
-          // Khi VNPAY redirect về deep link app (registration)
-          // Backend đã xử lý callback và redirect về đây
           if (req.url.startsWith('qhomeapp://vnpay-registration-result')) {
             final uri = Uri.parse(req.url);
             final registrationId = uri.queryParameters['registrationId'];
@@ -57,12 +54,9 @@ class _VnpayPaymentScreenState extends State<VnpayPaymentScreen> {
             debugPrint('✅ Thanh toán đăng ký xe hoàn tất - RegistrationID: $registrationId, Code: $responseCode');
             debugPrint('✅ Backend đã xử lý callback và redirect về deep link');
 
-            // Load trang trống để stop WebView loading trước khi navigate back
-            // Fix màn hình đen do WebView vẫn đang load
             Future.microtask(() async {
               if (mounted) {
                 try {
-                  // Load blank page để stop WebView
                   await controller.loadRequest(Uri.parse('about:blank'));
                   debugPrint('✅ WebView đã load blank page');
                 } catch (e) {
@@ -71,7 +65,6 @@ class _VnpayPaymentScreenState extends State<VnpayPaymentScreen> {
               }
             });
 
-            // Navigate back sau delay để đảm bảo WebView đã stop và backend đã xử lý xong
             Future.delayed(const Duration(milliseconds: 800), () {
               if (mounted) {
                 setState(() => isLoading = false);
@@ -85,13 +78,9 @@ class _VnpayPaymentScreenState extends State<VnpayPaymentScreen> {
             return NavigationDecision.prevent;
           }
 
-          // Xử lý khi VNPAY redirect về /vnpay/redirect hoặc /vnpay/return
-          // QUAN TRỌNG: Cho phép load URL này để backend xử lý callback
-          // Backend sẽ xử lý callback và redirect về deep link
           if (req.url.contains('/vnpay/redirect') || req.url.contains('/vnpay/return')) {
             debugPrint('✅ Redirect về return URL (cho phép load để backend xử lý callback): ${req.url}');
             
-            // Parse URL để lấy params ngay để chuẩn bị result
             try {
               final uri = Uri.parse(req.url);
               final params = uri.queryParameters;
@@ -102,7 +91,6 @@ class _VnpayPaymentScreenState extends State<VnpayPaymentScreen> {
               
               debugPrint('✅ Parsed params - ResponseCode: $responseCode, TransactionStatus: $transactionStatus, TxnRef: $txnRef');
               
-              // Extract registrationId hoặc invoiceId từ txnRef
               String? registrationId;
               String? invoiceId;
               String? billId;
@@ -110,36 +98,29 @@ class _VnpayPaymentScreenState extends State<VnpayPaymentScreen> {
               if (txnRef.isNotEmpty && txnRef.contains('_')) {
                 final idStr = txnRef.split('_')[0];
                 
-                // Ưu tiên extract ID từ txnRef (đây là ID thực tế từ backend)
                 try {
                   final id = int.parse(idStr);
-                  // Nếu có registrationId từ context, ưu tiên dùng nó
                   if (widget.registrationId != null) {
                     registrationId = widget.registrationId.toString();
                     debugPrint('✅ Using registrationId from context: $registrationId (txnRef ID: $id)');
                   } else {
-                    // Nếu không có context, dùng ID từ txnRef
                     registrationId = id.toString();
                     debugPrint('✅ Using registrationId from txnRef: $registrationId');
                   }
-                  // Fallback: billId nếu có billId > 0 và không có registrationId
                   if (widget.billId > 0 && registrationId == null) {
                     billId = widget.billId.toString();
                   }
                 } catch (e) {
-                  // Không phải số → có thể là invoiceId (UUID string)
                   invoiceId = idStr;
                   debugPrint('✅ Using invoiceId from txnRef: $invoiceId');
                 }
               } else if (widget.registrationId != null) {
-                // Nếu không có txnRef nhưng có registrationId từ context
                 registrationId = widget.registrationId.toString();
                 debugPrint('✅ Using registrationId from context (no txnRef): $registrationId');
               }
               
               debugPrint('✅ Extracted - RegistrationID: $registrationId, InvoiceID: $invoiceId, BillID: $billId');
               
-              // Chuẩn bị result data để trả về sau khi backend xử lý xong
               Map<String, dynamic> resultData;
               if (registrationId != null) {
                 resultData = {
@@ -158,20 +139,15 @@ class _VnpayPaymentScreenState extends State<VnpayPaymentScreen> {
                   'responseCode': responseCode,
                 };
               } else {
-                // Fallback: trả về với responseCode
                 resultData = {
                   'responseCode': responseCode,
                   'success': responseCode == '00',
                 };
               }
               
-              // Lưu resultData để sử dụng khi detect deep link
-              // Backend sẽ redirect về qhomeapp:// sau khi xử lý callback
-              // Cho phép load URL để backend xử lý callback
               return NavigationDecision.navigate;
             } catch (e) {
               debugPrint('❌ Lỗi khi parse redirect URL: $e');
-              // Cho phép load để backend xử lý
               return NavigationDecision.navigate;
             }
           }
@@ -188,7 +164,6 @@ class _VnpayPaymentScreenState extends State<VnpayPaymentScreen> {
       canPop: false,
       onPopInvoked: (didPop) async {
         if (!didPop) {
-          // Hiển thị dialog xác nhận khi user bấm back
           final confirm = await showDialog<bool>(
             context: context,
             builder: (_) => AlertDialog(
@@ -208,7 +183,6 @@ class _VnpayPaymentScreenState extends State<VnpayPaymentScreen> {
           );
 
           if (confirm == true && mounted) {
-            // User xác nhận hủy → pop và trả về null để parent biết đã hủy
             Navigator.pop(context, null);
           }
         }

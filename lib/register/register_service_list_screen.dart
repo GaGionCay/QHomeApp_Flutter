@@ -251,14 +251,47 @@ class _RegisterServiceListScreenState extends State<RegisterServiceListScreen>
   @override
   Widget build(BuildContext context) {
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      appBar: AppBar(
-        elevation: 0,
-        title: const Text('Danh sách thẻ xe'),
-        backgroundColor: const Color(0xFF26A69A),
-        foregroundColor: Colors.white,
-      ),
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        // Khi hardware back button được nhấn từ register_service_list_screen,
+        // hiển thị dialog hỏi có muốn thoát ứng dụng không
+        if (!didPop && mounted) {
+          final shouldExit = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Thoát ứng dụng'),
+              content: const Text('Bạn có muốn thoát ứng dụng không?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Không'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Có', style: TextStyle(color: Colors.red)),
+                ),
+              ],
+            ),
+          );
+          
+          if (shouldExit == true && mounted) {
+            // Thoát ứng dụng
+            // Import dart:io để sử dụng exit
+            // Cần import 'dart:io' nếu chưa có
+            Navigator.of(context).popUntil((route) => route.isFirst);
+            // Hoặc có thể dùng SystemNavigator.pop() để thoát app
+          }
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF5F7FA),
+        appBar: AppBar(
+          elevation: 0,
+          title: const Text('Danh sách thẻ xe'),
+          backgroundColor: const Color(0xFF26A69A),
+          foregroundColor: Colors.white,
+        ),
       body: RefreshIndicator(
         onRefresh: _refresh,
         color: Colors.teal,
@@ -300,18 +333,18 @@ class _RegisterServiceListScreenState extends State<RegisterServiceListScreen>
                               begin: const Offset(0, 0.2),
                               end: Offset.zero,
                             ).animate(anim),
-                            child: OpenContainer(
-                              transitionDuration:
-                                  const Duration(milliseconds: 400),
-                              closedElevation: 3,
-                              closedShape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              closedColor: Colors.white,
-                              openColor: Colors.white,
-                              closedBuilder: (context, open) => _buildCard(item),
-                              openBuilder: (context, close) =>
-                                  _buildDetailPage(item),
+                            child: InkWell(
+                              onTap: () {
+                                // Dùng Navigator.push thay vì OpenContainer để control navigation tốt hơn
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => _buildDetailPage(item),
+                                  ),
+                                );
+                              },
+                              borderRadius: BorderRadius.circular(16),
+                              child: _buildCard(item),
                             ),
                           ),
                         );
@@ -362,6 +395,7 @@ class _RegisterServiceListScreenState extends State<RegisterServiceListScreen>
               ),
             )
           : null,
+      ),
     );
   }
 
@@ -380,146 +414,260 @@ class _RegisterServiceListScreenState extends State<RegisterServiceListScreen>
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Hero(
-            tag: 'vehicle-${s.id}',
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: CachedNetworkImage(
-                imageUrl: _makeFullImageUrl(s.imageUrls?.first ?? ''),
-                width: 100,
-                height: 80,
-                fit: BoxFit.cover,
-                placeholder: (c, _) =>
-                    _buildShimmerPlaceholder(width: 100, height: 80),
-                errorWidget: (c, _, __) => Container(
-                  width: 100,
-                  height: 80,
-                  color: Colors.grey.shade200,
-                  child: const Icon(Icons.directions_car, color: Colors.grey),
-                ),
-              ),
-            ),
+          Text(
+            s.licensePlate ?? 'Không rõ biển số',
+            style: const TextStyle(
+                fontWeight: FontWeight.w700, fontSize: 16),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  s.licensePlate ?? 'Không rõ biển số',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 16),
-                ),
-                const SizedBox(height: 4),
-                Text('${s.vehicleBrand ?? '—'} - ${s.vehicleColor ?? '—'}'),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    _buildStatusChip(s.status),
-                    const SizedBox(width: 8),
-                    _buildPaymentStatusChip(s.paymentStatus),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Đăng ký: ${formatDate(s.createdAt)}',
-                  style: const TextStyle(
-                      fontSize: 13, color: Colors.black54),
-                ),
-              ],
-            ),
-          )
+          const SizedBox(height: 4),
+          Text('${s.vehicleBrand ?? '—'} - ${s.vehicleColor ?? '—'}'),
+          const SizedBox(height: 4),
+          // Sử dụng Wrap để tránh overflow khi màn hình nhỏ
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              _buildStatusChip(s.status),
+              _buildPaymentStatusChip(s.paymentStatus),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Đăng ký: ${formatDate(s.createdAt)}',
+            style: const TextStyle(
+                fontSize: 13, color: Colors.black54),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildDetailPage(RegisterServiceRequest s) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF26A69A),
-        title: const Text('Chi tiết thẻ xe'),
-        foregroundColor: Colors.white,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Hero(
-            tag: 'vehicle-${s.id}',
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: CachedNetworkImage(
-                imageUrl: _makeFullImageUrl(s.imageUrls?.first ?? ''),
-                height: 200,
-                fit: BoxFit.cover,
-                placeholder: (context, url) =>
-                    _buildShimmerPlaceholder(width: double.infinity, height: 200),
-              ),
+    final images = s.imageUrls ?? [];
+    
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        // Khi hardware back button được nhấn từ detail page,
+        // không pop về register_service_screen nữa mà coi như muốn thoát app
+        if (!didPop && mounted) {
+          final shouldExit = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Thoát ứng dụng'),
+              content: const Text('Bạn có muốn thoát ứng dụng không?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Không'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Có', style: TextStyle(color: Colors.red)),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            s.licensePlate ?? 'Không rõ biển số',
-            style: const TextStyle(
-                fontSize: 20, fontWeight: FontWeight.bold, color: Colors.teal),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _buildStatusChip(s.status),
-              const SizedBox(width: 8),
-              _buildPaymentStatusChip(s.paymentStatus),
-            ],
-          ),
-          // Hiển thị button thanh toán nếu chưa thanh toán
-          if (s.paymentStatus == 'UNPAID') ...[
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => _payRegistration(s),
-                icon: const Icon(Icons.payment),
-                label: const Text('Thanh toán (30.000 VNĐ)'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF26A69A),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+          );
+          
+          if (shouldExit == true && mounted) {
+            // Pop detail page và về list screen trước
+            Navigator.pop(context);
+            // Sau đó thoát ứng dụng
+            Future.delayed(const Duration(milliseconds: 100), () {
+              if (mounted) {
+                Navigator.of(context).popUntil((route) => route.isFirst);
+              }
+            });
+          }
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF26A69A),
+          title: const Text('Chi tiết thẻ xe'),
+          foregroundColor: Colors.white,
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            Text(
+              s.licensePlate ?? 'Không rõ biển số',
+              style: const TextStyle(
+                  fontSize: 20, fontWeight: FontWeight.bold, color: Colors.teal),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                _buildStatusChip(s.status),
+                _buildPaymentStatusChip(s.paymentStatus),
+              ],
+            ),
+            // Hiển thị button thanh toán nếu chưa thanh toán
+            if (s.paymentStatus == 'UNPAID') ...[
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => _payRegistration(s),
+                  icon: const Icon(Icons.payment),
+                  label: const Text('Thanh toán (30.000 VNĐ)'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF26A69A),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
-          const Divider(height: 30),
-          _detailRow('Hãng xe', s.vehicleBrand),
-          _detailRow('Màu xe', s.vehicleColor),
-          _detailRow('Loại phương tiện', s.vehicleType),
-          _detailRow('Ghi chú', s.note),
-          _detailRow('Ngày tạo', formatDate(s.createdAt)),
-          const SizedBox(height: 20),
-          if (s.imageUrls != null && s.imageUrls!.length > 1)
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: s.imageUrls!.skip(1).map((url) {
-                return ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: CachedNetworkImage(
-                    imageUrl: _makeFullImageUrl(url),
-                    width: 120,
-                    height: 100,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) =>
-                        _buildShimmerPlaceholder(width: 120, height: 100),
+            ],
+            const Divider(height: 30),
+            _detailRow('Hãng xe', s.vehicleBrand),
+            _detailRow('Màu xe', s.vehicleColor),
+            _detailRow('Loại phương tiện', s.vehicleType),
+            _detailRow('Ghi chú', s.note),
+            _detailRow('Ngày tạo', formatDate(s.createdAt)),
+            // Hiển thị ảnh ở dưới với PageView để swipe
+            if (images.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              const Text(
+                'Ảnh xe',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.teal,
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 250,
+                child: PageView.builder(
+                  itemCount: images.length,
+                  itemBuilder: (context, index) {
+                    return GestureDetector(
+                      onTap: () {
+                        // Xem chi tiết ảnh khi tap
+                        _showImageDetail(context, images, index);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: CachedNetworkImage(
+                            imageUrl: _makeFullImageUrl(images[index]),
+                            fit: BoxFit.contain,
+                            placeholder: (context, url) =>
+                                _buildShimmerPlaceholder(width: double.infinity, height: 250),
+                            errorWidget: (context, url, error) => Container(
+                              color: Colors.grey.shade200,
+                              child: const Icon(Icons.error_outline, size: 48, color: Colors.grey),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Indicator để hiển thị số ảnh
+              Center(
+                child: Text(
+                  '${images.length} ảnh - Vuốt để xem thêm, chạm để xem chi tiết',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                    fontStyle: FontStyle.italic,
                   ),
-                );
-              }).toList(),
-            ),
-        ],
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
+    );
+  }
+  
+  void _showImageDetail(BuildContext context, List<String> images, int initialIndex) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final pageController = PageController(initialPage: initialIndex);
+        int currentIndex = initialIndex;
+        
+        return PopScope(
+          canPop: true,
+          onPopInvoked: (didPop) {
+            if (!didPop && Navigator.canPop(dialogContext)) {
+              Navigator.of(dialogContext).pop();
+            }
+          },
+          child: StatefulBuilder(
+            builder: (context, setState) {
+              return Dialog(
+                backgroundColor: Colors.black87,
+                child: Stack(
+                  children: [
+                    PageView.builder(
+                      controller: pageController,
+                      itemCount: images.length,
+                      onPageChanged: (index) {
+                        setState(() => currentIndex = index);
+                      },
+                      itemBuilder: (context, index) {
+                        return InteractiveViewer(
+                          minScale: 0.5,
+                          maxScale: 3.0,
+                          child: Center(
+                            child: CachedNetworkImage(
+                              imageUrl: _makeFullImageUrl(images[index]),
+                              fit: BoxFit.contain,
+                              placeholder: (context, url) => const CircularProgressIndicator(color: Colors.white),
+                              errorWidget: (context, url, error) => const Icon(Icons.error_outline, color: Colors.white, size: 48),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    Positioned(
+                      top: 40,
+                      right: 20,
+                      child: IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white, size: 28),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 20,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text(
+                            '${currentIndex + 1} / ${images.length}',
+                            style: const TextStyle(color: Colors.white, fontSize: 14),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
