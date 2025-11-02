@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -8,7 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:developer';
 import '../auth/api_client.dart';
-import '../models/register_service_request.dart';
+import 'register_vehicle_request.dart';
 import 'package:app_links/app_links.dart';
 
 class RegisterServiceDetailScreen extends StatefulWidget {
@@ -48,13 +47,11 @@ class _RegisterServiceDetailScreenState
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Khi app resume từ background, check pending payment
     if (state == AppLifecycleState.resumed) {
       _checkPendingPayment();
     }
   }
 
-  /// Kiểm tra payment status của registration đang pending
   Future<void> _checkPendingPayment() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -64,15 +61,13 @@ class _RegisterServiceDetailScreenState
       
       final registrationId = int.tryParse(pendingRegistrationId);
       if (registrationId == null || registrationId != widget.registration.id) {
-        return; // Không phải registration này
+        return;
       }
 
-      // Check payment status với backend
       final res = await api.dio.get('/register-service/$registrationId');
       final data = res.data;
       final paymentStatus = data['paymentStatus'] as String?;
       
-      // Nếu đã thanh toán thành công, xóa pending và refresh
       if (paymentStatus == 'PAID') {
         await prefs.remove(_pendingPaymentKey);
         if (mounted) {
@@ -82,10 +77,9 @@ class _RegisterServiceDetailScreenState
               backgroundColor: Colors.green,
             ),
           );
-          Navigator.pop(context, true); // Pop về list để refresh
+          Navigator.pop(context, true); 
         }
       } 
-      // Nếu chưa thanh toán, hiển thị thông báo và cho phép thanh toán lại
       else if (paymentStatus == 'UNPAID') {
         if (mounted) {
           final shouldPay = await showDialog<bool>(
@@ -110,17 +104,14 @@ class _RegisterServiceDetailScreenState
           );
 
           if (shouldPay == true && mounted) {
-            // Thanh toán lại
             await _payRegistration(widget.registration);
           } else {
-            // Xóa pending nếu user không muốn thanh toán
             await prefs.remove(_pendingPaymentKey);
           }
         }
       }
     } catch (e) {
       debugPrint('❌ Lỗi check pending payment: $e');
-      // Nếu có lỗi, xóa pending
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove(_pendingPaymentKey);
@@ -138,7 +129,6 @@ class _RegisterServiceDetailScreenState
 
         if (!mounted) return;
 
-        // Xóa pending payment vì đã có kết quả (thành công hoặc thất bại)
         try {
           final prefs = await SharedPreferences.getInstance();
           await prefs.remove(_pendingPaymentKey);
@@ -153,7 +143,6 @@ class _RegisterServiceDetailScreenState
               backgroundColor: Colors.green,
             ),
           );
-          // Pop về list screen để refresh
           if (mounted) {
             Navigator.pop(context, true);
           }
@@ -283,28 +272,22 @@ class _RegisterServiceDetailScreenState
     try {
       log('💳 [RegisterDetail] Tạo VNPAY URL cho registration: ${registration.id}');
       
-      // Lưu registrationId đang pending payment
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_pendingPaymentKey, registration.id.toString());
       
-      // Tạo VNPAY payment URL cho registration đã tồn tại
       final res = await api.dio.post('/register-service/${registration.id}/vnpay-url');
       
       if (res.statusCode != 200) {
-        // Xóa pending nếu có lỗi
         await prefs.remove(_pendingPaymentKey);
         throw Exception(res.data['message'] ?? 'Lỗi tạo URL thanh toán');
       }
 
       final paymentUrl = res.data['paymentUrl'] as String;
       
-      // Mở VNPAY trong external browser
       final uri = Uri.parse(paymentUrl);
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
-        // App sẽ quay lại qua deep link khi thanh toán xong
       } else {
-        // Xóa pending nếu không mở được browser
         await prefs.remove(_pendingPaymentKey);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -317,7 +300,6 @@ class _RegisterServiceDetailScreenState
       }
     } catch (e) {
       log('❌ [RegisterDetail] Lỗi thanh toán: $e');
-      // Xóa pending nếu có lỗi
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove(_pendingPaymentKey);
@@ -438,8 +420,6 @@ class _RegisterServiceDetailScreenState
     return PopScope(
       canPop: true,
       onPopInvoked: (didPop) {
-        // Hardware back button từ detail screen sẽ về list screen
-        // Không cần xử lý gì thêm, Flutter sẽ tự động pop
       },
       child: Scaffold(
         appBar: AppBar(
@@ -464,7 +444,6 @@ class _RegisterServiceDetailScreenState
                 _buildPaymentStatusChip(s.paymentStatus),
               ],
             ),
-            // Hiển thị button thanh toán nếu chưa thanh toán
             if (s.paymentStatus == 'UNPAID') ...[
               const SizedBox(height: 20),
               SizedBox(
@@ -490,7 +469,6 @@ class _RegisterServiceDetailScreenState
             _detailRow('Loại phương tiện', s.vehicleType),
             _detailRow('Ghi chú', s.note),
             _detailRow('Ngày tạo', formatDate(s.createdAt)),
-            // Hiển thị ảnh ở dưới với PageView để swipe
             if (images.isNotEmpty) ...[
               const SizedBox(height: 20),
               const Text(
@@ -509,7 +487,6 @@ class _RegisterServiceDetailScreenState
                   itemBuilder: (context, index) {
                     return GestureDetector(
                       onTap: () {
-                        // Xem chi tiết ảnh khi tap
                         _showImageDetail(context, images, index);
                       },
                       child: Padding(
@@ -533,7 +510,6 @@ class _RegisterServiceDetailScreenState
                 ),
               ),
               const SizedBox(height: 8),
-              // Indicator để hiển thị số ảnh
               Center(
                 child: Text(
                   '${images.length} ảnh - Vuốt để xem thêm, chạm để xem chi tiết',

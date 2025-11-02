@@ -55,12 +55,10 @@ class InvoiceLineResponseDto {
         'status': status,
       };
 
-  // Helper methods
   bool get isPaid => status.toUpperCase() == 'PAID';
   bool get isDraft => status.toUpperCase() == 'DRAFT';
   bool get isPublished => status.toUpperCase() == 'PUBLISHED';
 
-  // Format service code to Vietnamese
   String get serviceCodeDisplay {
     switch (serviceCode.toUpperCase()) {
       case 'ELECTRIC':

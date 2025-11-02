@@ -11,16 +11,17 @@ import '../auth/api_client.dart';
 import '../core/event_bus.dart';
 import '../common/main_shell.dart';
 import 'register_guide_screen.dart';
-import 'register_service_list_screen.dart';
+import 'register_vehicle_list_screen.dart';
 
-class RegisterServiceScreen extends StatefulWidget {
-  const RegisterServiceScreen({super.key});
+class RegisterVehicleScreen extends StatefulWidget {
+  const RegisterVehicleScreen({super.key});
 
   @override
-  State<RegisterServiceScreen> createState() => _RegisterServiceScreenState();
+  State<RegisterVehicleScreen> createState() => _RegisterServiceScreenState();
 }
 
-class _RegisterServiceScreenState extends State<RegisterServiceScreen> with WidgetsBindingObserver {
+class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
+    with WidgetsBindingObserver {
   final ApiClient api = ApiClient();
   final _formKey = GlobalKey<FormState>();
   final _storageKey = 'register_service_draft';
@@ -35,12 +36,12 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
   bool _submitting = false;
   bool _showList = false;
   bool _confirmed = false;
-  String? _editingField; 
-  bool _hasEditedAfterConfirm = false; 
+  String? _editingField;
+  bool _hasEditedAfterConfirm = false;
   final ImagePicker _picker = ImagePicker();
   List<String> _uploadedImageUrls = [];
-  static const int maxImages = 6; 
-  
+  static const int maxImages = 6;
+
   bool _hasUnsavedChanges = false;
   StreamSubscription<Uri?>? _paymentSub;
   final AppLinks _appLinks = AppLinks();
@@ -62,13 +63,13 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
         setState(() => _showList = true);
       }
     });
-    
-    // Listen cho payment success để hiển thị snackbar
+
     AppEventBus().on('show_payment_success', (message) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ Thanh toán thành công! ${message ?? "Đăng ký xe đã được lưu."}'),
+            content: Text(
+                '✅ Thanh toán thành công! ${message ?? "Đăng ký xe đã được lưu."}'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 3),
           ),
@@ -92,39 +93,35 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
       _autoSave();
     }
-    // Khi app resume từ background, check pending payment
     if (state == AppLifecycleState.resumed) {
       _checkPendingPayment();
     }
   }
 
-  /// Kiểm tra payment status của registration đang pending
   Future<void> _checkPendingPayment() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final pendingRegistrationId = prefs.getString(_pendingPaymentKey);
-      
+
       if (pendingRegistrationId == null) return;
-      
+
       final registrationId = int.tryParse(pendingRegistrationId);
       if (registrationId == null) {
         await prefs.remove(_pendingPaymentKey);
         return;
       }
 
-      // Check payment status với backend
       final res = await api.dio.get('/register-service/$registrationId');
       final data = res.data;
       final paymentStatus = data['paymentStatus'] as String?;
-      
-      // Nếu đã thanh toán thành công, xóa pending và navigate về list
+
       if (paymentStatus == 'PAID') {
         await prefs.remove(_pendingPaymentKey);
         if (mounted) {
-          // Navigate về MainShell với tab Dịch vụ và show list
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(
@@ -134,12 +131,12 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
           ).then((_) {
             Future.delayed(const Duration(milliseconds: 100), () {
               AppEventBus().emit('show_register_list');
-              AppEventBus().emit('show_payment_success', 'Thanh toán đã hoàn tất');
+              AppEventBus()
+                  .emit('show_payment_success', 'Thanh toán đã hoàn tất');
             });
           });
         }
-      } 
-      // Nếu chưa thanh toán, hiển thị thông báo và cho phép thanh toán lại
+      }
       else if (paymentStatus == 'UNPAID') {
         if (mounted) {
           final shouldPay = await showDialog<bool>(
@@ -157,25 +154,23 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Thanh toán', style: TextStyle(color: Colors.teal)),
+                  child: const Text('Thanh toán',
+                      style: TextStyle(color: Colors.teal)),
                 ),
               ],
             ),
           );
 
           if (shouldPay == true && mounted) {
-            // Navigate đến list screen để thanh toán lại
             setState(() => _showList = true);
             AppEventBus().emit('pay_registration', registrationId);
           } else {
-            // Xóa pending nếu user không muốn thanh toán
             await prefs.remove(_pendingPaymentKey);
           }
         }
       }
     } catch (e) {
       debugPrint('❌ Lỗi check pending payment: $e');
-      // Nếu có lỗi (ví dụ registration không tồn tại), xóa pending
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove(_pendingPaymentKey);
@@ -218,7 +213,7 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
       final saved = prefs.getString(_storageKey);
       if (saved != null) {
         final data = jsonDecode(saved) as Map<String, dynamic>;
-        
+
         setState(() {
           _vehicleType = data['vehicleType'] ?? 'Car';
           _licenseCtrl.text = data['licensePlate'] ?? '';
@@ -227,7 +222,7 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
           _noteCtrl.text = data['note'] ?? '';
           _uploadedImageUrls = List<String>.from(data['imageUrls'] ?? []);
         });
-        
+
         debugPrint('✅ Đã load lại dữ liệu đã lưu');
       }
     } catch (e) {
@@ -252,7 +247,8 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Thoát màn hình?'),
-        content: const Text('Bạn có muốn thoát không? Dữ liệu đã nhập sẽ được lưu tự động.'),
+        content: const Text(
+            'Bạn có muốn thoát không? Dữ liệu đã nhập sẽ được lưu tự động.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -276,7 +272,7 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
   void _listenForPaymentResult() {
     _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
       if (uri == null) return;
-      
+
       if (uri.scheme == 'qhomeapp' && uri.host == 'vnpay-registration-result') {
         final registrationId = uri.queryParameters['registrationId'];
         final responseCode = uri.queryParameters['responseCode'];
@@ -285,31 +281,27 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
 
         if (responseCode == '00') {
           await _clearSavedData();
-          
-          // Xóa pending payment vì đã thanh toán thành công
+
           try {
             final prefs = await SharedPreferences.getInstance();
             await prefs.remove(_pendingPaymentKey);
           } catch (e) {
             debugPrint('❌ Lỗi xóa pending payment: $e');
           }
-          
+
           if (!mounted) return;
-          
-          // Navigate về MainShell với tab Dịch vụ (index = 2)
+
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(
               builder: (_) => const MainShell(initialIndex: 2),
             ),
-            (route) => false, // Xóa tất cả routes trước đó
+            (route) => false,
           ).then((_) {
-            // Emit event để RegisterServiceScreen hiển thị list và snackbar
-            // Sau khi navigate hoàn tất
             Future.delayed(const Duration(milliseconds: 100), () {
               AppEventBus().emit('show_register_list');
-              // Emit event để hiển thị snackbar thành công
-              AppEventBus().emit('show_payment_success', 'Đăng ký xe đã được lưu');
+              AppEventBus()
+                  .emit('show_payment_success', 'Đăng ký xe đã được lưu');
             });
           });
         } else {
@@ -348,7 +340,8 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
     if (picked.length > remainingSlots && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('⚠️ Chỉ có thể tải thêm $remainingSlots ảnh (tối đa $maxImages ảnh). Đã chọn $remainingSlots ảnh đầu tiên.'),
+          content: Text(
+              '⚠️ Chỉ có thể tải thêm $remainingSlots ảnh (tối đa $maxImages ảnh). Đã chọn $remainingSlots ảnh đầu tiên.'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -371,7 +364,8 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
       return;
     }
 
-    final photo = await _picker.pickImage(source: ImageSource.camera, imageQuality: 80);
+    final photo =
+        await _picker.pickImage(source: ImageSource.camera, imageQuality: 80);
     if (photo != null) {
       await _uploadImages([photo]);
       await _autoSave();
@@ -383,17 +377,23 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
     try {
       final formData = FormData.fromMap({
         'files': await Future.wait(
-          files.map((f) async => MultipartFile.fromFile(f.path, filename: f.name)),
+          files.map(
+              (f) async => MultipartFile.fromFile(f.path, filename: f.name)),
         ),
       });
-      final res = await api.dio.post('/register-service/upload-images', data: formData);
-      final urls = (res.data['imageUrls'] as List?)?.map((e) => e.toString()).toList() ?? [];
-      
+      final res =
+          await api.dio.post('/register-service/upload-images', data: formData);
+      final urls =
+          (res.data['imageUrls'] as List?)?.map((e) => e.toString()).toList() ??
+              [];
+
       setState(() => _uploadedImageUrls.addAll(urls));
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Đã tải lên ${urls.length} ảnh thành công! (${_uploadedImageUrls.length}/$maxImages)')),
+          SnackBar(
+              content: Text(
+                  'Đã tải lên ${urls.length} ảnh thành công! (${_uploadedImageUrls.length}/$maxImages)')),
         );
       }
     } catch (e) {
@@ -461,7 +461,8 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Đã kiểm tra', style: TextStyle(color: Colors.teal)),
+              child: const Text('Đã kiểm tra',
+                  style: TextStyle(color: Colors.teal)),
             ),
           ],
         ),
@@ -472,11 +473,12 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
           _confirmed = true;
           _editingField = null;
         });
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('✅ Vui lòng kiểm tra lại thông tin. Double-click vào field để chỉnh sửa.'),
+              content: Text(
+                  '✅ Vui lòng kiểm tra lại thông tin. Double-click vào field để chỉnh sửa.'),
               duration: Duration(seconds: 3),
             ),
           );
@@ -501,7 +503,8 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Đã kiểm tra', style: TextStyle(color: Colors.teal)),
+              child: const Text('Đã kiểm tra',
+                  style: TextStyle(color: Colors.teal)),
             ),
           ],
         ),
@@ -512,11 +515,12 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
           _hasEditedAfterConfirm = false;
           _editingField = null;
         });
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('✅ Vui lòng kiểm tra lại thông tin. Double-click vào field để chỉnh sửa.'),
+              content: Text(
+                  '✅ Vui lòng kiểm tra lại thông tin. Double-click vào field để chỉnh sửa.'),
               duration: Duration(seconds: 3),
             ),
           );
@@ -530,13 +534,14 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
 
   Future<void> _requestEditField(String field) async {
     if (!_confirmed) return;
-    
+
     if (_editingField != null && _editingField != field) {
       final wantSwitch = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
           title: const Text('Đang chỉnh sửa field khác'),
-          content: const Text('Bạn đang chỉnh sửa một field khác. Bạn có muốn chuyển sang field này không?'),
+          content: const Text(
+              'Bạn đang chỉnh sửa một field khác. Bạn có muốn chuyển sang field này không?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -569,11 +574,11 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
         ],
       ),
     );
-    
+
     if (wantEdit == true) {
       setState(() {
         _editingField = field;
-        _hasEditedAfterConfirm = true; 
+        _hasEditedAfterConfirm = true;
       });
     }
   }
@@ -639,31 +644,25 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
 
   Future<void> _saveAndPay() async {
     setState(() => _submitting = true);
-    int? registrationId; 
-    
+    int? registrationId;
+
     try {
       final payload = _collectPayload();
-      
-      final res = await api.dio.post('/register-service/vnpay-url', data: payload);
-      
+
+      final res =
+          await api.dio.post('/register-service/vnpay-url', data: payload);
+
       registrationId = res.data['registrationId'] as int?;
       final paymentUrl = res.data['paymentUrl'] as String;
-      
+
       if (mounted && registrationId != null) {
-        // Lưu registrationId đang pending payment để check sau khi app resume
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_pendingPaymentKey, registrationId.toString());
-        
-        // Clear form sau khi bấm đăng ký và thanh toán lần 2 (sau khi check thông tin)
         _clearForm();
-        
-        // Mở VNPAY trong external browser
         final uri = Uri.parse(paymentUrl);
         if (await canLaunchUrl(uri)) {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
-          // App sẽ quay lại qua deep link khi thanh toán xong
         } else {
-          // Xóa pending nếu không mở được browser
           await prefs.remove(_pendingPaymentKey);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -672,17 +671,15 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
             ),
           );
         }
-        // Deep link sẽ được xử lý trong _listenForPaymentResult()
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Lỗi: $e')),
         );
-        
-          if (registrationId != null) {
+
+        if (registrationId != null) {
           await _cancelRegistration(registrationId);
-          // Xóa pending payment nếu có lỗi
           try {
             final prefs = await SharedPreferences.getInstance();
             await prefs.remove(_pendingPaymentKey);
@@ -763,7 +760,8 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                       onPressed: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => const RegisterGuideScreen()),
+                          MaterialPageRoute(
+                              builder: (_) => const RegisterGuideScreen()),
                         );
                       },
                     ),
@@ -782,7 +780,6 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Info card về phí đăng ký
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
@@ -792,7 +789,8 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                             ),
                             child: Row(
                               children: [
-                                Icon(Icons.info_outline, color: Colors.blue.shade700),
+                                Icon(Icons.info_outline,
+                                    color: Colors.blue.shade700),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
@@ -807,7 +805,7 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                             ),
                           ),
                           const SizedBox(height: 16),
-                          
+
                           Container(
                             decoration: BoxDecoration(
                               color: Colors.white,
@@ -825,12 +823,17 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                               children: [
                                 DropdownButtonFormField<String>(
                                   value: _vehicleType,
-                                  decoration: const InputDecoration(labelText: 'Loại phương tiện'),
+                                  decoration: const InputDecoration(
+                                      labelText: 'Loại phương tiện'),
                                   items: const [
-                                    DropdownMenuItem(value: 'Car', child: Text('Ô tô')),
-                                    DropdownMenuItem(value: 'Motorbike', child: Text('Xe máy')),
+                                    DropdownMenuItem(
+                                        value: 'Car', child: Text('Ô tô')),
+                                    DropdownMenuItem(
+                                        value: 'Motorbike',
+                                        child: Text('Xe máy')),
                                   ],
-                                  onChanged: (_confirmed && _editingField != 'vehicleType')
+                                  onChanged: (_confirmed &&
+                                          _editingField != 'vehicleType')
                                       ? null
                                       : (v) {
                                           setState(() {
@@ -847,11 +850,13 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                                 _buildEditableField(
                                   label: 'Biển số xe',
                                   controller: _licenseCtrl,
-                                  icon: _vehicleType == 'Car' 
-                                      ? Icons.directions_car 
+                                  icon: _vehicleType == 'Car'
+                                      ? Icons.directions_car
                                       : Icons.two_wheeler,
                                   fieldKey: 'license',
-                                  validator: (v) => v!.isEmpty ? 'Vui lòng nhập biển số xe' : null,
+                                  validator: (v) => v!.isEmpty
+                                      ? 'Vui lòng nhập biển số xe'
+                                      : null,
                                 ),
                                 const SizedBox(height: 12),
                                 _buildEditableField(
@@ -859,7 +864,9 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                                   controller: _brandCtrl,
                                   icon: Icons.factory_outlined,
                                   fieldKey: 'brand',
-                                  validator: (v) => v!.isEmpty ? 'Vui lòng nhập hãng xe' : null,
+                                  validator: (v) => v!.isEmpty
+                                      ? 'Vui lòng nhập hãng xe'
+                                      : null,
                                 ),
                                 const SizedBox(height: 12),
                                 _buildEditableField(
@@ -867,7 +874,9 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                                   controller: _colorCtrl,
                                   icon: Icons.palette_outlined,
                                   fieldKey: 'color',
-                                  validator: (v) => v!.isEmpty ? 'Vui lòng nhập màu xe' : null,
+                                  validator: (v) => v!.isEmpty
+                                      ? 'Vui lòng nhập màu xe'
+                                      : null,
                                 ),
                                 const SizedBox(height: 12),
                                 _buildEditableField(
@@ -887,13 +896,16 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                             children: [
                               const Text(
                                 'Ảnh xe của bạn',
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                style: TextStyle(
+                                    fontSize: 16, fontWeight: FontWeight.w600),
                               ),
                               Text(
                                 '${_uploadedImageUrls.length}/$maxImages',
                                 style: TextStyle(
                                   fontSize: 14,
-                                  color: _uploadedImageUrls.length >= maxImages ? Colors.orange : Colors.grey.shade700,
+                                  color: _uploadedImageUrls.length >= maxImages
+                                      ? Colors.orange
+                                      : Colors.grey.shade700,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -907,23 +919,27 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                                     color: Colors.grey.shade200,
                                     borderRadius: BorderRadius.circular(12),
                                   ),
-                                  child: const Center(child: Text('Chưa chọn ảnh xe')),
+                                  child: const Center(
+                                      child: Text('Chưa chọn ảnh xe')),
                                 )
                               : Wrap(
                                   spacing: 8,
                                   runSpacing: 8,
-                                  children: List.generate(_uploadedImageUrls.length, (i) {
+                                  children: List.generate(
+                                      _uploadedImageUrls.length, (i) {
                                     final canRemove = _canRemoveImage(i);
                                     return GestureDetector(
                                       onDoubleTap: () => _requestDeleteImage(i),
                                       child: Stack(
                                         children: [
                                           ClipRRect(
-                                            borderRadius: BorderRadius.circular(10),
+                                            borderRadius:
+                                                BorderRadius.circular(10),
                                             child: Opacity(
                                               opacity: canRemove ? 1.0 : 0.7,
                                               child: Image.network(
-                                                _makeFullImageUrl(_uploadedImageUrls[i]),
+                                                _makeFullImageUrl(
+                                                    _uploadedImageUrls[i]),
                                                 width: 110,
                                                 height: 110,
                                                 fit: BoxFit.cover,
@@ -939,8 +955,11 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                                                   color: Colors.black54,
                                                   shape: BoxShape.circle,
                                                 ),
-                                                padding: const EdgeInsets.all(4),
-                                                child: const Icon(Icons.close, size: 16, color: Colors.white),
+                                                padding:
+                                                    const EdgeInsets.all(4),
+                                                child: const Icon(Icons.close,
+                                                    size: 16,
+                                                    color: Colors.white),
                                               ),
                                             ),
                                           if (_confirmed && !canRemove)
@@ -949,12 +968,17 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                                               left: 0,
                                               right: 0,
                                               child: Container(
-                                                padding: const EdgeInsets.symmetric(vertical: 2),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        vertical: 2),
                                                 decoration: BoxDecoration(
                                                   color: Colors.black54,
-                                                  borderRadius: const BorderRadius.only(
-                                                    bottomLeft: Radius.circular(10),
-                                                    bottomRight: Radius.circular(10),
+                                                  borderRadius:
+                                                      const BorderRadius.only(
+                                                    bottomLeft:
+                                                        Radius.circular(10),
+                                                    bottomRight:
+                                                        Radius.circular(10),
                                                   ),
                                                 ),
                                                 child: const Text(
@@ -975,33 +999,45 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                           const SizedBox(height: 16),
                           Row(
                             children: [
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: _confirmed || _submitting || _uploadedImageUrls.length >= maxImages
-                                    ? null
-                                    : _pickMultipleImages,
-                                icon: const Icon(Icons.photo_library),
-                                label: Text(_uploadedImageUrls.length >= maxImages ? 'Đã đủ ($maxImages ảnh)' : 'Chọn ảnh'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.teal.shade400,
-                                  disabledBackgroundColor: Colors.grey.shade300,
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: _confirmed ||
+                                          _submitting ||
+                                          _uploadedImageUrls.length >= maxImages
+                                      ? null
+                                      : _pickMultipleImages,
+                                  icon: const Icon(Icons.photo_library),
+                                  label: Text(
+                                      _uploadedImageUrls.length >= maxImages
+                                          ? 'Đã đủ ($maxImages ảnh)'
+                                          : 'Chọn ảnh'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.teal.shade400,
+                                    disabledBackgroundColor:
+                                        Colors.grey.shade300,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: _confirmed || _submitting || _uploadedImageUrls.length >= maxImages
-                                    ? null
-                                    : _takePhoto,
-                                icon: const Icon(Icons.camera_alt),
-                                label: Text(_uploadedImageUrls.length >= maxImages ? 'Đã đủ ($maxImages ảnh)' : 'Chụp ảnh'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.teal.shade600,
-                                  disabledBackgroundColor: Colors.grey.shade300,
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: _confirmed ||
+                                          _submitting ||
+                                          _uploadedImageUrls.length >= maxImages
+                                      ? null
+                                      : _takePhoto,
+                                  icon: const Icon(Icons.camera_alt),
+                                  label: Text(
+                                      _uploadedImageUrls.length >= maxImages
+                                          ? 'Đã đủ ($maxImages ảnh)'
+                                          : 'Chụp ảnh'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.teal.shade600,
+                                    disabledBackgroundColor:
+                                        Colors.grey.shade300,
+                                  ),
                                 ),
                               ),
-                            ),
                             ],
                           ),
                           const SizedBox(height: 30),
@@ -1009,9 +1045,8 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                             width: double.infinity,
                             height: 50,
                             child: ElevatedButton(
-                              onPressed: _submitting
-                                  ? null
-                                  : _handleRegisterPressed,
+                              onPressed:
+                                  _submitting ? null : _handleRegisterPressed,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF26A69A),
                                 shape: RoundedRectangleBorder(
@@ -1030,7 +1065,9 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                                               ? 'Xác nhận và thanh toán'
                                               : 'Đăng ký và thanh toán (30.000 VNĐ)')
                                           : 'Đăng ký và thanh toán (30.000 VNĐ)',
-                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                      style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600),
                                     ),
                             ),
                           ),
@@ -1082,7 +1119,7 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
               maxLines: maxLines,
               onTap: () {
                 if (isEditing) return;
-                
+
                 if (_confirmed && !editable) {
                   _requestEditField(fieldKey);
                 }
@@ -1097,7 +1134,6 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                 }
               },
               onFieldSubmitted: (_) {
-                // Khi user submit field, finish editing
                 if (isEditing && mounted) {
                   FocusScope.of(context).unfocus();
                   setState(() {
@@ -1107,7 +1143,6 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                 }
               },
               onChanged: (value) {
-                // Ghi nhớ đã edit khi user thay đổi giá trị
                 if (isEditing) {
                   _autoSave();
                 }
@@ -1117,8 +1152,12 @@ class _RegisterServiceScreenState extends State<RegisterServiceScreen> with Widg
                 prefixIcon: Icon(icon),
                 filled: true,
                 fillColor: editable ? Colors.white : Colors.grey.shade200,
-                hintText: _confirmed && !editable ? 'Double-click để chỉnh sửa' : null,
-                helperText: isEditing ? 'Đang chỉnh sửa... (Nhấn Done để hoàn tất)' : null,
+                hintText: _confirmed && !editable
+                    ? 'Double-click để chỉnh sửa'
+                    : null,
+                helperText: isEditing
+                    ? 'Đang chỉnh sửa... (Nhấn Done để hoàn tất)'
+                    : null,
                 helperMaxLines: 2,
               ),
             ),

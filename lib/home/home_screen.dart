@@ -15,9 +15,15 @@ import '../news/news_service.dart';
 import '../news/news_detail_screen.dart';
 import '../news/news_screen.dart';
 import '../profile/profile_service.dart';
-import '../register/register_service_list_screen.dart';
+import '../register/register_vehicle_list_screen.dart';
 import '../websocket/web_socket_service.dart';
 import '../invoices/invoice_list_screen.dart';
+import '../service_registration/service_booking_service.dart';
+import '../service_registration/service_detail_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:app_links/app_links.dart';
+import 'dart:async';
 
 class HomeScreen extends StatefulWidget {
   final void Function(int)? onNavigateToTab;
@@ -30,13 +36,17 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late final ApiClient _apiClient;
   late final BillService _billService;
+  late final ServiceBookingService _serviceBookingService;
   late final WebSocketService _wsService;
   final _tokenStorage = TokenStorage();
   final _eventBus = AppEventBus();
+  late AppLinks _appLinks;
+  StreamSubscription? _paymentSub;
 
   Map<String, dynamic>? _profile;
   List<NewsItem> _notifications = [];
   List<BillItem> _unpaidBills = [];
+  List<Map<String, dynamic>> _unpaidBookings = [];
   List<BillStatistics> _stats = [];
 
   bool _loading = true;
@@ -48,8 +58,11 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _apiClient = ApiClient();
     _billService = BillService(_apiClient);
+    _serviceBookingService = ServiceBookingService(_apiClient.dio);
     _wsService = WebSocketService();
+    _appLinks = AppLinks();
     _initialize();
+    _listenForPaymentResult();
 
     _eventBus.on('news_update', (_) async {
       debugPrint('🔔 HomeScreen nhận event news_update -> reload dữ liệu...');
@@ -111,18 +124,21 @@ class _HomeScreenState extends State<HomeScreen> {
           .getUnreadNotifications();
       final billFuture = _billService.getUnpaidBills();
       final statFuture = _billService.getStatistics();
+      final unpaidBookingsFuture = _serviceBookingService.getUnpaidBookings();
 
       final results = await Future.wait([
         profileFuture,
         notiFuture,
         billFuture,
         statFuture,
+        unpaidBookingsFuture,
       ]);
 
       final profile = results[0] as Map<String, dynamic>;
       final notis = results[1] as List<NewsItem>;
       final billDtos = results[2] as List;
       final stats = results[3] as List<BillStatistics>;
+      final unpaidBookings = results[4] as List<Map<String, dynamic>>;
 
       final bills = billDtos.map<BillItem>((dto) {
         DateTime billingMonth;
@@ -161,6 +177,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _notifications = notis;
           _unpaidBills = bills;
           _stats = stats;
+          _unpaidBookings = unpaidBookings;
           _loading = false;
         });
       }
@@ -177,7 +194,163 @@ class _HomeScreenState extends State<HomeScreen> {
   int get unreadCount => _notifications.where((n) => !n.isRead).length;
 
   @override
+  Widget _buildUnpaidBookingSection(Size size) {
+    if (_unpaidBookings.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text(
+              'Dịch vụ cần thanh toán',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 17,
+                color: Color(0xFF1A1A1A),
+              ),
+            ),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.orangeAccent,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '${_unpaidBookings.length}',
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ..._unpaidBookings.map((booking) {
+          final serviceName = booking['service']?['name'] ?? 'Dịch vụ';
+          final totalAmount = booking['totalAmount']?.toDouble() ?? 0.0;
+          final bookingDate = booking['bookingDate'] != null
+              ? DateTime.parse(booking['bookingDate'])
+              : null;
+          final startTime = booking['startTime'] ?? '';
+          final endTime = booking['endTime'] ?? '';
+          final bookingId = booking['id'] as int? ?? 0;
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.orange.withOpacity(0.3), width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 6,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Colors.orange.withOpacity(0.1),
+                child: const Icon(Icons.event_available, color: Colors.orange),
+              ),
+              title: Text(
+                serviceName,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (bookingDate != null)
+                    Text(
+                      'Ngày: ${DateFormat('dd/MM/yyyy').format(bookingDate)}',
+                      style: const TextStyle(color: Colors.black54),
+                    ),
+                  if (startTime.isNotEmpty && endTime.isNotEmpty)
+                    Text(
+                      'Giờ: ${startTime.substring(0, 5)} - ${endTime.substring(0, 5)}',
+                      style: const TextStyle(color: Colors.black54),
+                    ),
+                  Text(
+                    'Số tiền: ${NumberFormat.currency(locale: "vi_VN", symbol: "₫").format(totalAmount)}',
+                    style: const TextStyle(
+                      color: Colors.orange,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              trailing: ElevatedButton(
+                onPressed: () => _payBooking(bookingId),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
+                child: const Text('Thanh toán'),
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Future<void> _payBooking(int bookingId) async {
+    try {
+      final paymentUrl = await _serviceBookingService.getVnpayPaymentUrl(bookingId);
+      
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('pending_booking_$bookingId', bookingId.toString());
+      
+      final uri = Uri.parse(paymentUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _listenForPaymentResult() {
+    _paymentSub = _appLinks.uriLinkStream.listen((Uri uri) {
+      if (uri.scheme == 'qhomeapp' && uri.host == 'service-booking-result') {
+        final status = uri.queryParameters['status'];
+        final bookingIdStr = uri.queryParameters['bookingId'];
+        
+        if (status == 'success' && bookingIdStr != null) {
+          final bookingId = int.tryParse(bookingIdStr);
+          if (bookingId != null) {
+            _removePendingBooking(bookingId);
+            _refreshAll();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Thanh toán thành công!'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            }
+          }
+        }
+      }
+    });
+  }
+
+  Future<void> _removePendingBooking(int bookingId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('pending_booking_$bookingId');
+  }
+
   void dispose() {
+    _paymentSub?.cancel();
     _wsService.disconnect();
     super.dispose();
   }
@@ -211,13 +384,18 @@ class _HomeScreenState extends State<HomeScreen> {
                           .slideY(begin: -0.2, curve: Curves.easeOutCubic),
                       SizedBox(height: size.height * 0.03),
                       if (_notifications.any((n) => !n.isRead) ||
-                          _unpaidBills.isNotEmpty) ...[
+                          _unpaidBills.isNotEmpty ||
+                          _unpaidBookings.isNotEmpty) ...[
                         _buildNotificationSection(size),
                         SizedBox(height: size.height * 0.03),
                         _buildUnpaidBillSection(size),
                         SizedBox(height: size.height * 0.03),
+                        _buildUnpaidBookingSection(size),
+                        SizedBox(height: size.height * 0.03),
                       ],
                       _buildStatisticsSection(size),
+                      SizedBox(height: size.height * 0.03),
+                      _buildNewsSection(size), // Thêm phần tin tức
                       SizedBox(height: size.height * 0.03),
                       _buildCompactFeatureRow(size),
                     ],
@@ -281,7 +459,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildNotificationSection(Size size) {
-    // Nếu không có thông báo chưa đọc, ẩn hoàn toàn section
     final unreadNotifications = _notifications.where((n) => !n.isRead).toList();
     if (unreadNotifications.isEmpty) return const SizedBox.shrink();
 
@@ -500,20 +677,93 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildNewsSection(Size size) {
+    final recentNews = _notifications.take(3).toList();
+    if (recentNews.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: EdgeInsets.all(size.width * 0.04),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.grey.withOpacity(0.15),
+              blurRadius: 8,
+              offset: const Offset(0, 3))
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('Tin tức mới',
+                  style: TextStyle(
+                      fontSize: size.width * 0.05,
+                      fontWeight: FontWeight.w700)),
+              const Spacer(),
+              TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const NewsScreen(),
+                    ),
+                  );
+                },
+                child: const Text('Xem tất cả'),
+              ),
+            ],
+          ),
+          SizedBox(height: size.height * 0.015),
+          ...recentNews.map((news) => Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.blue.withOpacity(0.1),
+                    child: const Icon(Icons.article, color: Colors.blue, size: 20),
+                  ),
+                  title: Text(
+                    news.title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    news.body,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                  trailing: Text(
+                    DateFormat('dd/MM').format(news.date),
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => NewsDetailScreen(id: news.id),
+                      ),
+                    );
+                  },
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCompactFeatureRow(Size size) {
     final iconSize = size.width * 0.09;
     final labelSize = size.width * 0.032;
 
     final features = [
-      {
-        'icon': Icons.local_parking,
-        'label': 'Thẻ xe đã đăng ký',
-        'color': Colors.lightBlueAccent,
-        'onTap': () => Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (_) => const RegisterServiceListScreen())),
-      },
       {
         'icon': Icons.payment,
         'label': 'Cần thanh toán',
@@ -539,6 +789,23 @@ class _HomeScreenState extends State<HomeScreen> {
               builder: (_) => const InvoiceListScreen(),
             ),
           );
+        },
+      },
+      {
+        'icon': Icons.article,
+        'label': 'Tin tức',
+        'color': Colors.blue,
+        'onTap': () {
+          if (widget.onNavigateToTab != null) {
+            // Navigate to News tab (index 1) - nhưng giờ News đã ở HomeScreen
+            // Tạm thời để navigate đến NewsScreen nếu cần
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const NewsScreen(),
+              ),
+            );
+          }
         },
       },
     ];

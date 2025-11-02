@@ -1,16 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
-import 'package:animations/animations.dart';
-import 'dart:developer';
 import '../auth/api_client.dart';
-import '../models/register_service_request.dart';
-import 'register_service_detail_screen.dart';
+import 'register_vehicle_request.dart';
+import 'register_vehicle_detail_screen.dart';
 
 class RegisterServiceListScreen extends StatefulWidget {
   final VoidCallback? onBackPressed;
-  
+
   const RegisterServiceListScreen({super.key, this.onBackPressed});
 
   @override
@@ -34,8 +31,8 @@ class _RegisterServiceListScreenState extends State<RegisterServiceListScreen>
   @override
   void initState() {
     super.initState();
-    _animController =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
+    _animController = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 400));
     _load(page: currentPage);
   }
 
@@ -185,7 +182,6 @@ class _RegisterServiceListScreenState extends State<RegisterServiceListScreen>
     );
   }
 
-
   void _goToPage(int page) {
     if (page < 1 || page > totalPages) return;
     _load(page: page);
@@ -193,11 +189,9 @@ class _RegisterServiceListScreenState extends State<RegisterServiceListScreen>
 
   @override
   Widget build(BuildContext context) {
-
     return PopScope(
       canPop: true,
       onPopInvoked: (didPop) async {
-        // Khi hardware back button được nhấn, gọi callback để toggle về form view
         if (!didPop && mounted && widget.onBackPressed != null) {
           widget.onBackPressed!();
         }
@@ -210,116 +204,116 @@ class _RegisterServiceListScreenState extends State<RegisterServiceListScreen>
           backgroundColor: const Color(0xFF26A69A),
           foregroundColor: Colors.white,
         ),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        color: Colors.teal,
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 400),
-          child: loading
-              ? ListView.builder(
-                  key: const ValueKey('loading'),
-                  padding: const EdgeInsets.all(16),
-                  itemCount: 6,
-                  itemBuilder: (context, i) =>
-                      _buildShimmerPlaceholder(width: double.infinity, height: 140),
-                )
-              : list.isEmpty
-                  ? const Center(
-                      key: ValueKey('empty'),
-                      child: Text(
-                        'Chưa có thẻ xe nào được đăng ký.',
-                        style: TextStyle(color: Colors.grey, fontSize: 16),
-                      ),
-                    )
-                  : ListView.builder(
-                      key: const ValueKey('list'),
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.all(16),
-                      itemCount: list.length,
-                      itemBuilder: (context, i) {
-                        final item = list[i];
-                        final anim = CurvedAnimation(
-                          parent: _animController,
-                          curve: Interval((i / list.length), 1.0,
-                              curve: Curves.easeOutCubic),
-                        );
+        body: RefreshIndicator(
+          onRefresh: _refresh,
+          color: Colors.teal,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 400),
+            child: loading
+                ? ListView.builder(
+                    key: const ValueKey('loading'),
+                    padding: const EdgeInsets.all(16),
+                    itemCount: 6,
+                    itemBuilder: (context, i) => _buildShimmerPlaceholder(
+                        width: double.infinity, height: 140),
+                  )
+                : list.isEmpty
+                    ? const Center(
+                        key: ValueKey('empty'),
+                        child: Text(
+                          'Chưa có thẻ xe nào được đăng ký.',
+                          style: TextStyle(color: Colors.grey, fontSize: 16),
+                        ),
+                      )
+                    : ListView.builder(
+                        key: const ValueKey('list'),
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.all(16),
+                        itemCount: list.length,
+                        itemBuilder: (context, i) {
+                          final item = list[i];
+                          final anim = CurvedAnimation(
+                            parent: _animController,
+                            curve: Interval((i / list.length), 1.0,
+                                curve: Curves.easeOutCubic),
+                          );
 
-                        return FadeTransition(
-                          opacity: anim,
-                          child: SlideTransition(
-                            position: Tween<Offset>(
-                              begin: const Offset(0, 0.2),
-                              end: Offset.zero,
-                            ).animate(anim),
-                            child: InkWell(
-                              onTap: () {
-                                // Navigate đến detail screen riêng biệt
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => RegisterServiceDetailScreen(
-                                      registration: item,
+                          return FadeTransition(
+                            opacity: anim,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0, 0.2),
+                                end: Offset.zero,
+                              ).animate(anim),
+                              child: InkWell(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          RegisterServiceDetailScreen(
+                                        registration: item,
+                                      ),
                                     ),
-                                  ),
-                                ).then((result) {
-                                  // Refresh danh sách nếu có thay đổi (ví dụ sau khi thanh toán)
-                                  if (result == true && mounted) {
-                                    _refresh();
-                                  }
-                                });
-                              },
-                              borderRadius: BorderRadius.circular(16),
-                              child: _buildCard(item),
+                                  ).then((result) {
+                                    if (result == true && mounted) {
+                                      _refresh();
+                                    }
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(16),
+                                child: _buildCard(item),
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
+                          );
+                        },
+                      ),
+          ),
         ),
-      ),
-      bottomNavigationBar: !loading && totalPages > 1
-          ? Container(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 6,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.first_page),
-                    onPressed: currentPage > 1 ? () => _goToPage(1) : null,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left),
-                    onPressed:
-                        currentPage > 1 ? () => _goToPage(currentPage - 1) : null,
-                  ),
-                  Text('$currentPage / $totalPages',
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right),
-                    onPressed: currentPage < totalPages
-                        ? () => _goToPage(currentPage + 1)
-                        : null,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.last_page),
-                    onPressed: currentPage < totalPages
-                        ? () => _goToPage(totalPages)
-                        : null,
-                  ),
-                ],
-              ),
-            )
-          : null,
+        bottomNavigationBar: !loading && totalPages > 1
+            ? Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 6,
+                      offset: const Offset(0, -2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.first_page),
+                      onPressed: currentPage > 1 ? () => _goToPage(1) : null,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left),
+                      onPressed: currentPage > 1
+                          ? () => _goToPage(currentPage - 1)
+                          : null,
+                    ),
+                    Text('$currentPage / $totalPages',
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: currentPage < totalPages
+                          ? () => _goToPage(currentPage + 1)
+                          : null,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.last_page),
+                      onPressed: currentPage < totalPages
+                          ? () => _goToPage(totalPages)
+                          : null,
+                    ),
+                  ],
+                ),
+              )
+            : null,
       ),
     );
   }
@@ -344,13 +338,11 @@ class _RegisterServiceListScreenState extends State<RegisterServiceListScreen>
         children: [
           Text(
             s.licensePlate ?? 'Không rõ biển số',
-            style: const TextStyle(
-                fontWeight: FontWeight.w700, fontSize: 16),
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
           ),
           const SizedBox(height: 4),
           Text('${s.vehicleBrand ?? '—'} - ${s.vehicleColor ?? '—'}'),
           const SizedBox(height: 4),
-          // Sử dụng Wrap để tránh overflow khi màn hình nhỏ
           Wrap(
             spacing: 8,
             runSpacing: 4,
@@ -362,12 +354,10 @@ class _RegisterServiceListScreenState extends State<RegisterServiceListScreen>
           const SizedBox(height: 6),
           Text(
             'Đăng ký: ${formatDate(s.createdAt)}',
-            style: const TextStyle(
-                fontSize: 13, color: Colors.black54),
+            style: const TextStyle(fontSize: 13, color: Colors.black54),
           ),
         ],
       ),
     );
   }
-
 }

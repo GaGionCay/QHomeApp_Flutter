@@ -47,6 +47,15 @@
                     android:scheme="qhomeapp"
                     android:host="vnpay-registration-result" />
             </intent-filter>
+            <!-- Deep link cho VNPAY service booking payment result -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="qhomeapp"
+                    android:host="service-booking-result" />
+            </intent-filter>
         </activity>
 
         <meta-data

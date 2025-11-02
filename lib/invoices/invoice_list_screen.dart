@@ -42,13 +42,11 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> with WidgetsBindi
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Khi app resume từ background, check pending payment
     if (state == AppLifecycleState.resumed) {
       _checkPendingPayment();
     }
   }
 
-  /// Kiểm tra payment status của invoice đang pending
   Future<void> _checkPendingPayment() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -56,14 +54,12 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> with WidgetsBindi
       
       if (pendingInvoiceId == null) return;
 
-      // Check payment status với backend - cần tìm invoice trong list
       final invoices = await _futureInvoices;
       final invoice = invoices.firstWhere(
         (inv) => inv.invoiceId == pendingInvoiceId,
         orElse: () => throw Exception('Invoice not found'),
       );
       
-      // Nếu đã thanh toán thành công, xóa pending và refresh
       if (invoice.status == 'PAID') {
         await prefs.remove(_pendingInvoicePaymentKey);
         if (mounted) {
@@ -78,7 +74,6 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> with WidgetsBindi
           );
         }
       } 
-      // Nếu chưa thanh toán, hiển thị thông báo và cho phép thanh toán lại
       else if (invoice.status == 'UNPAID' || invoice.status == 'DRAFT') {
         if (mounted) {
           final shouldPay = await showDialog<bool>(
@@ -103,17 +98,14 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> with WidgetsBindi
           );
 
           if (shouldPay == true && mounted) {
-            // Thanh toán lại
             await _payInvoice(invoice);
           } else {
-            // Xóa pending nếu user không muốn thanh toán
             await prefs.remove(_pendingInvoicePaymentKey);
           }
         }
       }
     } catch (e) {
       debugPrint('❌ Lỗi check pending invoice payment: $e');
-      // Nếu có lỗi, xóa pending
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove(_pendingInvoicePaymentKey);
@@ -122,7 +114,6 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> with WidgetsBindi
   }
 
   void _listenForPaymentResult() async {
-    // Bắt link khi app đang chạy
     _sub = _appLinks.uriLinkStream.listen((Uri? uri) async {
       if (uri == null) return;
       log('🔗 Nhận deep link: $uri');
@@ -133,7 +124,6 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> with WidgetsBindi
 
         if (!mounted) return;
 
-        // Xóa pending payment vì đã có kết quả (thành công hoặc thất bại)
         try {
           final prefs = await SharedPreferences.getInstance();
           await prefs.remove(_pendingInvoicePaymentKey);
@@ -239,7 +229,6 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> with WidgetsBindi
       return;
     }
 
-    // Xác nhận thanh toán
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -272,19 +261,15 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> with WidgetsBindi
 
   Future<void> _payInvoice(InvoiceLineResponseDto invoice) async {
     try {
-      // Lưu invoiceId đang pending payment
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_pendingInvoicePaymentKey, invoice.invoiceId);
       
-      // Tạo VNPAY payment URL
       final paymentUrl = await _service.createVnpayPaymentUrl(invoice.invoiceId);
       
-      // Mở VNPAY trong external browser
       final uri = Uri.parse(paymentUrl);
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
-        // Xóa pending nếu không mở được browser
         await prefs.remove(_pendingInvoicePaymentKey);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -296,7 +281,6 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> with WidgetsBindi
         }
       }
     } catch (e) {
-      // Xóa pending nếu có lỗi
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove(_pendingInvoicePaymentKey);

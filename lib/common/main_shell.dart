@@ -10,7 +10,8 @@ import '../core/event_bus.dart';
 import '../home/home_screen.dart';
 import '../news/news_detail_screen.dart';
 import '../profile/profile_service.dart';
-import '../register/register_service_screen.dart';
+import '../register/register_vehicle_screen.dart';
+import '../service_registration/service_category_screen.dart';
 import '../auth/api_client.dart';
 import 'menu_screen.dart';
 
@@ -50,8 +51,8 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
 
     _pages = [
       HomeScreen(onNavigateToTab: _onItemTapped),
-      const NewsScreen(),
-      const RegisterServiceScreen(),
+      const ServiceCategoryScreen(),
+      const RegisterVehicleScreen(),
       const MenuScreen(),
     ];
   }
@@ -238,10 +239,10 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildNavItem(0, Icons.home_outlined, Icons.home, 'Trang chủ'),
-                _buildNavItem(
-                    1, Icons.article_outlined, Icons.article, 'Tin tức'),
-                _buildNavItem(2, Icons.app_registration_outlined,
-                    Icons.app_registration, 'Dịch vụ'),
+                _buildNavItem(1, Icons.app_registration_outlined,
+                    Icons.app_registration, 'Đăng ký dịch vụ'),
+                _buildNavItem(2, Icons.directions_car_outlined,
+                    Icons.directions_car, 'Dịch vụ'),
                 _buildNavItem(3, Icons.menu_outlined, Icons.menu, 'Menu'),
               ],
             ),

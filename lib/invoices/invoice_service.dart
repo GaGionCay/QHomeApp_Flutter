@@ -7,9 +7,6 @@ class InvoiceService {
   
   InvoiceService(this.apiClient);
 
-  /// Lấy danh sách invoice lines của user đang đăng nhập
-  /// GET /api/invoices/me
-  /// Lấy unitId từ user profile trong database
   Future<List<InvoiceLineResponseDto>> getMyInvoices() async {
     try {
       log('🔍 [InvoiceService] Lấy invoices của user hiện tại');
@@ -41,8 +38,6 @@ class InvoiceService {
     }
   }
 
-  /// Lấy danh sách invoice lines theo unitId (deprecated - nên dùng getMyInvoices)
-  /// GET /api/invoices/unit/{unitId}
   @Deprecated('Use getMyInvoices() instead')
   Future<List<InvoiceLineResponseDto>> getInvoiceLinesByUnitId(String unitId) async {
     try {
@@ -75,8 +70,6 @@ class InvoiceService {
     }
   }
 
-  /// Tạo VNPAY payment URL cho invoice
-  /// POST /api/invoices/{invoiceId}/vnpay-url
   Future<String> createVnpayPaymentUrl(String invoiceId) async {
     try {
       log('💳 [InvoiceService] Tạo VNPAY URL cho invoice: $invoiceId');
@@ -101,8 +94,6 @@ class InvoiceService {
     }
   }
 
-  /// Thanh toán invoice - cập nhật status thành PAID (deprecated - dùng VNPAY thay thế)
-  /// PUT /api/invoices/{invoiceId}/pay
   Future<void> payInvoice(String invoiceId) async {
     try {
       log('💳 [InvoiceService] Thanh toán invoice (deprecated): $invoiceId');

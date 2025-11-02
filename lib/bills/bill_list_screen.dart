@@ -15,7 +15,8 @@ class BillListScreen extends StatefulWidget {
   State<BillListScreen> createState() => _BillListScreenState();
 }
 
-class _BillListScreenState extends State<BillListScreen> with WidgetsBindingObserver {
+class _BillListScreenState extends State<BillListScreen>
+    with WidgetsBindingObserver {
   late final BillService _service;
   late Future<List<BillDto>> _futureBills;
   StreamSubscription<Uri?>? _sub;
@@ -42,30 +43,26 @@ class _BillListScreenState extends State<BillListScreen> with WidgetsBindingObse
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Khi app resume từ background, check pending payment
     if (state == AppLifecycleState.resumed) {
       _checkPendingPayment();
     }
   }
 
-  /// Kiểm tra payment status của bill đang pending
   Future<void> _checkPendingPayment() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final pendingBillId = prefs.getString(_pendingBillPaymentKey);
-      
+
       if (pendingBillId == null) return;
-      
+
       final billId = int.tryParse(pendingBillId);
       if (billId == null) {
         await prefs.remove(_pendingBillPaymentKey);
         return;
       }
 
-      // Check payment status với backend
       final bill = await _service.getBillDetail(billId);
-      
-      // Nếu đã thanh toán thành công, xóa pending và refresh
+
       if (bill.status == 'PAID') {
         await prefs.remove(_pendingBillPaymentKey);
         if (mounted) {
@@ -79,9 +76,7 @@ class _BillListScreenState extends State<BillListScreen> with WidgetsBindingObse
             ),
           );
         }
-      } 
-      // Nếu chưa thanh toán, hiển thị thông báo và cho phép thanh toán lại
-      else if (bill.status == 'UNPAID') {
+      } else if (bill.status == 'UNPAID') {
         if (mounted) {
           final shouldPay = await showDialog<bool>(
             context: context,
@@ -98,24 +93,22 @@ class _BillListScreenState extends State<BillListScreen> with WidgetsBindingObse
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Thanh toán', style: TextStyle(color: Colors.teal)),
+                  child: const Text('Thanh toán',
+                      style: TextStyle(color: Colors.teal)),
                 ),
               ],
             ),
           );
 
           if (shouldPay == true && mounted) {
-            // Thanh toán lại
             await _payBill(billId);
           } else {
-            // Xóa pending nếu user không muốn thanh toán
             await prefs.remove(_pendingBillPaymentKey);
           }
         }
       }
     } catch (e) {
       debugPrint('❌ Lỗi check pending bill payment: $e');
-      // Nếu có lỗi, xóa pending
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove(_pendingBillPaymentKey);
@@ -125,19 +118,15 @@ class _BillListScreenState extends State<BillListScreen> with WidgetsBindingObse
 
   Future<void> _payBill(int billId) async {
     try {
-      // Lưu billId đang pending payment
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_pendingBillPaymentKey, billId.toString());
-      
-      // Tạo VNPAY payment URL
+
       final paymentUrl = await _service.createVnpayPaymentUrl(billId);
-      
-      // Mở VNPAY trong external browser
+
       final uri = Uri.parse(paymentUrl);
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
-        // Xóa pending nếu không mở được browser
         await prefs.remove(_pendingBillPaymentKey);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -149,12 +138,11 @@ class _BillListScreenState extends State<BillListScreen> with WidgetsBindingObse
         }
       }
     } catch (e) {
-      // Xóa pending nếu có lỗi
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove(_pendingBillPaymentKey);
       } catch (_) {}
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -167,7 +155,6 @@ class _BillListScreenState extends State<BillListScreen> with WidgetsBindingObse
   }
 
   void _listenForPaymentResult() async {
-    // ✅ Bắt link khi app đang chạy
     _sub = _appLinks.uriLinkStream.listen((Uri? uri) async {
       if (uri == null) return;
       debugPrint('🔗 Nhận deep link: $uri');
@@ -178,7 +165,6 @@ class _BillListScreenState extends State<BillListScreen> with WidgetsBindingObse
 
         if (!mounted) return;
 
-        // Xóa pending payment vì đã có kết quả (thành công hoặc thất bại)
         try {
           final prefs = await SharedPreferences.getInstance();
           await prefs.remove(_pendingBillPaymentKey);

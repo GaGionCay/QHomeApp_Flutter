@@ -2,8 +2,8 @@ class RegisterServiceRequest {
   final int? id;
   final String? serviceType;
   final String? note;
-  final String? status; // PENDING, DRAFT - trạng thái xử lý của admin
-  final String? paymentStatus; // PAID, UNPAID - trạng thái thanh toán
+  final String? status;
+  final String? paymentStatus;
   final String? vehicleType;
   final String? licensePlate;
   final String? vehicleBrand;
