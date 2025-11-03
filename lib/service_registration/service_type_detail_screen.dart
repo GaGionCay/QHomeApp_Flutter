@@ -3,23 +3,27 @@ import 'service_booking_screen.dart';
 import 'service_booking_service.dart';
 import '../auth/api_client.dart';
 
-class ServiceListScreen extends StatefulWidget {
+class ServiceTypeDetailScreen extends StatefulWidget {
   final String categoryCode;
+  final String serviceTypeCode;
+  final String serviceTypeName;
   
-  const ServiceListScreen({
+  const ServiceTypeDetailScreen({
     super.key,
     required this.categoryCode,
+    required this.serviceTypeCode,
+    required this.serviceTypeName,
   });
 
   @override
-  State<ServiceListScreen> createState() => _ServiceListScreenState();
+  State<ServiceTypeDetailScreen> createState() => _ServiceTypeDetailScreenState();
 }
 
-class _ServiceListScreenState extends State<ServiceListScreen> {
+class _ServiceTypeDetailScreenState extends State<ServiceTypeDetailScreen> {
   final ApiClient _apiClient = ApiClient();
   late final ServiceBookingService _serviceBookingService;
   
-  List<Map<String, dynamic>> _serviceTypes = [];
+  List<Map<String, dynamic>> _services = [];
   bool _loading = true;
   String? _error;
 
@@ -27,22 +31,23 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   void initState() {
     super.initState();
     _serviceBookingService = ServiceBookingService(_apiClient.dio);
-    _loadServiceTypes();
+    _loadServices();
   }
 
-  Future<void> _loadServiceTypes() async {
+  Future<void> _loadServices() async {
     setState(() {
       _loading = true;
       _error = null;
     });
 
     try {
-      final serviceTypes = await _serviceBookingService.getServiceTypesByCategoryCode(
+      final services = await _serviceBookingService.getServicesByCategoryCodeAndType(
         widget.categoryCode,
+        widget.serviceTypeCode,
       );
       
       setState(() {
-        _serviceTypes = serviceTypes;
+        _services = services;
         _loading = false;
       });
     } catch (e) {
@@ -54,7 +59,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lỗi tải danh sách loại dịch vụ: $e'),
+            content: Text('Lỗi tải danh sách dịch vụ: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -67,9 +72,9 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F9),
       appBar: AppBar(
-        title: const Text(
-          'Loại dịch vụ',
-          style: TextStyle(
+        title: Text(
+          widget.serviceTypeName,
+          style: const TextStyle(
             fontWeight: FontWeight.w600,
             color: Colors.white,
           ),
@@ -101,13 +106,13 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                       ),
                       const SizedBox(height: 16),
                       ElevatedButton(
-                        onPressed: _loadServiceTypes,
+                        onPressed: _loadServices,
                         child: const Text('Thử lại'),
                       ),
                     ],
                   ),
                 )
-              : _serviceTypes.isEmpty
+              : _services.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -119,7 +124,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            'Chưa có loại dịch vụ nào',
+                            'Chưa có dịch vụ nào',
                             style: TextStyle(
                               fontSize: 16,
                               color: Colors.grey[600],
@@ -129,22 +134,20 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                       ),
                     )
                   : RefreshIndicator(
-                      onRefresh: _loadServiceTypes,
+                      onRefresh: _loadServices,
                       child: ListView.builder(
                         padding: const EdgeInsets.all(16),
-                        itemCount: _serviceTypes.length,
+                        itemCount: _services.length,
                         itemBuilder: (context, index) {
-                          final serviceType = _serviceTypes[index];
-                          return _buildServiceTypeCard(serviceType);
+                          final service = _services[index];
+                          return _buildServiceCard(service);
                         },
                       ),
                     ),
     );
   }
 
-  Widget _buildServiceTypeCard(Map<String, dynamic> serviceType) {
-    final serviceCount = serviceType['serviceCount'] as int? ?? 0;
-    
+  Widget _buildServiceCard(Map<String, dynamic> service) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
@@ -162,83 +165,93 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            // Navigate thẳng đến màn hình booking với serviceType
+            // Navigate đến booking screen để chọn ngày/giờ
             Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (_) => ServiceBookingScreen(
-                  serviceId: 0, // Không cần serviceId khi có serviceTypeCode
-                  serviceName: serviceType['typeName'] as String? ?? 'Dịch vụ',
+                  serviceId: service['id'] as int,
+                  serviceName: service['name'] as String? ?? 'Dịch vụ',
                   categoryCode: widget.categoryCode,
-                  serviceTypeCode: serviceType['typeCode'] as String,
                 ),
               ),
             );
           },
           borderRadius: BorderRadius.circular(16),
           child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF26A69A).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.category,
-                    color: Color(0xFF26A69A),
-                    size: 30,
+                Text(
+                  service['name'] as String? ?? 'Dịch vụ',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1A1A1A),
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                if (service['description'] != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    service['description'] as String,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    if (service['pricePerHour'] != null) ...[
+                      const Icon(Icons.access_time, size: 16, color: Colors.teal),
+                      const SizedBox(width: 4),
                       Text(
-                        serviceType['typeName'] as String? ?? 'Dịch vụ',
+                        '${_formatPrice(service['pricePerHour'])} VNĐ/giờ',
                         style: const TextStyle(
-                          fontSize: 18,
+                          fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF1A1A1A),
+                          color: Colors.teal,
                         ),
                       ),
-                      if (serviceType['description'] != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          serviceType['description'] as String,
+                    ],
+                    if (service['maxCapacity'] != null) ...[
+                      const Spacer(),
+                      const Icon(Icons.people, size: 16, color: Colors.blue),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Tối đa ${service['maxCapacity']} người',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                if (service['location'] != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Icon(Icons.location_on, size: 14, color: Colors.red),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          service['location'] as String,
                           style: TextStyle(
-                            fontSize: 14,
+                            fontSize: 12,
                             color: Colors.grey[600],
                           ),
-                          maxLines: 2,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                      ],
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          const Icon(Icons.location_city, size: 16, color: Colors.teal),
-                          const SizedBox(width: 4),
-                          Text(
-                            '$serviceCount khu vực có sẵn',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ],
                       ),
                     ],
                   ),
-                ),
-                const Icon(
-                  Icons.chevron_right,
-                  color: Colors.grey,
-                ),
+                ],
               ],
             ),
           ),

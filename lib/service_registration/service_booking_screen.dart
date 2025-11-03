@@ -11,12 +11,14 @@ class ServiceBookingScreen extends StatefulWidget {
   final int serviceId;
   final String serviceName;
   final String categoryCode;
+  final String? serviceTypeCode; // Optional: khi có thì filter theo type này
   
   const ServiceBookingScreen({
     super.key,
     required this.serviceId,
     required this.serviceName,
     required this.categoryCode,
+    this.serviceTypeCode,
   });
 
   @override
@@ -164,6 +166,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
         date: _selectedDate!,
         startTime: startTimeStr,
         endTime: endTimeStr,
+        serviceType: widget.serviceTypeCode, // Pass serviceTypeCode để filter
       );
 
       setState(() {
@@ -497,7 +500,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
               MaterialPageRoute(
                 builder: (_) => ServiceDetailScreen(
                   zoneId: zone['id'] as int,
-                  serviceId: widget.serviceId,
+                  serviceId: zone['id'] as int, // Use zone ID as serviceId
                   selectedDate: _selectedDate!,
                   startTime: _startTime!,
                   endTime: _endTime!,

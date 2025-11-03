@@ -6,7 +6,46 @@ class ServiceBookingService {
 
   ServiceBookingService(this._dio);
 
+  // Lấy danh sách service types theo category code (ví dụ: "ENTERTAINMENT")
+  // Trả về các loại dịch vụ như "BBQ", "Tennis", "Pool", v.v.
+  Future<List<Map<String, dynamic>>> getServiceTypesByCategoryCode(
+      String categoryCode) async {
+    try {
+      final response = await _dio.get(
+        '/service-booking/categories/code/$categoryCode/service-types',
+      );
+
+      if (response.data is List) {
+        return List<Map<String, dynamic>>.from(response.data);
+      }
+      return [];
+    } catch (e) {
+      print('❌ Lỗi lấy service types: $e');
+      rethrow;
+    }
+  }
+
+  // Lấy danh sách services theo category code và service type
+  // Ví dụ: categoryCode="ENTERTAINMENT", serviceType="BBQ"
+  Future<List<Map<String, dynamic>>> getServicesByCategoryCodeAndType(
+      String categoryCode, String serviceType) async {
+    try {
+      final response = await _dio.get(
+        '/service-booking/categories/code/$categoryCode/services/type/$serviceType',
+      );
+
+      if (response.data is List) {
+        return List<Map<String, dynamic>>.from(response.data);
+      }
+      return [];
+    } catch (e) {
+      print('❌ Lỗi lấy services: $e');
+      rethrow;
+    }
+  }
+
   // Lấy danh sách services theo category code (ví dụ: "ENTERTAINMENT")
+  // Deprecated: Nên sử dụng getServiceTypesByCategoryCode trước
   Future<List<Map<String, dynamic>>> getServicesByCategoryCode(
       String categoryCode) async {
     try {
@@ -36,23 +75,32 @@ class ServiceBookingService {
   }
 
   // Lấy danh sách available services theo category code, date, và time range
+  // serviceType là optional, nếu có thì chỉ trả về services thuộc type đó
   Future<List<Map<String, dynamic>>> getAvailableServices({
     required String categoryCode,
     required DateTime date,
     required String startTime, // Format: "14:00:00"
     required String endTime, // Format: "17:00:00"
+    String? serviceType, // Optional: filter theo service type
   }) async {
     try {
       final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
       
+      final queryParams = {
+        'categoryCode': categoryCode,
+        'date': dateStr,
+        'startTime': startTime,
+        'endTime': endTime,
+      };
+      
+      // Thêm serviceType nếu có
+      if (serviceType != null && serviceType.isNotEmpty) {
+        queryParams['serviceType'] = serviceType;
+      }
+      
       final response = await _dio.get(
         '/service-booking/available',
-        queryParameters: {
-          'categoryCode': categoryCode,
-          'date': dateStr,
-          'startTime': startTime,
-          'endTime': endTime,
-        },
+        queryParameters: queryParams,
       );
 
       if (response.data is List) {
