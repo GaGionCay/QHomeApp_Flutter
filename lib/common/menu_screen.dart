@@ -6,6 +6,7 @@ import '../login/login_screen.dart';
 import '../profile/profile_screen.dart';
 import '../profile/profile_service.dart';
 import '../auth/api_client.dart';
+import '../notifications/notification_screen.dart';
 
 class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key});
@@ -125,6 +126,19 @@ class _MenuScreenState extends State<MenuScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                _buildMenuCard(
+                  context,
+                  icon: Icons.notifications_outlined,
+                  title: 'Thông báo hệ thống',
+                  subtitle: 'Xem thông báo từ quản lý',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const NotificationScreen()),
                     );
                   },
                 ),

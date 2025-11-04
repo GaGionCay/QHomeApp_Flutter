@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../auth/api_client.dart';
 import '../core/event_bus.dart';
+import '../profile/profile_service.dart';
+import '../models/resident_news.dart';
+import 'resident_service.dart';
 import 'news_detail_screen.dart';
 
 class NewsScreen extends StatefulWidget {
@@ -18,10 +21,12 @@ class _NewsScreenState extends State<NewsScreen>
   late final AnimationController _bellController;
   late final Animation<double> _bellAnimation;
   final ApiClient _api = ApiClient();
+  final ResidentService _residentService = ResidentService();
   final AppEventBus _bus = AppEventBus();
 
-  List<dynamic> items = [];
+  List<ResidentNews> items = [];
   bool loading = false;
+  String? _residentId;
 
   @override
   void initState() {
@@ -34,7 +39,7 @@ class _NewsScreenState extends State<NewsScreen>
         .chain(CurveTween(curve: Curves.elasticIn))
         .animate(_bellController);
     _bellController.repeat(reverse: true);
-    _fetch();
+    _loadResidentIdAndFetch();
     _bus.on('news_update', (data) {
       try {
         if (data is String) {
@@ -48,22 +53,74 @@ class _NewsScreenState extends State<NewsScreen>
       }
 
       debugPrint('🔔 Nhận sự kiện news_update → reload NewsScreen');
-      _fetch();
+      if (_residentId != null) {
+        _fetch();
+      }
     });
   }
 
+  Future<void> _loadResidentIdAndFetch() async {
+    try {
+      final profileService = ProfileService(_api.dio);
+      final profile = await profileService.getProfile();
+      
+      // Try multiple possible field names for residentId
+      _residentId = profile['residentId']?.toString();
+      
+      // If found in profile, use it directly
+      if (_residentId != null && _residentId!.isNotEmpty) {
+        debugPrint('✅ Tìm thấy residentId trong profile: $_residentId');
+        await _fetch();
+        return;
+      }
+      
+      // If not found in profile, try to get from backend API
+      if (_residentId == null || _residentId!.isEmpty) {
+        try {
+          debugPrint('🔍 Không tìm thấy residentId trong profile, gọi API để lấy...');
+          final response = await _api.dio.get('/residents/me/uuid');
+          final data = response.data as Map<String, dynamic>;
+          
+          if (data['success'] == true && data['residentId'] != null && data['residentId'].toString().isNotEmpty) {
+            _residentId = data['residentId']?.toString();
+            debugPrint('✅ Lấy được residentId từ API: $_residentId');
+          } else {
+            debugPrint('⚠️ API trả về success=false hoặc residentId rỗng: ${data['message']}');
+            debugPrint('⚠️ Có thể endpoint admin API chưa tồn tại hoặc user chưa được gán vào căn hộ');
+          }
+        } catch (e) {
+          debugPrint('⚠️ Lỗi gọi API lấy residentId: $e');
+          // Không throw để app vẫn hoạt động, chỉ không load news
+        }
+      }
+      
+      debugPrint('🔍 Profile data: ${profile.keys.toList()}');
+      debugPrint('🔍 ResidentId found: $_residentId');
+      
+      if (_residentId == null || _residentId!.isEmpty) {
+        debugPrint('⚠️ Không tìm thấy residentId. Profile keys: ${profile.keys}');
+        if (mounted) {
+          setState(() => loading = false);
+        }
+        return;
+      }
+      
+      await _fetch();
+    } catch (e) {
+      debugPrint('⚠️ Lỗi lấy residentId: $e');
+      if (mounted) {
+        setState(() => loading = false);
+      }
+    }
+  }
+
   Future<void> _fetch() async {
+    if (_residentId == null) return;
+    
     setState(() => loading = true);
     try {
-      final res = await _api.dio.get('/news?page=0&size=50');
-      if (res.data is Map && res.data['content'] != null) {
-        items = List.from(res.data['content']);
-      } else if (res.data is List) {
-        items = List.from(res.data);
-      } else {
-        items = [];
-      }
-      debugPrint('✅ Loaded ${items.length} news items');
+      items = await _residentService.getResidentNews(_residentId!);
+      debugPrint('✅ Loaded ${items.length} resident news items');
     } catch (e) {
       debugPrint('⚠️ Lỗi tải tin tức: $e');
       items = [];
@@ -72,20 +129,10 @@ class _NewsScreenState extends State<NewsScreen>
     }
   }
 
-  Future<void> _markRead(String? uuid) async {
-    if (uuid == null) return;
-    try {
-      debugPrint('🔔 Marking news $uuid as read');
-      await _api.dio.post('/news/$uuid/read');
-    } catch (e) {
-      debugPrint('⚠️ Lỗi markRead: $e');
-    }
-  }
-
   @override
   void didUpdateWidget(covariant NewsScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    bool hasUnread = items.any((n) => n['isRead'] != true && n['read'] != true);
+    bool hasUnread = items.isNotEmpty;
     if (hasUnread) {
       _bellController.repeat(reverse: true);
     } else {
@@ -127,25 +174,14 @@ class _NewsScreenState extends State<NewsScreen>
                           horizontal: 12, vertical: 10),
                       itemCount: items.length,
                       itemBuilder: (context, i) {
-                        final n = items[i];
-                        final bool isRead =
-                            n['isRead'] == true || n['read'] == true;
+                        final news = items[i];
+                        final bool isRead = false;
 
-                        final String date = n['publishAt'] != null
-                            ? DateFormat('dd/MM/yyyy')
-                                .format(DateTime.parse(n['publishAt']))
-                            : (n['createdAt'] != null
-                                ? DateFormat('dd/MM/yyyy')
-                                    .format(DateTime.parse(n['createdAt']))
-                                : '');
+                        final String date = news.publishAt != null
+                            ? DateFormat('dd/MM/yyyy').format(news.publishAt!)
+                            : DateFormat('dd/MM/yyyy').format(news.createdAt);
 
-                        // Lấy URL ảnh đầy đủ từ ApiClient
-                        final String? coverImageUrl = n['coverImageUrl'] != null
-                            ? ApiClient.fileUrl(n['coverImageUrl'])
-                            : null;
-
-                        final String? uuid =
-                            n['news_uuid']?.toString() ?? n['id']?.toString();
+                        final String? coverImageUrl = news.coverImageUrl;
 
                         return AnimatedContainer(
                           duration: const Duration(milliseconds: 300),
@@ -167,77 +203,100 @@ class _NewsScreenState extends State<NewsScreen>
                             contentPadding: const EdgeInsets.only(
                                 left: 16, top: 10, right: 16, bottom: 10),
                             leading: Hero(
-                              tag: 'news_${n['id'] ?? n['newsUuid']}',
+                              tag: 'news_${news.id}',
                               child: Stack(
                                 alignment: Alignment.topRight,
                                 children: [
-                                  CircleAvatar(
-                                    radius: 26,
-                                    backgroundColor: Colors.white,
-                                    child: AnimatedBuilder(
-                                      animation: _bellController,
-                                      builder: (context, child) {
-                                        return Transform.rotate(
-                                          angle:
-                                              isRead ? 0 : _bellAnimation.value,
-                                          child: Icon(
-                                            isRead
-                                                ? Icons.notifications_none
-                                                : Icons.notifications_active,
-                                            color: const Color(0xFF26A69A),
-                                            size: 28,
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                  if (!isRead)
-                                    Positioned(
-                                      right: 2,
-                                      top: 2,
-                                      child: Container(
-                                        width: 10,
-                                        height: 10,
-                                        decoration: const BoxDecoration(
-                                          color: Colors.redAccent,
-                                          shape: BoxShape.circle,
-                                        ),
+                                  if (coverImageUrl != null)
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(26),
+                                      child: Image.network(
+                                        coverImageUrl,
+                                        width: 52,
+                                        height: 52,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) {
+                                          return CircleAvatar(
+                                            radius: 26,
+                                            backgroundColor: Colors.white,
+                                            child: Icon(
+                                              Icons.article,
+                                              color: const Color(0xFF26A69A),
+                                              size: 28,
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    )
+                                  else
+                                    CircleAvatar(
+                                      radius: 26,
+                                      backgroundColor: Colors.white,
+                                      child: Icon(
+                                        Icons.article,
+                                        color: const Color(0xFF26A69A),
+                                        size: 28,
                                       ),
                                     ),
                                 ],
                               ),
                             ),
                             title: Text(
-                              n['title'] ?? '',
+                              news.title,
                               style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight:
-                                    isRead ? FontWeight.w500 : FontWeight.bold,
-                                color: isRead
-                                    ? Colors.grey[800]
-                                    : const Color(0xFF004D40),
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF004D40),
                               ),
                             ),
-                            onTap: uuid == null
-                                ? null
-                                : () async {
-                                    _markRead(uuid);
-
-                                    // Cập nhật lại trạng thái isRead ngay lập tức (tùy chọn)
-                                    setState(() {
-                                      n['isRead'] = true;
-                                      n['read'] = true;
-                                    });
-
-                                    Navigator.of(context).push(PageRouteBuilder(
-                                      transitionDuration:
-                                          const Duration(milliseconds: 500),
-                                      pageBuilder: (_, animation, __) =>
-                                          FadeTransition(
-                                        opacity: animation,
-                                        child: NewsDetailScreen(news: n),
-                                      ),
-                                    ));
-                                  },
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 4),
+                                Text(
+                                  news.summary,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  date,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[500],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            onTap: () {
+                              Navigator.of(context).push(PageRouteBuilder(
+                                transitionDuration:
+                                    const Duration(milliseconds: 500),
+                                pageBuilder: (_, animation, __) =>
+                                    FadeTransition(
+                                  opacity: animation,
+                                  child: NewsDetailScreen(
+                                    news: {
+                                      'id': news.id,
+                                      'title': news.title,
+                                      'summary': news.summary,
+                                      'bodyHtml': news.bodyHtml,
+                                      'coverImageUrl': news.coverImageUrl,
+                                      'publishAt': news.publishAt?.toIso8601String(),
+                                      'createdAt': news.createdAt.toIso8601String(),
+                                      'images': news.images.map((img) => {
+                                        'id': img.id,
+                                        'url': img.url,
+                                        'caption': img.caption,
+                                      }).toList(),
+                                    },
+                                  ),
+                                ),
+                              ));
+                            },
                           ),
                         );
                       },

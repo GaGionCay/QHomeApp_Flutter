@@ -14,6 +14,7 @@ import '../news/news_item.dart';
 import '../news/news_service.dart';
 import '../news/news_detail_screen.dart';
 import '../news/news_screen.dart';
+import '../notifications/notification_screen.dart';
 import '../profile/profile_service.dart';
 import '../register/register_vehicle_list_screen.dart';
 import '../websocket/web_socket_service.dart';
@@ -543,15 +544,24 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             )),
         if (unreadNotifications.length > 3)
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const NewsScreen()),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const NotificationScreen()),
+                ),
+                child: const Text('Thông báo hệ thống'),
               ),
-              child: const Text('Xem tất cả'),
-            ),
+              TextButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const NewsScreen()),
+                ),
+                child: const Text('Xem tất cả tin tức'),
+              ),
+            ],
           ),
       ],
     );
