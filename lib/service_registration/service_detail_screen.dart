@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:app_links/app_links.dart';
+import 'package:dio/dio.dart';
 import 'service_booking_service.dart';
 import '../auth/api_client.dart';
 import '../core/event_bus.dart';
@@ -18,6 +19,19 @@ class ServiceDetailScreen extends StatefulWidget {
   final String purpose;
   final String categoryCode;
   
+  // Service-specific items
+  final List<Map<String, dynamic>>? selectedOptions;
+  final int? selectedComboId;
+  final int? selectedTicketId;
+  final int? selectedBarSlotId;
+  final int? extraHours;
+  
+  // Price information (tính từ screen trước)
+  final num? estimatedTotalAmount;
+  final Map<String, dynamic>? selectedCombo; // Combo details for display
+  final Map<String, dynamic>? selectedTicket; // Ticket details for display
+  final List<Map<String, dynamic>>? selectedOptionsDetails; // Options details for display
+  
   const ServiceDetailScreen({
     super.key,
     required this.zoneId,
@@ -28,6 +42,15 @@ class ServiceDetailScreen extends StatefulWidget {
     required this.numberOfPeople,
     required this.purpose,
     required this.categoryCode,
+    this.selectedOptions,
+    this.selectedComboId,
+    this.selectedTicketId,
+    this.selectedBarSlotId,
+    this.extraHours,
+    this.estimatedTotalAmount,
+    this.selectedCombo,
+    this.selectedTicket,
+    this.selectedOptionsDetails,
   });
 
   @override
@@ -84,11 +107,46 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen>
       // Tạm thời lấy từ service detail và merge với info từ available
       final service = await _serviceBookingService.getServiceById(widget.serviceId);
       
-      // Calculate estimated amount
-      final startMinutes = widget.startTime.hour * 60 + widget.startTime.minute;
-      final endMinutes = widget.endTime.hour * 60 + widget.endTime.minute;
-      final hours = (endMinutes - startMinutes) / 60.0;
-      final estimatedAmount = (service['pricePerHour'] as num?) ?? 0 * hours;
+      // Use estimated amount từ widget (đã tính từ screen trước)
+      num estimatedAmount = widget.estimatedTotalAmount ?? 0;
+      
+      // Nếu chưa có, tính lại từ widget data
+      if (estimatedAmount == 0) {
+        final bookingType = service['bookingType'] as String?;
+        
+        if (bookingType == 'COMBO_BASED' && widget.selectedCombo != null) {
+          final comboPrice = widget.selectedCombo!['price'] as num? ?? 0;
+          // Giá = combo price * số người
+          estimatedAmount = comboPrice * widget.numberOfPeople;
+        } else if (bookingType == 'TICKET_BASED' && widget.selectedTicket != null) {
+          final ticketPrice = widget.selectedTicket!['price'] as num? ?? 0;
+          // Tất cả ticket-based: giá = vé * số người
+          estimatedAmount = ticketPrice * widget.numberOfPeople;
+        } else if (bookingType == 'OPTION_BASED') {
+          final startMinutes = widget.startTime.hour * 60 + widget.startTime.minute;
+          final endMinutes = widget.endTime.hour * 60 + widget.endTime.minute;
+          final hours = (endMinutes - startMinutes) / 60.0;
+          final pricePerHour = (service['pricePerHour'] as num?) ?? 0;
+          estimatedAmount = pricePerHour * hours;
+          
+          if (widget.selectedOptionsDetails != null) {
+            for (var opt in widget.selectedOptionsDetails!) {
+              estimatedAmount += (opt['price'] as num? ?? 0) * (opt['quantity'] as num? ?? 1);
+            }
+          }
+          
+          if (widget.extraHours != null && widget.extraHours! > 0) {
+            estimatedAmount += 100000 * widget.extraHours!;
+          }
+        } else {
+          // STANDARD
+          final startMinutes = widget.startTime.hour * 60 + widget.startTime.minute;
+          final endMinutes = widget.endTime.hour * 60 + widget.endTime.minute;
+          final hours = (endMinutes - startMinutes) / 60.0;
+          final pricePerHour = (service['pricePerHour'] as num?) ?? 0;
+          estimatedAmount = pricePerHour * hours;
+        }
+      }
 
       setState(() {
         _zone = {
@@ -161,6 +219,11 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen>
         numberOfPeople: widget.numberOfPeople,
         purpose: widget.purpose.isEmpty ? null : widget.purpose,
         termsAccepted: true,
+        selectedOptions: widget.selectedOptions,
+        selectedComboId: widget.selectedComboId,
+        selectedTicketId: widget.selectedTicketId,
+        selectedBarSlotId: widget.selectedBarSlotId,
+        extraHours: widget.extraHours,
       );
 
       final bookingId = booking['id'] as int?;
@@ -184,10 +247,70 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Lỗi: $e'),
-            backgroundColor: Colors.red,
+        String errorMessage = 'Đã có lỗi xảy ra. Vui lòng thử lại.';
+        
+        // Xử lý DioException để lấy message từ response
+        if (e is DioException) {
+          if (e.response != null) {
+            final statusCode = e.response!.statusCode;
+            // Xử lý cả 400 và 500 để lấy message từ response
+            if (statusCode == 400 || statusCode == 500) {
+              try {
+                final responseData = e.response!.data;
+                if (responseData is Map<String, dynamic>) {
+                  // Lấy message từ response (có thể có prefix "Lỗi hệ thống: ")
+                  String rawMessage = responseData['message'] ?? errorMessage;
+                  
+                  // Loại bỏ prefix "Lỗi hệ thống: " nếu có
+                  if (rawMessage.startsWith('Lỗi hệ thống: ')) {
+                    rawMessage = rawMessage.substring('Lỗi hệ thống: '.length);
+                  }
+                  
+                  errorMessage = rawMessage;
+                  
+                  // Kiểm tra errorCode để hiển thị message và icon phù hợp
+                  final errorCode = responseData['errorCode'];
+                  if (errorCode == 'UNPAID_BOOKING_EXISTS') {
+                    errorMessage = 'Bạn có một hóa đơn booking dịch vụ chưa hoàn tất. Không thể đặt dịch vụ mới.';
+                  } else if (errorCode == 'SERVICE_NOT_AVAILABLE') {
+                    // Message đã được set từ backend với thông tin chi tiết
+                    // Nếu có reason, có thể hiển thị thêm
+                    final reason = responseData['reason'];
+                    if (reason != null && reason.toString().isNotEmpty) {
+                      errorMessage = '$errorMessage\n\n$reason';
+                    }
+                  }
+                }
+              } catch (_) {
+                // Fallback to default message
+              }
+            }
+          }
+        }
+        
+        // Hiển thị dialog thay vì SnackBar
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.warning, color: Colors.orange, size: 28),
+                SizedBox(width: 8),
+                Text('Thông báo'),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Text(
+                errorMessage,
+                style: const TextStyle(fontSize: 16),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Đã hiểu'),
+              ),
+            ],
           ),
         );
       }
@@ -286,6 +409,8 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen>
   }
 
   Widget _buildBookingInfo() {
+    final bookingType = _zone?['bookingType'] as String?;
+    
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -313,8 +438,51 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen>
           _buildInfoRow(Icons.calendar_today, 'Ngày', 
               DateFormat('dd/MM/yyyy').format(widget.selectedDate)),
           const SizedBox(height: 8),
-          _buildInfoRow(Icons.access_time, 'Thời gian', 
-              '${widget.startTime.format(context)} - ${widget.endTime.format(context)}'),
+          
+          // Hiển thị thông tin theo booking type
+          if (bookingType == 'COMBO_BASED') ...[
+            if (widget.selectedBarSlotId != null && _zone?['barSlots'] != null) ...[
+              const SizedBox(height: 8),
+              _buildInfoRow(Icons.access_time, 'Khung giờ', 
+                  _getBarSlotName(widget.selectedBarSlotId!)),
+            ],
+            if (widget.selectedCombo != null) ...[
+              const SizedBox(height: 8),
+              _buildInfoRow(Icons.restaurant_menu, 'Gói combo', 
+                  widget.selectedCombo!['name'] as String? ?? 'Combo'),
+              if (widget.selectedCombo!['servicesIncluded'] != null) ...[
+                const SizedBox(height: 4),
+                Padding(
+                  padding: const EdgeInsets.only(left: 32),
+                  child: Text(
+                    'Bao gồm: ${widget.selectedCombo!['servicesIncluded']}',
+                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  ),
+                ),
+              ],
+            ],
+          ] else if (bookingType == 'TICKET_BASED') ...[
+            if (widget.selectedTicket != null) ...[
+              const SizedBox(height: 8),
+              _buildInfoRow(Icons.confirmation_number, 'Vé', 
+                  widget.selectedTicket!['name'] as String? ?? 'Vé'),
+            ],
+          ] else ...[
+            // OPTION_BASED và STANDARD
+            const SizedBox(height: 8),
+            _buildInfoRow(Icons.access_time, 'Thời gian', 
+                '${widget.startTime.format(context)} - ${widget.endTime.format(context)}'),
+            if (widget.selectedOptionsDetails != null && widget.selectedOptionsDetails!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _buildInfoRow(Icons.checklist, 'Tùy chọn', 
+                  '${widget.selectedOptionsDetails!.length} tùy chọn'),
+            ],
+            if (widget.extraHours != null && widget.extraHours! > 0) ...[
+              const SizedBox(height: 8),
+              _buildInfoRow(Icons.schedule, 'Thuê thêm giờ', '${widget.extraHours} giờ'),
+            ],
+          ],
+          
           const SizedBox(height: 8),
           _buildInfoRow(Icons.people, 'Số người', '${widget.numberOfPeople} người'),
           if (widget.purpose.isNotEmpty) ...[
@@ -324,6 +492,12 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen>
         ],
       ),
     );
+  }
+  
+  String _getBarSlotName(int slotId) {
+    // Load từ _barSlots nếu có
+    // TODO: Cần load bar slots từ API hoặc pass từ screen trước
+    return 'Khung giờ đã chọn';
   }
 
   Widget _buildInfoRow(IconData icon, String label, String value) {
@@ -349,9 +523,25 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen>
   }
 
   Widget _buildPriceSection() {
-    final estimatedAmount = _zone!['estimatedTotalAmount'] ?? 0;
-    final pricePerHour = _zone!['pricePerHour'] ?? 0;
-
+    final bookingType = _zone?['bookingType'] as String?;
+    final estimatedAmount = widget.estimatedTotalAmount ?? _zone?['estimatedTotalAmount'] ?? 0;
+    
+    // Tính toán giá trước (không thể khai báo final trong collection spread)
+    num? ticketPrice;
+    String? serviceCode;
+    num? pricePerHour;
+    double? hours;
+    
+    if (bookingType == 'TICKET_BASED' && widget.selectedTicket != null) {
+      ticketPrice = widget.selectedTicket!['price'] as num? ?? 0;
+      serviceCode = _zone?['code']?.toString() ?? '';
+    } else if (bookingType == 'OPTION_BASED' || bookingType == null || bookingType == 'STANDARD') {
+      pricePerHour = _zone?['pricePerHour'] as num? ?? 0;
+      final startMinutes = widget.startTime.hour * 60 + widget.startTime.minute;
+      final endMinutes = widget.endTime.hour * 60 + widget.endTime.minute;
+      hours = (endMinutes - startMinutes) / 60.0;
+    }
+    
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -376,19 +566,10 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen>
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              const Icon(Icons.access_time, color: Colors.teal),
-              const SizedBox(width: 8),
-              Text(
-                '${_formatPrice(pricePerHour)} VNĐ/giờ',
-                style: const TextStyle(
-                  fontSize: 16,
-                  color: Colors.teal,
-                ),
-              ),
-            ],
-          ),
+          
+          // Hiển thị chi tiết giá theo booking type
+          ..._buildPriceDetails(bookingType, ticketPrice, serviceCode, pricePerHour, hours),
+          
           const SizedBox(height: 12),
           const Divider(),
           const SizedBox(height: 12),
@@ -411,6 +592,59 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen>
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+  
+  List<Widget> _buildPriceDetails(String? bookingType, num? ticketPrice, String? serviceCode, num? pricePerHour, double? hours) {
+    List<Widget> widgets = [];
+    
+    if (bookingType == 'COMBO_BASED' && widget.selectedCombo != null) {
+      final comboPrice = widget.selectedCombo!['price'] as num? ?? 0;
+      // Hiển thị: Gói combo, Số người, Tổng tiền
+      widgets.add(_buildPriceRow('Gói combo (${widget.selectedCombo!['name']})', comboPrice));
+      widgets.add(_buildPriceRow('Số người', widget.numberOfPeople));
+      widgets.add(_buildPriceRow('Tổng combo', comboPrice * widget.numberOfPeople));
+    } else if (bookingType == 'TICKET_BASED' && widget.selectedTicket != null && ticketPrice != null) {
+      // Tất cả ticket-based: hiển thị vé, số người, tổng vé
+      widgets.add(_buildPriceRow('Vé (${widget.selectedTicket!['name']})', ticketPrice));
+      widgets.add(_buildPriceRow('Số người', widget.numberOfPeople));
+      widgets.add(_buildPriceRow('Tổng vé', ticketPrice * widget.numberOfPeople));
+    } else if (bookingType == 'OPTION_BASED' && pricePerHour != null && hours != null) {
+      widgets.add(_buildPriceRow('Giá cơ bản', pricePerHour * hours));
+      if (widget.selectedOptionsDetails != null) {
+        for (var opt in widget.selectedOptionsDetails!) {
+          widgets.add(_buildPriceRow(
+            opt['name'] as String? ?? 'Tùy chọn', 
+            (opt['price'] as num? ?? 0) * (opt['quantity'] as num? ?? 1)
+          ));
+        }
+      }
+      if (widget.extraHours != null && widget.extraHours! > 0) {
+        widgets.add(_buildPriceRow('Thuê thêm giờ', 100000 * widget.extraHours!));
+      }
+    } else if (pricePerHour != null && hours != null) {
+      // STANDARD
+      widgets.add(_buildPriceRow('Giá/giờ', pricePerHour));
+      widgets.add(_buildPriceRow('Số giờ', hours));
+      widgets.add(_buildPriceRow('Tổng cơ bản', pricePerHour * hours));
+    }
+    
+    return widgets;
+  }
+  
+  Widget _buildPriceRow(String label, num amount) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 14)),
+          Text(
+            amount is int ? '$amount' : _formatPrice(amount),
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
           ),
         ],
       ),
