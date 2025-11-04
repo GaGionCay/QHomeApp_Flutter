@@ -471,7 +471,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen>
             // OPTION_BASED và STANDARD
             const SizedBox(height: 8),
             _buildInfoRow(Icons.access_time, 'Thời gian', 
-                '${widget.startTime.format(context)} - ${widget.endTime.format(context)}'),
+                '${_formatTimeOfDay(widget.startTime)} - ${_formatTimeOfDay(widget.endTime)}'),
             if (widget.selectedOptionsDetails != null && widget.selectedOptionsDetails!.isNotEmpty) ...[
               const SizedBox(height: 8),
               _buildInfoRow(Icons.checklist, 'Tùy chọn', 
@@ -649,6 +649,11 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen>
         ],
       ),
     );
+  }
+  
+  // Format TimeOfDay thành "HH:mm"
+  String _formatTimeOfDay(TimeOfDay time) {
+    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
   }
 
   Widget _buildLocationSection() {

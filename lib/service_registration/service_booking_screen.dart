@@ -104,8 +104,9 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
         await _loadOptions();
       } else if (_serviceType == 'COMBO_BASED') {
         await _loadCombos();
-        // Check xem có bar slots không (optional)
-        await _loadBarSlots(); // Nếu không có thì sẽ empty list
+        if (_selectedDate != null) {
+          await _loadBarSlots();
+        }
       } else if (_serviceType == 'TICKET_BASED') {
         await _loadTickets();
       }
@@ -192,7 +193,13 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
       final serviceIdToUse = widget.serviceId != 0 ? widget.serviceId : _selectedZoneId;
       if (serviceIdToUse == null) return;
       
-      final slots = await _serviceBookingService.getBarSlots(serviceIdToUse);
+      // Convert selectedDate to DateTime nếu có
+      DateTime? selectedDate;
+      if (_selectedDate != null) {
+        selectedDate = DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day);
+      }
+      
+      final slots = await _serviceBookingService.getBarSlots(serviceIdToUse, selectedDate: selectedDate);
       setState(() {
         _barSlots = slots;
       });
@@ -216,7 +223,9 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
         await _loadOptions();
       } else if (_serviceType == 'COMBO_BASED') {
         await _loadCombos();
-        await _loadBarSlots(); // Check xem có bar slots không
+        if (_selectedDate != null) {
+          await _loadBarSlots();
+        }
       } else if (_serviceType == 'TICKET_BASED') {
         await _loadTickets();
       }
@@ -636,6 +645,10 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
             });
             // Tự động load time slots khi chọn ngày
             _loadTimeSlots();
+            // Reload bar slots khi date thay đổi (cho COMBO_BASED như Bar)
+            if (_serviceType == 'COMBO_BASED') {
+              _loadBarSlots();
+            }
           }
         },
         child: Container(
@@ -708,7 +721,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  '${slot['startTime']} - ${slot['endTime']}',
+                  '${_formatTime(slot['startTime'])} - ${_formatTime(slot['endTime'])}',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -974,6 +987,20 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
     );
   }
   
+  // Format time từ "HH:mm:ss" thành "HH:mm"
+  String _formatTime(dynamic timeValue) {
+    if (timeValue == null) return '';
+    final timeStr = timeValue.toString();
+    // Nếu format là "HH:mm:ss", chỉ lấy "HH:mm"
+    if (timeStr.contains(':')) {
+      final parts = timeStr.split(':');
+      if (parts.length >= 2) {
+        return '${parts[0]}:${parts[1]}';
+      }
+    }
+    return timeStr;
+  }
+  
   Widget _buildSPACombos() {
     if (_combos.isEmpty) {
       return const SizedBox.shrink();
@@ -1076,7 +1103,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
           return Card(
             margin: const EdgeInsets.only(bottom: 8),
             child: RadioListTile<int>(
-              title: Text('${slot['startTime']} - ${slot['endTime']}'),
+              title: Text('${_formatTime(slot['startTime'])} - ${_formatTime(slot['endTime'])}'),
               subtitle: slot['note'] != null
                   ? Text(slot['note'] as String)
                   : null,

@@ -292,9 +292,18 @@ class ServiceBookingService {
   }
 
   // Lấy danh sách bar slots (Bar)
-  Future<List<Map<String, dynamic>>> getBarSlots(int serviceId) async {
+  Future<List<Map<String, dynamic>>> getBarSlots(int serviceId, {DateTime? selectedDate}) async {
     try {
-      final response = await _dio.get('/service-booking/services/$serviceId/bar-slots');
+      final queryParams = <String, dynamic>{};
+      if (selectedDate != null) {
+        // Format date as yyyy-MM-dd
+        queryParams['date'] = '${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}';
+      }
+      
+      final response = await _dio.get(
+        '/service-booking/services/$serviceId/bar-slots',
+        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+      );
       if (response.data is List) {
         return List<Map<String, dynamic>>.from(response.data);
       }
