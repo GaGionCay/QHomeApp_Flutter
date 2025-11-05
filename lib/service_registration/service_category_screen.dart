@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'service_list_screen.dart';
 import '../register/register_vehicle_screen.dart';
+import '../register/register_resident_card_screen.dart';
 
 class ServiceCategoryScreen extends StatefulWidget {
   const ServiceCategoryScreen({super.key});
@@ -144,16 +145,9 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
   void _onCategoryTap(Map<String, dynamic> category) {
     final code = category['code'] as String;
     
-    // Nếu là OPERATION và có service "Đăng ký xe", điều hướng trực tiếp
+    // Nếu là OPERATION, hiển thị dialog để chọn dịch vụ
     if (code == 'OPERATION') {
-      // TODO: Check nếu có service VEHICLE_REGISTRATION thì navigate
-      // Tạm thời navigate trực tiếp đến đăng ký xe
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const RegisterVehicleScreen(),
-        ),
-      );
+      _showOperationServicesDialog();
     } else {
       // Navigate đến service list screen
       Navigator.push(
@@ -163,6 +157,53 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
         ),
       );
     }
+  }
+
+  void _showOperationServicesDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Chọn dịch vụ'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.directions_car, color: Colors.teal),
+              title: const Text('Đăng ký thẻ xe'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const RegisterVehicleScreen(),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.badge, color: Colors.teal),
+              title: const Text('Đăng ký thẻ cư dân'),
+              subtitle: const Text('Dịch vụ ra vào'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const RegisterResidentCardScreen(),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Hủy'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
