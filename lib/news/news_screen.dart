@@ -318,8 +318,6 @@ class _NewsScreenState extends State<NewsScreen>
                                     ? DateFormat('dd/MM/yyyy').format(news.publishAt!)
                                     : DateFormat('dd/MM/yyyy').format(news.createdAt);
 
-                                final String? coverImageUrl = news.coverImageUrl;
-
                                 return AnimatedContainer(
                                   duration: const Duration(milliseconds: 300),
                                   margin: const EdgeInsets.only(bottom: 10),
@@ -339,45 +337,6 @@ class _NewsScreenState extends State<NewsScreen>
                                   child: ListTile(
                                     contentPadding: const EdgeInsets.only(
                                         left: 16, top: 10, right: 16, bottom: 10),
-                                    leading: Hero(
-                                      tag: 'news_${news.id}',
-                                      child: Stack(
-                                        alignment: Alignment.topRight,
-                                        children: [
-                                          if (coverImageUrl != null)
-                                            ClipRRect(
-                                              borderRadius: BorderRadius.circular(26),
-                                              child: Image.network(
-                                                coverImageUrl,
-                                                width: 52,
-                                                height: 52,
-                                                fit: BoxFit.cover,
-                                                errorBuilder: (context, error, stackTrace) {
-                                                  return CircleAvatar(
-                                                    radius: 26,
-                                                    backgroundColor: Colors.white,
-                                                    child: Icon(
-                                                      Icons.article,
-                                                      color: const Color(0xFF26A69A),
-                                                      size: 28,
-                                                    ),
-                                                  );
-                                                },
-                                              ),
-                                            )
-                                          else
-                                            CircleAvatar(
-                                              radius: 26,
-                                              backgroundColor: Colors.white,
-                                              child: Icon(
-                                                Icons.article,
-                                                color: const Color(0xFF26A69A),
-                                                size: 28,
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
                                     title: Text(
                                       news.title,
                                       style: theme.textTheme.titleMedium?.copyWith(
