@@ -416,20 +416,7 @@ class _NewsScreenState extends State<NewsScreen>
                                             FadeTransition(
                                           opacity: animation,
                                           child: NewsDetailScreen(
-                                            news: {
-                                              'id': news.id,
-                                              'title': news.title,
-                                              'summary': news.summary,
-                                              'bodyHtml': news.bodyHtml,
-                                              'coverImageUrl': news.coverImageUrl,
-                                              'publishAt': news.publishAt?.toIso8601String(),
-                                              'createdAt': news.createdAt.toIso8601String(),
-                                              'images': news.images.map((img) => <String, dynamic>{
-                                                'id': img.id,
-                                                'url': img.url,
-                                                'caption': img.caption,
-                                              }).toList(),
-                                            },
+                                            residentNews: news,
                                           ),
                                         ),
                                       ));
