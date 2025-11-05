@@ -1,6 +1,7 @@
 import 'dart:developer';
 import '../auth/api_client.dart';
 import '../models/invoice_line.dart';
+import '../models/electricity_monthly.dart';
 
 class InvoiceService {
   final ApiClient apiClient;
@@ -109,6 +110,37 @@ class InvoiceService {
       log('✅ [InvoiceService] Thanh toán invoice $invoiceId thành công');
     } catch (e, s) {
       log('❌ [InvoiceService] Lỗi payInvoice($invoiceId): $e\n$s');
+      rethrow;
+    }
+  }
+
+  Future<List<ElectricityMonthly>> getElectricityMonthlyData() async {
+    try {
+      log('📊 [InvoiceService] Lấy dữ liệu tiền điện theo tháng');
+      
+      final res = await apiClient.dio.get('/invoices/electricity/monthly');
+      
+      if (res.statusCode != 200) {
+        log('⚠️ API trả mã ${res.statusCode}: ${res.data}');
+        throw Exception(
+            res.data['message'] ?? 'Server trả lỗi ${res.statusCode}');
+      }
+
+      final data = res.data['data'] as List?;
+      if (data == null || data.isEmpty) {
+        log('ℹ️ Không có dữ liệu tiền điện');
+        return [];
+      }
+
+      final monthlyData = (data as List)
+          .map((json) => ElectricityMonthly.fromJson(json))
+          .toList();
+
+      log('✅ [InvoiceService] Lấy được ${monthlyData.length} tháng dữ liệu tiền điện');
+      
+      return monthlyData;
+    } catch (e, s) {
+      log('❌ [InvoiceService] Lỗi getElectricityMonthlyData(): $e\n$s');
       rethrow;
     }
   }

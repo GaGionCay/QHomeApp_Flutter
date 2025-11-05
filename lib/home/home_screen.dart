@@ -5,8 +5,6 @@ import 'package:intl/intl.dart';
 import '../auth/api_client.dart';
 import '../auth/token_storage.dart';
 import '../core/event_bus.dart';
-import '../news/news_item.dart';
-import '../news/news_service.dart';
 import '../news/news_detail_screen.dart';
 import '../news/news_screen.dart';
 import '../notifications/notification_screen.dart';
@@ -14,6 +12,10 @@ import '../profile/profile_service.dart';
 import '../register/register_vehicle_list_screen.dart';
 import '../websocket/web_socket_service.dart';
 import '../invoices/invoice_list_screen.dart';
+import '../invoices/paid_invoices_screen.dart';
+import '../invoices/invoice_service.dart';
+import '../charts/electricity_chart.dart';
+import '../models/electricity_monthly.dart';
 import '../service_registration/service_booking_service.dart';
 import '../service_registration/service_detail_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -39,8 +41,9 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription? _paymentSub;
 
   Map<String, dynamic>? _profile;
-  List<NewsItem> _notifications = [];
+  // Removed: List<NewsItem> _notifications = []; - now using ResidentNews from admin API
   List<Map<String, dynamic>> _unpaidBookings = [];
+  List<ElectricityMonthly> _electricityMonthlyData = [];
 
   bool _loading = true;
 
@@ -77,20 +80,8 @@ class _HomeScreenState extends State<HomeScreen> {
         userId: userId,
         onNotification: (data) {
           debugPrint('🔔 Realtime notification received: $data');
-
-          final newNoti = NewsItem(
-            id: data['newsId'].toString(),
-            title: data['title'] ?? '',
-            body: data['summary'] ?? '',
-            date: DateTime.parse(
-                data['publishAt'] ?? DateTime.now().toIso8601String()),
-            isRead: false,
-          );
-
-          setState(() {
-            _notifications.insert(0, newNoti);
-            _notifications.sort((a, b) => b.date.compareTo(a.date));
-          });
+          // Removed: News notifications handling - now using ResidentNews from admin API
+          // WebSocket notifications can be handled separately if needed
         },
       );
     } catch (e) {
@@ -102,25 +93,26 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _loading = true);
     try {
       final profileFuture = ProfileService(_apiClient.dio).getProfile();
-      final notiFuture = NewsService(api: _apiClient, context: context)
-          .getUnreadNotifications();
+      // Removed: NewsService.getUnreadNotifications() - now using ResidentNews from admin API
       final unpaidBookingsFuture = _serviceBookingService.getUnpaidBookings();
+      final electricityFuture = InvoiceService(_apiClient).getElectricityMonthlyData();
 
       final results = await Future.wait([
         profileFuture,
-        notiFuture,
         unpaidBookingsFuture,
+        electricityFuture,
       ]);
 
       final profile = results[0] as Map<String, dynamic>;
-      final notis = results[1] as List<NewsItem>;
-      final unpaidBookings = results[2] as List<Map<String, dynamic>>;
+      final unpaidBookings = results[1] as List<Map<String, dynamic>>;
+      final electricityData = results[2] as List<ElectricityMonthly>;
 
       if (mounted) {
         setState(() {
           _profile = profile;
-          _notifications = notis;
+          // Removed: _notifications - now using ResidentNews from admin API
           _unpaidBookings = unpaidBookings;
+          _electricityMonthlyData = electricityData;
           _loading = false;
         });
       }
@@ -134,9 +126,9 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadAllData();
   }
 
-  int get unreadCount => _notifications.where((n) => !n.isRead).length;
+  // Removed: int get unreadCount => _notifications.where((n) => !n.isRead).length; - now using ResidentNews from admin API
+  int get unreadCount => 0; // Placeholder - notifications now come from admin API
 
-  @override
   Widget _buildUnpaidBookingSection(Size size) {
     if (_unpaidBookings.isEmpty) return const SizedBox.shrink();
 
@@ -326,15 +318,16 @@ class _HomeScreenState extends State<HomeScreen> {
                           .fadeIn(duration: 600.ms)
                           .slideY(begin: -0.2, curve: Curves.easeOutCubic),
                       SizedBox(height: size.height * 0.03),
-                      if (_notifications.any((n) => !n.isRead) ||
-                          _unpaidBookings.isNotEmpty) ...[
-                        _buildNotificationSection(size),
-                        SizedBox(height: size.height * 0.03),
+                      if (_unpaidBookings.isNotEmpty) ...[
                         _buildUnpaidBookingSection(size),
                         SizedBox(height: size.height * 0.03),
                       ],
                       _buildNewsSection(size), // Thêm phần tin tức
                       SizedBox(height: size.height * 0.03),
+                      if (_electricityMonthlyData.isNotEmpty) ...[
+                        _buildElectricityChartSection(size),
+                        SizedBox(height: size.height * 0.03),
+                      ],
                       _buildCompactFeatureRow(size),
                     ],
                   ),
@@ -397,118 +390,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildNotificationSection(Size size) {
-    final unreadNotifications = _notifications.where((n) => !n.isRead).toList();
-    if (unreadNotifications.isEmpty) return const SizedBox.shrink();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Text(
-              'Thông báo mới',
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 17,
-                color: Color(0xFF1A1A1A),
-              ),
-            ),
-            const Spacer(),
-            if (unreadCount > 0)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.redAccent,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '$unreadCount mới',
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        ...unreadNotifications.take(3).map((n) => Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 6,
-                    offset: const Offset(0, 3),
-                  )
-                ],
-              ),
-              child: ListTile(
-                leading: const Icon(Icons.notifications_active,
-                    color: Color(0xFF26A69A)),
-                title: Text(
-                  n.title,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w600, color: Colors.black87),
-                ),
-                subtitle: Text(
-                  n.body,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.black54),
-                ),
-                trailing: Text(
-                  DateFormat('dd/MM').format(n.date),
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                onTap: () async {
-                  if (!n.isRead) {
-                    setState(() => n.isRead = true);
-                  }
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => NewsDetailScreen(news: {
-                              'id': n.id,
-                              'title': n.title,
-                              'summary': n.body,
-                              'publishAt': n.date.toIso8601String(),
-                              'receivedAt': '',
-                              'status': '',
-                              'coverImageUrl': '',
-                            })),
-                  );
-                },
-              ),
-            )),
-        if (unreadNotifications.length > 3)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const NotificationScreen()),
-                ),
-                child: const Text('Thông báo hệ thống'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const NewsScreen()),
-                ),
-                child: const Text('Xem tất cả tin tức'),
-              ),
-            ],
-          ),
-      ],
-    );
+    // Removed: News notifications - now using ResidentNews from admin API
+    // This section is kept for future notifications from other sources
+    return const SizedBox.shrink();
   }
 
-
   Widget _buildNewsSection(Size size) {
-    final recentNews = _notifications.take(3).toList();
-    if (recentNews.isEmpty) return const SizedBox.shrink();
+    // Removed: News section - now using ResidentNews from admin API (NewsScreen)
+    // Users can navigate to NewsScreen from menu or feature buttons
+    return const SizedBox.shrink();
+  }
 
+  Widget _buildElectricityChartSection(Size size) {
     return Container(
       padding: EdgeInsets.all(size.width * 0.04),
       decoration: BoxDecoration(
@@ -516,73 +409,14 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-              color: Colors.grey.withOpacity(0.15),
-              blurRadius: 8,
-              offset: const Offset(0, 3))
+            color: Colors.grey.withOpacity(0.15),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text('Tin tức mới',
-                  style: TextStyle(
-                      fontSize: size.width * 0.05,
-                      fontWeight: FontWeight.w700)),
-              const Spacer(),
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const NewsScreen(),
-                    ),
-                  );
-                },
-                child: const Text('Xem tất cả'),
-              ),
-            ],
-          ),
-          SizedBox(height: size.height * 0.015),
-          ...recentNews.map((news) => Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.blue.withOpacity(0.1),
-                    child: const Icon(Icons.article, color: Colors.blue, size: 20),
-                  ),
-                  title: Text(
-                    news.title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    news.body,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                  ),
-                  trailing: Text(
-                    DateFormat('dd/MM').format(news.date),
-                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-                  ),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => NewsDetailScreen(id: news.id),
-                      ),
-                    );
-                  },
-                ),
-              )),
-        ],
+      child: ElectricityChart(
+        monthlyData: _electricityMonthlyData,
       ),
     );
   }
@@ -606,20 +440,29 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       },
       {
+        'icon': Icons.check_circle,
+        'label': 'Đã thanh toán',
+        'color': Colors.green,
+        'onTap': () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const PaidInvoicesScreen(),
+            ),
+          );
+        },
+      },
+      {
         'icon': Icons.article,
         'label': 'Tin tức',
         'color': Colors.blue,
         'onTap': () {
-          if (widget.onNavigateToTab != null) {
-            // Navigate to News tab (index 1) - nhưng giờ News đã ở HomeScreen
-            // Tạm thời để navigate đến NewsScreen nếu cần
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const NewsScreen(),
-              ),
-            );
-          }
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const NewsScreen(),
+            ),
+          );
         },
       },
     ];
@@ -652,3 +495,4 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
+

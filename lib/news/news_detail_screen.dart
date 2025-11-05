@@ -4,6 +4,8 @@ import 'package:flutter_html/flutter_html.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../auth/api_client.dart';
 import '../models/resident_news.dart';
+import '../profile/profile_service.dart';
+import 'resident_service.dart';
 
 class NewsDetailScreen extends StatefulWidget {
   final Map<String, dynamic>? news;
@@ -66,13 +68,23 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
   Future<void> _fetchById(String id) async {
     setState(() => _loading = true);
     try {
-      final res = await ApiClient().dio.get('/news/$id');
-      final data = Map<String, dynamic>.from(res.data as Map<String, dynamic>);
-      _residentNews = ResidentNews.fromJson(data);
+      // Removed: old /news/$id endpoint - now using ResidentNews from admin API
+      // If id is a UUID, fetch from admin API via ResidentService
+      final residentService = ResidentService();
+      final residentId = await _getResidentId();
+      if (residentId != null) {
+        final allNews = await residentService.getResidentNews(residentId, size: 1000);
+        final news = allNews.firstWhere((n) => n.id == id, orElse: () => throw Exception('News not found'));
+        _residentNews = news;
+      } else {
+        throw Exception('Resident ID not found');
+      }
     } catch (e) {
       debugPrint('⚠️ Fetch news failed: $e');
       // Create a dummy news object for error state
-      _residentNews = ResidentNews(
+      if (mounted) {
+        setState(() {
+          _residentNews = ResidentNews(
         id: id,
         title: 'Không thể tải nội dung',
         summary: 'Đã có lỗi khi tải nội dung tin',
@@ -84,8 +96,29 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
+          _loading = false;
+        });
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<String?> _getResidentId() async {
+    try {
+      final profile = await ProfileService(ApiClient().dio).getProfile();
+      if (profile['residentId'] != null) {
+        return profile['residentId'] as String;
+      }
+      // Fallback: call /api/residents/me/uuid
+      final res = await ApiClient().dio.get('/residents/me/uuid');
+      if (res.data['success'] == true && res.data['residentId'] != null) {
+        return res.data['residentId'] as String;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ Error getting residentId: $e');
+      return null;
     }
   }
 
