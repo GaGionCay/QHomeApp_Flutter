@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'service_list_screen.dart';
 import '../register/register_vehicle_screen.dart';
 import '../register/register_resident_card_screen.dart';
+import '../register/register_elevator_card_screen.dart';
 
 class ServiceCategoryScreen extends StatefulWidget {
   const ServiceCategoryScreen({super.key});
@@ -190,6 +191,19 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
                   context,
                   MaterialPageRoute(
                     builder: (_) => const RegisterResidentCardScreen(),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.elevator, color: Colors.teal),
+              title: const Text('Đăng ký thẻ thang máy'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const RegisterElevatorCardScreen(),
                   ),
                 );
               },
