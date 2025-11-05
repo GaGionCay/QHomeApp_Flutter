@@ -9,7 +9,6 @@ import '../news/news_detail_screen.dart';
 import '../news/news_screen.dart';
 import '../notifications/notification_screen.dart';
 import '../profile/profile_service.dart';
-import '../register/register_vehicle_list_screen.dart';
 import '../websocket/web_socket_service.dart';
 import '../invoices/invoice_list_screen.dart';
 import '../invoices/paid_invoices_screen.dart';

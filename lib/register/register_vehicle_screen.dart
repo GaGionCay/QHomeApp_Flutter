@@ -11,7 +11,6 @@ import '../auth/api_client.dart';
 import '../core/event_bus.dart';
 import '../common/main_shell.dart';
 import 'register_guide_screen.dart';
-import 'register_vehicle_list_screen.dart';
 
 class RegisterVehicleScreen extends StatefulWidget {
   const RegisterVehicleScreen({super.key});
@@ -34,7 +33,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
 
   String _vehicleType = 'Car';
   bool _submitting = false;
-  bool _showList = false;
   bool _confirmed = false;
   String? _editingField;
   bool _hasEditedAfterConfirm = false;
@@ -53,17 +51,10 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     _loadSavedData();
     _listenForPaymentResult();
     _setupAutoSave();
-    _listenForShowListEvent();
     _checkPendingPayment();
   }
 
-  void _listenForShowListEvent() {
-    AppEventBus().on('show_register_list', (data) {
-      if (mounted) {
-        setState(() => _showList = true);
-      }
-    });
-
+  void _listenForPaymentResult() {
     AppEventBus().on('show_payment_success', (message) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -76,13 +67,59 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
         );
       }
     });
+
+    _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
+      if (uri == null) return;
+
+      if (uri.scheme == 'qhomeapp' && uri.host == 'vnpay-registration-result') {
+        final registrationId = uri.queryParameters['registrationId'];
+        final responseCode = uri.queryParameters['responseCode'];
+
+        if (!mounted) return;
+
+        if (responseCode == '00') {
+          await _clearSavedData();
+
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove(_pendingPaymentKey);
+          } catch (e) {
+            debugPrint('❌ Lỗi xóa pending payment: $e');
+          }
+
+          if (!mounted) return;
+
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const MainShell(initialIndex: 2),
+            ),
+            (route) => false,
+          ).then((_) {
+            Future.delayed(const Duration(milliseconds: 100), () {
+              AppEventBus()
+                  .emit('show_payment_success', 'Đăng ký xe đã được lưu');
+            });
+          });
+        } else {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Thanh toán thất bại. Vui lòng thử lại.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }, onError: (err) {
+      debugPrint('❌ Lỗi khi nhận deep link: $err');
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _paymentSub?.cancel();
-    AppEventBus().off('show_register_list');
     AppEventBus().off('show_payment_success');
     _licenseCtrl.dispose();
     _brandCtrl.dispose();
@@ -130,14 +167,12 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
             (route) => false,
           ).then((_) {
             Future.delayed(const Duration(milliseconds: 100), () {
-              AppEventBus().emit('show_register_list');
               AppEventBus()
                   .emit('show_payment_success', 'Thanh toán đã hoàn tất');
             });
           });
         }
-      }
-      else if (paymentStatus == 'UNPAID') {
+      } else if (paymentStatus == 'UNPAID') {
         if (mounted) {
           final shouldPay = await showDialog<bool>(
             context: context,
@@ -162,7 +197,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
           );
 
           if (shouldPay == true && mounted) {
-            setState(() => _showList = true);
             AppEventBus().emit('pay_registration', registrationId);
           } else {
             await prefs.remove(_pendingPaymentKey);
@@ -267,56 +301,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     }
 
     return shouldExit ?? false;
-  }
-
-  void _listenForPaymentResult() {
-    _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
-      if (uri == null) return;
-
-      if (uri.scheme == 'qhomeapp' && uri.host == 'vnpay-registration-result') {
-        final registrationId = uri.queryParameters['registrationId'];
-        final responseCode = uri.queryParameters['responseCode'];
-
-        if (!mounted) return;
-
-        if (responseCode == '00') {
-          await _clearSavedData();
-
-          try {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.remove(_pendingPaymentKey);
-          } catch (e) {
-            debugPrint('❌ Lỗi xóa pending payment: $e');
-          }
-
-          if (!mounted) return;
-
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const MainShell(initialIndex: 2),
-            ),
-            (route) => false,
-          ).then((_) {
-            Future.delayed(const Duration(milliseconds: 100), () {
-              AppEventBus().emit('show_register_list');
-              AppEventBus()
-                  .emit('show_payment_success', 'Đăng ký xe đã được lưu');
-            });
-          });
-        } else {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ Thanh toán thất bại. Vui lòng thử lại.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    }, onError: (err) {
-      debugPrint('❌ Lỗi khi nhận deep link: $err');
-    });
   }
 
   Future<void> _pickMultipleImages() async {
@@ -428,8 +412,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     setState(() => _uploadedImageUrls.removeAt(i));
     _autoSave();
   }
-
-  void _toggleList() => setState(() => _showList = !_showList);
 
   Future<void> _handleRegisterPressed() async {
     FocusScope.of(context).unfocus();
@@ -730,353 +712,310 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
           }
         }
       },
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 350),
-        child: _showList
-            ? Scaffold(
-                key: const ValueKey('list'),
-                appBar: AppBar(
-                  title: const Text('Thẻ xe đã đăng ký'),
-                  leading: IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_new),
-                    onPressed: _toggleList,
+      child: Scaffold(
+        key: const ValueKey('form'),
+        backgroundColor: const Color(0xFFF5F7F9),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF26A69A),
+          title: const Text('Đăng ký thẻ xe'),
+          foregroundColor: Colors.white,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.help_outline_rounded),
+              tooltip: 'Hướng dẫn đăng ký',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const RegisterGuideScreen()),
+                );
+              },
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.blue.shade700),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Phí đăng ký thẻ xe: 30.000 VNĐ',
+                            style: TextStyle(
+                              color: Colors.blue.shade900,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                body: RegisterServiceListScreen(
-                  onBackPressed: _toggleList,
-                ),
-              )
-            : Scaffold(
-                key: const ValueKey('form'),
-                backgroundColor: const Color(0xFFF5F7F9),
-                appBar: AppBar(
-                  backgroundColor: const Color(0xFF26A69A),
-                  title: const Text('Đăng ký thẻ xe'),
-                  foregroundColor: Colors.white,
-                  actions: [
-                    IconButton(
-                      icon: const Icon(Icons.help_outline_rounded),
-                      tooltip: 'Hướng dẫn đăng ký',
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const RegisterGuideScreen()),
-                        );
-                      },
+                  const SizedBox(height: 16),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 6,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.list_alt_rounded),
-                      tooltip: 'Danh sách thẻ xe',
-                      onPressed: _toggleList,
-                    ),
-                  ],
-                ),
-                body: SafeArea(
-                  child: SingleChildScrollView(
                     padding: const EdgeInsets.all(16),
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.blue.shade200),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.info_outline,
-                                    color: Colors.blue.shade700),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'Phí đăng ký thẻ xe: 30.000 VNĐ',
-                                    style: TextStyle(
-                                      color: Colors.blue.shade900,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.05),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              children: [
-                                DropdownButtonFormField<String>(
-                                  value: _vehicleType,
-                                  decoration: const InputDecoration(
-                                      labelText: 'Loại phương tiện'),
-                                  items: const [
-                                    DropdownMenuItem(
-                                        value: 'Car', child: Text('Ô tô')),
-                                    DropdownMenuItem(
-                                        value: 'Motorbike',
-                                        child: Text('Xe máy')),
-                                  ],
-                                  onChanged: (_confirmed &&
-                                          _editingField != 'vehicleType')
-                                      ? null
-                                      : (v) {
-                                          setState(() {
-                                            _vehicleType = v ?? 'Car';
-                                            if (_confirmed) {
-                                              _editingField = 'vehicleType';
-                                              _hasEditedAfterConfirm = true;
-                                            }
-                                          });
-                                          _autoSave();
-                                        },
-                                ),
-                                const SizedBox(height: 12),
-                                _buildEditableField(
-                                  label: 'Biển số xe',
-                                  controller: _licenseCtrl,
-                                  icon: _vehicleType == 'Car'
-                                      ? Icons.directions_car
-                                      : Icons.two_wheeler,
-                                  fieldKey: 'license',
-                                  validator: (v) => v!.isEmpty
-                                      ? 'Vui lòng nhập biển số xe'
-                                      : null,
-                                ),
-                                const SizedBox(height: 12),
-                                _buildEditableField(
-                                  label: 'Hãng xe',
-                                  controller: _brandCtrl,
-                                  icon: Icons.factory_outlined,
-                                  fieldKey: 'brand',
-                                  validator: (v) => v!.isEmpty
-                                      ? 'Vui lòng nhập hãng xe'
-                                      : null,
-                                ),
-                                const SizedBox(height: 12),
-                                _buildEditableField(
-                                  label: 'Màu xe',
-                                  controller: _colorCtrl,
-                                  icon: Icons.palette_outlined,
-                                  fieldKey: 'color',
-                                  validator: (v) => v!.isEmpty
-                                      ? 'Vui lòng nhập màu xe'
-                                      : null,
-                                ),
-                                const SizedBox(height: 12),
-                                _buildEditableField(
-                                  label: 'Ghi chú thêm',
-                                  controller: _noteCtrl,
-                                  icon: Icons.note_alt_outlined,
-                                  fieldKey: 'note',
-                                  maxLines: 2,
-                                  validator: (_) => null,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                'Ảnh xe của bạn',
-                                style: TextStyle(
-                                    fontSize: 16, fontWeight: FontWeight.w600),
-                              ),
-                              Text(
-                                '${_uploadedImageUrls.length}/$maxImages',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: _uploadedImageUrls.length >= maxImages
-                                      ? Colors.orange
-                                      : Colors.grey.shade700,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          _uploadedImageUrls.isEmpty
-                              ? Container(
-                                  height: 120,
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.shade200,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Center(
-                                      child: Text('Chưa chọn ảnh xe')),
-                                )
-                              : Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: List.generate(
-                                      _uploadedImageUrls.length, (i) {
-                                    final canRemove = _canRemoveImage(i);
-                                    return GestureDetector(
-                                      onDoubleTap: () => _requestDeleteImage(i),
-                                      child: Stack(
-                                        children: [
-                                          ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(10),
-                                            child: Opacity(
-                                              opacity: canRemove ? 1.0 : 0.7,
-                                              child: Image.network(
-                                                _makeFullImageUrl(
-                                                    _uploadedImageUrls[i]),
-                                                width: 110,
-                                                height: 110,
-                                                fit: BoxFit.cover,
-                                              ),
-                                            ),
-                                          ),
-                                          if (canRemove)
-                                            Positioned(
-                                              right: 0,
-                                              top: 0,
-                                              child: Container(
-                                                decoration: const BoxDecoration(
-                                                  color: Colors.black54,
-                                                  shape: BoxShape.circle,
-                                                ),
-                                                padding:
-                                                    const EdgeInsets.all(4),
-                                                child: const Icon(Icons.close,
-                                                    size: 16,
-                                                    color: Colors.white),
-                                              ),
-                                            ),
-                                          if (_confirmed && !canRemove)
-                                            Positioned(
-                                              bottom: 0,
-                                              left: 0,
-                                              right: 0,
-                                              child: Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                        vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.black54,
-                                                  borderRadius:
-                                                      const BorderRadius.only(
-                                                    bottomLeft:
-                                                        Radius.circular(10),
-                                                    bottomRight:
-                                                        Radius.circular(10),
-                                                  ),
-                                                ),
-                                                child: const Text(
-                                                  'Double-tap để xóa',
-                                                  textAlign: TextAlign.center,
-                                                  style: TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 9,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    );
-                                  }),
-                                ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: _confirmed ||
-                                          _submitting ||
-                                          _uploadedImageUrls.length >= maxImages
-                                      ? null
-                                      : _pickMultipleImages,
-                                  icon: const Icon(Icons.photo_library),
-                                  label: Text(
-                                      _uploadedImageUrls.length >= maxImages
-                                          ? 'Đã đủ ($maxImages ảnh)'
-                                          : 'Chọn ảnh'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.teal.shade400,
-                                    disabledBackgroundColor:
-                                        Colors.grey.shade300,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: _confirmed ||
-                                          _submitting ||
-                                          _uploadedImageUrls.length >= maxImages
-                                      ? null
-                                      : _takePhoto,
-                                  icon: const Icon(Icons.camera_alt),
-                                  label: Text(
-                                      _uploadedImageUrls.length >= maxImages
-                                          ? 'Đã đủ ($maxImages ảnh)'
-                                          : 'Chụp ảnh'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.teal.shade600,
-                                    disabledBackgroundColor:
-                                        Colors.grey.shade300,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 30),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 50,
-                            child: ElevatedButton(
-                              onPressed:
-                                  _submitting ? null : _handleRegisterPressed,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF26A69A),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                elevation: 3,
-                              ),
-                              child: _submitting
-                                  ? const CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2,
-                                    )
-                                  : Text(
-                                      _confirmed
-                                          ? (_hasEditedAfterConfirm
-                                              ? 'Xác nhận và thanh toán'
-                                              : 'Đăng ký và thanh toán (30.000 VNĐ)')
-                                          : 'Đăng ký và thanh toán (30.000 VNĐ)',
-                                      style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600),
-                                    ),
-                            ),
-                          ),
-                        ],
-                      ),
+                    child: Column(
+                      children: [
+                        DropdownButtonFormField<String>(
+                          value: _vehicleType,
+                          decoration: const InputDecoration(
+                              labelText: 'Loại phương tiện'),
+                          items: const [
+                            DropdownMenuItem(value: 'Car', child: Text('Ô tô')),
+                            DropdownMenuItem(
+                                value: 'Motorbike', child: Text('Xe máy')),
+                          ],
+                          onChanged:
+                              (_confirmed && _editingField != 'vehicleType')
+                                  ? null
+                                  : (v) {
+                                      setState(() {
+                                        _vehicleType = v ?? 'Car';
+                                        if (_confirmed) {
+                                          _editingField = 'vehicleType';
+                                          _hasEditedAfterConfirm = true;
+                                        }
+                                      });
+                                      _autoSave();
+                                    },
+                        ),
+                        const SizedBox(height: 12),
+                        _buildEditableField(
+                          label: 'Biển số xe',
+                          controller: _licenseCtrl,
+                          icon: _vehicleType == 'Car'
+                              ? Icons.directions_car
+                              : Icons.two_wheeler,
+                          fieldKey: 'license',
+                          validator: (v) =>
+                              v!.isEmpty ? 'Vui lòng nhập biển số xe' : null,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildEditableField(
+                          label: 'Hãng xe',
+                          controller: _brandCtrl,
+                          icon: Icons.factory_outlined,
+                          fieldKey: 'brand',
+                          validator: (v) =>
+                              v!.isEmpty ? 'Vui lòng nhập hãng xe' : null,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildEditableField(
+                          label: 'Màu xe',
+                          controller: _colorCtrl,
+                          icon: Icons.palette_outlined,
+                          fieldKey: 'color',
+                          validator: (v) =>
+                              v!.isEmpty ? 'Vui lòng nhập màu xe' : null,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildEditableField(
+                          label: 'Ghi chú thêm',
+                          controller: _noteCtrl,
+                          icon: Icons.note_alt_outlined,
+                          fieldKey: 'note',
+                          maxLines: 2,
+                          validator: (_) => null,
+                        ),
+                      ],
                     ),
                   ),
-                ),
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Ảnh xe của bạn',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w600),
+                      ),
+                      Text(
+                        '${_uploadedImageUrls.length}/$maxImages',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: _uploadedImageUrls.length >= maxImages
+                              ? Colors.orange
+                              : Colors.grey.shade700,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  _uploadedImageUrls.isEmpty
+                      ? Container(
+                          height: 120,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Center(child: Text('Chưa chọn ảnh xe')),
+                        )
+                      : Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children:
+                              List.generate(_uploadedImageUrls.length, (i) {
+                            final canRemove = _canRemoveImage(i);
+                            return GestureDetector(
+                              onDoubleTap: () => _requestDeleteImage(i),
+                              child: Stack(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Opacity(
+                                      opacity: canRemove ? 1.0 : 0.7,
+                                      child: Image.network(
+                                        _makeFullImageUrl(
+                                            _uploadedImageUrls[i]),
+                                        width: 110,
+                                        height: 110,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  ),
+                                  if (canRemove)
+                                    Positioned(
+                                      right: 0,
+                                      top: 0,
+                                      child: Container(
+                                        decoration: const BoxDecoration(
+                                          color: Colors.black54,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        padding: const EdgeInsets.all(4),
+                                        child: const Icon(Icons.close,
+                                            size: 16, color: Colors.white),
+                                      ),
+                                    ),
+                                  if (_confirmed && !canRemove)
+                                    Positioned(
+                                      bottom: 0,
+                                      left: 0,
+                                      right: 0,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black54,
+                                          borderRadius: const BorderRadius.only(
+                                            bottomLeft: Radius.circular(10),
+                                            bottomRight: Radius.circular(10),
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'Double-tap để xóa',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 9,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            );
+                          }),
+                        ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _confirmed ||
+                                  _submitting ||
+                                  _uploadedImageUrls.length >= maxImages
+                              ? null
+                              : _pickMultipleImages,
+                          icon: const Icon(Icons.photo_library),
+                          label: Text(_uploadedImageUrls.length >= maxImages
+                              ? 'Đã đủ ($maxImages ảnh)'
+                              : 'Chọn ảnh'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.teal.shade400,
+                            disabledBackgroundColor: Colors.grey.shade300,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _confirmed ||
+                                  _submitting ||
+                                  _uploadedImageUrls.length >= maxImages
+                              ? null
+                              : _takePhoto,
+                          icon: const Icon(Icons.camera_alt),
+                          label: Text(_uploadedImageUrls.length >= maxImages
+                              ? 'Đã đủ ($maxImages ảnh)'
+                              : 'Chụp ảnh'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.teal.shade600,
+                            disabledBackgroundColor: Colors.grey.shade300,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 30),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: _submitting ? null : _handleRegisterPressed,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF26A69A),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 3,
+                      ),
+                      child: _submitting
+                          ? const CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            )
+                          : Text(
+                              _confirmed
+                                  ? (_hasEditedAfterConfirm
+                                      ? 'Xác nhận và thanh toán'
+                                      : 'Đăng ký và thanh toán (30.000 VNĐ)')
+                                  : 'Đăng ký và thanh toán (30.000 VNĐ)',
+                              style: const TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.w600),
+                            ),
+                    ),
+                  ),
+                ],
               ),
+            ),
+          ),
+        ),
       ),
     );
   }

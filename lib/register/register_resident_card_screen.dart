@@ -9,7 +9,6 @@ import 'dart:async';
 import '../auth/api_client.dart';
 import '../core/event_bus.dart';
 import '../common/main_shell.dart';
-import 'register_vehicle_list_screen.dart';
 
 class RegisterResidentCardScreen extends StatefulWidget {
   const RegisterResidentCardScreen({super.key});
@@ -33,7 +32,6 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   final TextEditingController _noteCtrl = TextEditingController();
 
   bool _submitting = false;
-  bool _showList = false;
   bool _confirmed = false;
   String? _editingField;
   bool _hasEditedAfterConfirm = false;
@@ -49,36 +47,14 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     _loadSavedData();
     _listenForPaymentResult();
     _setupAutoSave();
-    _listenForShowListEvent();
     _checkPendingPayment();
   }
 
-  void _listenForShowListEvent() {
-    AppEventBus().on('show_register_list', (data) {
-      if (mounted) {
-        setState(() => _showList = true);
-      }
-    });
-
-    AppEventBus().on('show_payment_success', (message) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                '✅ Thanh toán thành công! ${message ?? "Đăng ký thẻ cư dân đã được lưu."}'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    });
-  }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _paymentSub?.cancel();
-    AppEventBus().off('show_register_list');
     AppEventBus().off('show_payment_success');
     _residentNameCtrl.dispose();
     _apartmentNumberCtrl.dispose();
@@ -107,7 +83,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       final pendingId = prefs.getString(_pendingPaymentKey);
       if (pendingId != null) {
         final registrationId = int.parse(pendingId);
-        final res = await api.dio.get('/register-service/$registrationId');
+        final res = await api.dio.get('/resident-card/$registrationId');
         final data = res.data;
         if (data['paymentStatus'] == 'PAID') {
           await prefs.remove(_pendingPaymentKey);
@@ -225,7 +201,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
       if (uri == null) return;
 
-      if (uri.scheme == 'qhomeapp' && uri.host == 'vnpay-registration-result') {
+        if (uri.scheme == 'qhomeapp' && uri.host == 'vnpay-resident-card-result') {
         final registrationId = uri.queryParameters['registrationId'];
         final responseCode = uri.queryParameters['responseCode'];
 
@@ -290,7 +266,6 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         'note': _noteCtrl.text.isNotEmpty ? _noteCtrl.text : null,
       };
 
-  void _toggleList() => setState(() => _showList = !_showList);
 
   Future<void> _handleRegisterPressed() async {
     FocusScope.of(context).unfocus();
@@ -463,7 +438,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       final payload = _collectPayload();
 
       final res =
-          await api.dio.post('/register-service/vnpay-url', data: payload);
+          await api.dio.post('/resident-card/vnpay-url', data: payload);
 
       registrationId = res.data['registrationId'] as int?;
       final paymentUrl = res.data['paymentUrl'] as String;
@@ -509,7 +484,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   Future<void> _cancelRegistration(int registrationId) async {
     try {
       log('🗑️ [RegisterResidentCard] Hủy registration: $registrationId');
-      await api.dio.delete('/register-service/$registrationId/cancel');
+      await api.dio.delete('/resident-card/$registrationId/cancel');
       log('✅ [RegisterResidentCard] Đã hủy registration thành công');
     } catch (e) {
       log('❌ [RegisterResidentCard] Lỗi khi hủy registration: $e');
@@ -518,12 +493,6 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (_showList) {
-      return RegisterServiceListScreen(
-        onBackPressed: () => setState(() => _showList = false),
-      );
-    }
-
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (bool didPop, dynamic result) async {
@@ -547,13 +516,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
           backgroundColor: const Color(0xFF26A69A),
           foregroundColor: Colors.white,
           elevation: 0,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.list),
-              onPressed: _toggleList,
-              tooltip: 'Xem danh sách đã đăng ký',
-            ),
-          ],
+          actions: [],
         ),
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
