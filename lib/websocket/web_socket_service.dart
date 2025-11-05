@@ -8,7 +8,6 @@ class WebSocketService {
     required String token,
     required String userId,
     required void Function(dynamic) onNotification,
-    required void Function(dynamic) onBill,
   }) {
     if (_connected) return;
 
@@ -25,16 +24,6 @@ class WebSocketService {
               if (frame.body != null) {
                 print('📩 Notification: ${frame.body}');
                 onNotification(frame.body);
-              }
-            },
-          );
-
-          client?.subscribe(
-            destination: '/topic/bills/$userId',
-            callback: (frame) {
-              if (frame.body != null) {
-                print('💰 Bill update: ${frame.body}');
-                onBill(frame.body);
               }
             },
           );

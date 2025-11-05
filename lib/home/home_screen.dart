@@ -4,11 +4,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 import '../auth/api_client.dart';
 import '../auth/token_storage.dart';
-import '../bills/bill_chart.dart';
-import '../bills/bill_item.dart';
-import '../bills/bill_list_screen.dart';
-import '../bills/bill_paid_list_screen.dart';
-import '../bills/bill_service.dart';
 import '../core/event_bus.dart';
 import '../news/news_item.dart';
 import '../news/news_service.dart';
@@ -36,7 +31,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late final ApiClient _apiClient;
-  late final BillService _billService;
   late final ServiceBookingService _serviceBookingService;
   late final WebSocketService _wsService;
   final _tokenStorage = TokenStorage();
@@ -46,19 +40,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Map<String, dynamic>? _profile;
   List<NewsItem> _notifications = [];
-  List<BillItem> _unpaidBills = [];
   List<Map<String, dynamic>> _unpaidBookings = [];
-  List<BillStatistics> _stats = [];
 
   bool _loading = true;
-  String _filterType = 'Tất cả';
-  final List<String> _billTypes = ['Tất cả', 'Điện', 'Nước', 'Internet'];
 
   @override
   void initState() {
     super.initState();
     _apiClient = ApiClient();
-    _billService = BillService(_apiClient);
     _serviceBookingService = ServiceBookingService(_apiClient.dio);
     _wsService = WebSocketService();
     _appLinks = AppLinks();
@@ -70,10 +59,6 @@ class _HomeScreenState extends State<HomeScreen> {
       await _refreshAll();
     });
 
-    _eventBus.on('bill_update', (_) async {
-      debugPrint('💰 HomeScreen nhận event bill_update -> reload dữ liệu...');
-      await _refreshAll();
-    });
   }
 
   Future<void> _initialize() async {
@@ -107,10 +92,6 @@ class _HomeScreenState extends State<HomeScreen> {
             _notifications.sort((a, b) => b.date.compareTo(a.date));
           });
         },
-        onBill: (data) {
-          debugPrint('💰 Real-time bill update received');
-          _eventBus.emit('bill_update');
-        },
       );
     } catch (e) {
       debugPrint('⚠️ WebSocket init failed: $e');
@@ -123,61 +104,22 @@ class _HomeScreenState extends State<HomeScreen> {
       final profileFuture = ProfileService(_apiClient.dio).getProfile();
       final notiFuture = NewsService(api: _apiClient, context: context)
           .getUnreadNotifications();
-      final billFuture = _billService.getUnpaidBills();
-      final statFuture = _billService.getStatistics();
       final unpaidBookingsFuture = _serviceBookingService.getUnpaidBookings();
 
       final results = await Future.wait([
         profileFuture,
         notiFuture,
-        billFuture,
-        statFuture,
         unpaidBookingsFuture,
       ]);
 
       final profile = results[0] as Map<String, dynamic>;
       final notis = results[1] as List<NewsItem>;
-      final billDtos = results[2] as List;
-      final stats = results[3] as List<BillStatistics>;
-      final unpaidBookings = results[4] as List<Map<String, dynamic>>;
-
-      final bills = billDtos.map<BillItem>((dto) {
-        DateTime billingMonth;
-        DateTime? paymentDate;
-
-        if (dto.billingMonth is String) {
-          billingMonth = DateTime.parse(dto.billingMonth as String);
-        } else if (dto.billingMonth is DateTime) {
-          billingMonth = dto.billingMonth as DateTime;
-        } else {
-          billingMonth = DateTime.now();
-        }
-
-        if (dto.paymentDate != null) {
-          if (dto.paymentDate is String) {
-            paymentDate = DateTime.parse(dto.paymentDate as String);
-          } else if (dto.paymentDate is DateTime) {
-            paymentDate = dto.paymentDate as DateTime;
-          }
-        }
-
-        return BillItem(
-          id: dto.id ?? 0,
-          billType: dto.billType ?? '',
-          amount: dto.amount?.toDouble() ?? 0,
-          billingMonth: billingMonth,
-          status: dto.status ?? 'UNPAID',
-          description: dto.description,
-          paymentDate: paymentDate,
-        );
-      }).toList();
+      final unpaidBookings = results[2] as List<Map<String, dynamic>>;
 
       if (mounted) {
         setState(() {
           _profile = profile;
           _notifications = notis;
-          _unpaidBills = bills;
-          _stats = stats;
           _unpaidBookings = unpaidBookings;
           _loading = false;
         });
@@ -385,17 +327,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           .slideY(begin: -0.2, curve: Curves.easeOutCubic),
                       SizedBox(height: size.height * 0.03),
                       if (_notifications.any((n) => !n.isRead) ||
-                          _unpaidBills.isNotEmpty ||
                           _unpaidBookings.isNotEmpty) ...[
                         _buildNotificationSection(size),
-                        SizedBox(height: size.height * 0.03),
-                        _buildUnpaidBillSection(size),
                         SizedBox(height: size.height * 0.03),
                         _buildUnpaidBookingSection(size),
                         SizedBox(height: size.height * 0.03),
                       ],
-                      _buildStatisticsSection(size),
-                      SizedBox(height: size.height * 0.03),
                       _buildNewsSection(size), // Thêm phần tin tức
                       SizedBox(height: size.height * 0.03),
                       _buildCompactFeatureRow(size),
@@ -567,125 +504,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildUnpaidBillSection(Size size) {
-    if (_unpaidBills.isEmpty) return const SizedBox.shrink();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Text(
-              'Hóa đơn cần thanh toán',
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 17,
-                color: Color(0xFF1A1A1A),
-              ),
-            ),
-            const Spacer(),
-            TextButton(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const BillListScreen()),
-              ),
-              child: const Text('Xem tất cả'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        ..._unpaidBills.take(3).map((b) => Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 6,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Colors.teal.withOpacity(0.1),
-                  child:
-                      const Icon(Icons.receipt_long, color: Color(0xFF26A69A)),
-                ),
-                title: Text(
-                  '${b.billType} - ${NumberFormat.currency(locale: "vi_VN", symbol: "₫").format(b.amount)}',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                subtitle: Text(
-                  'Hạn: ${DateFormat('dd/MM/yyyy').format(b.billingMonth)}',
-                  style: const TextStyle(color: Colors.black54),
-                ),
-                trailing: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.redAccent.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text(
-                    'Chưa TT',
-                    style: TextStyle(
-                        color: Colors.redAccent,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-            )),
-      ],
-    );
-  }
-
-  Widget _buildStatisticsSection(Size size) {
-    return Container(
-      padding: EdgeInsets.all(size.width * 0.04),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.grey.withOpacity(0.15),
-              blurRadius: 8,
-              offset: const Offset(0, 3))
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text('Thống kê hóa đơn',
-                  style: TextStyle(
-                      fontSize: size.width * 0.05,
-                      fontWeight: FontWeight.w700)),
-              const Spacer(),
-              DropdownButton<String>(
-                value: _filterType,
-                underline: const SizedBox(),
-                borderRadius: BorderRadius.circular(12),
-                items: _billTypes
-                    .map((type) =>
-                        DropdownMenuItem(value: type, child: Text(type)))
-                    .toList(),
-                onChanged: (value) => setState(() => _filterType = value!),
-              ),
-            ],
-          ),
-          SizedBox(height: size.height * 0.015),
-          BillChart(
-              stats: _stats,
-              filterType: _filterType,
-              billService: _billService),
-        ],
-      ),
-    );
-  }
 
   Widget _buildNewsSection(Size size) {
     final recentNews = _notifications.take(3).toList();
@@ -774,20 +592,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final labelSize = size.width * 0.032;
 
     final features = [
-      {
-        'icon': Icons.payment,
-        'label': 'Cần thanh toán',
-        'color': Colors.redAccent,
-        'onTap': () => Navigator.push(
-            context, MaterialPageRoute(builder: (_) => const BillListScreen())),
-      },
-      {
-        'icon': Icons.receipt_long,
-        'label': 'Đã thanh toán',
-        'color': Colors.green,
-        'onTap': () => Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const BillPaidListScreen())),
-      },
       {
         'icon': Icons.description,
         'label': 'Hóa đơn mới',
