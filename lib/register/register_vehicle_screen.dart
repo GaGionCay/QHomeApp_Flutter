@@ -32,6 +32,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   final TextEditingController _noteCtrl = TextEditingController();
 
   String _vehicleType = 'Car';
+  String _requestType = 'NEW_CARD'; // Default to 'Làm thẻ mới'
   bool _submitting = false;
   bool _confirmed = false;
   String? _editingField;
@@ -229,6 +230,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
       final prefs = await SharedPreferences.getInstance();
       final data = {
         'vehicleType': _vehicleType,
+        'requestType': _requestType,
         'licensePlate': _licenseCtrl.text,
         'vehicleBrand': _brandCtrl.text,
         'vehicleColor': _colorCtrl.text,
@@ -250,6 +252,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
 
         setState(() {
           _vehicleType = data['vehicleType'] ?? 'Car';
+          _requestType = data['requestType'] ?? 'NEW_CARD';
           _licenseCtrl.text = data['licensePlate'] ?? '';
           _brandCtrl.text = data['vehicleBrand'] ?? '';
           _colorCtrl.text = data['vehicleColor'] ?? '';
@@ -400,6 +403,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
 
   Map<String, dynamic> _collectPayload() => {
         'serviceType': 'VEHICLE_REGISTRATION',
+        'requestType': _requestType,
         'note': _noteCtrl.text.isNotEmpty ? _noteCtrl.text : null,
         'vehicleType': _vehicleType,
         'licensePlate': _licenseCtrl.text,
@@ -567,6 +571,8 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
 
   String _getFieldLabel(String fieldKey) {
     switch (fieldKey) {
+      case 'requestType':
+        return 'loại yêu cầu';
       case 'license':
         return 'biển số xe';
       case 'brand':
@@ -623,6 +629,64 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   }
 
   bool _isEditable(String field) => !_confirmed || _editingField == field;
+
+  Widget _buildRequestTypeDropdown() {
+    final isEditable = _isEditable('requestType');
+    return GestureDetector(
+      onDoubleTap: () => _requestEditField('requestType'),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: DropdownButtonFormField<String>(
+          value: _requestType,
+          decoration: InputDecoration(
+            labelText: 'Loại yêu cầu',
+            prefixIcon: const Icon(Icons.category, color: Color(0xFF26A69A)),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            filled: true,
+            fillColor: isEditable ? Colors.white : Colors.grey[100],
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
+          ),
+          items: const [
+            DropdownMenuItem(
+              value: 'NEW_CARD',
+              child: Text('Làm thẻ mới'),
+            ),
+            DropdownMenuItem(
+              value: 'REPLACE_CARD',
+              child: Text('Cấp lại thẻ bị mất'),
+            ),
+          ],
+          onChanged: isEditable ? (value) {
+            setState(() {
+              _requestType = value ?? 'NEW_CARD';
+              if (_confirmed) {
+                _editingField = 'requestType';
+                _hasEditedAfterConfirm = true;
+              }
+            });
+            _autoSave();
+          } : null,
+          validator: (v) => v == null ? 'Vui lòng chọn loại yêu cầu' : null,
+        ),
+      ),
+    );
+  }
 
   Future<void> _saveAndPay() async {
     setState(() => _submitting = true);
@@ -692,6 +756,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
       _colorCtrl.clear();
       _noteCtrl.clear();
       _vehicleType = 'Car';
+      _requestType = 'NEW_CARD';
       _uploadedImageUrls.clear();
       _confirmed = false;
       _editingField = null;
@@ -803,6 +868,8 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
                                       _autoSave();
                                     },
                         ),
+                        const SizedBox(height: 12),
+                        _buildRequestTypeDropdown(),
                         const SizedBox(height: 12),
                         _buildEditableField(
                           label: 'Biển số xe',

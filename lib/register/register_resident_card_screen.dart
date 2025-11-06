@@ -31,6 +31,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   final TextEditingController _phoneNumberCtrl = TextEditingController();
   final TextEditingController _noteCtrl = TextEditingController();
 
+  String _requestType = 'NEW_CARD'; // Default to 'Làm thẻ mới'
+
   bool _submitting = false;
   bool _confirmed = false;
   String? _editingField;
@@ -125,6 +127,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         'residentName': _residentNameCtrl.text,
         'apartmentNumber': _apartmentNumberCtrl.text,
         'buildingName': _buildingNameCtrl.text,
+        'requestType': _requestType,
         'citizenId': _citizenIdCtrl.text,
         'phoneNumber': _phoneNumberCtrl.text,
         'note': _noteCtrl.text,
@@ -146,6 +149,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
           _residentNameCtrl.text = data['residentName'] ?? '';
           _apartmentNumberCtrl.text = data['apartmentNumber'] ?? '';
           _buildingNameCtrl.text = data['buildingName'] ?? '';
+          _requestType = data['requestType'] ?? 'NEW_CARD';
           _citizenIdCtrl.text = data['citizenId'] ?? '';
           _phoneNumberCtrl.text = data['phoneNumber'] ?? '';
           _noteCtrl.text = data['note'] ?? '';
@@ -246,6 +250,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       _residentNameCtrl.clear();
       _apartmentNumberCtrl.clear();
       _buildingNameCtrl.clear();
+      _requestType = 'NEW_CARD';
       _citizenIdCtrl.clear();
       _phoneNumberCtrl.clear();
       _noteCtrl.clear();
@@ -257,10 +262,10 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   }
 
   Map<String, dynamic> _collectPayload() => {
-        'serviceType': 'RESIDENT_CARD',
         'residentName': _residentNameCtrl.text,
         'apartmentNumber': _apartmentNumberCtrl.text,
         'buildingName': _buildingNameCtrl.text,
+        'requestType': _requestType,
         'citizenId': _citizenIdCtrl.text,
         'phoneNumber': _phoneNumberCtrl.text,
         'note': _noteCtrl.text.isNotEmpty ? _noteCtrl.text : null,
@@ -417,6 +422,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         return 'số căn hộ';
       case 'buildingName':
         return 'tòa';
+      case 'requestType':
+        return 'loại yêu cầu';
       case 'citizenId':
         return 'căn cước công dân';
       case 'phoneNumber':
@@ -429,6 +436,64 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   }
 
   bool _isEditable(String field) => !_confirmed || _editingField == field;
+
+  Widget _buildRequestTypeDropdown() {
+    final isEditable = _isEditable('requestType');
+    return GestureDetector(
+      onDoubleTap: () => _requestEditField('requestType'),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: DropdownButtonFormField<String>(
+          value: _requestType,
+          decoration: InputDecoration(
+            labelText: 'Loại yêu cầu',
+            prefixIcon: const Icon(Icons.category, color: Color(0xFF26A69A)),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            filled: true,
+            fillColor: isEditable ? Colors.white : Colors.grey[100],
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
+          ),
+          items: const [
+            DropdownMenuItem(
+              value: 'NEW_CARD',
+              child: Text('Làm thẻ mới'),
+            ),
+            DropdownMenuItem(
+              value: 'REPLACE_CARD',
+              child: Text('Cấp lại thẻ bị mất'),
+            ),
+          ],
+          onChanged: isEditable ? (value) {
+            setState(() {
+              _requestType = value ?? 'NEW_CARD';
+              if (_confirmed) {
+                _editingField = 'requestType';
+                _hasEditedAfterConfirm = true;
+              }
+            });
+            _autoSave();
+          } : null,
+          validator: (v) => v == null ? 'Vui lòng chọn loại yêu cầu' : null,
+        ),
+      ),
+    );
+  }
 
   Future<void> _saveAndPay() async {
     setState(() => _submitting = true);
@@ -557,6 +622,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
                       ? 'Vui lòng nhập tên tòa'
                       : null,
                 ),
+                const SizedBox(height: 16),
+                _buildRequestTypeDropdown(),
                 const SizedBox(height: 16),
                 _buildTextField(
                   controller: _citizenIdCtrl,
