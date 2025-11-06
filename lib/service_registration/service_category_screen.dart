@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'service_list_screen.dart';
+import 'service_booking_service.dart';
 import '../register/register_vehicle_screen.dart';
 import '../register/register_resident_card_screen.dart';
 import '../register/register_elevator_card_screen.dart';
+import '../auth/api_client.dart';
 
 class ServiceCategoryScreen extends StatefulWidget {
   const ServiceCategoryScreen({super.key});
@@ -12,37 +14,98 @@ class ServiceCategoryScreen extends StatefulWidget {
 }
 
 class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
-  // Mock data - sẽ được thay bằng API call sau
-  final List<Map<String, dynamic>> _categories = [
-    {
-      'code': 'ENTERTAINMENT',
-      'name': 'Tiện ích giải trí',
-      'description': 'BBQ, hồ bơi, sân chơi',
-      'icon': Icons.sports_esports,
-      'color': Colors.orange,
-    },
-    {
-      'code': 'RENTAL',
-      'name': 'Dịch vụ thuê mặt bằng',
-      'description': 'Gian hàng lễ hội, sự kiện',
-      'icon': Icons.store,
-      'color': Colors.blue,
-    },
-    {
-      'code': 'TECHNICAL',
-      'name': 'Dịch vụ kỹ thuật',
-      'description': 'Sửa điện nước, bảo trì',
-      'icon': Icons.build,
-      'color': Colors.grey,
-    },
-    {
-      'code': 'OPERATION',
-      'name': 'Dịch vụ vận hành',
-      'description': 'Đăng ký xe, thẻ ra vào, chuyển nhượng',
-      'icon': Icons.local_parking,
-      'color': Colors.teal,
-    },
-  ];
+  final ApiClient _apiClient = ApiClient();
+  late final ServiceBookingService _serviceBookingService;
+  
+  List<Map<String, dynamic>> _categories = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _serviceBookingService = ServiceBookingService(_apiClient.dio);
+    _loadCategories();
+  }
+
+  Future<void> _loadCategories() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final categories = await _serviceBookingService.getAllCategories();
+      
+      setState(() {
+        _categories = categories;
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi tải danh sách loại dịch vụ: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Map icon string từ database sang IconData
+  IconData _getIconData(String? iconName) {
+    if (iconName == null || iconName.isEmpty) {
+      return Icons.category;
+    }
+    
+    // Map icon names từ database sang Flutter icons
+    switch (iconName.toLowerCase()) {
+      case 'entertainment':
+      case 'sports_esports':
+        return Icons.sports_esports;
+      case 'rental':
+      case 'store':
+        return Icons.store;
+      case 'technical':
+      case 'build':
+        return Icons.build;
+      case 'operation':
+      case 'local_parking':
+        return Icons.local_parking;
+      default:
+        return Icons.category;
+    }
+  }
+
+  // Map icon string từ database sang Color
+  Color _getIconColor(String? iconName) {
+    if (iconName == null || iconName.isEmpty) {
+      return Colors.teal;
+    }
+    
+    switch (iconName.toLowerCase()) {
+      case 'entertainment':
+      case 'sports_esports':
+        return Colors.orange;
+      case 'rental':
+      case 'store':
+        return Colors.blue;
+      case 'technical':
+      case 'build':
+        return Colors.grey;
+      case 'operation':
+      case 'local_parking':
+        return Colors.teal;
+      default:
+        return Colors.teal;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,18 +123,75 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _categories.length,
-        itemBuilder: (context, index) {
-          final category = _categories[index];
-          return _buildCategoryCard(category);
-        },
-      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        size: 64,
+                        color: Colors.red[300],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Lỗi: $_error',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey[600],
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _loadCategories,
+                        child: const Text('Thử lại'),
+                      ),
+                    ],
+                  ),
+                )
+              : _categories.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.inventory_2_outlined,
+                            size: 64,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Chưa có loại dịch vụ nào',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _loadCategories,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _categories.length,
+                        itemBuilder: (context, index) {
+                          final category = _categories[index];
+                          return _buildCategoryCard(category);
+                        },
+                      ),
+                    ),
     );
   }
 
   Widget _buildCategoryCard(Map<String, dynamic> category) {
+    final iconName = category['icon'] as String?;
+    final iconData = _getIconData(iconName);
+    final iconColor = _getIconColor(iconName);
+    
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
@@ -98,12 +218,12 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
                   width: 60,
                   height: 60,
                   decoration: BoxDecoration(
-                    color: (category['color'] as Color).withOpacity(0.1),
+                    color: iconColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
-                    category['icon'] as IconData,
-                    color: category['color'] as Color,
+                    iconData,
+                    color: iconColor,
                     size: 30,
                   ),
                 ),
@@ -113,21 +233,23 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        category['name'] as String,
+                        category['name'] as String? ?? 'Dịch vụ',
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
                           color: Color(0xFF1A1A1A),
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        category['description'] as String,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
+                      if (category['description'] != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          category['description'] as String,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),

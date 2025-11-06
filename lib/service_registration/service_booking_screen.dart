@@ -60,9 +60,9 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
   List<Map<String, dynamic>> _tickets = [];
   int? _selectedTicketId;
   
-  // Bar
-  List<Map<String, dynamic>> _barSlots = [];
-  int? _selectedBarSlotId;
+  // Service slots (generic - dùng cho Bar, BBQ, và các service khác)
+  List<Map<String, dynamic>> _serviceSlots = [];
+  int? _selectedServiceSlotId;
   
   static const String _pendingBookingKey = 'pending_service_booking_id';
 
@@ -99,13 +99,15 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
         _loadingServiceData = false;
       });
       
-      // Load data theo booking_type từ database
       if (_serviceType == 'OPTION_BASED') {
         await _loadOptions();
+        if (_selectedDate != null) {
+          await _loadServiceSlots();
+        }
       } else if (_serviceType == 'COMBO_BASED') {
         await _loadCombos();
         if (_selectedDate != null) {
-          await _loadBarSlots();
+          await _loadServiceSlots();
         }
       } else if (_serviceType == 'TICKET_BASED') {
         await _loadTickets();
@@ -128,10 +130,8 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
   }
   
   String? _determineServiceType(String? bookingType) {
-    // Dùng booking_type từ database thay vì hardcode check prefix
     if (bookingType == null) return null;
     
-    // Map booking_type sang service type để hiển thị UI
     switch (bookingType.toUpperCase()) {
       case 'OPTION_BASED':
         return 'OPTION_BASED';
@@ -188,7 +188,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
     }
   }
   
-  Future<void> _loadBarSlots() async {
+  Future<void> _loadServiceSlots() async {
     try {
       final serviceIdToUse = widget.serviceId != 0 ? widget.serviceId : _selectedZoneId;
       if (serviceIdToUse == null) return;
@@ -199,12 +199,12 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
         selectedDate = DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day);
       }
       
-      final slots = await _serviceBookingService.getBarSlots(serviceIdToUse, selectedDate: selectedDate);
+      final slots = await _serviceBookingService.getServiceSlots(serviceIdToUse, selectedDate: selectedDate);
       setState(() {
-        _barSlots = slots;
+        _serviceSlots = slots;
       });
     } catch (e) {
-      print('❌ Lỗi lấy bar slots: $e');
+      print('❌ Lỗi lấy service slots: $e');
     }
   }
   
@@ -221,10 +221,15 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
       // Load data theo booking_type từ database
       if (_serviceType == 'OPTION_BASED') {
         await _loadOptions();
+        // Load service slots nếu có (cho BBQ và các service khác)
+        if (_selectedDate != null) {
+          await _loadServiceSlots();
+        }
       } else if (_serviceType == 'COMBO_BASED') {
         await _loadCombos();
+        // Load service slots nếu có (cho Bar và các service khác)
         if (_selectedDate != null) {
-          await _loadBarSlots();
+          await _loadServiceSlots();
         }
       } else if (_serviceType == 'TICKET_BASED') {
         await _loadTickets();
@@ -454,9 +459,9 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
             if (_serviceType == 'COMBO_BASED' || _serviceType == 'TICKET_BASED') ...[
               if (_selectedDate != null) ...[
                 if (_serviceType == 'COMBO_BASED') ...[
-                  // Hiển thị bar slots nếu có (optional - chỉ cho Bar service)
-                  if (_barSlots.isNotEmpty) ...[
-                    _buildBarSlots(),
+                  // Hiển thị service slots nếu có (generic - cho Bar, BBQ, và các service khác)
+                  if (_serviceSlots.isNotEmpty) ...[
+                    _buildServiceSlots(),
                     const SizedBox(height: 16),
                   ],
                   _buildSPACombos(), // Generic combo selector
@@ -472,43 +477,54 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
                 _buildBookingButton(),
               ],
             ] else if (_selectedDate != null && (widget.serviceId != 0 || _selectedZoneId != null)) ...[
-              // OPTION_BASED và STANDARD cần time slot
-              if (_loadingTimeSlots)
-                const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Text(
-                    'Lỗi: $_error',
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                ),
-              if (_timeSlots.isNotEmpty) ...[
-                const Text(
-                  'Chọn khung giờ',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _buildTimeSlotGrid(),
+              // OPTION_BASED và STANDARD: ưu tiên service slots nếu có, nếu không thì dùng time slots động
+              if (_serviceSlots.isNotEmpty) ...[
+                // Service có service slots - hiển thị slots từ database
+                _buildServiceSlots(),
                 const SizedBox(height: 16),
-              ],
-              if (_selectedTimeSlot != null) ...[
                 if (_serviceType == 'OPTION_BASED') ...[
                   _buildBBQOptions(), // Generic option selector
                   const SizedBox(height: 16),
                 ],
-                _buildPeopleSelector(),
-                const SizedBox(height: 16),
-                _buildPurposeInput(),
-                const SizedBox(height: 24),
-                _buildBookingButton(),
+              ] else ...[
+                // Service không có service slots - dùng time slots động
+                if (_loadingTimeSlots)
+                  const Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      'Lỗi: $_error',
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  ),
+                if (_timeSlots.isNotEmpty) ...[
+                  const Text(
+                    'Chọn khung giờ',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTimeSlotGrid(),
+                  const SizedBox(height: 16),
+                ],
+                if (_selectedTimeSlot != null) ...[
+                  if (_serviceType == 'OPTION_BASED') ...[
+                    _buildBBQOptions(), // Generic option selector
+                    const SizedBox(height: 16),
+                  ],
+                ],
               ],
+              _buildPeopleSelector(),
+              const SizedBox(height: 16),
+              _buildPurposeInput(),
+              const SizedBox(height: 24),
+              _buildBookingButton(),
             ],
           ],
         ),
@@ -645,9 +661,9 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
             });
             // Tự động load time slots khi chọn ngày
             _loadTimeSlots();
-            // Reload bar slots khi date thay đổi (cho COMBO_BASED như Bar)
-            if (_serviceType == 'COMBO_BASED') {
-              _loadBarSlots();
+            // Reload service slots khi date thay đổi (cho services có slots)
+            if (_serviceType == 'COMBO_BASED' || _serviceType == 'OPTION_BASED') {
+              _loadServiceSlots();
             }
           }
         },
@@ -875,7 +891,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
     }
     
     return _buildSection(
-      title: 'Tùy chọn dịch vụ BBQ',
+      title: 'Tùy chọn dịch vụ ${_serviceDetail?['name'] ?? 'dịch vụ'}',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1088,30 +1104,32 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
     );
   }
   
-  Widget _buildBarSlots() {
-    if (_barSlots.isEmpty) {
+  Widget _buildServiceSlots() {
+    if (_serviceSlots.isEmpty) {
       return const SizedBox.shrink();
     }
     
     return _buildSection(
       title: 'Chọn khung giờ',
       child: Column(
-        children: _barSlots.map((slot) {
+        children: _serviceSlots.map((slot) {
           final slotId = slot['id'] as int;
-          final isSelected = _selectedBarSlotId == slotId;
+          final isSelected = _selectedServiceSlotId == slotId;
           
           return Card(
             margin: const EdgeInsets.only(bottom: 8),
             child: RadioListTile<int>(
               title: Text('${_formatTime(slot['startTime'])} - ${_formatTime(slot['endTime'])}'),
-              subtitle: slot['note'] != null
-                  ? Text(slot['note'] as String)
-                  : null,
+              subtitle: slot['name'] != null
+                  ? Text(slot['name'] as String)
+                  : slot['note'] != null
+                      ? Text(slot['note'] as String)
+                      : null,
               value: slotId,
-              groupValue: _selectedBarSlotId,
+              groupValue: _selectedServiceSlotId,
               onChanged: (value) {
                 setState(() {
-                  _selectedBarSlotId = value;
+                  _selectedServiceSlotId = value;
                 });
               },
             ),
@@ -1167,14 +1185,18 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
     bool canBook = _selectedDate != null && _numberOfPeople > 0;
     
     if (_serviceType == 'OPTION_BASED' || _serviceType == 'STANDARD') {
-      // OPTION_BASED và STANDARD cần time slot
-      canBook = canBook && _selectedTimeSlot != null;
+      // OPTION_BASED và STANDARD: nếu có service slots thì dùng slots, nếu không thì dùng time slot động
+      if (_serviceSlots.isNotEmpty) {
+        canBook = canBook && _selectedServiceSlotId != null;
+      } else {
+        canBook = canBook && _selectedTimeSlot != null;
+      }
     } else if (_serviceType == 'COMBO_BASED') {
       // COMBO_BASED cần combo
       canBook = canBook && _selectedComboId != null;
-      // Nếu có bar slots thì cũng cần chọn slot
-      if (_barSlots.isNotEmpty) {
-        canBook = canBook && _selectedBarSlotId != null;
+      // Nếu có service slots thì cũng cần chọn slot
+      if (_serviceSlots.isNotEmpty) {
+        canBook = canBook && _selectedServiceSlotId != null;
       }
     } else if (_serviceType == 'TICKET_BASED') {
       // TICKET_BASED cần ticket
@@ -1190,22 +1212,47 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
           TimeOfDay endTime;
           
           if (_serviceType == 'OPTION_BASED' || _serviceType == 'STANDARD') {
-            // OPTION_BASED và STANDARD cần time slot
-            final startTimeStr = _selectedTimeSlot!['startTime'] as String;
-            final endTimeStr = _selectedTimeSlot!['endTime'] as String;
-            
-            // Parse time strings (format: "HH:mm:ss")
-            final startParts = startTimeStr.split(':');
-            final endParts = endTimeStr.split(':');
-            
-            startTime = TimeOfDay(
-              hour: int.parse(startParts[0]),
-              minute: int.parse(startParts[1]),
-            );
-            endTime = TimeOfDay(
-              hour: int.parse(endParts[0]),
-              minute: int.parse(endParts[1]),
-            );
+            // OPTION_BASED và STANDARD: ưu tiên service slots nếu có, nếu không thì dùng time slot động
+            if (_serviceSlots.isNotEmpty && _selectedServiceSlotId != null) {
+              // Dùng service slot từ database
+              final selectedSlot = _serviceSlots.firstWhere((slot) => slot['id'] == _selectedServiceSlotId);
+              final startTimeStr = selectedSlot['startTime'] as String;
+              final endTimeStr = selectedSlot['endTime'] as String;
+              
+              // Parse time strings (format: "HH:mm:ss")
+              final startParts = startTimeStr.split(':');
+              final endParts = endTimeStr.split(':');
+              
+              startTime = TimeOfDay(
+                hour: int.parse(startParts[0]),
+                minute: int.parse(startParts[1]),
+              );
+              endTime = TimeOfDay(
+                hour: int.parse(endParts[0]),
+                minute: int.parse(endParts[1]),
+              );
+            } else if (_selectedTimeSlot != null) {
+              // Dùng time slot động
+              final startTimeStr = _selectedTimeSlot!['startTime'] as String;
+              final endTimeStr = _selectedTimeSlot!['endTime'] as String;
+              
+              // Parse time strings (format: "HH:mm:ss")
+              final startParts = startTimeStr.split(':');
+              final endParts = endTimeStr.split(':');
+              
+              startTime = TimeOfDay(
+                hour: int.parse(startParts[0]),
+                minute: int.parse(startParts[1]),
+              );
+              endTime = TimeOfDay(
+                hour: int.parse(endParts[0]),
+                minute: int.parse(endParts[1]),
+              );
+            } else {
+              // Fallback
+              startTime = const TimeOfDay(hour: 9, minute: 0);
+              endTime = const TimeOfDay(hour: 17, minute: 0);
+            }
           } else {
             // COMBO_BASED, TICKET_BASED: Set default time
             startTime = const TimeOfDay(hour: 9, minute: 0);
@@ -1292,7 +1339,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen>
                 selectedOptions: selectedOptions,
                 selectedComboId: _selectedComboId,
                 selectedTicketId: _selectedTicketId,
-                selectedBarSlotId: _selectedBarSlotId,
+                selectedServiceSlotId: _selectedServiceSlotId,
                 extraHours: _extraHours > 0 ? _extraHours : null,
                 estimatedTotalAmount: estimatedTotalAmount,
                 selectedCombo: selectedCombo,

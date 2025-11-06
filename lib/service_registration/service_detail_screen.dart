@@ -23,7 +23,7 @@ class ServiceDetailScreen extends StatefulWidget {
   final List<Map<String, dynamic>>? selectedOptions;
   final int? selectedComboId;
   final int? selectedTicketId;
-  final int? selectedBarSlotId;
+  final int? selectedServiceSlotId;
   final int? extraHours;
   
   // Price information (tính từ screen trước)
@@ -45,7 +45,7 @@ class ServiceDetailScreen extends StatefulWidget {
     this.selectedOptions,
     this.selectedComboId,
     this.selectedTicketId,
-    this.selectedBarSlotId,
+    this.selectedServiceSlotId,
     this.extraHours,
     this.estimatedTotalAmount,
     this.selectedCombo,
@@ -222,7 +222,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen>
         selectedOptions: widget.selectedOptions,
         selectedComboId: widget.selectedComboId,
         selectedTicketId: widget.selectedTicketId,
-        selectedBarSlotId: widget.selectedBarSlotId,
+        selectedServiceSlotId: widget.selectedServiceSlotId,
         extraHours: widget.extraHours,
       );
 
@@ -441,10 +441,10 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen>
           
           // Hiển thị thông tin theo booking type
           if (bookingType == 'COMBO_BASED') ...[
-            if (widget.selectedBarSlotId != null && _zone?['barSlots'] != null) ...[
+            if (widget.selectedServiceSlotId != null && _zone?['serviceSlots'] != null) ...[
               const SizedBox(height: 8),
               _buildInfoRow(Icons.access_time, 'Khung giờ', 
-                  _getBarSlotName(widget.selectedBarSlotId!)),
+                  _getServiceSlotName(widget.selectedServiceSlotId!)),
             ],
             if (widget.selectedCombo != null) ...[
               const SizedBox(height: 8),
@@ -494,9 +494,9 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen>
     );
   }
   
-  String _getBarSlotName(int slotId) {
-    // Load từ _barSlots nếu có
-    // TODO: Cần load bar slots từ API hoặc pass từ screen trước
+  String _getServiceSlotName(int slotId) {
+    // Load từ service slots nếu có
+    // TODO: Cần load service slots từ API hoặc pass từ screen trước
     return 'Khung giờ đã chọn';
   }
 

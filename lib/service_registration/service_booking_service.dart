@@ -6,6 +6,20 @@ class ServiceBookingService {
 
   ServiceBookingService(this._dio);
 
+  // Lấy danh sách tất cả categories
+  Future<List<Map<String, dynamic>>> getAllCategories() async {
+    try {
+      final response = await _dio.get('/service-booking/categories');
+      if (response.data is List) {
+        return List<Map<String, dynamic>>.from(response.data);
+      }
+      return [];
+    } catch (e) {
+      print('❌ Lỗi lấy categories: $e');
+      rethrow;
+    }
+  }
+
   // Lấy danh sách service types theo category code (ví dụ: "ENTERTAINMENT")
   // Trả về các loại dịch vụ như "BBQ", "Tennis", "Pool", v.v.
   Future<List<Map<String, dynamic>>> getServiceTypesByCategoryCode(
@@ -127,7 +141,7 @@ class ServiceBookingService {
     List<Map<String, dynamic>>? selectedOptions,
     int? selectedComboId,
     int? selectedTicketId,
-    int? selectedBarSlotId,
+    int? selectedServiceSlotId,
     int? extraHours,
   }) async {
     try {
@@ -152,7 +166,7 @@ class ServiceBookingService {
           }).toList(),
         if (selectedComboId != null) 'selectedComboId': selectedComboId,
         if (selectedTicketId != null) 'selectedTicketId': selectedTicketId,
-        if (selectedBarSlotId != null) 'selectedBarSlotId': selectedBarSlotId,
+        if (selectedServiceSlotId != null) 'selectedServiceSlotId': selectedServiceSlotId,
         if (extraHours != null && extraHours > 0) 'extraHours': extraHours,
       };
       
@@ -291,8 +305,8 @@ class ServiceBookingService {
     }
   }
 
-  // Lấy danh sách bar slots (Bar)
-  Future<List<Map<String, dynamic>>> getBarSlots(int serviceId, {DateTime? selectedDate}) async {
+  // Lấy danh sách service slots (generic - dùng cho Bar, BBQ, và các service khác)
+  Future<List<Map<String, dynamic>>> getServiceSlots(int serviceId, {DateTime? selectedDate}) async {
     try {
       final queryParams = <String, dynamic>{};
       if (selectedDate != null) {
@@ -301,7 +315,7 @@ class ServiceBookingService {
       }
       
       final response = await _dio.get(
-        '/service-booking/services/$serviceId/bar-slots',
+        '/service-booking/services/$serviceId/service-slots',
         queryParameters: queryParams.isNotEmpty ? queryParams : null,
       );
       if (response.data is List) {
@@ -309,7 +323,7 @@ class ServiceBookingService {
       }
       return [];
     } catch (e) {
-      print('❌ Lỗi lấy bar slots: $e');
+      print('❌ Lỗi lấy service slots: $e');
       rethrow;
     }
   }
