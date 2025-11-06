@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../auth/admin_api_client.dart';
 import '../models/resident_news.dart';
 import '../models/resident_notification.dart';
+import '../models/notification_detail_response.dart';
 
 class ResidentService {
   final AdminApiClient _apiClient;
@@ -144,6 +145,33 @@ class ResidentService {
       return [];
     } catch (e) {
       print('❌ [ResidentService] Lỗi lấy resident notifications: $e');
+      if (e is DioException) {
+        print('❌ [ResidentService] DioException status: ${e.response?.statusCode}');
+        print('❌ [ResidentService] DioException data: ${e.response?.data}');
+      }
+      rethrow;
+    }
+  }
+
+  Future<NotificationDetailResponse> getNotificationDetailById(String notificationId) async {
+    try {
+      print('🔍 [ResidentService] Gọi API notification detail với id=$notificationId');
+      final response = await _publicDio.get(
+        '/notifications/$notificationId',
+      );
+      
+      print('🔍 [ResidentService] Response status: ${response.statusCode}');
+      print('🔍 [ResidentService] Response data: ${response.data}');
+      
+      if (response.data is Map) {
+        final detail = NotificationDetailResponse.fromJson(response.data as Map<String, dynamic>);
+        print('✅ [ResidentService] Parsed notification detail');
+        return detail;
+      }
+      
+      throw Exception('Invalid response format');
+    } catch (e) {
+      print('❌ [ResidentService] Lỗi lấy notification detail: $e');
       if (e is DioException) {
         print('❌ [ResidentService] DioException status: ${e.response?.statusCode}');
         print('❌ [ResidentService] DioException data: ${e.response?.data}');

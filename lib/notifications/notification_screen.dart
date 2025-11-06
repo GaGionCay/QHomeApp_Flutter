@@ -5,6 +5,7 @@ import '../auth/api_client.dart';
 import '../profile/profile_service.dart';
 import '../models/resident_notification.dart';
 import '../news/resident_service.dart';
+import 'notification_detail_screen.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
@@ -221,12 +222,17 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                 ),
                               ],
                             ),
-                            onTap: notification.actionUrl != null
-                                ? () {
-                                    // Handle action URL if needed
-                                    debugPrint('Action URL: ${notification.actionUrl}');
-                                  }
-                                : null,
+                            onTap: () {
+                              // Navigate to detail screen
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => NotificationDetailScreen(
+                                    notificationId: notification.id,
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                         );
                       },
