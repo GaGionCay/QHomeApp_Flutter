@@ -47,7 +47,9 @@ class ResidentAccountService {
           Map<String, dynamic>.from(response.data as Map));
     } on DioException catch (e) {
       final data = e.response?.data;
-      if (data is Map && data['message'] is String && data['message'].toString().isNotEmpty) {
+      if (data is Map &&
+          data['message'] is String &&
+          data['message'].toString().isNotEmpty) {
         throw Exception(data['message']);
       }
       rethrow;

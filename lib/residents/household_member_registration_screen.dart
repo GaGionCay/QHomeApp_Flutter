@@ -12,12 +12,10 @@ import 'resident_account_service.dart';
 class HouseholdMemberRegistrationScreen extends StatefulWidget {
   const HouseholdMemberRegistrationScreen({
     super.key,
-    required this.units,
-    required this.initialUnitId,
+    required this.unit,
   });
 
-  final List<UnitInfo> units;
-  final String initialUnitId;
+  final UnitInfo unit;
 
   @override
   State<HouseholdMemberRegistrationScreen> createState() =>
@@ -27,7 +25,6 @@ class HouseholdMemberRegistrationScreen extends StatefulWidget {
 class _HouseholdMemberRegistrationScreenState
     extends State<HouseholdMemberRegistrationScreen> {
   late final ResidentAccountService _service;
-  late String _selectedUnitId;
   List<ResidentWithoutAccount> _members = [];
   bool _loading = true;
   String? _error;
@@ -37,9 +34,6 @@ class _HouseholdMemberRegistrationScreenState
   void initState() {
     super.initState();
     _service = ResidentAccountService(ApiClient());
-    _selectedUnitId = widget.units.any((u) => u.id == widget.initialUnitId)
-        ? widget.initialUnitId
-        : widget.units.first.id;
     _loadMembers();
   }
 
@@ -49,12 +43,13 @@ class _HouseholdMemberRegistrationScreenState
       _error = null;
     });
     try {
-      final members = await _service.getResidentsWithoutAccount(_selectedUnitId);
-      if (mounted) {
-        setState(() {
-          _members = members;
-        });
-      }
+      final members =
+          await _service.getResidentsWithoutAccount(widget.unit.id);
+          if (mounted) {
+            setState(() {
+              _members = members;
+            });
+          }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -339,56 +334,24 @@ class _HouseholdMemberRegistrationScreenState
 
   @override
   Widget build(BuildContext context) {
-    final selectedUnit = widget.units
-        .firstWhere((unit) => unit.id == _selectedUnitId, orElse: () {
-      return widget.units.first;
-    });
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Đăng ký tài khoản thành viên'),
       ),
       body: Column(
         children: [
-          if (widget.units.length > 1)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: DropdownButtonFormField<String>(
-                value: _selectedUnitId,
-                decoration: const InputDecoration(
-                  labelText: 'Chọn căn hộ',
-                  border: OutlineInputBorder(),
-                ),
-                items: widget.units
-                    .map(
-                      (unit) => DropdownMenuItem<String>(
-                        value: unit.id,
-                        child: Text(unit.displayName),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  if (value == null || value == _selectedUnitId) return;
-                  setState(() {
-                    _selectedUnitId = value;
-                  });
-                  _loadMembers();
-                },
-              ),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Căn hộ: ${selectedUnit.displayName}',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Căn hộ: ${widget.unit.displayName}',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
               ),
             ),
+          ),
           Expanded(
             child: RefreshIndicator(
               onRefresh: _loadMembers,

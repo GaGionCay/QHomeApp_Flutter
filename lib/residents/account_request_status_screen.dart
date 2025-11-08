@@ -12,9 +12,11 @@ class AccountRequestStatusScreen extends StatefulWidget {
   const AccountRequestStatusScreen({
     super.key,
     required this.units,
+    required this.initialUnitId,
   });
 
   final List<UnitInfo> units;
+  final String initialUnitId;
 
   @override
   State<AccountRequestStatusScreen> createState() =>
@@ -33,8 +35,9 @@ class _AccountRequestStatusScreenState
   void initState() {
     super.initState();
     _service = ResidentAccountService(ApiClient());
-    _selectedUnitFilter =
-        widget.units.isEmpty ? null : widget.units.first.id;
+    _selectedUnitFilter = widget.units.any((u) => u.id == widget.initialUnitId)
+        ? widget.initialUnitId
+        : (widget.units.isNotEmpty ? widget.units.first.id : null);
     _loadRequests();
   }
 
@@ -146,7 +149,6 @@ class _AccountRequestStatusScreenState
 
   @override
   Widget build(BuildContext context) {
-    final hasMultipleUnits = widget.units.length > 1;
     final filtered = _filteredRequests;
 
     return Scaffold(
@@ -158,30 +160,17 @@ class _AccountRequestStatusScreenState
           if (widget.units.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: DropdownButtonFormField<String?>(
-                value: hasMultipleUnits ? _selectedUnitFilter : widget.units.first.id,
-                decoration: const InputDecoration(
-                  labelText: 'Lọc theo căn hộ',
-                  border: OutlineInputBorder(),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Căn hộ: ${widget.units.firstWhere(
+                    (unit) => unit.id == (_selectedUnitFilter ?? widget.units.first.id),
+                    orElse: () => widget.units.first,
+                  ).displayName}',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                 ),
-                items: [
-                  if (hasMultipleUnits)
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('Tất cả căn hộ'),
-                    ),
-                  ...widget.units.map(
-                    (unit) => DropdownMenuItem<String?>(
-                      value: unit.id,
-                      child: Text(unit.displayName),
-                    ),
-                  ),
-                ],
-                onChanged: (value) {
-                  setState(() {
-                    _selectedUnitFilter = hasMultipleUnits ? value : widget.units.first.id;
-                  });
-                },
               ),
             ),
           Expanded(

@@ -622,8 +622,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (_) => HouseholdMemberRegistrationScreen(
-                    units: ownerUnits,
-                    initialUnitId: defaultUnitId,
+                    unit: ownerUnits.firstWhere(
+                      (unit) => unit.id == defaultUnitId,
+                      orElse: () => ownerUnits.first,
+                    ),
                   ),
                 ),
               );
@@ -648,6 +650,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 MaterialPageRoute(
                   builder: (_) => AccountRequestStatusScreen(
                     units: ownerUnits,
+                    initialUnitId: defaultUnitId,
                   ),
                 ),
               );
