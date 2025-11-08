@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-import 'service_list_screen.dart';
-import 'service_booking_service.dart';
 import '../register/register_vehicle_screen.dart';
-import '../register/register_resident_card_screen.dart';
 import '../register/register_elevator_card_screen.dart';
-import '../auth/api_client.dart';
+import '../register/register_resident_card_screen.dart';
 
 class ServiceCategoryScreen extends StatefulWidget {
   const ServiceCategoryScreen({super.key});
@@ -14,97 +11,9 @@ class ServiceCategoryScreen extends StatefulWidget {
 }
 
 class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
-  final ApiClient _apiClient = ApiClient();
-  late final ServiceBookingService _serviceBookingService;
-  
-  List<Map<String, dynamic>> _categories = [];
-  bool _loading = true;
-  String? _error;
-
   @override
   void initState() {
     super.initState();
-    _serviceBookingService = ServiceBookingService(_apiClient.dio);
-    _loadCategories();
-  }
-
-  Future<void> _loadCategories() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-
-    try {
-      final categories = await _serviceBookingService.getAllCategories();
-      
-      setState(() {
-        _categories = categories;
-        _loading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Lỗi tải danh sách loại dịch vụ: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  // Map icon string từ database sang IconData
-  IconData _getIconData(String? iconName) {
-    if (iconName == null || iconName.isEmpty) {
-      return Icons.category;
-    }
-    
-    // Map icon names từ database sang Flutter icons
-    switch (iconName.toLowerCase()) {
-      case 'entertainment':
-      case 'sports_esports':
-        return Icons.sports_esports;
-      case 'rental':
-      case 'store':
-        return Icons.store;
-      case 'technical':
-      case 'build':
-        return Icons.build;
-      case 'operation':
-      case 'local_parking':
-        return Icons.local_parking;
-      default:
-        return Icons.category;
-    }
-  }
-
-  // Map icon string từ database sang Color
-  Color _getIconColor(String? iconName) {
-    if (iconName == null || iconName.isEmpty) {
-      return Colors.teal;
-    }
-    
-    switch (iconName.toLowerCase()) {
-      case 'entertainment':
-      case 'sports_esports':
-        return Colors.orange;
-      case 'rental':
-      case 'store':
-        return Colors.blue;
-      case 'technical':
-      case 'build':
-        return Colors.grey;
-      case 'operation':
-      case 'local_parking':
-        return Colors.teal;
-      default:
-        return Colors.teal;
-    }
   }
 
   @override
@@ -123,221 +32,221 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.error_outline,
-                        size: 64,
-                        color: Colors.red[300],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Lỗi: $_error',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey[600],
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadCategories,
-                        child: const Text('Thử lại'),
-                      ),
-                    ],
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 32),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 15,
+                    offset: const Offset(0, 6),
                   ),
-                )
-              : _categories.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.inventory_2_outlined,
-                            size: 64,
-                            color: Colors.grey[400],
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Chưa có loại dịch vụ nào',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ],
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Đăng ký thẻ xe',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          color: const Color(0xFF1A1A1A),
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Tiện lợi đăng ký, theo dõi trạng thái và thanh toán thẻ xe ngay trên ứng dụng.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.grey[600],
+                          height: 1.4,
+                        ),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF26A69A),
+                      minimumSize: const Size.fromHeight(54),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
                       ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _loadCategories,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _categories.length,
-                        itemBuilder: (context, index) {
-                          final category = _categories[index];
-                          return _buildCategoryCard(category);
-                        },
+                      elevation: 4,
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const RegisterVehicleScreen(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.directions_car, size: 24),
+                    label: const Text(
+                      'Đăng ký thẻ xe',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-    );
-  }
-
-  Widget _buildCategoryCard(Map<String, dynamic> category) {
-    final iconName = category['icon'] as String?;
-    final iconData = _getIconData(iconName);
-    final iconColor = _getIconColor(iconName);
-    
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => _onCategoryTap(category),
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: iconColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(
-                    iconData,
-                    color: iconColor,
-                    size: 30,
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 15,
+                    offset: const Offset(0, 6),
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        category['name'] as String? ?? 'Dịch vụ',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF1A1A1A),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Đăng ký thẻ cư dân',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          color: const Color(0xFF1A1A1A),
+                          fontWeight: FontWeight.w700,
                         ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Đăng ký thẻ cư dân để ra vào khu căn hộ thuận tiện, thanh toán online qua VNPAY.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.grey[600],
+                          height: 1.4,
+                        ),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00897B),
+                      minimumSize: const Size.fromHeight(54),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
                       ),
-                      if (category['description'] != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          category['description'] as String,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[600],
-                          ),
+                      elevation: 4,
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const RegisterResidentCardScreen(),
                         ),
-                      ],
-                    ],
+                      );
+                    },
+                    icon: const Icon(Icons.badge_outlined, size: 24),
+                    label: const Text(
+                      'Đăng ký thẻ cư dân',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
-                ),
-                Icon(
-                  Icons.chevron_right,
-                  color: Colors.grey[400],
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _onCategoryTap(Map<String, dynamic> category) {
-    final code = category['code'] as String;
-    
-    // Nếu là OPERATION, hiển thị dialog để chọn dịch vụ
-    if (code == 'OPERATION') {
-      _showOperationServicesDialog();
-    } else {
-      // Navigate đến service list screen
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ServiceListScreen(categoryCode: code),
-        ),
-      );
-    }
-  }
-
-  void _showOperationServicesDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Chọn dịch vụ'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.directions_car, color: Colors.teal),
-              title: const Text('Đăng ký thẻ xe'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const RegisterVehicleScreen(),
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 15,
+                    offset: const Offset(0, 6),
                   ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.badge, color: Colors.teal),
-              title: const Text('Đăng ký thẻ cư dân'),
-              subtitle: const Text('Dịch vụ ra vào'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const RegisterResidentCardScreen(),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Đăng ký thẻ thang máy',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          color: const Color(0xFF1A1A1A),
+                          fontWeight: FontWeight.w700,
+                        ),
                   ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.elevator, color: Colors.teal),
-              title: const Text('Đăng ký thẻ thang máy'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const RegisterElevatorCardScreen(),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Điền thông tin cư dân, căn hộ và thanh toán trực tuyến để kích hoạt thẻ thang máy.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.grey[600],
+                          height: 1.4,
+                        ),
                   ),
-                );
-              },
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00796B),
+                      minimumSize: const Size.fromHeight(54),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 4,
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const RegisterElevatorCardScreen(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.elevator, size: 24),
+                    label: const Text(
+                      'Đăng ký thẻ thang máy',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
+            const SizedBox(height: 32),
+            Center(
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.miscellaneous_services_outlined,
+                    color: Colors.grey.shade400,
+                    size: 64,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Các dịch vụ khác sẽ được cập nhật\ntrong các phiên bản tiếp theo.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 32),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Hủy'),
-          ),
-        ],
       ),
     );
   }

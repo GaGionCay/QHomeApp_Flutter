@@ -12,7 +12,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final emailCtrl = TextEditingController();
+  final usernameCtrl = TextEditingController(); // Đổi từ email sang username
   final passCtrl = TextEditingController();
   bool loading = false;
   bool _obscurePassword = true;
@@ -117,9 +117,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               const SizedBox(height: 40),
                               _inputField(
-                                controller: emailCtrl,
-                                hint: 'Email',
-                                icon: Icons.email_outlined,
+                                controller: usernameCtrl,
+                                hint: 'Username',
+                                icon: Icons.person_outline,
                               ),
                               const SizedBox(height: 16),
                               _inputField(
@@ -172,8 +172,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                       : () async {
                                           FocusScope.of(context).unfocus();
                                           setState(() => loading = true);
-                                          final ok = await auth.login(
-                                            emailCtrl.text.trim(),
+                                          // Login via iam-service (port 8088)
+                                          final ok = await auth.loginViaIam(
+                                            usernameCtrl.text.trim(),
                                             passCtrl.text.trim(),
                                           );
                                           setState(() => loading = false);
@@ -281,7 +282,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
-    emailCtrl.dispose();
+    usernameCtrl.dispose();
     passCtrl.dispose();
     super.dispose();
   }

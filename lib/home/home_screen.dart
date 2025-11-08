@@ -1,26 +1,24 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 import '../auth/api_client.dart';
-import '../auth/token_storage.dart';
 import '../core/event_bus.dart';
-import '../news/news_detail_screen.dart';
 import '../news/news_screen.dart';
-import '../notifications/notification_screen.dart';
 import '../profile/profile_service.dart';
-import '../websocket/web_socket_service.dart';
+import '../contracts/contract_service.dart';
 import '../invoices/invoice_list_screen.dart';
 import '../invoices/paid_invoices_screen.dart';
 import '../invoices/invoice_service.dart';
 import '../charts/electricity_chart.dart';
 import '../models/electricity_monthly.dart';
+import '../models/unit_info.dart';
 import '../service_registration/service_booking_service.dart';
-import '../service_registration/service_detail_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
+import '../residents/household_member_registration_screen.dart';
+import '../residents/account_request_status_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final void Function(int)? onNavigateToTab;
@@ -33,8 +31,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late final ApiClient _apiClient;
   late final ServiceBookingService _serviceBookingService;
-  late final WebSocketService _wsService;
-  final _tokenStorage = TokenStorage();
+  late final ContractService _contractService;
   final _eventBus = AppEventBus();
   late AppLinks _appLinks;
   StreamSubscription? _paymentSub;
@@ -43,6 +40,10 @@ class _HomeScreenState extends State<HomeScreen> {
   // Removed: List<NewsItem> _notifications = []; - now using ResidentNews from admin API
   List<Map<String, dynamic>> _unpaidBookings = [];
   List<ElectricityMonthly> _electricityMonthlyData = [];
+  List<UnitInfo> _units = [];
+  String? _selectedUnitId;
+
+  static const _selectedUnitPrefsKey = 'selected_unit_id';
 
   bool _loading = true;
 
@@ -51,7 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _apiClient = ApiClient();
     _serviceBookingService = ServiceBookingService(_apiClient.dio);
-    _wsService = WebSocketService();
+    _contractService = ContractService(_apiClient);
     _appLinks = AppLinks();
     _initialize();
     _listenForPaymentResult();
@@ -64,65 +65,135 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initialize() async {
+    await _loadUnitContext();
     await _loadAllData();
     await _initRealTime();
   }
 
-  Future<void> _initRealTime() async {
+  Future<void> _loadUnitContext() async {
     try {
-      final token = await _tokenStorage.readAccessToken() ?? '';
-      final profile = await ProfileService(_apiClient.dio).getProfile();
-      final userId = profile['id'].toString();
+      final units = await _contractService.getMyUnits();
+      final prefs = await SharedPreferences.getInstance();
+      final savedUnitId = prefs.getString(_selectedUnitPrefsKey);
 
-      _wsService.connect(
-        token: token,
-        userId: userId,
-        onNotification: (data) {
-          debugPrint('🔔 Realtime notification received: $data');
-          // Removed: News notifications handling - now using ResidentNews from admin API
-          // WebSocket notifications can be handled separately if needed
-        },
-      );
+      String? nextSelected;
+      if (units.isNotEmpty) {
+        final exists = units.any((unit) => unit.id == savedUnitId);
+        if (exists && savedUnitId != null) {
+          nextSelected = savedUnitId;
+        } else {
+          nextSelected = units.first.id;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _units = units;
+          _selectedUnitId = nextSelected;
+        });
+      }
+
+      if (nextSelected != null && nextSelected != savedUnitId) {
+        await prefs.setString(_selectedUnitPrefsKey, nextSelected);
+      }
     } catch (e) {
-      debugPrint('⚠️ WebSocket init failed: $e');
+      debugPrint('⚠️ Load unit context error: $e');
+      if (mounted) {
+        setState(() {
+          _units = [];
+          _selectedUnitId = null;
+        });
+      }
     }
+  }
+
+  Future<void> _initRealTime() async {
+    debugPrint('ℹ️ WebSocket connection temporarily disabled');
   }
 
   Future<void> _loadAllData() async {
     setState(() => _loading = true);
+    
+    // Load profile (required)
     try {
-      final profileFuture = ProfileService(_apiClient.dio).getProfile();
-      // Removed: NewsService.getUnreadNotifications() - now using ResidentNews from admin API
-      final unpaidBookingsFuture = _serviceBookingService.getUnpaidBookings();
-      final electricityFuture = InvoiceService(_apiClient).getElectricityMonthlyData();
-
-      final results = await Future.wait([
-        profileFuture,
-        unpaidBookingsFuture,
-        electricityFuture,
-      ]);
-
-      final profile = results[0] as Map<String, dynamic>;
-      final unpaidBookings = results[1] as List<Map<String, dynamic>>;
-      final electricityData = results[2] as List<ElectricityMonthly>;
-
+      final profile = await ProfileService(_apiClient.dio).getProfile();
       if (mounted) {
         setState(() {
           _profile = profile;
-          // Removed: _notifications - now using ResidentNews from admin API
-          _unpaidBookings = unpaidBookings;
-          _electricityMonthlyData = electricityData;
-          _loading = false;
         });
       }
     } catch (e) {
-      debugPrint('⚠️ Load data error: $e');
-      if (mounted) setState(() => _loading = false);
+      debugPrint('⚠️ Load profile error: $e');
+      // Continue even if profile fails
+    }
+    
+    // Load unpaid bookings (optional)
+    try {
+      final unpaidBookings = await _serviceBookingService.getUnpaidBookings();
+      if (mounted) {
+        setState(() {
+          _unpaidBookings = unpaidBookings;
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ Load unpaid bookings error: $e');
+      // Continue with empty list
+      if (mounted) {
+        setState(() {
+          _unpaidBookings = [];
+        });
+      }
+    }
+    
+    // Load electricity data (optional)
+    try {
+      final invoiceService = InvoiceService(_apiClient);
+      final electricityData = await invoiceService.getElectricityMonthlyData(
+        unitId: _selectedUnitId,
+      );
+      if (mounted) {
+        setState(() {
+          _electricityMonthlyData = electricityData;
+        });
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Không có dữ liệu tiền điện (coi như đã thanh toán hết)');
+      // Continue with empty list
+      if (mounted) {
+        setState(() {
+          _electricityMonthlyData = [];
+        });
+      }
+    }
+    
+    if (mounted) {
+      setState(() => _loading = false);
     }
   }
 
   Future<void> _refreshAll() async {
     await _loadAllData();
+  }
+
+  Future<void> _onUnitChanged(String? unitId) async {
+    if (unitId == null || unitId == _selectedUnitId) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_selectedUnitPrefsKey, unitId);
+
+    if (mounted) {
+      setState(() {
+        _selectedUnitId = unitId;
+      });
+    }
+
+    await _loadAllData();
+  }
+
+  List<UnitInfo> get _ownerUnits {
+    final residentId = _profile?['residentId']?.toString();
+    if (residentId == null || residentId.isEmpty) return [];
+    return _units.where((unit) => unit.isPrimaryResident(residentId)).toList();
   }
 
   // Removed: int get unreadCount => _notifications.where((n) => !n.isRead).length; - now using ResidentNews from admin API
@@ -285,7 +356,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void dispose() {
     _paymentSub?.cancel();
-    _wsService.disconnect();
     super.dispose();
   }
 
@@ -295,7 +365,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final double paddingH = size.width * 0.05;
     final double paddingV = size.height * 0.02;
 
-    final name = _profile?['fullName'] ?? 'Cư dân';
+    // Priority: fullName > username > default
+    final name = _profile?['fullName'] ?? 
+                 _profile?['username'] ?? 
+                 'Cư dân';
     final avatarUrl = _profile?['avatarUrl'];
 
     return Scaffold(
@@ -325,6 +398,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       SizedBox(height: size.height * 0.03),
                       if (_electricityMonthlyData.isNotEmpty) ...[
                         _buildElectricityChartSection(size),
+                        SizedBox(height: size.height * 0.03),
+                      ],
+                      if (_ownerUnits.isNotEmpty) ...[
+                        _buildHouseholdManagementCard(size),
                         SizedBox(height: size.height * 0.03),
                       ],
                       _buildCompactFeatureRow(size),
@@ -380,6 +457,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         fontSize: size.width * 0.055,
                         fontWeight: FontWeight.bold),
                     overflow: TextOverflow.ellipsis),
+                SizedBox(height: size.height * 0.015),
+                _buildUnitSelectorWidget(size),
               ],
             ),
           ),
@@ -388,10 +467,68 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildNotificationSection(Size size) {
-    // Removed: News notifications - now using ResidentNews from admin API
-    // This section is kept for future notifications from other sources
-    return const SizedBox.shrink();
+  Widget _buildUnitSelectorWidget(Size size) {
+    if (_units.isEmpty) {
+      debugPrint('🏠 [HomeScreen] Không có căn hộ nào để chọn');
+      return Text(
+        'Bạn chưa được gán vào căn hộ nào',
+        style: TextStyle(
+          color: Colors.white.withOpacity(0.85),
+          fontSize: size.width * 0.035,
+          fontWeight: FontWeight.w500,
+        ),
+      );
+    }
+
+    final currentUnitId = _selectedUnitId ?? _units.first.id;
+    debugPrint('🏠 [HomeScreen] Hiển thị dropdown với ${_units.length} căn hộ, đang chọn $currentUnitId');
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: size.width * 0.035,
+        vertical: size.height * 0.008,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white30, width: 1),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: currentUnitId,
+          dropdownColor: Colors.white,
+          icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
+          style: TextStyle(
+            color: Colors.black87,
+            fontSize: size.width * 0.038,
+            fontWeight: FontWeight.w600,
+          ),
+          selectedItemBuilder: (context) {
+            return _units.map((unit) {
+              return Text(
+                unit.displayName,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: size.width * 0.038,
+                ),
+              );
+            }).toList();
+          },
+          items: _units.map((unit) {
+            return DropdownMenuItem<String>(
+              value: unit.id,
+              child: Text(unit.displayName),
+            );
+          }).toList(),
+          onChanged: (value) {
+            debugPrint('🏠 [HomeScreen] Người dùng chọn căn hộ $value');
+            _onUnitChanged(value);
+          },
+        ),
+      ),
+    );
   }
 
   Widget _buildNewsSection(Size size) {
@@ -420,6 +557,107 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildHouseholdManagementCard(Size size) {
+    final ownerUnits = _ownerUnits;
+    if (ownerUnits.isEmpty) return const SizedBox.shrink();
+
+    final defaultUnitId = ownerUnits.any((unit) => unit.id == _selectedUnitId)
+        ? (_selectedUnitId ?? ownerUnits.first.id)
+        : ownerUnits.first.id;
+
+    final residentName = _profile?['fullName']?.toString() ??
+        _profile?['username']?.toString() ??
+        'Bạn';
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(size.width * 0.04),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.15),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Quản lý hộ gia đình',
+            style: TextStyle(
+              fontSize: size.width * 0.045,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF1A1A1A),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '$residentName là chủ hộ của ${ownerUnits.length} căn hộ.',
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: size.width * 0.034,
+            ),
+          ),
+          const SizedBox(height: 16),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: CircleAvatar(
+              backgroundColor: const Color(0xFFE0F7FA),
+              child: Icon(Icons.group_add, color: Colors.teal.shade600),
+            ),
+            title: const Text(
+              'Đăng ký tài khoản cho thành viên',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: const Text(
+              'Chọn thành viên chưa có tài khoản để gửi yêu cầu tạo tài khoản.',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => HouseholdMemberRegistrationScreen(
+                    units: ownerUnits,
+                    initialUnitId: defaultUnitId,
+                  ),
+                ),
+              );
+            },
+          ),
+          const Divider(height: 12),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: CircleAvatar(
+              backgroundColor: const Color(0xFFF1F8E9),
+              child: Icon(Icons.history, color: Colors.lightGreen.shade700),
+            ),
+            title: const Text(
+              'Theo dõi trạng thái yêu cầu',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: const Text('Xem kết quả các yêu cầu tạo tài khoản đã gửi.'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AccountRequestStatusScreen(
+                    units: ownerUnits,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCompactFeatureRow(Size size) {
     final iconSize = size.width * 0.09;
     final labelSize = size.width * 0.032;
@@ -430,10 +668,14 @@ class _HomeScreenState extends State<HomeScreen> {
         'label': 'Hóa đơn mới',
         'color': Colors.purple,
         'onTap': () {
+          debugPrint('🧾 [HomeScreen] mở Hóa đơn mới với unit=$_selectedUnitId, units=${_units.length}');
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => const InvoiceListScreen(),
+              builder: (_) => InvoiceListScreen(
+                initialUnitId: _selectedUnitId,
+                initialUnits: _units,
+              ),
             ),
           );
         },
@@ -446,7 +688,10 @@ class _HomeScreenState extends State<HomeScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => const PaidInvoicesScreen(),
+              builder: (_) => PaidInvoicesScreen(
+                initialUnitId: _selectedUnitId,
+                initialUnits: _units,
+              ),
             ),
           );
         },

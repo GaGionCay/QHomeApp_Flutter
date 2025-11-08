@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
+import 'package:dio/dio.dart';
 import '../login/login_screen.dart';
 import 'token_storage.dart';
 import 'api_client.dart';
 import 'auth_service.dart';
+import 'iam_api_client.dart';
 
 class AuthProvider extends ChangeNotifier {
   late final ApiClient apiClient;
@@ -21,7 +23,9 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> _init() async {
     apiClient = await ApiClient.create();
-    authService = AuthService(apiClient.dio, storage);
+    // Tạo iamDio instance để login qua iam-service
+    final iamDio = await _createIamDio();
+    authService = AuthService(apiClient.dio, storage, iamDio: iamDio);
 
     final token = await storage.readAccessToken();
 
@@ -45,6 +49,23 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Login via iam-service (port 8088) - NEW METHOD
+  /// Uses username instead of email
+  Future<bool> loginViaIam(String username, String password) async {
+    try {
+      await authService.loginViaIam(username, password);
+      _isAuthenticated = true;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      print('❌ Login via IAM failed: $e');
+      _isAuthenticated = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Login via backend hiện tại (port 8080) - KEEP FOR BACKWARD COMPATIBILITY
   Future<bool> login(String email, String password) async {
     try {
       await authService.login(email, password);
@@ -80,4 +101,8 @@ Future<void> logout(BuildContext context) async {
   Future<void> verifyOtp(String email, String otp) => authService.verifyOtp(email, otp);
   Future<void> confirmReset(String email, String otp, String newPassword) =>
       authService.confirmReset(email, otp, newPassword);
+
+  Future<Dio> _createIamDio() async {
+    return IamApiClient.createPublicDio();
+  }
 }

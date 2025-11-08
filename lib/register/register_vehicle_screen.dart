@@ -1,15 +1,19 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
+
+import 'package:app_links/app_links.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:app_links/app_links.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:async';
+
 import '../auth/api_client.dart';
-import '../core/event_bus.dart';
 import '../common/main_shell.dart';
+import '../contracts/contract_service.dart';
+import '../core/event_bus.dart';
+import '../models/unit_info.dart';
 import 'register_guide_screen.dart';
 
 class RegisterVehicleScreen extends StatefulWidget {
@@ -22,6 +26,7 @@ class RegisterVehicleScreen extends StatefulWidget {
 class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     with WidgetsBindingObserver {
   final ApiClient api = ApiClient();
+  Dio? _servicesCardDio;
   final _formKey = GlobalKey<FormState>();
   final _storageKey = 'register_service_draft';
   final _pendingPaymentKey = 'pending_registration_payment';
@@ -30,6 +35,8 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   final TextEditingController _brandCtrl = TextEditingController();
   final TextEditingController _colorCtrl = TextEditingController();
   final TextEditingController _noteCtrl = TextEditingController();
+  final TextEditingController _apartmentNumberCtrl = TextEditingController();
+  final TextEditingController _buildingNameCtrl = TextEditingController();
 
   String _vehicleType = 'Car';
   String _requestType = 'NEW_CARD'; // Default to 'Làm thẻ mới'
@@ -40,6 +47,10 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   final ImagePicker _picker = ImagePicker();
   List<String> _uploadedImageUrls = [];
   static const int maxImages = 6;
+  String? _selectedUnitId;
+  static const _selectedUnitPrefsKey = 'selected_unit_id';
+  late final ContractService _contractService;
+  UnitInfo? _currentUnit;
 
   bool _hasUnsavedChanges = false;
   StreamSubscription<Uri?>? _paymentSub;
@@ -49,7 +60,9 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _contractService = ContractService(api);
     _loadSavedData();
+    _loadUnitContext();
     _listenForPaymentResult();
     _setupAutoSave();
     _checkPendingPayment();
@@ -73,7 +86,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
       if (uri == null) return;
 
       if (uri.scheme == 'qhomeapp' && uri.host == 'vnpay-registration-result') {
-        final registrationId = uri.queryParameters['registrationId'];
         final responseCode = uri.queryParameters['responseCode'];
 
         if (!mounted) return;
@@ -93,7 +105,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(
-              builder: (_) => const MainShell(initialIndex: 2),
+              builder: (_) => const MainShell(initialIndex: 1),
             ),
             (route) => false,
           ).then((_) {
@@ -117,6 +129,33 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     });
   }
 
+  Future<Dio> _servicesCardClient() async {
+    if (_servicesCardDio == null) {
+      _servicesCardDio = Dio(BaseOptions(
+        baseUrl: 'http://${ApiClient.HOST_IP}:8083/api',
+        connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+        receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+      ));
+      _servicesCardDio!.interceptors.add(LogInterceptor(
+        request: true,
+        requestHeader: true,
+        requestBody: true,
+        responseHeader: true,
+        responseBody: true,
+        error: true,
+        logPrint: (obj) => print('🔍 DIO LOG: $obj'),
+      ));
+    }
+
+    final token = await api.storage.readAccessToken();
+    if (token != null) {
+      _servicesCardDio!.options.headers['Authorization'] = 'Bearer $token';
+    } else {
+      _servicesCardDio!.options.headers.remove('Authorization');
+    }
+    return _servicesCardDio!;
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -126,6 +165,8 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     _brandCtrl.dispose();
     _colorCtrl.dispose();
     _noteCtrl.dispose();
+    _apartmentNumberCtrl.dispose();
+    _buildingNameCtrl.dispose();
     super.dispose();
   }
 
@@ -143,17 +184,12 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   Future<void> _checkPendingPayment() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final pendingRegistrationId = prefs.getString(_pendingPaymentKey);
+      final registrationId = prefs.getString(_pendingPaymentKey);
 
-      if (pendingRegistrationId == null) return;
+      if (registrationId == null || registrationId.isEmpty) return;
 
-      final registrationId = int.tryParse(pendingRegistrationId);
-      if (registrationId == null) {
-        await prefs.remove(_pendingPaymentKey);
-        return;
-      }
-
-      final res = await api.dio.get('/register-service/$registrationId');
+      final client = await _servicesCardClient();
+      final res = await client.get('/register-service/$registrationId');
       final data = res.data;
       final paymentStatus = data['paymentStatus'] as String?;
 
@@ -163,7 +199,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(
-              builder: (_) => const MainShell(initialIndex: 2),
+              builder: (_) => const MainShell(initialIndex: 1),
             ),
             (route) => false,
           ).then((_) {
@@ -218,6 +254,8 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     _brandCtrl.addListener(_autoSave);
     _colorCtrl.addListener(_autoSave);
     _noteCtrl.addListener(_autoSave);
+    _apartmentNumberCtrl.addListener(_autoSave);
+    _buildingNameCtrl.addListener(_autoSave);
   }
 
   Future<void> _autoSave() async {
@@ -235,6 +273,9 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
         'vehicleBrand': _brandCtrl.text,
         'vehicleColor': _colorCtrl.text,
         'note': _noteCtrl.text,
+        'unitId': _selectedUnitId,
+        'apartmentNumber': _apartmentNumberCtrl.text,
+        'buildingName': _buildingNameCtrl.text,
         'imageUrls': _uploadedImageUrls,
       };
       await prefs.setString(_storageKey, jsonEncode(data));
@@ -258,6 +299,11 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
           _colorCtrl.text = data['vehicleColor'] ?? '';
           _noteCtrl.text = data['note'] ?? '';
           _uploadedImageUrls = List<String>.from(data['imageUrls'] ?? []);
+          _selectedUnitId = data['unitId']?.toString() ?? _selectedUnitId;
+          _apartmentNumberCtrl.text =
+              data['apartmentNumber']?.toString() ?? _apartmentNumberCtrl.text;
+          _buildingNameCtrl.text =
+              data['buildingName']?.toString() ?? _buildingNameCtrl.text;
         });
 
         debugPrint('✅ Đã load lại dữ liệu đã lưu');
@@ -265,6 +311,54 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     } catch (e) {
       debugPrint('❌ Lỗi load saved data: $e');
     }
+  }
+
+  Future<void> _loadUnitContext() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedUnitId = prefs.getString(_selectedUnitPrefsKey);
+      final units = await _contractService.getMyUnits();
+
+      UnitInfo? selectedUnit;
+      if (units.isNotEmpty) {
+        if (savedUnitId != null) {
+          try {
+            selectedUnit = units.firstWhere((unit) => unit.id == savedUnitId);
+          } catch (_) {}
+        }
+        selectedUnit ??= units.first;
+      }
+
+      if (!mounted) {
+        _selectedUnitId = selectedUnit?.id;
+        _currentUnit = selectedUnit;
+        if (selectedUnit != null) {
+          _applyUnitContext(selectedUnit);
+        }
+        return;
+      }
+
+      setState(() {
+        _selectedUnitId = selectedUnit?.id;
+        _currentUnit = selectedUnit;
+      });
+
+      if (selectedUnit != null) {
+        _applyUnitContext(selectedUnit);
+        await prefs.setString(_selectedUnitPrefsKey, selectedUnit.id);
+      }
+    } catch (e) {
+      debugPrint('⚠️ [RegisterService] Không đọc được thông tin căn hộ: $e');
+    }
+  }
+
+  void _applyUnitContext(UnitInfo unit) {
+    _apartmentNumberCtrl.text = unit.code;
+    final building = (unit.buildingName?.isNotEmpty ?? false)
+        ? unit.buildingName!
+        : (unit.buildingCode ?? '');
+    _buildingNameCtrl.text = building;
+    _hasUnsavedChanges = false;
   }
 
   Future<void> _clearSavedData() async {
@@ -368,8 +462,8 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
               (f) async => MultipartFile.fromFile(f.path, filename: f.name)),
         ),
       });
-      final res =
-          await api.dio.post('/register-service/upload-images', data: formData);
+      final client = await _servicesCardClient();
+      final res = await client.post('/register-service/upload-images', data: formData);
       final urls =
           (res.data['imageUrls'] as List?)?.map((e) => e.toString()).toList() ??
               [];
@@ -397,7 +491,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   String _makeFullImageUrl(String? url) {
     if (url == null || url.isEmpty) return '';
     if (url.startsWith('http')) return url;
-    final base = ApiClient.BASE_URL.replaceFirst(RegExp(r'/api$'), '');
+    final base = 'http://${ApiClient.HOST_IP}:8083';
     return base + url;
   }
 
@@ -405,6 +499,9 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
         'serviceType': 'VEHICLE_REGISTRATION',
         'requestType': _requestType,
         'note': _noteCtrl.text.isNotEmpty ? _noteCtrl.text : null,
+        'unitId': _selectedUnitId,
+        'apartmentNumber': _apartmentNumberCtrl.text,
+        'buildingName': _buildingNameCtrl.text,
         'vehicleType': _vehicleType,
         'licensePlate': _licenseCtrl.text,
         'vehicleBrand': _brandCtrl.text,
@@ -420,6 +517,27 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   Future<void> _handleRegisterPressed() async {
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
+
+    if (_selectedUnitId == null || _selectedUnitId!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Không xác định được căn hộ hiện tại. Vui lòng quay lại màn hình chính.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (_apartmentNumberCtrl.text.isEmpty || _buildingNameCtrl.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng kiểm tra lại số căn hộ và tòa nhà.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     if (_uploadedImageUrls.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -519,6 +637,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   }
 
   Future<void> _requestEditField(String field) async {
+    if (_isAutoFilledField(field)) return;
     if (!_confirmed) return;
 
     if (_editingField != null && _editingField != field) {
@@ -573,6 +692,10 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     switch (fieldKey) {
       case 'requestType':
         return 'loại yêu cầu';
+      case 'apartmentNumber':
+        return 'số căn hộ';
+      case 'buildingName':
+        return 'tòa nhà';
       case 'license':
         return 'biển số xe';
       case 'brand':
@@ -585,6 +708,9 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
         return 'thông tin';
     }
   }
+
+  bool _isAutoFilledField(String field) =>
+      field == 'apartmentNumber' || field == 'buildingName';
 
   bool _canRemoveImage(int index) {
     return !_confirmed || _editingField == 'image_$index';
@@ -628,7 +754,8 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     }
   }
 
-  bool _isEditable(String field) => !_confirmed || _editingField == field;
+  bool _isEditable(String field) =>
+      !_isAutoFilledField(field) && (!_confirmed || _editingField == field);
 
   Widget _buildRequestTypeDropdown() {
     final isEditable = _isEditable('requestType');
@@ -690,20 +817,20 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
 
   Future<void> _saveAndPay() async {
     setState(() => _submitting = true);
-    int? registrationId;
+    String? registrationId;
 
     try {
       final payload = _collectPayload();
 
-      final res =
-          await api.dio.post('/register-service/vnpay-url', data: payload);
+      final client = await _servicesCardClient();
+      final res = await client.post('/register-service/vnpay-url', data: payload);
 
-      registrationId = res.data['registrationId'] as int?;
+      registrationId = res.data['registrationId']?.toString();
       final paymentUrl = res.data['paymentUrl'] as String;
 
       if (mounted && registrationId != null) {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_pendingPaymentKey, registrationId.toString());
+        await prefs.setString(_pendingPaymentKey, registrationId);
         _clearForm();
         final uri = Uri.parse(paymentUrl);
         if (await canLaunchUrl(uri)) {
@@ -739,10 +866,11 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     }
   }
 
-  Future<void> _cancelRegistration(int registrationId) async {
+  Future<void> _cancelRegistration(String registrationId) async {
     try {
       log('🗑️ [RegisterService] Hủy registration: $registrationId');
-      await api.dio.delete('/register-service/$registrationId/cancel');
+      final client = await _servicesCardClient();
+      await client.delete('/register-service/$registrationId/cancel');
       log('✅ [RegisterService] Đã hủy registration thành công');
     } catch (e) {
       log('❌ [RegisterService] Lỗi khi hủy registration: $e');
@@ -755,6 +883,8 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
       _brandCtrl.clear();
       _colorCtrl.clear();
       _noteCtrl.clear();
+      _apartmentNumberCtrl.clear();
+      _buildingNameCtrl.clear();
       _vehicleType = 'Car';
       _requestType = 'NEW_CARD';
       _uploadedImageUrls.clear();
@@ -763,6 +893,9 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
       _hasEditedAfterConfirm = false;
       _hasUnsavedChanges = false;
     });
+    if (_currentUnit != null) {
+      _applyUnitContext(_currentUnit!);
+    }
   }
 
   @override
@@ -870,6 +1003,26 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
                         ),
                         const SizedBox(height: 12),
                         _buildRequestTypeDropdown(),
+                        const SizedBox(height: 12),
+                        _buildEditableField(
+                          label: 'Số căn hộ',
+                          controller: _apartmentNumberCtrl,
+                          icon: Icons.home_outlined,
+                          fieldKey: 'apartmentNumber',
+                          validator: (v) => v!.isEmpty
+                              ? 'Vui lòng kiểm tra lại số căn hộ'
+                              : null,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildEditableField(
+                          label: 'Tòa nhà',
+                          controller: _buildingNameCtrl,
+                          icon: Icons.apartment_outlined,
+                          fieldKey: 'buildingName',
+                          validator: (v) => v!.isEmpty
+                              ? 'Vui lòng kiểm tra lại tòa nhà'
+                              : null,
+                        ),
                         const SizedBox(height: 12),
                         _buildEditableField(
                           label: 'Biển số xe',
@@ -1095,11 +1248,13 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     String? Function(String?)? validator,
     int maxLines = 1,
   }) {
+    final isAutoField = _isAutoFilledField(fieldKey);
     final editable = _isEditable(fieldKey);
+    final canEdit = editable && !isAutoField;
     final isEditing = _editingField == fieldKey;
 
     return GestureDetector(
-      onDoubleTap: () => _requestEditField(fieldKey),
+      onDoubleTap: isAutoField ? null : () => _requestEditField(fieldKey),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         decoration: BoxDecoration(
@@ -1115,18 +1270,18 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
         ),
         child: AnimatedOpacity(
           duration: const Duration(milliseconds: 300),
-          opacity: editable ? 1.0 : 0.7,
+          opacity: canEdit ? 1.0 : 0.7,
           child: IgnorePointer(
-            ignoring: !editable,
+            ignoring: !canEdit,
             child: TextFormField(
               controller: controller,
-              readOnly: !editable,
+              readOnly: !canEdit,
               validator: validator,
               maxLines: maxLines,
               onTap: () {
                 if (isEditing) return;
 
-                if (_confirmed && !editable) {
+                if (_confirmed && !canEdit && !isAutoField) {
                   _requestEditField(fieldKey);
                 }
               },

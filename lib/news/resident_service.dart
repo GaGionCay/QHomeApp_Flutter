@@ -26,48 +26,44 @@ class ResidentService {
           'size': size,
         },
       );
-      
       print('🔍 [ResidentService] Response type: ${response.data.runtimeType}');
-      
-      // Handle paginated response (Page object) or direct list
+
       if (response.data is Map && response.data['content'] != null) {
-        // Paginated response with Page object
         final items = (response.data['content'] as List)
             .map((json) => ResidentNews.fromJson(json))
             .toList();
         print('✅ [ResidentService] Paginated response: ${items.length} items');
         return items;
       } else if (response.data is List) {
-        // Direct list response (fallback for APIs without pagination)
         final allItems = (response.data as List)
             .map((json) => ResidentNews.fromJson(json))
             .toList();
-        
-        print('⚠️ [ResidentService] API trả về toàn bộ list (${allItems.length} items), cần phân trang ở client');
-        
-        // If size is very large (1000+), return all items (for caching)
+
+        print('ℹ️ [ResidentService] API trả về ${allItems.length} items');
         if (size >= 1000) {
-          print('✅ [ResidentService] Request size >= 1000, trả về toàn bộ ${allItems.length} items');
           return allItems;
         }
-        
-        // Client-side pagination: slice the list
+
         final startIndex = page * size;
         final endIndex = (startIndex + size).clamp(0, allItems.length);
-        
         if (startIndex >= allItems.length) {
           print('⚠️ [ResidentService] Start index $startIndex vượt quá tổng số items ${allItems.length}');
           return [];
         }
-        
+
         final paginatedItems = allItems.sublist(startIndex, endIndex);
         print('✅ [ResidentService] Paginated ở client: trang $page = ${paginatedItems.length} items (từ $startIndex đến $endIndex)');
         return paginatedItems;
       }
+
+      print('⚠️ [ResidentService] Response format không hỗ trợ, trả về empty list');
+      return [];
+    } on DioException catch (e) {
+      print('❌ Lỗi lấy resident news: ${e.message}');
       return [];
     } catch (e) {
       print('❌ Lỗi lấy resident news: $e');
-      rethrow;
+      return [];
     }
   }
 
@@ -83,35 +79,35 @@ class ResidentService {
           'size': 1,
         },
       );
-      
-      // If response is a Page object with totalElements
+
       if (response.data is Map && response.data['totalElements'] != null) {
         final total = response.data['totalElements'] as int;
         print('✅ [ResidentService] Total từ API Page object: $total');
         return total;
       }
-      
-      // If response is a List, count all items
+
       if (response.data is List) {
-        // API trả về toàn bộ list, load 1 lần để đếm
         final fullResponse = await _publicDio.get(
           '/news/resident',
           queryParameters: {
             'residentId': residentId,
           },
         );
-        
+
         if (fullResponse.data is List) {
           final total = (fullResponse.data as List).length;
           print('✅ [ResidentService] Total từ List response: $total');
           return total;
         }
       }
-      
-      return null;
+
+      return 0;
+    } on DioException catch (e) {
+      print('❌ Lỗi lấy total count: ${e.message}');
+      return 0;
     } catch (e) {
       print('❌ Lỗi lấy total count: $e');
-      return null;
+      return 0;
     }
   }
 

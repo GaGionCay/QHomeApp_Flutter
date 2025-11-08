@@ -1,28 +1,68 @@
 import 'dart:developer';
+import 'package:flutter/foundation.dart';
+
 import '../auth/api_client.dart';
 import '../models/invoice_line.dart';
 import '../models/electricity_monthly.dart';
+import '../models/invoice_category.dart';
+import 'package:dio/dio.dart';
 
 class InvoiceService {
   final ApiClient apiClient;
+  final Dio? financeBillingDio;
   
-  InvoiceService(this.apiClient);
+  InvoiceService(this.apiClient, {this.financeBillingDio});
 
-  Future<List<InvoiceLineResponseDto>> getMyInvoices() async {
+  Dio _financeBillingClient() {
+    if (financeBillingDio != null) return financeBillingDio!;
+    // Create finance-billing-service client (port 8085)
+    final baseUrl = 'http://${ApiClient.HOST_IP}:8085';
+    final dio = Dio(BaseOptions(
+      baseUrl: baseUrl,
+      connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+      receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+    ));
+    dio.interceptors.add(LogInterceptor(
+      request: true,
+      requestHeader: true,
+      requestBody: true,
+      responseHeader: true,
+      responseBody: true,
+      error: true,
+      logPrint: (obj) => debugPrint('🔍 FINANCE DIO: $obj'),
+    ));
+    return dio;
+  }
+
+  Future<Dio> _prepareFinanceClient() async {
+    final client = _financeBillingClient();
+    final token = await apiClient.storage.readAccessToken();
+    if (token != null) {
+      client.options.headers['Authorization'] = 'Bearer $token';
+    } else {
+      client.options.headers.remove('Authorization');
+    }
+    return client;
+  }
+
+  Future<List<InvoiceLineResponseDto>> getMyInvoices({String? unitId}) async {
     try {
-      log('🔍 [InvoiceService] Lấy invoices của user hiện tại');
+      debugPrint('🔍 [InvoiceService] Lấy invoices của user hiện tại');
       
-      final res = await apiClient.dio.get('/invoices/me');
+      final client = await _prepareFinanceClient();
+      final res = await client.get(
+        '/api/invoices/me',
+        queryParameters: unitId != null ? {'unitId': unitId} : null,
+      );
       
       if (res.statusCode != 200) {
-        log('⚠️ API trả mã ${res.statusCode}: ${res.data}');
-        throw Exception(
-            res.data['message'] ?? 'Server trả lỗi ${res.statusCode}');
+        debugPrint('⚠️ [InvoiceService] API trả mã ${res.statusCode}: ${res.data}');
+        return [];
       }
 
       final data = res.data['data'] as List?;
       if (data == null || data.isEmpty) {
-        log('ℹ️ Không có invoice nào cho user hiện tại');
+        debugPrint('ℹ️ [InvoiceService] Không có invoice nào cho user hiện tại');
         return [];
       }
 
@@ -30,12 +70,85 @@ class InvoiceService {
           .map((json) => InvoiceLineResponseDto.fromJson(json))
           .toList();
 
-      log('✅ [InvoiceService] Lấy được ${invoices.length} invoices cho user hiện tại');
+      debugPrint('✅ [InvoiceService] Lấy được ${invoices.length} invoices cho user hiện tại');
       
       return invoices;
     } catch (e, s) {
-      log('❌ [InvoiceService] Lỗi getMyInvoices(): $e\n$s');
-      rethrow;
+      debugPrint('ℹ️ [InvoiceService] Không lấy được invoices (coi như đã thanh toán): $e');
+      debugPrint('Chi tiết stacktrace: $s');
+      return [];
+    }
+  }
+
+  Future<List<InvoiceCategory>> getUnpaidInvoicesByCategory({String? unitId}) async {
+    try {
+      debugPrint('🔍 [InvoiceService] Lấy hóa đơn chưa thanh toán theo nhóm dịch vụ');
+
+      final client = await _prepareFinanceClient();
+      final res = await client.get(
+        '/api/invoices/me/unpaid-by-category',
+        queryParameters: unitId != null ? {'unitId': unitId} : null,
+      );
+
+      if (res.statusCode != 200) {
+        debugPrint('⚠️ [InvoiceService] API trả mã ${res.statusCode}: ${res.data}');
+        return [];
+      }
+
+      final data = res.data['data'] as List?;
+      if (data == null || data.isEmpty) {
+        debugPrint('ℹ️ [InvoiceService] Không còn hóa đơn chưa thanh toán');
+        return [];
+      }
+
+      final categories = data
+          .map((json) => InvoiceCategory.fromJson(
+                Map<String, dynamic>.from(json as Map),
+              ))
+          .toList();
+
+      debugPrint('✅ [InvoiceService] Có ${categories.length} nhóm hóa đơn chưa thanh toán');
+      return categories;
+    } catch (e, s) {
+      debugPrint('ℹ️ [InvoiceService] Không lấy được hóa đơn chưa thanh toán (coi như đã thanh toán hết): $e');
+      debugPrint('Chi tiết stacktrace: $s');
+      return [];
+    }
+  }
+
+  Future<List<InvoiceCategory>> getPaidInvoicesByCategory({String? unitId}) async {
+    try {
+      debugPrint('🔍 [InvoiceService] Lấy hóa đơn đã thanh toán theo nhóm dịch vụ');
+
+      final client = await _prepareFinanceClient();
+      final res = await client.get(
+        '/api/invoices/me/paid-by-category',
+        queryParameters: unitId != null ? {'unitId': unitId} : null,
+      );
+
+      if (res.statusCode != 200) {
+        debugPrint('⚠️ [InvoiceService] API trả mã ${res.statusCode}: ${res.data}');
+        return [];
+      }
+
+      final data = res.data['data'] as List?;
+      if (data == null || data.isEmpty) {
+        debugPrint('ℹ️ [InvoiceService] Không còn hóa đơn đã thanh toán');
+        return [];
+      }
+
+      final categories = data
+          .map((json) => InvoiceCategory.fromJson(
+                Map<String, dynamic>.from(json as Map),
+              ))
+          .toList();
+
+      debugPrint('✅ [InvoiceService] Có ${categories.length} nhóm hóa đơn đã thanh toán');
+      return categories;
+    } catch (e, s) {
+      debugPrint('ℹ️ [InvoiceService] Không lấy được hóa đơn đã thanh toán: $e');
+      debugPrint('Chi tiết stacktrace: $s');
+      return [];
     }
   }
 
@@ -71,11 +184,14 @@ class InvoiceService {
     }
   }
 
-  Future<String> createVnpayPaymentUrl(String invoiceId) async {
+  Future<String> createVnpayPaymentUrl(String invoiceId, {String? unitId}) async {
     try {
       log('💳 [InvoiceService] Tạo VNPAY URL cho invoice: $invoiceId');
-      
-      final res = await apiClient.dio.post('/invoices/$invoiceId/vnpay-url');
+      final client = await _prepareFinanceClient();
+      final res = await client.post(
+        '/api/invoices/$invoiceId/vnpay-url',
+        queryParameters: unitId != null ? {'unitId': unitId} : null,
+      );
       
       if (res.statusCode != 200) {
         log('⚠️ API trả mã ${res.statusCode}: ${res.data}');
@@ -114,16 +230,18 @@ class InvoiceService {
     }
   }
 
-  Future<List<ElectricityMonthly>> getElectricityMonthlyData() async {
+  Future<List<ElectricityMonthly>> getElectricityMonthlyData({String? unitId}) async {
     try {
       log('📊 [InvoiceService] Lấy dữ liệu tiền điện theo tháng');
-      
-      final res = await apiClient.dio.get('/invoices/electricity/monthly');
+      final client = await _prepareFinanceClient();
+      final res = await client.get(
+        '/api/invoices/electricity/monthly',
+        queryParameters: unitId != null ? {'unitId': unitId} : null,
+      );
       
       if (res.statusCode != 200) {
-        log('⚠️ API trả mã ${res.statusCode}: ${res.data}');
-        throw Exception(
-            res.data['message'] ?? 'Server trả lỗi ${res.statusCode}');
+        log('⚠️ API tiền điện trả mã ${res.statusCode}: ${res.data}');
+        return [];
       }
 
       final data = res.data['data'] as List?;
@@ -140,8 +258,9 @@ class InvoiceService {
       
       return monthlyData;
     } catch (e, s) {
-      log('❌ [InvoiceService] Lỗi getElectricityMonthlyData(): $e\n$s');
-      rethrow;
+      log('ℹ️ [InvoiceService] Không nhận được dữ liệu tiền điện (coi như đã thanh toán): $e');
+      log('Chi tiết stacktrace: $s');
+      return [];
     }
   }
 }

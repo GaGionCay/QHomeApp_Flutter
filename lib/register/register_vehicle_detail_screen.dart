@@ -6,6 +6,7 @@ import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:developer';
+import 'package:dio/dio.dart';
 import '../auth/api_client.dart';
 import 'register_vehicle_request.dart';
 import 'package:app_links/app_links.dart';
@@ -26,6 +27,7 @@ class RegisterServiceDetailScreen extends StatefulWidget {
 class _RegisterServiceDetailScreenState
     extends State<RegisterServiceDetailScreen> with WidgetsBindingObserver {
   final ApiClient api = ApiClient();
+  Dio? _servicesCardDio;
   final AppLinks _appLinks = AppLinks();
   StreamSubscription<Uri?>? _paymentSub;
   final String _pendingPaymentKey = 'pending_registration_payment';
@@ -57,14 +59,14 @@ class _RegisterServiceDetailScreenState
       final prefs = await SharedPreferences.getInstance();
       final pendingRegistrationId = prefs.getString(_pendingPaymentKey);
       
-      if (pendingRegistrationId == null) return;
+      if (pendingRegistrationId == null || pendingRegistrationId.isEmpty) return;
       
-      final registrationId = int.tryParse(pendingRegistrationId);
-      if (registrationId == null || registrationId != widget.registration.id) {
+      if (pendingRegistrationId != widget.registration.id) {
         return;
       }
 
-      final res = await api.dio.get('/register-service/$registrationId');
+      final client = await _servicesCardClient();
+      final res = await client.get('/register-service/$pendingRegistrationId');
       final data = res.data;
       final paymentStatus = data['paymentStatus'] as String?;
       
@@ -87,7 +89,7 @@ class _RegisterServiceDetailScreenState
             builder: (_) => AlertDialog(
               title: const Text('Thanh toán chưa hoàn tất'),
               content: Text(
-                'Đăng ký xe #$registrationId chưa được thanh toán.\n\n'
+                'Đăng ký xe #$pendingRegistrationId chưa được thanh toán.\n\n'
                 'Bạn có muốn thanh toán ngay bây giờ không?',
               ),
               actions: [
@@ -158,6 +160,33 @@ class _RegisterServiceDetailScreenState
     });
   }
 
+  Future<Dio> _servicesCardClient() async {
+    if (_servicesCardDio == null) {
+      _servicesCardDio = Dio(BaseOptions(
+        baseUrl: 'http://${ApiClient.HOST_IP}:8083/api',
+        connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+        receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+      ));
+      _servicesCardDio!.interceptors.add(LogInterceptor(
+        request: true,
+        requestHeader: true,
+        requestBody: true,
+        responseHeader: true,
+        responseBody: true,
+        error: true,
+        logPrint: (obj) => print('🔍 DIO LOG: $obj'),
+      ));
+    }
+
+    final token = await api.storage.readAccessToken();
+    if (token != null) {
+      _servicesCardDio!.options.headers['Authorization'] = 'Bearer $token';
+    } else {
+      _servicesCardDio!.options.headers.remove('Authorization');
+    }
+    return _servicesCardDio!;
+  }
+
   String formatDate(DateTime? dt) {
     if (dt == null) return '';
     return DateFormat('dd/MM/yyyy HH:mm').format(dt.toLocal());
@@ -166,7 +195,7 @@ class _RegisterServiceDetailScreenState
   String _makeFullImageUrl(String? imageUrl) {
     if (imageUrl == null || imageUrl.isEmpty) return '';
     if (imageUrl.startsWith('http')) return imageUrl;
-    final base = ApiClient.BASE_URL.replaceFirst(RegExp(r'/api$'), '');
+    final base = 'http://${ApiClient.HOST_IP}:8083';
     return base + imageUrl;
   }
 
@@ -271,11 +300,12 @@ class _RegisterServiceDetailScreenState
 
     try {
       log('💳 [RegisterDetail] Tạo VNPAY URL cho registration: ${registration.id}');
-      
+
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_pendingPaymentKey, registration.id.toString());
-      
-      final res = await api.dio.post('/register-service/${registration.id}/vnpay-url');
+      await prefs.setString(_pendingPaymentKey, registration.id!);
+
+      final client = await _servicesCardClient();
+      final res = await client.post('/register-service/${registration.id}/vnpay-url');
       
       if (res.statusCode != 200) {
         await prefs.remove(_pendingPaymentKey);

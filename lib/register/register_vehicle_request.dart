@@ -1,5 +1,5 @@
 class RegisterServiceRequest {
-  final int? id;
+  final String? id;
   final String? serviceType;
   final String? note;
   final String? status;
@@ -8,6 +8,7 @@ class RegisterServiceRequest {
   final String? licensePlate;
   final String? vehicleBrand;
   final String? vehicleColor;
+  final String? unitId;
   final List<String>? imageUrls;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -25,6 +26,7 @@ class RegisterServiceRequest {
     this.licensePlate,
     this.vehicleBrand,
     this.vehicleColor,
+    this.unitId,
     this.imageUrls,
     this.createdAt,
     this.updatedAt,
@@ -35,9 +37,7 @@ class RegisterServiceRequest {
 
   factory RegisterServiceRequest.fromJson(Map<String, dynamic> json) {
     return RegisterServiceRequest(
-      id: json['id'] is int
-          ? json['id'] as int
-          : (json['id'] is num ? (json['id'] as num).toInt() : null),
+      id: json['id']?.toString(),
       serviceType: json['serviceType']?.toString(),
       note: json['note']?.toString(),
       status: json['status']?.toString(),
@@ -46,6 +46,7 @@ class RegisterServiceRequest {
       licensePlate: json['licensePlate']?.toString(),
       vehicleBrand: json['vehicleBrand']?.toString(),
       vehicleColor: json['vehicleColor']?.toString(),
+      unitId: json['unitId']?.toString(),
       imageUrls: (json['imageUrls'] as List?)
           ?.map((e) => e.toString())
           .toList(),
@@ -73,6 +74,7 @@ class RegisterServiceRequest {
       'licensePlate': licensePlate,
       'vehicleBrand': vehicleBrand,
       'vehicleColor': vehicleColor,
+      'unitId': unitId,
       'imageUrls': imageUrls ?? [],
       if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
       if (updatedAt != null) 'updatedAt': updatedAt!.toIso8601String(),

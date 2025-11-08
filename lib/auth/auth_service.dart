@@ -1,12 +1,16 @@
 import 'package:dio/dio.dart';
 import 'package:uuid/uuid.dart';
 import 'token_storage.dart';
+import 'iam_api_client.dart';
 
 class AuthService {
   final Dio dio;
   final TokenStorage storage;
+  final Dio? iamDio; // Optional: Dio instance for iam-service
 
-  AuthService(this.dio, this.storage);
+  AuthService(this.dio, this.storage, {this.iamDio});
+
+  Dio _iamClient() => iamDio ?? IamApiClient.createPublicDio();
 
   Future<void> ensureDeviceId() async {
     final d = await storage.readDeviceId();
@@ -16,6 +20,56 @@ class AuthService {
     }
   }
 
+  /// Login via iam-service (port 8088) - NEW METHOD
+  /// Uses username instead of email
+  Future<Map<String, dynamic>> loginViaIam(String username, String password) async {
+    final iamClient = _iamClient();
+    
+    final res = await iamClient.post(
+      '/auth/login',
+      data: {
+        'username': username,
+        'password': password,
+      },
+    );
+
+    final data = Map<String, dynamic>.from(res.data);
+
+    // iam-service response format:
+    // {
+    //   "accessToken": "...",
+    //   "tokenType": "Bearer",
+    //   "expiresIn": 3600,
+    //   "expiresAt": "2025-...",
+    //   "userInfo": {
+    //     "userId": "...",
+    //     "username": "...",
+    //     "email": "...",
+    //     "roles": [...],
+    //     "permissions": [...]
+    //   }
+    // }
+
+    if (data['accessToken'] != null) {
+      await storage.writeAccessToken(data['accessToken'].toString());
+      // iam-service không có refreshToken trong response
+      // Nếu cần refresh, sẽ gọi lại login hoặc dùng refresh endpoint của iam-service
+    }
+
+    // Map userInfo để tương thích với code hiện tại
+    if (data['userInfo'] != null) {
+      final userInfo = Map<String, dynamic>.from(data['userInfo']);
+      data['userId'] = userInfo['userId']?.toString();
+      data['username'] = userInfo['username'];
+      data['email'] = userInfo['email'];
+      data['roles'] = userInfo['roles'];
+      data['permissions'] = userInfo['permissions'];
+    }
+
+    return data;
+  }
+
+  /// Login via backend hiện tại (port 8080) - KEEP FOR BACKWARD COMPATIBILITY
   Future<Map<String, dynamic>> login(String email, String password) async {
     await ensureDeviceId();
     final deviceId = await storage.readDeviceId();
@@ -34,7 +88,7 @@ class AuthService {
       await storage.writeRefreshToken(data['refreshToken']?.toString());
     }
 
-    // ⚠️ Ép userId về String để tránh lỗi “int is not a subtype of String”
+    // ⚠️ Ép userId về String để tránh lỗi "int is not a subtype of String"
     if (data['userId'] != null) {
       data['userId'] = data['userId'].toString();
     }
@@ -82,16 +136,19 @@ class AuthService {
   }
 
   Future<void> requestReset(String email) async {
-    await dio.post('/auth/request-reset', data: {'email': email});
+    final client = _iamClient();
+    await client.post('/auth/request-reset', data: {'email': email});
   }
 
   Future<void> verifyOtp(String email, String otp) async {
-    await dio.post('/auth/verify-otp', data: {'email': email, 'otp': otp});
+    final client = _iamClient();
+    await client.post('/auth/verify-otp', data: {'email': email, 'otp': otp});
   }
 
   Future<void> confirmReset(
       String email, String otp, String newPassword) async {
-    await dio.post('/auth/confirm-reset',
+    final client = _iamClient();
+    await client.post('/auth/confirm-reset',
         data: {'email': email, 'otp': otp, 'newPassword': newPassword});
   }
 }

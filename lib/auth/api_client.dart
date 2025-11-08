@@ -6,7 +6,7 @@ class ApiClient {
   
 static const String LAN_HOST_IP = '192.168.100.33'; 
   static const String LOCALHOST_IP = 'localhost'; // <-- Thêm hằng số này
-  static const int API_PORT = 8080;
+  static const int API_PORT = 8081; // Changed to base-service port
   static const int TIMEOUT_SECONDS = 10;
 
   // SỬA DÒNG NÀY: Dùng localhost nếu là web, ngược lại dùng IP LAN

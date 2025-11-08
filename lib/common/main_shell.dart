@@ -10,7 +10,6 @@ import '../core/event_bus.dart';
 import '../home/home_screen.dart';
 import '../news/news_detail_screen.dart';
 import '../profile/profile_service.dart';
-import '../register/register_vehicle_screen.dart';
 import '../service_registration/service_category_screen.dart';
 import '../auth/api_client.dart';
 import 'menu_screen.dart';
@@ -47,16 +46,18 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _selectedIndex = widget.initialIndex;
-    _connectWebSocket();
+    // Temporarily disabled WebSocket connection
+    // _connectWebSocket();
 
     _pages = [
       HomeScreen(onNavigateToTab: _onItemTapped),
       const ServiceCategoryScreen(),
-      const RegisterVehicleScreen(),
       const MenuScreen(),
     ];
   }
 
+  // Temporarily disabled WebSocket connection
+  /*
   void _connectWebSocket() async {
     final token = await _api.storage.readAccessToken();
     if (token == null) return;
@@ -105,6 +106,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
 
     _stompClient?.activate();
   }
+  */
 
   void _showNotificationPopup(Map<String, dynamic> data) {
     if (!mounted) return;
@@ -207,7 +209,8 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _stompClient?.deactivate();
+    // Temporarily disabled WebSocket disconnection
+    // _stompClient?.deactivate();
     AppEventBus().clear();
     super.dispose();
   }
@@ -241,9 +244,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
                 _buildNavItem(0, Icons.home_outlined, Icons.home, 'Trang chủ'),
                 _buildNavItem(1, Icons.app_registration_outlined,
                     Icons.app_registration, 'Đăng ký dịch vụ'),
-                _buildNavItem(2, Icons.directions_car_outlined,
-                    Icons.directions_car, 'Dịch vụ'),
-                _buildNavItem(3, Icons.menu_outlined, Icons.menu, 'Menu'),
+                _buildNavItem(2, Icons.menu_outlined, Icons.menu, 'Menu'),
               ],
             ),
           ),

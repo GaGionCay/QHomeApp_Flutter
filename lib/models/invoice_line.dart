@@ -68,6 +68,15 @@ class InvoiceLineResponseDto {
         return 'Nước';
       case 'INTERNET':
         return 'Internet';
+      case 'ELEVATOR':
+      case 'ELEVATOR_CARD':
+        return 'Vé thang máy';
+      case 'PARKING':
+      case 'CAR_PARK':
+      case 'CARPARK':
+      case 'VEHICLE_PARKING':
+      case 'MOTORBIKE_PARK':
+        return 'Vé gửi xe';
       default:
         return serviceCode;
     }

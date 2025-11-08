@@ -7,6 +7,7 @@ import '../profile/profile_screen.dart';
 import '../profile/profile_service.dart';
 import '../auth/api_client.dart';
 import '../notifications/notification_screen.dart';
+import '../contracts/contract_list_screen.dart';
 
 class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key});
@@ -139,6 +140,21 @@ class _MenuScreenState extends State<MenuScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const NotificationScreen()),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                _buildMenuCard(
+                  context,
+                  icon: Icons.description_outlined,
+                  title: 'Hợp đồng của tôi',
+                  subtitle: 'Xem hợp đồng của căn hộ',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ContractListScreen(),
+                      ),
                     );
                   },
                 ),

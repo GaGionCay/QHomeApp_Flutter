@@ -1,14 +1,19 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
+
+import 'package:app_links/app_links.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:app_links/app_links.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:async';
+
 import '../auth/api_client.dart';
-import '../core/event_bus.dart';
 import '../common/main_shell.dart';
+import '../contracts/contract_service.dart';
+import '../core/event_bus.dart';
+import '../models/unit_info.dart';
+import '../profile/profile_service.dart';
 
 class RegisterResidentCardScreen extends StatefulWidget {
   const RegisterResidentCardScreen({super.key});
@@ -23,16 +28,16 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   final _formKey = GlobalKey<FormState>();
   final _storageKey = 'register_resident_card_draft';
   final _pendingPaymentKey = 'pending_resident_card_payment';
+  static const int _registrationFee = 30000;
 
-  final TextEditingController _residentNameCtrl = TextEditingController();
+  final TextEditingController _fullNameCtrl = TextEditingController();
   final TextEditingController _apartmentNumberCtrl = TextEditingController();
   final TextEditingController _buildingNameCtrl = TextEditingController();
   final TextEditingController _citizenIdCtrl = TextEditingController();
   final TextEditingController _phoneNumberCtrl = TextEditingController();
   final TextEditingController _noteCtrl = TextEditingController();
 
-  String _requestType = 'NEW_CARD'; // Default to 'Làm thẻ mới'
-
+  String _requestType = 'NEW_CARD';
   bool _submitting = false;
   bool _confirmed = false;
   String? _editingField;
@@ -41,24 +46,43 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   bool _hasUnsavedChanges = false;
   StreamSubscription<Uri?>? _paymentSub;
   final AppLinks _appLinks = AppLinks();
+  late final ContractService _contractService;
+  String? _selectedUnitId;
+  UnitInfo? _currentUnit;
+  String? _residentId;
+
+  String? _defaultFullName;
+  String? _defaultCitizenId;
+  String? _defaultPhoneNumber;
+
+  static const _selectedUnitPrefsKey = 'selected_unit_id';
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadSavedData();
+    _contractService = ContractService(api);
+    _initialize();
     _listenForPaymentResult();
     _setupAutoSave();
     _checkPendingPayment();
   }
 
+  void _initialize() {
+    Future.microtask(() async {
+      await _loadSavedData();
+      await _loadUnitContext();
+      await _loadResidentContext();
+    });
+  }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _paymentSub?.cancel();
     AppEventBus().off('show_payment_success');
-    _residentNameCtrl.dispose();
+
+    _fullNameCtrl.dispose();
     _apartmentNumberCtrl.dispose();
     _buildingNameCtrl.dispose();
     _citizenIdCtrl.dispose();
@@ -69,8 +93,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       _autoSave();
     }
     if (state == AppLifecycleState.resumed) {
@@ -83,40 +106,49 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     try {
       final prefs = await SharedPreferences.getInstance();
       final pendingId = prefs.getString(_pendingPaymentKey);
-      if (pendingId != null) {
-        final registrationId = int.parse(pendingId);
-        final res = await api.dio.get('/resident-card/$registrationId');
-        final data = res.data;
-        if (data['paymentStatus'] == 'PAID') {
-          await prefs.remove(_pendingPaymentKey);
-          if (mounted) {
-            AppEventBus().emit('show_payment_success', 'Đăng ký thẻ cư dân đã được thanh toán.');
-          }
+      if (pendingId == null) return;
+
+      final registrationId = pendingId;
+      final res = await api.dio.get('/resident-card/$registrationId');
+      final data = res.data;
+      if (data is! Map<String, dynamic>) return;
+      final paymentStatus = data['paymentStatus']?.toString();
+      final status = data['status']?.toString();
+
+      if (paymentStatus == 'PAID') {
+        await prefs.remove(_pendingPaymentKey);
+        if (mounted) {
+          AppEventBus().emit(
+            'show_payment_success',
+            'Đăng ký thẻ cư dân đã được thanh toán.',
+          );
         }
+        return;
+      }
+
+      if (paymentStatus == 'UNPAID' || status == 'READY_FOR_PAYMENT') {
+        await prefs.remove(_pendingPaymentKey);
       }
     } catch (e) {
-      debugPrint('❌ Lỗi check pending payment: $e');
+      debugPrint('❌ Lỗi kiểm tra thanh toán đang chờ: $e');
     }
   }
 
   void _setupAutoSave() {
-    _residentNameCtrl.addListener(() => _markUnsaved());
-    _apartmentNumberCtrl.addListener(() => _markUnsaved());
-    _buildingNameCtrl.addListener(() => _markUnsaved());
-    _citizenIdCtrl.addListener(() => _markUnsaved());
-    _phoneNumberCtrl.addListener(() => _markUnsaved());
-    _noteCtrl.addListener(() => _markUnsaved());
+    _fullNameCtrl.addListener(_markUnsaved);
+    _citizenIdCtrl.addListener(_markUnsaved);
+    _phoneNumberCtrl.addListener(_markUnsaved);
+    _noteCtrl.addListener(_markUnsaved);
   }
 
   void _markUnsaved() {
-    if (!_hasUnsavedChanges) {
-      _hasUnsavedChanges = true;
-      Future.delayed(const Duration(seconds: 2), () {
-        if (_hasUnsavedChanges) {
-          _autoSave();
-        }
-      });
-    }
+    if (_hasUnsavedChanges) return;
+    _hasUnsavedChanges = true;
+    Future.delayed(const Duration(seconds: 2), () {
+      if (_hasUnsavedChanges) {
+        _autoSave();
+      }
+    });
   }
 
   Future<void> _autoSave() async {
@@ -124,17 +156,19 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     try {
       final prefs = await SharedPreferences.getInstance();
       final data = {
-        'residentName': _residentNameCtrl.text,
+        'fullName': _fullNameCtrl.text,
         'apartmentNumber': _apartmentNumberCtrl.text,
         'buildingName': _buildingNameCtrl.text,
         'requestType': _requestType,
         'citizenId': _citizenIdCtrl.text,
         'phoneNumber': _phoneNumberCtrl.text,
         'note': _noteCtrl.text,
+        'residentId': _residentId,
+        'unitId': _selectedUnitId,
       };
       await prefs.setString(_storageKey, jsonEncode(data));
     } catch (e) {
-      debugPrint('❌ Lỗi auto-save: $e');
+      debugPrint('❌ Lỗi lưu nháp tự động: $e');
     }
   }
 
@@ -142,23 +176,122 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     try {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getString(_storageKey);
-      if (saved != null) {
-        final data = jsonDecode(saved) as Map<String, dynamic>;
+      if (saved == null) return;
 
-        setState(() {
-          _residentNameCtrl.text = data['residentName'] ?? '';
-          _apartmentNumberCtrl.text = data['apartmentNumber'] ?? '';
-          _buildingNameCtrl.text = data['buildingName'] ?? '';
-          _requestType = data['requestType'] ?? 'NEW_CARD';
-          _citizenIdCtrl.text = data['citizenId'] ?? '';
-          _phoneNumberCtrl.text = data['phoneNumber'] ?? '';
-          _noteCtrl.text = data['note'] ?? '';
-        });
+      final data = jsonDecode(saved) as Map<String, dynamic>;
+      setState(() {
+        _fullNameCtrl.text = data['fullName'] ?? data['residentName'] ?? _fullNameCtrl.text;
+        _apartmentNumberCtrl.text = data['apartmentNumber'] ?? _apartmentNumberCtrl.text;
+        _buildingNameCtrl.text = data['buildingName'] ?? _buildingNameCtrl.text;
+        _requestType = data['requestType'] ?? _requestType;
+        _citizenIdCtrl.text = data['citizenId'] ?? _citizenIdCtrl.text;
+        _phoneNumberCtrl.text = data['phoneNumber'] ?? _phoneNumberCtrl.text;
+        _noteCtrl.text = data['note'] ?? _noteCtrl.text;
+        _residentId = data['residentId']?.toString() ?? _residentId;
+        _selectedUnitId = data['unitId']?.toString() ?? _selectedUnitId;
+      });
+    } catch (e) {
+      debugPrint('❌ Lỗi khôi phục dữ liệu nháp: $e');
+    }
+  }
 
-        debugPrint('✅ Đã load lại dữ liệu đã lưu');
+  Future<void> _loadUnitContext() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedUnitId = prefs.getString(_selectedUnitPrefsKey);
+      final units = await _contractService.getMyUnits();
+
+      UnitInfo? selectedUnit;
+      if (units.isNotEmpty) {
+        if (savedUnitId != null) {
+          try {
+            selectedUnit = units.firstWhere((unit) => unit.id == savedUnitId);
+          } catch (_) {}
+        }
+        selectedUnit ??= units.first;
+      }
+
+      if (!mounted) {
+        _selectedUnitId = selectedUnit?.id;
+        _currentUnit = selectedUnit;
+        if (selectedUnit != null) {
+          _applyUnitContext(selectedUnit);
+        }
+        return;
+      }
+
+      setState(() {
+        _selectedUnitId = selectedUnit?.id;
+        _currentUnit = selectedUnit;
+      });
+
+      if (selectedUnit != null) {
+        _applyUnitContext(selectedUnit);
+        await prefs.setString(_selectedUnitPrefsKey, selectedUnit.id);
       }
     } catch (e) {
-      debugPrint('❌ Lỗi load saved data: $e');
+      debugPrint('❌ Lỗi tải thông tin căn hộ: $e');
+    }
+  }
+
+  void _applyUnitContext(UnitInfo unit) {
+    _apartmentNumberCtrl.text = unit.code;
+    final building = (unit.buildingName?.isNotEmpty ?? false)
+        ? unit.buildingName!
+        : (unit.buildingCode ?? '');
+    _buildingNameCtrl.text = building;
+    _hasUnsavedChanges = false;
+  }
+
+  Future<void> _loadResidentContext() async {
+    try {
+      final profileService = ProfileService(api.dio);
+      final profile = await profileService.getProfile();
+
+      final candidateResidentId = profile['residentId']?.toString();
+      final profileFullName =
+          profile['fullName']?.toString() ?? profile['name']?.toString();
+      final profileCitizenId =
+          profile['citizenId']?.toString() ?? profile['identityNumber']?.toString();
+      final profilePhone =
+          profile['phoneNumber']?.toString() ?? profile['phone']?.toString();
+
+      setState(() {
+        _defaultFullName = profileFullName ?? _defaultFullName;
+        _defaultCitizenId = profileCitizenId ?? _defaultCitizenId;
+        _defaultPhoneNumber = profilePhone ?? _defaultPhoneNumber;
+
+        if (_fullNameCtrl.text.isEmpty && (_defaultFullName?.isNotEmpty ?? false)) {
+          _fullNameCtrl.text = _defaultFullName!;
+        }
+        if (_citizenIdCtrl.text.isEmpty && (_defaultCitizenId?.isNotEmpty ?? false)) {
+          _citizenIdCtrl.text = _defaultCitizenId!;
+        }
+        if (_phoneNumberCtrl.text.isEmpty && (_defaultPhoneNumber?.isNotEmpty ?? false)) {
+          _phoneNumberCtrl.text = _defaultPhoneNumber!;
+        }
+        if (_residentId == null || _residentId!.isEmpty) {
+          _residentId = candidateResidentId;
+        }
+      });
+
+      if (_residentId == null || _residentId!.isEmpty) {
+        final response = await api.dio.get('/residents/me/uuid');
+        final data = response.data;
+        if (data is Map<String, dynamic>) {
+          final success = data['success'] == true || data['success'] == 'true';
+          if (success) {
+            final residentId = data['residentId']?.toString();
+            if (residentId != null && residentId.isNotEmpty) {
+              setState(() {
+                _residentId = residentId;
+              });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Lỗi tải thông tin cư dân: $e');
     }
   }
 
@@ -168,7 +301,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       await prefs.remove(_storageKey);
       _hasUnsavedChanges = false;
     } catch (e) {
-      debugPrint('❌ Lỗi clear saved data: $e');
+      debugPrint('❌ Lỗi xoá dữ liệu nháp: $e');
     }
   }
 
@@ -197,93 +330,191 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     if (shouldExit == true) {
       await _autoSave();
     }
-
     return shouldExit ?? false;
   }
 
   void _listenForPaymentResult() {
+    AppEventBus().on('show_payment_success', (message) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              '✅ Thanh toán thành công! ${message ?? "Đăng ký thẻ cư dân đã được lưu."}'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    });
+
     _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
       if (uri == null) return;
-
-        if (uri.scheme == 'qhomeapp' && uri.host == 'vnpay-resident-card-result') {
-        final registrationId = uri.queryParameters['registrationId'];
-        final responseCode = uri.queryParameters['responseCode'];
-
-        if (!mounted) return;
-
-        if (responseCode == '00') {
-          await _clearSavedData();
-
-          try {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.remove(_pendingPaymentKey);
-          } catch (e) {
-            debugPrint('❌ Lỗi xóa pending payment: $e');
-          }
-
-          if (!mounted) return;
-
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const MainShell(initialIndex: 2),
-            ),
-            (route) => false,
-          );
-
-          AppEventBus().emit('show_payment_success',
-              'Đăng ký thẻ cư dân đã được thanh toán thành công!');
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ Thanh toán thất bại'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
+      if (uri.scheme != 'qhomeapp' || uri.host != 'vnpay-resident-card-result') return;
+      await _handleDeepLinkPayment(uri);
     });
   }
 
-  void _clearForm() {
-    setState(() {
-      _residentNameCtrl.clear();
-      _apartmentNumberCtrl.clear();
-      _buildingNameCtrl.clear();
-      _requestType = 'NEW_CARD';
-      _citizenIdCtrl.clear();
-      _phoneNumberCtrl.clear();
-      _noteCtrl.clear();
-      _confirmed = false;
-      _editingField = null;
-      _hasEditedAfterConfirm = false;
-    });
-    _clearSavedData();
+  Future<void> _handleDeepLinkPayment(Uri uri) async {
+    final registrationId = uri.queryParameters['registrationId'];
+    final responseCode = uri.queryParameters['responseCode'];
+    final successParam = uri.queryParameters['success'];
+    final message = uri.queryParameters['message'];
+
+    final success =
+        (successParam ?? '').toLowerCase() == 'true' || responseCode == '00';
+
+    if (success) {
+      await _finalizeSuccessfulPayment(registrationId);
+    } else {
+      await _handleFailedPayment(
+        registrationId,
+        message ?? 'Thanh toán thất bại. Vui lòng thử lại.',
+      );
+    }
+  }
+
+  Future<void> _finalizeSuccessfulPayment(String? registrationId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_pendingPaymentKey);
+      if (registrationId != null && registrationId.isNotEmpty) {
+        await _syncRegistrationStatus(registrationId);
+      }
+    } catch (e) {
+      debugPrint('⚠️ Lỗi khi xử lý thanh toán thành công: $e');
+    }
+
+    await _clearSavedData();
+
+    if (!mounted) return;
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const MainShell(initialIndex: 1),
+      ),
+      (route) => false,
+    );
+
+    AppEventBus().emit(
+      'show_payment_success',
+      'Đăng ký thẻ cư dân đã được thanh toán thành công!',
+    );
+  }
+
+  Future<void> _handleFailedPayment(String? registrationId, String message) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_pendingPaymentKey);
+    } catch (e) {
+      debugPrint('⚠️ Lỗi khi xoá pending payment: $e');
+    }
+
+    if (registrationId != null && registrationId.isNotEmpty) {
+      await _cancelRegistration(registrationId);
+    }
+
+    if (!mounted) return;
+    final trimmed = message.trim();
+    final displayMessage = trimmed.startsWith('❌') ? trimmed : '❌ $trimmed';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(displayMessage),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  Future<void> _syncRegistrationStatus(String registrationId) async {
+    try {
+      final res = await api.dio.get('/resident-card/$registrationId');
+      final data = res.data;
+      if (data is! Map<String, dynamic>) return;
+      final paymentStatus = data['paymentStatus']?.toString();
+      if (paymentStatus != 'PAID') {
+        debugPrint('⚠️ paymentStatus chưa cập nhật: $paymentStatus');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Không thể đồng bộ trạng thái đăng ký $registrationId: $e');
+    }
+  }
+
+  String _resolveErrorMessage(Object error) {
+    if (error is DioException) {
+      final data = error.response?.data;
+      if (data is Map<String, dynamic>) {
+        final message = data['message'];
+        if (message is String && message.isNotEmpty) return message;
+      } else if (data is String && data.isNotEmpty) {
+        return data;
+      }
+      if (error.message != null && error.message!.isNotEmpty) {
+        return error.message!;
+      }
+    }
+    // ignore: deprecated_member_use
+    if (error is DioError) {
+      final data = error.response?.data;
+      if (data is Map<String, dynamic>) {
+        final message = data['message'];
+        if (message is String && message.isNotEmpty) return message;
+      } else if (data is String && data.isNotEmpty) {
+        return data;
+      }
+      if (error.message != null && error.message!.isNotEmpty) {
+        return error.message!;
+      }
+    }
+    return error.toString();
   }
 
   Map<String, dynamic> _collectPayload() => {
-        'residentName': _residentNameCtrl.text,
+        'fullName': _fullNameCtrl.text,
         'apartmentNumber': _apartmentNumberCtrl.text,
         'buildingName': _buildingNameCtrl.text,
         'requestType': _requestType,
         'citizenId': _citizenIdCtrl.text,
         'phoneNumber': _phoneNumberCtrl.text,
         'note': _noteCtrl.text.isNotEmpty ? _noteCtrl.text : null,
+        'unitId': _selectedUnitId,
+        'residentId': _residentId,
       };
-
 
   Future<void> _handleRegisterPressed() async {
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
 
+    if (_selectedUnitId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Không xác định được căn hộ hiện tại. Vui lòng quay lại màn hình chính.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (_residentId == null || _residentId!.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Không tìm thấy thông tin cư dân. Vui lòng thử lại sau hoặc liên hệ quản trị.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     if (!_confirmed) {
       final confirm = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
-          title: const Text('Vui lòng check lại thông tin'),
+          title: const Text('Vui lòng kiểm tra lại thông tin'),
           content: const Text(
             'Vui lòng kiểm tra lại các thông tin đã nhập.\n\n'
-            'Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi bạn double-click vào field.',
+            'Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi bạn double-tap vào trường.',
           ),
           actions: [
             TextButton(
@@ -292,8 +523,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Đã kiểm tra',
-                  style: TextStyle(color: Colors.teal)),
+              child: const Text('Đã kiểm tra', style: TextStyle(color: Colors.teal)),
             ),
           ],
         ),
@@ -309,7 +539,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                  '✅ Vui lòng kiểm tra lại thông tin. Double-click vào field để chỉnh sửa.'),
+                  '✅ Vui lòng kiểm tra lại thông tin. Double-tap vào trường để chỉnh sửa nếu cần.'),
               duration: Duration(seconds: 3),
             ),
           );
@@ -322,10 +552,9 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       final confirmAgain = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
-          title: const Text('Vui lòng check lại thông tin'),
+          title: const Text('Vui lòng kiểm tra lại thông tin'),
           content: const Text(
-            'Bạn đã chỉnh sửa thông tin. Vui lòng kiểm tra lại các thông tin đã nhập.\n\n'
-            'Nếu cần chỉnh sửa, double-click vào field.',
+            'Bạn vừa chỉnh sửa thông tin sau khi đã xác nhận. Vui lòng kiểm tra lại trước khi tiếp tục.',
           ),
           actions: [
             TextButton(
@@ -334,8 +563,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Đã kiểm tra',
-                  style: TextStyle(color: Colors.teal)),
+              child: const Text('Đã kiểm tra', style: TextStyle(color: Colors.teal)),
             ),
           ],
         ),
@@ -351,7 +579,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                  '✅ Vui lòng kiểm tra lại thông tin. Double-click vào field để chỉnh sửa.'),
+                  '✅ Vui lòng kiểm tra lại thông tin. Double-tap vào trường để chỉnh sửa nếu cần.'),
               duration: Duration(seconds: 3),
             ),
           );
@@ -364,15 +592,16 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   }
 
   Future<void> _requestEditField(String field) async {
+    if (_isAutoFilledField(field)) return;
     if (!_confirmed) return;
 
     if (_editingField != null && _editingField != field) {
       final wantSwitch = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
-          title: const Text('Đang chỉnh sửa field khác'),
+          title: const Text('Đang chỉnh sửa trường khác'),
           content: const Text(
-              'Bạn đang chỉnh sửa một field khác. Bạn có muốn chuyển sang field này không?'),
+              'Bạn đang chỉnh sửa một trường khác. Bạn có muốn chuyển sang chỉnh sửa trường này không?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -416,12 +645,12 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
 
   String _getFieldLabel(String fieldKey) {
     switch (fieldKey) {
-      case 'residentName':
+      case 'fullName':
         return 'họ tên cư dân';
       case 'apartmentNumber':
         return 'số căn hộ';
       case 'buildingName':
-        return 'tòa';
+        return 'tòa nhà';
       case 'requestType':
         return 'loại yêu cầu';
       case 'citizenId':
@@ -435,7 +664,324 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     }
   }
 
-  bool _isEditable(String field) => !_confirmed || _editingField == field;
+  bool _isAutoFilledField(String field) =>
+      field == 'apartmentNumber' || field == 'buildingName';
+
+  bool _isEditable(String field) {
+    if (_isAutoFilledField(field)) {
+      return false;
+    }
+    return !_confirmed || _editingField == field;
+  }
+
+  Future<void> _saveAndPay() async {
+    setState(() => _submitting = true);
+    String? registrationId;
+
+    try {
+      final payload = _collectPayload();
+      final res = await api.dio.post('/resident-card/vnpay-url', data: payload);
+
+      final data = res.data;
+      if (data is! Map<String, dynamic>) {
+        throw Exception('Phản hồi không hợp lệ từ máy chủ');
+      }
+
+      registrationId = data['registrationId']?.toString();
+      final paymentUrl = data['paymentUrl']?.toString();
+
+      if (registrationId == null || registrationId.isEmpty) {
+        throw Exception('Không nhận được mã đăng ký từ hệ thống');
+      }
+      if (paymentUrl == null || paymentUrl.isEmpty) {
+        throw Exception('Không nhận được URL thanh toán');
+      }
+
+      if (mounted) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_pendingPaymentKey, registrationId);
+        _clearForm();
+
+        final uri = Uri.parse(paymentUrl);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } else {
+          await prefs.remove(_pendingPaymentKey);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Không thể mở trình duyệt thanh toán'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      final message = _resolveErrorMessage(e);
+      if (registrationId != null && registrationId.isNotEmpty) {
+        await _cancelRegistration(registrationId);
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove(_pendingPaymentKey);
+        } catch (err) {
+          debugPrint('❌ Lỗi xoá pending payment: $err');
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi: $message')),
+        );
+      }
+    } finally {
+      setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _cancelRegistration(String registrationId) async {
+    try {
+      log('🗑️ [RegisterResidentCard] Hủy đăng ký: $registrationId');
+      await api.dio.delete('/resident-card/$registrationId/cancel');
+      log('✅ [RegisterResidentCard] Đã hủy đăng ký thành công');
+    } catch (e) {
+      log('❌ [RegisterResidentCard] Lỗi khi hủy đăng ký: $e');
+    }
+  }
+
+  void _clearForm() {
+    setState(() {
+      _fullNameCtrl.clear();
+      _requestType = 'NEW_CARD';
+      _citizenIdCtrl.clear();
+      _phoneNumberCtrl.clear();
+      _noteCtrl.clear();
+      _confirmed = false;
+      _editingField = null;
+      _hasEditedAfterConfirm = false;
+    });
+    _clearSavedData();
+    if (_currentUnit != null) {
+      _applyUnitContext(_currentUnit!);
+    }
+    if (_defaultFullName?.isNotEmpty ?? false) {
+      _fullNameCtrl.text = _defaultFullName!;
+    }
+    if (_defaultCitizenId?.isNotEmpty ?? false) {
+      _citizenIdCtrl.text = _defaultCitizenId!;
+    }
+    if (_defaultPhoneNumber?.isNotEmpty ?? false) {
+      _phoneNumberCtrl.text = _defaultPhoneNumber!;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (!didPop) {
+          final shouldPop = await _onWillPop();
+          if (shouldPop && context.mounted) {
+            Navigator.of(context).pop();
+          }
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF5F7F9),
+        appBar: AppBar(
+          title: const Text(
+            'Đăng ký thẻ cư dân',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+          backgroundColor: const Color(0xFF26A69A),
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildFeeInfoCard(),
+                const SizedBox(height: 16),
+                _buildTextField(
+                  controller: _fullNameCtrl,
+                  label: 'Họ tên cư dân',
+                  hint: 'Nhập họ tên cư dân',
+                  fieldKey: 'fullName',
+                  icon: Icons.person_outline,
+                  validator: (v) => v == null || v.isEmpty
+                      ? 'Vui lòng nhập họ tên cư dân'
+                      : null,
+                ),
+                const SizedBox(height: 16),
+                _buildTextField(
+                  controller: _apartmentNumberCtrl,
+                  label: 'Số căn hộ',
+                  hint: 'Hệ thống tự điền theo căn hộ đang chọn',
+                  fieldKey: 'apartmentNumber',
+                  icon: Icons.home_outlined,
+                  validator: (v) => v == null || v.isEmpty
+                      ? 'Vui lòng kiểm tra lại số căn hộ'
+                      : null,
+                ),
+                const SizedBox(height: 16),
+                _buildTextField(
+                  controller: _buildingNameCtrl,
+                  label: 'Tòa nhà',
+                  hint: 'Hệ thống tự điền theo căn hộ đang chọn',
+                  fieldKey: 'buildingName',
+                  icon: Icons.apartment_outlined,
+                  validator: (v) => v == null || v.isEmpty
+                      ? 'Vui lòng kiểm tra lại tòa nhà'
+                      : null,
+                ),
+                const SizedBox(height: 16),
+                _buildRequestTypeDropdown(),
+                const SizedBox(height: 16),
+                _buildTextField(
+                  controller: _citizenIdCtrl,
+                  label: 'Căn cước công dân',
+                  hint: 'Nhập số căn cước công dân',
+                  fieldKey: 'citizenId',
+                  icon: Icons.badge_outlined,
+                  validator: (v) => v == null || v.isEmpty
+                      ? 'Vui lòng nhập căn cước công dân'
+                      : null,
+                ),
+                const SizedBox(height: 16),
+                _buildTextField(
+                  controller: _phoneNumberCtrl,
+                  label: 'Số điện thoại',
+                  hint: 'Nhập số điện thoại liên hệ',
+                  fieldKey: 'phoneNumber',
+                  icon: Icons.phone_iphone,
+                  keyboardType: TextInputType.phone,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) {
+                      return 'Vui lòng nhập số điện thoại';
+                    }
+                    if (!RegExp(r'^[0-9]{10,11}$').hasMatch(v)) {
+                      return 'Số điện thoại không hợp lệ';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                _buildTextField(
+                  controller: _noteCtrl,
+                  label: 'Ghi chú',
+                  hint: 'Nhập ghi chú nếu có',
+                  fieldKey: 'note',
+                  icon: Icons.notes,
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton(
+                  onPressed: _submitting ? null : _handleRegisterPressed,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF26A69A),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: _submitting
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Text(
+                          'Gửi yêu cầu và thanh toán',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFeeInfoCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: const BoxDecoration(
+              color: Color(0x1A26A69A),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.payments_outlined,
+              color: Color(0xFF26A69A),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Phí đăng ký thẻ cư dân',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1F2933),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _formatVnd(_registrationFee),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF26A69A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Sau khi gửi yêu cầu, bạn sẽ được chuyển tới cổng thanh toán VNPAY để hoàn tất thanh toán.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF617079),
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildRequestTypeDropdown() {
     final isEditable = _isEditable('requestType');
@@ -457,7 +1003,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
           value: _requestType,
           decoration: InputDecoration(
             labelText: 'Loại yêu cầu',
-            prefixIcon: const Icon(Icons.category, color: Color(0xFF26A69A)),
+            prefixIcon: const Icon(Icons.category_outlined, color: Color(0xFF26A69A)),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none,
@@ -479,221 +1025,19 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
               child: Text('Cấp lại thẻ bị mất'),
             ),
           ],
-          onChanged: isEditable ? (value) {
-            setState(() {
-              _requestType = value ?? 'NEW_CARD';
-              if (_confirmed) {
-                _editingField = 'requestType';
-                _hasEditedAfterConfirm = true;
-              }
-            });
-            _autoSave();
-          } : null,
+          onChanged: isEditable
+              ? (value) {
+                  setState(() {
+                    _requestType = value ?? 'NEW_CARD';
+                    if (_confirmed) {
+                      _editingField = 'requestType';
+                      _hasEditedAfterConfirm = true;
+                    }
+                  });
+                  _autoSave();
+                }
+              : null,
           validator: (v) => v == null ? 'Vui lòng chọn loại yêu cầu' : null,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _saveAndPay() async {
-    setState(() => _submitting = true);
-    int? registrationId;
-
-    try {
-      final payload = _collectPayload();
-
-      final res =
-          await api.dio.post('/resident-card/vnpay-url', data: payload);
-
-      registrationId = res.data['registrationId'] as int?;
-      final paymentUrl = res.data['paymentUrl'] as String;
-
-      if (mounted && registrationId != null) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_pendingPaymentKey, registrationId.toString());
-        _clearForm();
-        final uri = Uri.parse(paymentUrl);
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-        } else {
-          await prefs.remove(_pendingPaymentKey);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Không thể mở trình duyệt thanh toán'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi: $e')),
-        );
-
-        if (registrationId != null) {
-          await _cancelRegistration(registrationId);
-          try {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.remove(_pendingPaymentKey);
-          } catch (e) {
-            debugPrint('❌ Lỗi xóa pending payment: $e');
-          }
-        }
-      }
-    } finally {
-      setState(() => _submitting = false);
-    }
-  }
-
-  Future<void> _cancelRegistration(int registrationId) async {
-    try {
-      log('🗑️ [RegisterResidentCard] Hủy registration: $registrationId');
-      await api.dio.delete('/resident-card/$registrationId/cancel');
-      log('✅ [RegisterResidentCard] Đã hủy registration thành công');
-    } catch (e) {
-      log('❌ [RegisterResidentCard] Lỗi khi hủy registration: $e');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (bool didPop, dynamic result) async {
-        if (!didPop) {
-          final shouldPop = await _onWillPop();
-          if (shouldPop && context.mounted) {
-            Navigator.of(context).pop();
-          }
-        }
-      },
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF5F7F9),
-        appBar: AppBar(
-          title: const Text(
-            'Đăng ký thẻ cư dân',
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
-            ),
-          ),
-          backgroundColor: const Color(0xFF26A69A),
-          foregroundColor: Colors.white,
-          elevation: 0,
-          actions: [],
-        ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildTextField(
-                  controller: _residentNameCtrl,
-                  label: 'Họ tên cư dân',
-                  hint: 'Nhập họ tên cư dân',
-                  fieldKey: 'residentName',
-                  icon: Icons.person,
-                  validator: (v) => v == null || v.isEmpty
-                      ? 'Vui lòng nhập họ tên cư dân'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _apartmentNumberCtrl,
-                  label: 'Số căn hộ',
-                  hint: 'Nhập số căn hộ',
-                  fieldKey: 'apartmentNumber',
-                  icon: Icons.home,
-                  validator: (v) => v == null || v.isEmpty
-                      ? 'Vui lòng nhập số căn hộ'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _buildingNameCtrl,
-                  label: 'Tòa',
-                  hint: 'Nhập tên tòa',
-                  fieldKey: 'buildingName',
-                  icon: Icons.business,
-                  validator: (v) => v == null || v.isEmpty
-                      ? 'Vui lòng nhập tên tòa'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                _buildRequestTypeDropdown(),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _citizenIdCtrl,
-                  label: 'Căn cước công dân',
-                  hint: 'Nhập số căn cước công dân',
-                  fieldKey: 'citizenId',
-                  icon: Icons.badge,
-                  validator: (v) => v == null || v.isEmpty
-                      ? 'Vui lòng nhập căn cước công dân'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _phoneNumberCtrl,
-                  label: 'Số điện thoại',
-                  hint: 'Nhập số điện thoại',
-                  fieldKey: 'phoneNumber',
-                  icon: Icons.phone,
-                  keyboardType: TextInputType.phone,
-                  validator: (v) {
-                    if (v == null || v.isEmpty) {
-                      return 'Vui lòng nhập số điện thoại';
-                    }
-                    if (!RegExp(r'^[0-9]{10,11}$').hasMatch(v)) {
-                      return 'Số điện thoại không hợp lệ';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _noteCtrl,
-                  label: 'Ghi chú',
-                  hint: 'Nhập ghi chú (nếu có)',
-                  fieldKey: 'note',
-                  icon: Icons.note,
-                  maxLines: 3,
-                ),
-                const SizedBox(height: 32),
-                ElevatedButton(
-                  onPressed: _submitting ? null : _handleRegisterPressed,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF26A69A),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: _submitting
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : const Text(
-                          'Gửi yêu cầu và thanh toán',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );
@@ -710,8 +1054,10 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     int maxLines = 1,
   }) {
     final isEditable = _isEditable(fieldKey);
+    final isAutoField = _isAutoFilledField(fieldKey);
+    final canEdit = !isAutoField && isEditable;
     return GestureDetector(
-      onDoubleTap: () => _requestEditField(fieldKey),
+      onDoubleTap: isAutoField ? null : () => _requestEditField(fieldKey),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -726,7 +1072,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         ),
         child: TextFormField(
           controller: controller,
-          enabled: isEditable,
+          enabled: isAutoField ? true : isEditable,
+          readOnly: !canEdit,
           validator: validator,
           keyboardType: keyboardType,
           maxLines: maxLines,
@@ -739,7 +1086,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
               borderSide: BorderSide.none,
             ),
             filled: true,
-            fillColor: isEditable ? Colors.white : Colors.grey[100],
+            fillColor: canEdit ? Colors.white : Colors.grey[100],
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 16,
               vertical: 16,
@@ -749,5 +1096,20 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       ),
     );
   }
+
+  String _formatVnd(int amount) {
+    final digits = amount.toString();
+    final buffer = StringBuffer();
+    for (int i = 0; i < digits.length; i++) {
+      buffer.write(digits[i]);
+      final remaining = digits.length - i - 1;
+      if (remaining % 3 == 0 && remaining != 0) {
+        buffer.write('.');
+      }
+    }
+    buffer.write(' VND');
+    return buffer.toString();
+  }
 }
+
 
