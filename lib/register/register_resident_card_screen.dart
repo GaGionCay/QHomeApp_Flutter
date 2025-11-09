@@ -276,17 +276,14 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       });
 
       if (_residentId == null || _residentId!.isEmpty) {
-        final response = await api.dio.get('/residents/me/uuid');
-        final data = response.data;
-        if (data is Map<String, dynamic>) {
-          final success = data['success'] == true || data['success'] == 'true';
-          if (success) {
-            final residentId = data['residentId']?.toString();
-            if (residentId != null && residentId.isNotEmpty) {
-              setState(() {
-                _residentId = residentId;
-              });
-            }
+        final units = await _contractService.getMyUnits();
+        for (final unit in units) {
+          final candidate = unit.primaryResidentId?.toString();
+          if (candidate != null && candidate.isNotEmpty) {
+            setState(() {
+              _residentId = candidate;
+            });
+            break;
           }
         }
       }

@@ -1,8 +1,8 @@
-import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
 import '../auth/api_client.dart';
+import '../contracts/contract_service.dart';
+import '../models/unit_info.dart';
 import '../theme/app_colors.dart';
-import 'edit_profile_screen.dart';
 import 'profile_service.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -15,9 +15,12 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen>
     with SingleTickerProviderStateMixin {
   Map<String, dynamic>? _profile;
+  List<UnitInfo> _units = const [];
+  bool _loadingUnits = true;
   bool _loading = true;
   late AnimationController _fadeCtrl;
   late ProfileService _service;
+  ContractService? _contractService;
 
   @override
   void initState() {
@@ -28,11 +31,27 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Future<void> _loadProfile() async {
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _loadingUnits = true;
+      });
+    }
     final apiClient = await ApiClient.create();
     _service = ProfileService(apiClient.dio);
+    _contractService = ContractService(apiClient);
     final data = await _service.getProfile();
+    List<UnitInfo> units = const [];
+    try {
+      units = await _contractService!.getMyUnits();
+    } catch (e) {
+      debugPrint('⚠️ Lỗi tải danh sách căn hộ: $e');
+    }
+    if (!mounted) return;
     setState(() {
       _profile = data;
+      _units = units;
+      _loadingUnits = false;
       _loading = false;
     });
     _fadeCtrl.forward();
@@ -54,40 +73,6 @@ class _ProfileScreenState extends State<ProfileScreen>
         title: const Text('Hồ sơ cá nhân'),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        actions: [
-          if (!_loading)
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: FilledButton.icon(
-                onPressed: () async {
-                  final updated = await Navigator.push(
-                    context,
-                    PageRouteBuilder(
-                      pageBuilder: (_, __, ___) =>
-                          EditProfileScreen(initialData: _profile!),
-                      transitionsBuilder: (_, animation, __, child) =>
-                          FadeThroughTransition(
-                        animation: animation,
-                        secondaryAnimation:
-                            Tween<double>(begin: 0.9, end: 1).animate(animation),
-                        child: child,
-                      ),
-                    ),
-                  );
-                  if (updated == true) _loadProfile();
-                },
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primaryEmerald,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                icon: const Icon(Icons.edit_rounded, size: 18),
-                label: const Text('Chỉnh sửa'),
-              ),
-            ),
-        ],
       ),
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 320),
@@ -106,6 +91,11 @@ class _ProfileScreenState extends State<ProfileScreen>
                       _ProfileHeader(profile: _profile!),
                       const SizedBox(height: 24),
                       _ProfileInfoCard(profile: _profile!),
+                      const SizedBox(height: 20),
+                      if (_loadingUnits)
+                        const Center(child: CircularProgressIndicator())
+                      else
+                        _OwnedUnitsCard(units: _units),
                     ],
                   ),
                 ),
@@ -190,17 +180,18 @@ class _ProfileInfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final phone = profile['phoneNumber'] ?? profile['phone'] ?? '—';
+    final gender = profile['gender'] ?? '—';
+    final dob = profile['dateOfBirth'] ?? profile['birthDate'] ?? '—';
+    final citizenId = profile['citizenId'] ?? profile['identityNumber'] ?? '—';
+    final residentId = profile['residentId'] ?? profile['residentCode'] ?? '—';
+ 
     final infoItems = [
-      _InfoItem(Icons.phone_outlined, 'Số điện thoại',
-          profile['phoneNumber'] ?? '—'),
-      _InfoItem(Icons.person_outline, 'Giới tính',
-          profile['gender'] ?? '—'),
-      _InfoItem(Icons.cake_outlined, 'Ngày sinh',
-          profile['dateOfBirth'] ?? '—'),
-      _InfoItem(Icons.apartment_outlined, 'Căn hộ',
-          profile['apartmentName'] ?? '—'),
-      _InfoItem(Icons.location_on_outlined, 'Địa chỉ',
-          profile['address'] ?? '—'),
+      _InfoItem(Icons.badge_outlined, 'Mã cư dân', residentId),
+      _InfoItem(Icons.phone_outlined, 'Số điện thoại', phone),
+      _InfoItem(Icons.credit_card_outlined, 'CMND/CCCD', citizenId),
+      _InfoItem(Icons.person_outline, 'Giới tính', gender),
+      _InfoItem(Icons.cake_outlined, 'Ngày sinh', dob),
     ];
 
     return Container(
@@ -254,4 +245,167 @@ class _InfoItem {
   final IconData icon;
   final String title;
   final String value;
+}
+
+class _OwnedUnitsCard extends StatelessWidget {
+  const _OwnedUnitsCard({required this.units});
+
+  final List<UnitInfo> units;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (units.isEmpty) {
+      return Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.08)),
+          boxShadow: AppColors.subtleShadow,
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Row(
+          children: [
+            const Icon(Icons.home_outlined, size: 28),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                'Bạn chưa có căn hộ nào được gán trong hệ thống.',
+                style: theme.textTheme.bodyLarge,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.08)),
+        boxShadow: AppColors.subtleShadow,
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryEmerald.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(Icons.apartment_rounded, color: AppColors.primaryEmerald),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Căn hộ của bạn',
+                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${units.length} căn hộ đang sở hữu/quản lý',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          ...units.map((unit) => _UnitTile(unit: unit, theme: theme)).toList(),
+        ],
+      ),
+    );
+  }
+}
+
+class _UnitTile extends StatelessWidget {
+  const _UnitTile({required this.unit, required this.theme});
+
+  final UnitInfo unit;
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    final buildingLabel = unit.buildingName?.isNotEmpty == true
+        ? unit.buildingName
+        : unit.buildingCode;
+    final title = [buildingLabel, unit.code].where((e) => e != null && e.isNotEmpty).join(' • ');
+    final details = <String>[
+      if (unit.floor != null) 'Tầng ${unit.floor}',
+      if (unit.areaM2 != null) '${unit.areaM2!.toStringAsFixed(1)} m²',
+      if (unit.bedrooms != null) '${unit.bedrooms} phòng ngủ',
+    ].join(' · ');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.08)),
+        color: theme.colorScheme.surfaceVariant.withValues(alpha: 0.1),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: AppColors.primaryBlue.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(Icons.key_outlined, color: AppColors.primaryBlue),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title.isNotEmpty ? title : unit.code,
+                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  details.isNotEmpty ? details : 'Thông tin chi tiết đang cập nhật',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+                if (unit.status?.isNotEmpty == true) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryEmerald.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      unit.status!,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: AppColors.primaryEmerald,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

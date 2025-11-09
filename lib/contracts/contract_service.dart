@@ -13,7 +13,7 @@ class ContractService {
     if (contractsDio != null) {
       return contractsDio!;
     }
-    final baseUrl = 'http://${ApiClient.HOST_IP}:8082/api';
+    const baseUrl = 'http://${ApiClient.HOST_IP}:8082/api';
     return Dio(BaseOptions(
       baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),

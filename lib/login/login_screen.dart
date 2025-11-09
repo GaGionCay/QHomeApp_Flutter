@@ -35,7 +35,8 @@ class _LoginScreenState extends State<LoginScreen> {
         body: LayoutBuilder(
           builder: (context, constraints) {
             final isWide = constraints.maxWidth > 720;
-            final formWidth = isWide ? constraints.maxWidth * 0.45 : double.infinity;
+            final formWidth =
+                isWide ? constraints.maxWidth * 0.45 : double.infinity;
 
             return Stack(
               children: [
@@ -153,8 +154,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               hint: 'Tên đăng nhập',
                               icon: Icons.person_outline,
                               textInputAction: TextInputAction.next,
-                              onSubmitted: (_) =>
-                                  _passwordFocus.requestFocus(),
+                              onSubmitted: (_) => _passwordFocus.requestFocus(),
                             ),
                             const SizedBox(height: 16),
                             AppLuxeTextField(
@@ -195,31 +195,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               icon: Icons.lock_open_rounded,
                               enabled: !loading,
                             ),
-                            const SizedBox(height: 18),
-                            Center(
-                              child: Wrap(
-                                spacing: 4,
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                children: [
-                                  Text(
-                                    'Chưa có tài khoản?',
-                                    style: textTheme.bodyMedium,
-                                  ),
-                                  GestureDetector(
-                                    onTap: () => context.push(
-                                      AppRoute.registerGuide.path,
-                                    ),
-                                    child: Text(
-                                      'Đăng ký ngay',
-                                      style: textTheme.labelLarge?.copyWith(
-                                        color: AppColors.primaryEmerald,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 48),
+                            const SizedBox(height: 40),
                             _SecurityFooter(textTheme: textTheme),
                           ],
                         ),

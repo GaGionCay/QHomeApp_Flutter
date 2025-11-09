@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../auth/api_client.dart';
+import '../contracts/contract_service.dart';
 import '../core/event_bus.dart';
 import '../profile/profile_service.dart';
 import '../models/resident_news.dart';
@@ -16,11 +17,9 @@ class NewsScreen extends StatefulWidget {
   State<NewsScreen> createState() => _NewsScreenState();
 }
 
-class _NewsScreenState extends State<NewsScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _bellController;
-  late final Animation<double> _bellAnimation;
+class _NewsScreenState extends State<NewsScreen> {
   final ApiClient _api = ApiClient();
+  late final ContractService _contractService;
   final ResidentService _residentService = ResidentService();
   final AppEventBus _bus = AppEventBus();
 
@@ -37,14 +36,7 @@ class _NewsScreenState extends State<NewsScreen>
   @override
   void initState() {
     super.initState();
-    _bellController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 700),
-    );
-    _bellAnimation = Tween<double>(begin: -0.15, end: 0.15)
-        .chain(CurveTween(curve: Curves.elasticIn))
-        .animate(_bellController);
-    _bellController.repeat(reverse: true);
+    _contractService = ContractService(_api);
     _loadResidentIdAndFetch();
     _bus.on('news_update', (data) {
       try {
@@ -80,24 +72,9 @@ class _NewsScreenState extends State<NewsScreen>
         return;
       }
       
-      // If not found in profile, try to get from backend API
+      // Nếu chưa có residentId, thử lấy từ danh sách căn hộ
       if (_residentId == null || _residentId!.isEmpty) {
-        try {
-          debugPrint('🔍 Không tìm thấy residentId trong profile, gọi API để lấy...');
-          final response = await _api.dio.get('/residents/me/uuid');
-          final data = response.data as Map<String, dynamic>;
-          
-          if (data['success'] == true && data['residentId'] != null && data['residentId'].toString().isNotEmpty) {
-            _residentId = data['residentId']?.toString();
-            debugPrint('✅ Lấy được residentId từ API: $_residentId');
-          } else {
-            debugPrint('⚠️ API trả về success=false hoặc residentId rỗng: ${data['message']}');
-            debugPrint('⚠️ Có thể endpoint admin API chưa tồn tại hoặc user chưa được gán vào căn hộ');
-          }
-        } catch (e) {
-          debugPrint('⚠️ Lỗi gọi API lấy residentId: $e');
-          // Không throw để app vẫn hoạt động, chỉ không load news
-        }
+        await _tryPopulateResidentFromUnits();
       }
       
       debugPrint('🔍 Profile data: ${profile.keys.toList()}');
@@ -117,6 +94,37 @@ class _NewsScreenState extends State<NewsScreen>
       if (mounted) {
         setState(() => loading = false);
       }
+    }
+  }
+
+  Future<void> _tryPopulateResidentFromUnits() async {
+    try {
+      final units = await _contractService.getMyUnits();
+      if (units.isEmpty) {
+        debugPrint('ℹ️ [NewsScreen] Người dùng chưa có căn hộ gán.');
+        return;
+      }
+
+      for (final unit in units) {
+        final candidate = unit.primaryResidentId?.toString();
+        if (candidate != null && candidate.isNotEmpty) {
+          _residentId = candidate;
+          break;
+        }
+      }
+
+      // Nếu vẫn null, lấy tạm residentId đầu tiên có dữ liệu trong danh sách
+      if (_residentId == null || _residentId!.isEmpty) {
+        final fallback = units.firstWhere(
+          (unit) => (unit.primaryResidentId ?? '').isNotEmpty,
+          orElse: () => units.first,
+        );
+        if ((fallback.primaryResidentId ?? '').isNotEmpty) {
+          _residentId = fallback.primaryResidentId;
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ [NewsScreen] Lỗi lấy dữ liệu căn hộ: $e');
     }
   }
 
@@ -263,20 +271,8 @@ class _NewsScreenState extends State<NewsScreen>
   }
 
   @override
-  void didUpdateWidget(covariant NewsScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    bool hasUnread = items.isNotEmpty;
-    if (hasUnread) {
-      _bellController.repeat(reverse: true);
-    } else {
-      _bellController.stop();
-    }
-  }
-
-  @override
   void dispose() {
     _bus.off('news_update');
-    _bellController.dispose();
     super.dispose();
   }
 
@@ -306,85 +302,73 @@ class _NewsScreenState extends State<NewsScreen>
                         Expanded(
                           child: ListView.builder(
                             physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                             itemCount: items.length,
-                            itemBuilder: (context, i) {
-                                
-                                final news = items[i];
-                                const bool isRead = false;
+                            itemBuilder: (context, index) {
+                              final news = items[index];
+                              final String date = news.publishAt != null
+                                  ? DateFormat('dd/MM/yyyy').format(news.publishAt!)
+                                  : DateFormat('dd/MM/yyyy').format(news.createdAt);
 
-                                final String date = news.publishAt != null
-                                    ? DateFormat('dd/MM/yyyy').format(news.publishAt!)
-                                    : DateFormat('dd/MM/yyyy').format(news.createdAt);
-
-                                return AnimatedContainer(
-                                  duration: const Duration(milliseconds: 300),
-                                  margin: const EdgeInsets.only(bottom: 10),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        isRead ? Colors.white : const Color(0xFFE0F2F1),
-                                    borderRadius: BorderRadius.circular(16),
-                                    boxShadow: [
-                                      if (!isRead)
-                                        BoxShadow(
-                                          color: Colors.teal.withOpacity(0.15),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 3),
-                                        ),
+                              return AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                margin: const EdgeInsets.only(bottom: 10),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE0F2F1),
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.teal.withOpacity(0.15),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 3),
+                                    ),
+                                  ],
+                                ),
+                                child: ListTile(
+                                  contentPadding:
+                                      const EdgeInsets.only(left: 16, top: 10, right: 16, bottom: 10),
+                                  title: Text(
+                                    news.title,
+                                    style: theme.textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: const Color(0xFF004D40),
+                                    ),
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        news.summary,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        date,
+                                        style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                                      ),
                                     ],
                                   ),
-                                  child: ListTile(
-                                    contentPadding: const EdgeInsets.only(
-                                        left: 16, top: 10, right: 16, bottom: 10),
-                                    title: Text(
-                                      news.title,
-                                      style: theme.textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                        color: const Color(0xFF004D40),
-                                      ),
-                                    ),
-                                    subtitle: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          news.summary,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            color: Colors.grey[600],
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          date,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey[500],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    onTap: () {
-                                      Navigator.of(context).push(PageRouteBuilder(
-                                        transitionDuration:
-                                            const Duration(milliseconds: 500),
-                                        pageBuilder: (_, animation, __) =>
-                                            FadeTransition(
+                                  onTap: () {
+                                    Navigator.of(context).push(
+                                      PageRouteBuilder(
+                                        transitionDuration: const Duration(milliseconds: 500),
+                                        pageBuilder: (_, animation, __) => FadeTransition(
                                           opacity: animation,
                                           child: NewsDetailScreen(
                                             residentNews: news,
                                           ),
                                         ),
-                                      ));
-                                    },
-                                  ),
-                                );
-                              },
-                            ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              );
+                            },
                           ),
+                        ),
                         _buildPaginationControls(),
                       ],
                     ),

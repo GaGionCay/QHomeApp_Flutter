@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../auth/api_client.dart';
+import '../contracts/contract_service.dart';
 import '../models/resident_news.dart';
 import '../profile/profile_service.dart';
 import 'resident_service.dart';
@@ -31,10 +32,13 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
   bool _loading = true;
 
   static const Color _primaryColor = Color(0xFF26A69A);
+  final ApiClient _api = ApiClient();
+  late final ContractService _contractService;
 
   @override
   void initState() {
     super.initState();
+    _contractService = ContractService(_api);
     if (widget.residentNews != null) {
       _residentNews = widget.residentNews;
       _loading = false;
@@ -106,14 +110,28 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
 
   Future<String?> _getResidentId() async {
     try {
-      final profile = await ProfileService(ApiClient().dio).getProfile();
-      if (profile['residentId'] != null) {
-        return profile['residentId'] as String;
+      final profile = await ProfileService(_api.dio).getProfile();
+      final profileResident = profile['residentId']?.toString();
+      if (profileResident != null && profileResident.isNotEmpty) {
+        return profileResident;
       }
-      // Fallback: call /api/residents/me/uuid
-      final res = await ApiClient().dio.get('/residents/me/uuid');
-      if (res.data['success'] == true && res.data['residentId'] != null) {
-        return res.data['residentId'] as String;
+
+      final units = await _contractService.getMyUnits();
+      for (final unit in units) {
+        final candidate = unit.primaryResidentId?.toString();
+        if (candidate != null && candidate.isNotEmpty) {
+          return candidate;
+        }
+      }
+
+      if (units.isNotEmpty) {
+        final fallback = units.firstWhere(
+          (unit) => (unit.primaryResidentId ?? '').isNotEmpty,
+          orElse: () => units.first,
+        );
+        if ((fallback.primaryResidentId ?? '').isNotEmpty) {
+          return fallback.primaryResidentId;
+        }
       }
       return null;
     } catch (e) {
@@ -350,7 +368,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
           ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
             child: CachedNetworkImage(
-              imageUrl: imageUrl ?? '',
+              imageUrl: imageUrl,
               fit: BoxFit.cover,
               height: 200,
               placeholder: (context, url) => Container(

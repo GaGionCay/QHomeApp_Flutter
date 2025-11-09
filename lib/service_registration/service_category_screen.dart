@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 
 import '../auth/asset_maintenance_api_client.dart';
+import '../feedback/feedback_screen.dart';
 import '../register/register_elevator_card_screen.dart';
 import '../register/register_resident_card_screen.dart';
 import '../register/register_vehicle_screen.dart';
+import '../theme/app_colors.dart';
 import 'cleaning_request_screen.dart';
 import 'repair_request_screen.dart';
 import 'service_booking_service.dart';
@@ -49,6 +51,14 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
       icon: Icons.build_circle_outlined,
       color: const Color(0xFF0097A7),
       builder: (_) => const RepairRequestScreen(),
+    ),
+    _QuickAction(
+      title: 'Phản ánh cư dân',
+      description:
+          'Góp ý, khiếu nại hoặc yêu cầu hỗ trợ trực tiếp tới ban quản lý.',
+      icon: Icons.support_agent_outlined,
+      color: const Color(0xFFFFB74D),
+      builder: (_) => const FeedbackScreen(),
     ),
     _QuickAction(
       title: 'Đăng ký thẻ cư dân',
@@ -102,69 +112,88 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F9),
-      appBar: AppBar(
-        title: const Text(
-          'Đăng ký dịch vụ',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: const Color(0xFF26A69A),
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadCategories,
-        child: SingleChildScrollView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 24),
-              _buildHeroCard(context),
-              const SizedBox(height: 24),
-              _buildDynamicCategories(),
-              const SizedBox(height: 24),
-              _buildStaticCards(context),
-              const SizedBox(height: 32),
-              Center(
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.miscellaneous_services_outlined,
-                      color: Colors.grey.shade400,
-                      size: 64,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Các dịch vụ khác sẽ được cập nhật\ntrong các phiên bản tiếp theo.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 15,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 32),
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    final backgroundGradient = isDark
+        ? const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF0B1728),
+              Color(0xFF0F213A),
+              Color(0xFF071117),
             ],
+          )
+        : const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFE7F3FF),
+              Color(0xFFF5FAFF),
+              Colors.white,
+            ],
+          );
+
+    return Scaffold(
+      backgroundColor: colorScheme.surface,
+      appBar: AppBar(
+        title: const Text('Đăng ký dịch vụ'),
+      ),
+      body: DecoratedBox(
+        decoration: BoxDecoration(gradient: backgroundGradient),
+        child: RefreshIndicator(
+          color: colorScheme.primary,
+          onRefresh: _loadCategories,
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 28, 20, 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildHeroCard(context),
+                const SizedBox(height: 28),
+                _buildDynamicCategories(context),
+                const SizedBox(height: 28),
+                _buildStaticCards(context),
+                const SizedBox(height: 36),
+                Center(
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.miscellaneous_services_outlined,
+                        color: colorScheme.onSurface.withOpacity(0.25),
+                        size: 64,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Các dịch vụ khác sẽ được cập nhật\ntrong các phiên bản tiếp theo.',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurface.withOpacity(0.58),
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildDynamicCategories() {
+  Widget _buildDynamicCategories(BuildContext context) {
     if (_loadingCategories) {
-      return _buildCategorySkeleton();
+      return _buildCategorySkeleton(context);
     }
     if (_categoryError != null) {
+      final theme = Theme.of(context);
       return Card(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Padding(
@@ -172,14 +201,18 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Tiện ích nội khu',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
                 _categoryError!,
-                style: const TextStyle(color: Colors.red),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
               ),
               const SizedBox(height: 8),
               ElevatedButton(
@@ -264,8 +297,8 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
         Text(
           'Dịch vụ nhanh',
           style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+            fontWeight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: 12),
         ..._quickActions.map(
@@ -280,22 +313,24 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
 
   Widget _buildHeroCard(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final gradient = isDark
+        ? const LinearGradient(
+            colors: [Color(0xFF1D3A66), Color(0xFF0E2742)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          )
+        : AppColors.primaryGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          );
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF26A69A), Color(0xFF00897B)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        gradient: gradient,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF26A69A).withOpacity(0.25),
-            blurRadius: 22,
-            offset: const Offset(0, 12),
-          ),
-        ],
+        boxShadow: AppColors.elevatedShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -303,16 +338,16 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
           Text(
             'Tiện ích cư dân',
             style: theme.textTheme.headlineSmall?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
             'Đặt tiện ích thuận tiện, theo dõi trạng thái dịch vụ và thanh toán trực tuyến ngay trong ứng dụng.',
             style: theme.textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withOpacity(0.9),
-                ),
+              color: Colors.white.withOpacity(0.9),
+            ),
           ),
           const SizedBox(height: 16),
           Wrap(
@@ -329,10 +364,13 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
     );
   }
 
-  Widget _buildCategorySkeleton() {
+  Widget _buildCategorySkeleton(BuildContext context) {
+    final theme = Theme.of(context);
+    final base = theme.colorScheme.surfaceVariant.withOpacity(0.4);
+    final highlight = theme.colorScheme.surface.withOpacity(0.7);
     return Shimmer.fromColors(
-      baseColor: Colors.grey.shade300,
-      highlightColor: Colors.grey.shade100,
+      baseColor: base,
+      highlightColor: highlight,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final width = constraints.maxWidth;
@@ -354,7 +392,7 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
                 width: cardWidth,
                 height: 150,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: theme.cardColor,
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
@@ -373,12 +411,14 @@ class _HeroChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.16),
+        color: Colors.white.withOpacity(isDark ? 0.14 : 0.18),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white24),
+        border: Border.all(color: Colors.white.withOpacity(0.24)),
       ),
       child: Text(
         label,
@@ -406,65 +446,84 @@ class _AmenityCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     return Material(
-      color: Colors.white,
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(18),
-      elevation: 2,
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
         onTap: onPressed,
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                height: 46,
-                width: 46,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE0F2F1),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.event_available,
-                  color: Color(0xFF00695C),
-                ),
+          padding: const EdgeInsets.all(18),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: isDark
+                  ? AppColors.darkGlassLayerGradient()
+                  : AppColors.glassLayerGradient(),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: colorScheme.outline.withOpacity(0.08),
               ),
-              const SizedBox(height: 14),
-              Text(
-                title,
-                style: theme.textTheme.titleMedium?.copyWith(
+              boxShadow: AppColors.subtleShadow,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    height: 46,
+                    width: 46,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primaryContainer.withOpacity(
+                        isDark ? 0.24 : 0.32,
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      Icons.event_available,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    title,
+                    style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
-              ),
-              if (description != null && description!.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(
-                  description!,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.grey.shade600,
                   ),
-                ),
-              ],
-              const SizedBox(height: 14),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    'Đặt ngay',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: const Color(0xFF00695C),
-                      fontWeight: FontWeight.w600,
+                  if (description != null && description!.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      description!,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurface.withOpacity(0.64),
+                        height: 1.38,
+                      ),
                     ),
+                  ],
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Text(
+                        'Đặt ngay',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Icon(Icons.arrow_forward_rounded,
+                          color: colorScheme.primary),
+                    ],
                   ),
-                  const SizedBox(width: 6),
-                  const Icon(Icons.arrow_forward_rounded,
-                      color: Color(0xFF00695C)),
                 ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -480,77 +539,84 @@ class _QuickActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
         borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: data.builder),
+          );
+        },
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: isDark
+                ? AppColors.darkGlassLayerGradient()
+                : AppColors.glassLayerGradient(),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: colorScheme.outline.withOpacity(0.08),
+            ),
+            boxShadow: AppColors.subtleShadow,
           ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  height: 52,
-                  width: 52,
-                  decoration: BoxDecoration(
-                    color: data.color.withOpacity(0.18),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Icon(data.icon, color: data.color, size: 26),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Text(
-                    data.title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
+                Row(
+                  children: [
+                    Container(
+                      height: 52,
+                      width: 52,
+                      decoration: BoxDecoration(
+                        color: data.color.withOpacity(isDark ? 0.22 : 0.18),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Icon(data.icon, color: data.color, size: 26),
                     ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        data.title,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  data.description,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurface.withOpacity(0.7),
+                    height: 1.45,
                   ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      'Thao tác ngay',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: data.color,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(Icons.arrow_forward_rounded, color: data.color),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              data.description,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: Colors.grey.shade700,
-                height: 1.45,
-              ),
-            ),
-            const SizedBox(height: 18),
-            Align(
-              alignment: Alignment.centerRight,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: data.color,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                ),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: data.builder),
-                  );
-                },
-                icon: const Icon(Icons.arrow_forward_rounded),
-                label: const Text('Thao tác ngay'),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -572,4 +638,3 @@ class _QuickAction {
   final Color color;
   final WidgetBuilder builder;
 }
-

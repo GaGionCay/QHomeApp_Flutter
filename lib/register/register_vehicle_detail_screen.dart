@@ -195,7 +195,7 @@ class _RegisterServiceDetailScreenState
   String _makeFullImageUrl(String? imageUrl) {
     if (imageUrl == null || imageUrl.isEmpty) return '';
     if (imageUrl.startsWith('http')) return imageUrl;
-    final base = 'http://${ApiClient.HOST_IP}:8083';
+    const base = 'http://${ApiClient.HOST_IP}:8083';
     return base + imageUrl;
   }
 

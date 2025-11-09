@@ -491,7 +491,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   String _makeFullImageUrl(String? url) {
     if (url == null || url.isEmpty) return '';
     if (url.startsWith('http')) return url;
-    final base = 'http://${ApiClient.HOST_IP}:8083';
+    const base = 'http://${ApiClient.HOST_IP}:8083';
     return base + url;
   }
 

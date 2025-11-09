@@ -8,7 +8,7 @@ class IamApiClient {
   static const int TIMEOUT_SECONDS = 10;
 
   static const String HOST_IP = kIsWeb ? LOCALHOST_IP : LAN_HOST_IP;
-  static final String BASE_URL = 'http://$HOST_IP:$IAM_API_PORT/api';
+  static const String BASE_URL = 'http://$HOST_IP:$IAM_API_PORT/api';
 
   static Dio createPublicDio() {
     final dio = Dio(BaseOptions(

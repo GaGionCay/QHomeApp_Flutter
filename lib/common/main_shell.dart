@@ -1,9 +1,13 @@
 import 'dart:io';
+import 'dart:ui';
+
 import 'package:animations/animations.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
+
 import '../core/event_bus.dart';
 import '../home/home_screen.dart';
 import '../news/news_detail_screen.dart';
@@ -216,6 +220,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
+      extendBody: true,
       backgroundColor: theme.colorScheme.surface,
       body: PageTransitionSwitcher(
         duration: const Duration(milliseconds: 320),
@@ -238,38 +243,57 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
       bottomNavigationBar: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: NavigationBar(
-              height: 72,
-              indicatorColor: AppColors.primaryEmerald.withOpacity(0.12),
-              backgroundColor: theme.colorScheme.surface,
-              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-              selectedIndex: _selectedIndex,
-              onDestinationSelected: _onItemTapped,
-              destinations: const [
-                NavigationDestination(
-                  icon: Icon(Icons.home_outlined),
-                  selectedIcon: Icon(Icons.home_rounded),
-                  label: 'Trang chủ',
+            borderRadius: BorderRadius.circular(26),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: theme.brightness == Brightness.dark
+                      ? AppColors.darkGlassLayerGradient()
+                      : AppColors.glassLayerGradient(),
+                  border: Border.all(
+                    color: theme.colorScheme.outline.withOpacity(0.12),
+                  ),
+                  borderRadius: BorderRadius.circular(26),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x14041A2E),
+                      blurRadius: 24,
+                      offset: Offset(0, 16),
+                    ),
+                  ],
                 ),
-                NavigationDestination(
-                  icon: Icon(Icons.qr_code_scanner_outlined),
-                  selectedIcon: Icon(Icons.app_registration_rounded),
-                  label: 'Dịch vụ',
+                child: NavigationBar(
+                  labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+                  selectedIndex: _selectedIndex,
+                  onDestinationSelected: _onItemTapped,
+                  surfaceTintColor: Colors.transparent,
+                  backgroundColor: Colors.transparent,
+                  destinations: const [
+                    NavigationDestination(
+                      icon: Icon(CupertinoIcons.house),
+                      selectedIcon: Icon(CupertinoIcons.house_fill),
+                      label: 'Trang chủ',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(CupertinoIcons.qrcode),
+                      selectedIcon: Icon(CupertinoIcons.qrcode_viewfinder),
+                      label: 'Dịch vụ',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(CupertinoIcons.square_grid_2x2),
+                      selectedIcon: Icon(CupertinoIcons.square_grid_2x2_fill),
+                      label: 'Tiện ích',
+                    ),
+                  ],
                 ),
-                NavigationDestination(
-                  icon: Icon(Icons.grid_view_outlined),
-                  selectedIcon: Icon(Icons.grid_view_rounded),
-                  label: 'Tiện ích',
-                ),
-              ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
-
 }

@@ -1,4 +1,10 @@
+import 'dart:convert';
+import 'dart:ui';
+
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
 import '../auth/api_client.dart';
 import '../core/event_bus.dart';
 import '../news/news_screen.dart';
@@ -15,10 +21,12 @@ import 'package:app_links/app_links.dart';
 import 'dart:async';
 import '../residents/household_member_registration_screen.dart';
 import '../residents/account_request_status_screen.dart';
-import '../theme/app_colors.dart';
 import '../auth/asset_maintenance_api_client.dart';
 import '../service_registration/service_booking_service.dart';
 import '../service_registration/unpaid_service_bookings_screen.dart';
+import '../feedback/feedback_screen.dart';
+import '../theme/app_colors.dart';
+import '../theme/theme_controller.dart';
 
 class HomeScreen extends StatefulWidget {
   final void Function(int)? onNavigateToTab;
@@ -43,6 +51,12 @@ class _HomeScreenState extends State<HomeScreen> {
   List<UnitInfo> _units = [];
   String? _selectedUnitId;
   int _unpaidBookingCount = 0;
+  bool _isWeatherLoading = true;
+  _WeatherSnapshot? _weatherSnapshot;
+  String? _weatherError;
+  static _WeatherSnapshot? _cachedWeatherSnapshot;
+  static DateTime? _cachedWeatherFetchedAt;
+  static const Duration _weatherRefreshInterval = Duration(minutes: 30);
 
   static const _selectedUnitPrefsKey = 'selected_unit_id';
 
@@ -58,12 +72,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _appLinks = AppLinks();
     _initialize();
     _listenForPaymentResult();
+    _loadWeatherSnapshot();
 
     _eventBus.on('news_update', (_) async {
       debugPrint('🔔 HomeScreen nhận event news_update -> reload dữ liệu...');
       await _refreshAll();
     });
-
   }
 
   Future<void> _initialize() async {
@@ -115,7 +129,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadAllData() async {
     setState(() => _loading = true);
-    
+
     // Load profile (required)
     try {
       final profile = await ProfileService(_apiClient.dio).getProfile();
@@ -128,7 +142,7 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint('⚠️ Load profile error: $e');
       // Continue even if profile fails
     }
-    
+
     // Load electricity data (optional)
     try {
       final invoiceService = InvoiceService(_apiClient);
@@ -149,7 +163,7 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     }
-    
+
     await _loadUnpaidServices();
 
     if (mounted) {
@@ -179,6 +193,129 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _loadWeatherSnapshot({bool force = false}) async {
+    if (!force &&
+        _cachedWeatherSnapshot != null &&
+        _cachedWeatherFetchedAt != null &&
+        DateTime.now().difference(_cachedWeatherFetchedAt!) <
+            _weatherRefreshInterval) {
+      if (mounted) {
+        setState(() {
+          _weatherSnapshot = _cachedWeatherSnapshot;
+          _weatherError = null;
+          _isWeatherLoading = false;
+        });
+      }
+      return;
+    }
+
+    setState(() {
+      _isWeatherLoading = true;
+      _weatherError = null;
+    });
+
+    try {
+      final locationResponse =
+          await http.get(Uri.parse('https://ipapi.co/json/')).timeout(
+                const Duration(seconds: 6),
+              );
+
+      if (locationResponse.statusCode == 429) {
+        throw _WeatherRateLimitException(source: 'ipapi.co');
+      }
+
+      if (locationResponse.statusCode != 200) {
+        throw Exception(
+            'Location lookup failed with status ${locationResponse.statusCode}');
+      }
+
+      final locationJson =
+          jsonDecode(locationResponse.body) as Map<String, dynamic>;
+      final latitude = (locationJson['latitude'] as num?)?.toDouble();
+      final longitude = (locationJson['longitude'] as num?)?.toDouble();
+      final city = (locationJson['city'] as String?) ?? 'Khu dân cư của bạn';
+
+      if (latitude == null || longitude == null) {
+        throw Exception('Missing geolocation data');
+      }
+
+      final weatherUri = Uri.https(
+        'api.open-meteo.com',
+        '/v1/forecast',
+        <String, String>{
+          'latitude': latitude.toString(),
+          'longitude': longitude.toString(),
+          'current_weather': 'true',
+          'hourly': 'relativehumidity_2m',
+          'timezone': 'auto',
+        },
+      );
+
+      final weatherResponse =
+          await http.get(weatherUri).timeout(const Duration(seconds: 6));
+
+      if (weatherResponse.statusCode == 429) {
+        throw _WeatherRateLimitException(source: 'open-meteo.com');
+      }
+
+      if (weatherResponse.statusCode != 200) {
+        throw Exception(
+            'Weather fetch failed with status ${weatherResponse.statusCode}');
+      }
+
+      final weatherJson =
+          jsonDecode(weatherResponse.body) as Map<String, dynamic>;
+      final current = weatherJson['current_weather'] as Map<String, dynamic>?;
+      if (current == null) throw Exception('Missing current weather payload');
+
+      final temperature = (current['temperature'] as num?)?.toDouble();
+      final windSpeed = (current['windspeed'] as num?)?.toDouble();
+      final weatherCode = current['weathercode'] as int? ?? 0;
+      final humiditySeries = (weatherJson['hourly']
+          as Map<String, dynamic>?)?['relativehumidity_2m'] as List<dynamic>?;
+      final humidity = (humiditySeries != null && humiditySeries.isNotEmpty)
+          ? (humiditySeries.first as num?)?.toDouble()
+          : null;
+
+      final descriptor = _describeWeatherCode(weatherCode);
+      final snapshot = _WeatherSnapshot(
+        city: city,
+        temperatureCelsius: temperature ?? 0,
+        weatherLabel: descriptor.label,
+        weatherIcon: descriptor.icon,
+        windSpeed: windSpeed,
+        humidity: humidity,
+        fetchedAt: DateTime.now(),
+      );
+
+      _cachedWeatherSnapshot = snapshot;
+      _cachedWeatherFetchedAt = snapshot.fetchedAt;
+
+      if (mounted) {
+        setState(() {
+          _weatherSnapshot = snapshot;
+          _isWeatherLoading = false;
+        });
+      }
+    } on _WeatherRateLimitException {
+      if (mounted) {
+        setState(() {
+          _weatherError =
+              'Máy chủ thời tiết đang tạm giới hạn. Thử lại sau ít phút.';
+          _isWeatherLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ Không thể tải thời tiết: $e');
+      if (mounted) {
+        setState(() {
+          _weatherError = 'Không thể cập nhật thời tiết';
+          _isWeatherLoading = false;
+        });
+      }
+    }
+  }
+
   Future<void> _onUnitChanged(String? unitId) async {
     if (unitId == null || unitId == _selectedUnitId) return;
 
@@ -201,7 +338,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // Removed: int get unreadCount => _notifications.where((n) => !n.isRead).length; - now using ResidentNews from admin API
-  int get unreadCount => 0; // Placeholder - notifications now come from admin API
+  int get unreadCount =>
+      0; // Placeholder - notifications now come from admin API
 
   Widget _buildUnpaidSummaryCard(BuildContext context) {
     if (_unpaidBookingCount <= 0) return const SizedBox.shrink();
@@ -223,7 +361,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 borderRadius: BorderRadius.circular(16),
               ),
               child: const Icon(
-                Icons.pending_actions_outlined,
+                CupertinoIcons.timer,
                 color: AppColors.warning,
                 size: 26,
               ),
@@ -243,14 +381,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text(
                     'Bạn có $_unpaidBookingCount dịch vụ cần xử lý.',
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: Colors.black54,
+                      color: theme.colorScheme.onSurface.withOpacity(0.65),
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 12),
-            const Icon(Icons.arrow_forward_ios_rounded, size: 18),
+            Icon(
+              CupertinoIcons.right_chevron,
+              size: 18,
+              color: theme.colorScheme.onSurface.withOpacity(0.5),
+            ),
           ],
         ),
       ),
@@ -270,7 +412,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _paymentSub = _appLinks.uriLinkStream.listen((Uri uri) {
       if (uri.scheme == 'qhomeapp' && uri.host == 'service-booking-result') {
         final status = uri.queryParameters['status'];
-        
+
         if (status == 'success') {
           _refreshAll();
           if (mounted) {
@@ -296,65 +438,116 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final media = MediaQuery.of(context);
+    final themeController = context.watch<ThemeController>();
 
-    final name = _profile?['fullName'] ??
-        _profile?['username'] ??
-        'Cư dân';
+    final name = _profile?['fullName'] ?? _profile?['username'] ?? 'Cư dân';
     final avatarUrl = _profile?['avatarUrl'] as String?;
 
+    final backgroundGradient = theme.brightness == Brightness.dark
+        ? const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF020A16),
+              Color(0xFF0D1E36),
+              Color(0xFF041018),
+            ],
+          )
+        : const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFEAF5FF),
+              Color(0xFFF8FBFF),
+              Colors.white,
+            ],
+          );
+
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      body: SafeArea(
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 280),
-          child: _loading
-              ? const _HomeLoadingState()
-              : RefreshIndicator(
-                  color: theme.colorScheme.primary,
-                  onRefresh: _refreshAll,
-                  child: CustomScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    slivers: [
-                      SliverPadding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: media.size.width > 900 ? media.size.width * 0.18 : 24,
-                          vertical: 24,
-                        ),
-                        sliver: SliverList(
-                          delegate: SliverChildListDelegate.fixed(
-                            [
-                              _buildGreetingSection(
-                                context: context,
-                                name: name,
-                                avatarUrl: avatarUrl,
-                              ),
-                              const SizedBox(height: 24),
-                              _buildWeatherAndAlerts(context),
-                              const SizedBox(height: 24),
-                              _buildServiceDeck(context),
-                              const SizedBox(height: 24),
-                              if (_unpaidBookingCount > 0)
-                                _buildUnpaidSummaryCard(context),
-                              if (_unpaidBookingCount > 0)
-                                const SizedBox(height: 24),
-                              if (_electricityMonthlyData.isNotEmpty)
-                                _buildElectricityChartSection(media.size),
-                              if (_electricityMonthlyData.isNotEmpty)
-                                const SizedBox(height: 24),
-                              if (_ownerUnits.isNotEmpty)
-                                _buildHouseholdManagementCard(media.size),
-                              if (_ownerUnits.isNotEmpty)
-                                const SizedBox(height: 24),
-                              _buildCompactFeatureRow(media.size),
-                              const SizedBox(height: 48),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+      extendBody: true,
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeOutCubic,
+              decoration: BoxDecoration(
+                gradient: backgroundGradient,
+              ),
+            ),
+          ),
+          Positioned(
+            top: -media.size.width * 0.25,
+            right: -media.size.width * 0.1,
+            child: IgnorePointer(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 600),
+                width: media.size.width * 0.7,
+                height: media.size.width * 0.7,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: theme.colorScheme.primary.withOpacity(0.12),
                 ),
-        ),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 280),
+              child: _loading
+                  ? const _HomeLoadingState()
+                  : RefreshIndicator(
+                      color: theme.colorScheme.primary,
+                      onRefresh: _refreshAll,
+                      child: CustomScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        slivers: [
+                          SliverPadding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: media.size.width > 900
+                                  ? media.size.width * 0.18
+                                  : 24,
+                              vertical: 24,
+                            ),
+                            sliver: SliverList(
+                              delegate: SliverChildListDelegate.fixed(
+                                [
+                                  _buildGreetingSection(
+                                    context: context,
+                                    name: name,
+                                    avatarUrl: avatarUrl,
+                                    themeController: themeController,
+                                  ),
+                                  const SizedBox(height: 24),
+                                  _buildWeatherAndAlerts(context),
+                                  const SizedBox(height: 24),
+                                  _buildServiceDeck(context),
+                                  const SizedBox(height: 24),
+                                  if (_unpaidBookingCount > 0)
+                                    _buildUnpaidSummaryCard(context),
+                                  if (_unpaidBookingCount > 0)
+                                    const SizedBox(height: 24),
+                                  if (_electricityMonthlyData.isNotEmpty)
+                                    _buildElectricityChartSection(media.size),
+                                  if (_electricityMonthlyData.isNotEmpty)
+                                    const SizedBox(height: 24),
+                                  if (_ownerUnits.isNotEmpty)
+                                    _buildHouseholdManagementCard(media.size),
+                                  if (_ownerUnits.isNotEmpty)
+                                    const SizedBox(height: 24),
+                                  _buildCompactFeatureRow(media.size),
+                                  const SizedBox(height: 48),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -363,75 +556,134 @@ class _HomeScreenState extends State<HomeScreen> {
     required BuildContext context,
     required String name,
     String? avatarUrl,
+    required ThemeController themeController,
   }) {
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
     final greet = _greetingMessage();
     final now = DateTime.now();
+    final isDark = themeController.isDark;
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        gradient: AppColors.primaryGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        borderRadius: BorderRadius.circular(32),
+        gradient: AppColors.heroBackdropGradient(),
         boxShadow: AppColors.elevatedShadow,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 28),
-      child: Row(
+      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 30),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            height: 72,
-            width: 72,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withValues(alpha: 0.45), width: 2),
-            ),
-            child: ClipOval(
-              child: avatarUrl != null && avatarUrl.isNotEmpty
-                  ? Image.network(
-                      avatarUrl,
-                      fit: BoxFit.cover,
-                    )
-                  : Image.asset(
-                      'assets/images/avatar_placeholder.png',
-                      fit: BoxFit.cover,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                height: 78,
+                width: 78,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                      color: Colors.white.withOpacity(0.35), width: 2.4),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x22102136),
+                      blurRadius: 20,
+                      offset: Offset(0, 12),
                     ),
-            ),
-          ),
-          const SizedBox(width: 22),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  greet,
-                  style: textTheme.titleLarge?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.9),
-                    letterSpacing: 0.2,
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  'Chào buổi ${_localizedPeriod(now)}, $name!',
-                  style: textTheme.displaySmall?.copyWith(
-                    color: Colors.white,
-                    fontSize: 26,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.1,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                child: ClipOval(
+                  child: avatarUrl != null && avatarUrl.isNotEmpty
+                      ? Image.network(
+                          avatarUrl,
+                          fit: BoxFit.cover,
+                        )
+                      : Image.asset(
+                          'assets/images/avatar_placeholder.png',
+                          fit: BoxFit.cover,
+                        ),
                 ),
-                const SizedBox(height: 20),
-                _buildUnitSelectorWidget(MediaQuery.of(context).size),
-              ],
-            ),
+              ),
+              const SizedBox(width: 22),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      greet,
+                      style: textTheme.titleMedium?.copyWith(
+                        color: Colors.white.withOpacity(0.8),
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Chào buổi ${_localizedPeriod(now)}, $name!',
+                      style: textTheme.displaySmall?.copyWith(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.1,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              _ThemeModeToggleChip(
+                isDark: isDark,
+                onToggle: themeController.toggleThemeMode,
+              ),
+            ],
           ),
+          const SizedBox(height: 22),
+          _buildUnitSelectorWidget(MediaQuery.of(context).size,
+              isDarkMode: isDark),
         ],
       ),
     );
+  }
+
+  _WeatherDescriptor _describeWeatherCode(int code) {
+    if (code == 0) {
+      return const _WeatherDescriptor(
+          'Trời quang', CupertinoIcons.sun_max_fill);
+    } else if (<int>{1, 2}.contains(code)) {
+      return const _WeatherDescriptor('Ít mây', CupertinoIcons.cloud_sun_fill);
+    } else if (code == 3) {
+      return const _WeatherDescriptor('Nhiều mây', CupertinoIcons.cloud_fill);
+    } else if (<int>{45, 48}.contains(code)) {
+      return const _WeatherDescriptor(
+          'Sương mù', CupertinoIcons.cloud_fog_fill);
+    } else if (<int>{51, 53, 55, 56, 57}.contains(code)) {
+      return const _WeatherDescriptor(
+          'Mưa phùn nhẹ', CupertinoIcons.cloud_drizzle_fill);
+    } else if (<int>{61, 63, 65}.contains(code)) {
+      return const _WeatherDescriptor(
+          'Mưa rào', CupertinoIcons.cloud_rain_fill);
+    } else if (<int>{66, 67, 80, 81, 82}.contains(code)) {
+      return const _WeatherDescriptor(
+          'Mưa lớn', CupertinoIcons.cloud_heavyrain_fill);
+    } else if (<int>{71, 73, 75, 77, 85, 86}.contains(code)) {
+      return const _WeatherDescriptor('Tuyết', CupertinoIcons.cloud_snow_fill);
+    } else if (<int>{95, 96, 99}.contains(code)) {
+      return const _WeatherDescriptor(
+          'Dông', CupertinoIcons.cloud_bolt_rain_fill);
+    }
+    return const _WeatherDescriptor(
+        'Thời tiết ổn định', CupertinoIcons.cloud_fill);
+  }
+
+  String _formatTime(DateTime time) {
+    final diff = DateTime.now().difference(time);
+    if (diff.inMinutes < 1) return 'vừa xong';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} phút trước';
+    if (diff.inHours < 24) return '${diff.inHours} giờ trước';
+    return '${diff.inDays} ngày trước';
   }
 
   Widget _buildWeatherAndAlerts(BuildContext context) {
@@ -443,45 +695,128 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 520;
 
-        Widget buildWeatherCard() => _HomeGlassCard(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  Container(
-                    height: 56,
-                    width: 56,
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryBlue.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: const Icon(
-                      Icons.wb_sunny_outlined,
-                      color: AppColors.primaryBlue,
-                      size: 28,
+        Widget buildWeatherCard() {
+          final snapshot = _weatherSnapshot;
+          return _HomeGlassCard(
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 320),
+                  curve: Curves.easeOutCubic,
+                  height: 58,
+                  width: 58,
+                  decoration: BoxDecoration(
+                    gradient: AppColors.primaryGradient(),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: AppColors.subtleShadow,
+                  ),
+                  child: Icon(
+                    snapshot?.weatherIcon ?? CupertinoIcons.sparkles,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 18),
+                Expanded(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 320),
+                    child: _isWeatherLoading
+                        ? Row(
+                            key: const ValueKey('weather-loading'),
+                            children: [
+                              SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    theme.colorScheme.primary,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                'Đang cập nhật khí hậu...',
+                                style: textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurface
+                                      .withOpacity(0.7),
+                                ),
+                              ),
+                            ],
+                          )
+                        : (_weatherError != null || snapshot == null)
+                            ? Text(
+                                _weatherError ?? 'Không lấy được thời tiết',
+                                key: const ValueKey('weather-error'),
+                                style: textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurface
+                                      .withOpacity(0.7),
+                                ),
+                              )
+                            : Column(
+                                key: ValueKey(snapshot.city),
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    snapshot.city,
+                                    style: textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${snapshot.temperatureCelsius.toStringAsFixed(1)}°C • ${snapshot.weatherLabel}',
+                                    style: textTheme.bodyLarge?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                  ),
+                                  if (snapshot.windSpeed != null ||
+                                      snapshot.humidity != null)
+                                    Text(
+                                      [
+                                        if (snapshot.windSpeed != null)
+                                          'Gió ${snapshot.windSpeed?.toStringAsFixed(0)} km/h',
+                                        if (snapshot.humidity != null)
+                                          'Độ ẩm ${snapshot.humidity?.toStringAsFixed(0)}%',
+                                      ].join(' · '),
+                                      style: textTheme.bodySmall?.copyWith(
+                                        color: theme.colorScheme.onSurface
+                                            .withOpacity(0.6),
+                                      ),
+                                    ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Cập nhật ${_formatTime(snapshot.fetchedAt)}',
+                                    style: textTheme.labelSmall?.copyWith(
+                                      color: theme.colorScheme.onSurface
+                                          .withOpacity(0.45),
+                                      letterSpacing: 0.2,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Tooltip(
+                  message: 'Làm mới',
+                  child: IconButton(
+                    onPressed: _isWeatherLoading
+                        ? null
+                        : () => _loadWeatherSnapshot(force: true),
+                    icon: Icon(
+                      CupertinoIcons.refresh_bold,
+                      color: theme.colorScheme.primary,
                     ),
                   ),
-                  const SizedBox(width: 18),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Thời tiết hôm nay',
-                          style: textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Thông tin thời tiết đang cập nhật. Vui lòng kiểm tra lại sau.',
-                          style: textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
+                ),
+              ],
+            ),
+          );
+        }
 
         Widget buildAlertsCard() => _HomeGlassCard(
               padding: const EdgeInsets.all(20),
@@ -498,7 +833,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: const Icon(
-                          Icons.notifications_active_outlined,
+                          CupertinoIcons.bell_fill,
                           color: AppColors.warning,
                         ),
                       ),
@@ -652,9 +987,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildUnitSelectorWidget(Size size) {
+  Widget _buildUnitSelectorWidget(Size size, {required bool isDarkMode}) {
     if (_units.isEmpty) {
-      debugPrint('🏠 [HomeScreen] Không có căn hộ nào để chọn');
       return Text(
         'Bạn chưa được gán vào căn hộ nào',
         style: TextStyle(
@@ -666,51 +1000,74 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final currentUnitId = _selectedUnitId ?? _units.first.id;
-    debugPrint('🏠 [HomeScreen] Hiển thị dropdown với ${_units.length} căn hộ, đang chọn $currentUnitId');
 
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: size.width * 0.035,
-        vertical: size.height * 0.008,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white30, width: 1),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: currentUnitId,
-          dropdownColor: Colors.white,
-          icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
-          style: TextStyle(
-            color: Colors.black87,
-            fontSize: size.width * 0.038,
-            fontWeight: FontWeight.w600,
+    final backgroundGradient = isDarkMode
+        ? AppColors.darkGlassLayerGradient()
+        : AppColors.glassLayerGradient();
+    final outlineColor = isDarkMode
+        ? Colors.white.withOpacity(0.18)
+        : Colors.white.withOpacity(0.32);
+    final textColor = isDarkMode ? Colors.white : AppColors.textPrimary;
+    final dropdownColor =
+        isDarkMode ? AppColors.navySurfaceElevated : Colors.white;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: size.width * 0.035,
+            vertical: size.height * 0.008,
           ),
-          selectedItemBuilder: (context) {
-            return _units.map((unit) {
-              return Text(
-                unit.displayName,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: size.width * 0.038,
-                ),
-              );
-            }).toList();
-          },
-          items: _units.map((unit) {
-            return DropdownMenuItem<String>(
-              value: unit.id,
-              child: Text(unit.displayName),
-            );
-          }).toList(),
-          onChanged: (value) {
-            debugPrint('🏠 [HomeScreen] Người dùng chọn căn hộ $value');
-            _onUnitChanged(value);
-          },
+          decoration: BoxDecoration(
+            gradient: backgroundGradient,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: outlineColor, width: 1.2),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x22102136),
+                blurRadius: 16,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: currentUnitId,
+              dropdownColor: dropdownColor,
+              icon: Icon(
+                CupertinoIcons.chevron_down,
+                color: textColor,
+                size: 18,
+              ),
+              style: TextStyle(
+                color: textColor,
+                fontSize: size.width * 0.038,
+                fontWeight: FontWeight.w600,
+              ),
+              selectedItemBuilder: (context) {
+                return _units.map((unit) {
+                  return Text(
+                    unit.displayName,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: textColor,
+                      fontWeight: FontWeight.w700,
+                      fontSize: size.width * 0.038,
+                    ),
+                  );
+                }).toList();
+              },
+              items: _units.map((unit) {
+                return DropdownMenuItem<String>(
+                  value: unit.id,
+                  child: Text(unit.displayName),
+                );
+              }).toList(),
+              onChanged: _onUnitChanged,
+            ),
+          ),
         ),
       ),
     );
@@ -777,12 +1134,12 @@ class _HomeScreenState extends State<HomeScreen> {
             style: theme.textTheme.titleMedium,
           ),
           const SizedBox(height: 6),
-              Text(
-                '$residentName là chủ hộ của ${ownerUnits.length} căn hộ.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
-              ),
+          Text(
+            '$residentName là chủ hộ của ${ownerUnits.length} căn hộ.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
           const SizedBox(height: 16),
           _HomeActionTile(
             icon: Icons.group_add_outlined,
@@ -966,7 +1323,14 @@ class _HomeScreenState extends State<HomeScreen> {
         subtitle: 'Gửi yêu cầu hỗ trợ tới ban quản lý',
         icon: Icons.support_agent_outlined,
         accent: AppColors.warning,
-        onTap: () => widget.onNavigateToTab?.call(1),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const FeedbackScreen(),
+            ),
+          );
+        },
       ),
       _ServiceCardData(
         title: 'Thanh toán',
@@ -1010,6 +1374,64 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+class _ThemeModeToggleChip extends StatelessWidget {
+  const _ThemeModeToggleChip({
+    required this.isDark,
+    required this.onToggle,
+  });
+
+  final bool isDark;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final label = isDark ? 'Dark' : 'Light';
+    final icon =
+        isDark ? CupertinoIcons.moon_stars_fill : CupertinoIcons.sun_max_fill;
+
+    return Tooltip(
+      message: 'Chuyển chế độ sáng/tối',
+      child: InkWell(
+        onTap: onToggle,
+        borderRadius: BorderRadius.circular(18),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.18),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withOpacity(0.32)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x2209141F),
+                blurRadius: 12,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: Colors.white),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _HomeGlassCard extends StatelessWidget {
   const _HomeGlassCard({
     required this.child,
@@ -1024,18 +1446,29 @@ class _HomeGlassCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      width: width,
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(
-          color: theme.colorScheme.outline.withValues(alpha: 0.08),
+    final borderRadius = BorderRadius.circular(28);
+    final gradient = theme.brightness == Brightness.dark
+        ? AppColors.darkGlassLayerGradient()
+        : AppColors.glassLayerGradient();
+
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          width: width,
+          decoration: BoxDecoration(
+            gradient: gradient,
+            borderRadius: borderRadius,
+            border: Border.all(
+              color: theme.colorScheme.outline.withOpacity(0.08),
+            ),
+            boxShadow: AppColors.subtleShadow,
+          ),
+          padding: padding,
+          child: child,
         ),
-        boxShadow: AppColors.subtleShadow,
       ),
-      padding: padding,
-      child: child,
     );
   }
 }
@@ -1102,7 +1535,11 @@ class _ServiceCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded),
+              Icon(
+                CupertinoIcons.chevron_forward,
+                size: 18,
+                color: theme.colorScheme.onSurface.withOpacity(0.5),
+              ),
             ],
           ),
         ),
@@ -1172,7 +1609,8 @@ class _HomeActionTile extends StatelessWidget {
                         child: Text(
                           line,
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withOpacity(0.56),
+                            color:
+                                theme.colorScheme.onSurface.withOpacity(0.56),
                           ),
                         ),
                       ),
@@ -1241,3 +1679,35 @@ class _HomeLoadingState extends StatelessWidget {
   }
 }
 
+class _WeatherSnapshot {
+  const _WeatherSnapshot({
+    required this.city,
+    required this.temperatureCelsius,
+    required this.weatherLabel,
+    required this.weatherIcon,
+    required this.fetchedAt,
+    this.windSpeed,
+    this.humidity,
+  });
+
+  final String city;
+  final double temperatureCelsius;
+  final String weatherLabel;
+  final IconData weatherIcon;
+  final double? windSpeed;
+  final double? humidity;
+  final DateTime fetchedAt;
+}
+
+class _WeatherDescriptor {
+  const _WeatherDescriptor(this.label, this.icon);
+
+  final String label;
+  final IconData icon;
+}
+
+class _WeatherRateLimitException implements Exception {
+  const _WeatherRateLimitException({required this.source});
+
+  final String source;
+}
