@@ -45,6 +45,11 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
   List<Map<String, dynamic>> _combos = const [];
   List<Map<String, dynamic>> _tickets = const [];
   List<Map<String, dynamic>> _availabilities = const [];
+  Map<String, List<_BookedSlot>> _bookedSlotsByDate = {};
+  bool _bookedSlotsLoading = true;
+  String? _bookedSlotsError;
+  DateTime? _bookedSlotsStart;
+  DateTime? _bookedSlotsEnd;
 
   final Map<String, int> _selectedOptions = {};
   String? _selectedComboId;
@@ -87,11 +92,19 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
         _availabilities = _parseList(detail['availabilities']);
         _applyDefaultSelections();
         _loading = false;
+        _bookedSlotsByDate = {};
+        _bookedSlotsError = null;
+        _bookedSlotsLoading = true;
+        _bookedSlotsStart = null;
+        _bookedSlotsEnd = null;
       });
+      await _reloadBookedSlots(anchor: _selectedDate ?? DateTime.now());
     } catch (e) {
       setState(() {
         _error = e.toString();
         _loading = false;
+        _bookedSlotsLoading = false;
+        _bookedSlotsError = e.toString();
       });
     }
   }
@@ -737,6 +750,9 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                 _endTime = _parseTimeOfDay(availability['endTime']);
               });
             }
+            if (!_isWithinLoadedRange(picked)) {
+              await _reloadBookedSlots(anchor: picked);
+            }
           }
         },
       ),
@@ -744,62 +760,291 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
   }
 
   Widget _buildTimeSelector() {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Card(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: ListTile(
-              title: const Text('Bắt đầu'),
-              subtitle: Text(_startTime != null
-                  ? _startTime!.format(context)
-                  : 'Chọn giờ'),
-              trailing: const Icon(Icons.access_time),
-              onTap: () async {
-                final time = await showTimePicker(
-                  context: context,
-                  initialTime: _startTime ?? TimeOfDay.now(),
-                );
-                if (time != null) {
-                  setState(() {
-                    _startTime = time;
-                  });
-                }
-              },
+        Row(
+          children: [
+            Expanded(
+              child: Card(
+                shape:
+                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                child: ListTile(
+                  title: const Text('Bắt đầu'),
+                  subtitle: Text(_startTime != null
+                      ? _startTime!.format(context)
+                      : 'Chọn giờ'),
+                  trailing: const Icon(Icons.access_time),
+                  onTap: () async {
+                    final time = await showTimePicker(
+                      context: context,
+                      initialTime: _startTime ?? TimeOfDay.now(),
+                    );
+                    if (time != null) {
+                      setState(() {
+                        _startTime = time;
+                      });
+                    }
+                  },
+                ),
+              ),
             ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Card(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            child: ListTile(
-              title: const Text('Kết thúc'),
-              subtitle: Text(_endTime != null
-                  ? _endTime!.format(context)
-                  : 'Chọn giờ'),
-              trailing: const Icon(Icons.timer_outlined),
-              onTap: () async {
-                final time = await showTimePicker(
-                  context: context,
-                  initialTime: _endTime ??
-                      (_startTime != null
-                          ? _addDuration(_startTime!, 1.0) ?? TimeOfDay.now()
-                          : TimeOfDay.now()),
-                );
-                if (time != null) {
-                  setState(() {
-                    _endTime = time;
-                  });
-                }
-              },
+            const SizedBox(width: 12),
+            Expanded(
+              child: Card(
+                shape:
+                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                child: ListTile(
+                  title: const Text('Kết thúc'),
+                  subtitle: Text(_endTime != null
+                      ? _endTime!.format(context)
+                      : 'Chọn giờ'),
+                  trailing: const Icon(Icons.timer_outlined),
+                  onTap: () async {
+                    final time = await showTimePicker(
+                      context: context,
+                      initialTime: _endTime ??
+                          (_startTime != null
+                              ? _addDuration(_startTime!, 1.0) ?? TimeOfDay.now()
+                              : TimeOfDay.now()),
+                    );
+                    if (time != null) {
+                      setState(() {
+                        _endTime = time;
+                      });
+                    }
+                  },
+                ),
+              ),
             ),
-          ),
+          ],
         ),
+        const SizedBox(height: 12),
+        _buildBookedSlotsBanner(),
       ],
     );
+  }
+
+  Widget _buildBookedSlotsBanner() {
+    if (_bookedSlotsLoading) {
+      return Card(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: const Padding(
+          padding: EdgeInsets.all(16),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text('Đang tải các khung giờ đã được đặt...'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_bookedSlotsError != null) {
+      return Card(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Không thể tải các khung giờ đã đặt',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _bookedSlotsError!,
+                style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () => _reloadBookedSlots(anchor: _selectedDate ?? DateTime.now()),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Thử lại'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final selected = _selectedDate;
+    if (selected == null) {
+      return Card(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: const Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('Chọn ngày để xem những khung giờ đã được đặt trước.'),
+        ),
+      );
+    }
+
+    final key = DateFormat('yyyy-MM-dd').format(selected);
+    final slots = _bookedSlotsByDate[key] ?? const [];
+
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: slots.isEmpty
+            ? const Text(
+                'Hiện chưa có ai đặt dịch vụ trong ngày này.',
+                style: TextStyle(color: Colors.black54),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Khung giờ đã được giữ',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                  ...slots.map(
+                    (slot) => Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.lock_clock, size: 16, color: Colors.redAccent),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '${_formatDisplayTime(slot.start)} - ${_formatDisplayTime(slot.end)} • ${_translateBookingStatus(slot.status)}',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Future<void> _reloadBookedSlots({DateTime? anchor}) async {
+    final base = anchor ?? DateTime.now();
+    final start = DateTime(base.year, base.month, base.day);
+    final end = start.add(const Duration(days: 30));
+
+    setState(() {
+      _bookedSlotsLoading = true;
+      _bookedSlotsError = null;
+      _bookedSlotsStart = start;
+      _bookedSlotsEnd = end;
+    });
+
+    try {
+      final slots = await _bookingService.getBookedSlots(
+        serviceId: widget.serviceId,
+        from: start,
+        to: end,
+      );
+      if (!mounted) return;
+      setState(() {
+        _bookedSlotsByDate = _groupSlots(slots);
+        _bookedSlotsLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _bookedSlotsByDate = {};
+        _bookedSlotsLoading = false;
+        _bookedSlotsError = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  Map<String, List<_BookedSlot>> _groupSlots(List<Map<String, dynamic>> raw) {
+    final Map<String, List<_BookedSlot>> grouped = {};
+    for (final slot in raw) {
+      final dateStr = slot['slotDate']?.toString();
+      final startStr = slot['startTime']?.toString();
+      final endStr = slot['endTime']?.toString();
+      if (dateStr == null || startStr == null || endStr == null) {
+        continue;
+      }
+      DateTime date;
+      try {
+        date = DateTime.parse(dateStr);
+      } catch (_) {
+        continue;
+      }
+      final start = _parseSlotTime(startStr);
+      final end = _parseSlotTime(endStr);
+      if (start == null || end == null) {
+        continue;
+      }
+      final key = DateFormat('yyyy-MM-dd').format(date);
+      final status = slot['bookingStatus']?.toString() ?? '';
+      grouped.putIfAbsent(key, () => []);
+      grouped[key]!.add(
+        _BookedSlot(date: date, start: start, end: end, status: status),
+      );
+    }
+
+    for (final entry in grouped.values) {
+      entry.sort((a, b) {
+        final aMinutes = a.start.hour * 60 + a.start.minute;
+        final bMinutes = b.start.hour * 60 + b.start.minute;
+        return aMinutes.compareTo(bMinutes);
+      });
+    }
+
+    return grouped;
+  }
+
+  TimeOfDay? _parseSlotTime(String raw) {
+    final parts = raw.split(':');
+    if (parts.length < 2) {
+      return null;
+    }
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) {
+      return null;
+    }
+    return TimeOfDay(hour: hour, minute: minute);
+  }
+
+  bool _isWithinLoadedRange(DateTime date) {
+    if (_bookedSlotsStart == null || _bookedSlotsEnd == null) {
+      return false;
+    }
+    final day = DateTime(date.year, date.month, date.day);
+    return !day.isBefore(_bookedSlotsStart!) && !day.isAfter(_bookedSlotsEnd!);
+  }
+
+  String _formatDisplayTime(TimeOfDay time) {
+    final dt = DateTime(0, 1, 1, time.hour, time.minute);
+    return DateFormat('HH:mm').format(dt);
+  }
+
+  String _translateBookingStatus(String status) {
+    switch (status.toUpperCase()) {
+      case 'PAID':
+        return 'Đã thanh toán';
+      case 'PENDING':
+        return 'Chờ duyệt';
+      case 'APPROVED':
+        return 'Đã duyệt';
+      case 'COMPLETED':
+        return 'Hoàn tất';
+      default:
+        return status;
+    }
   }
 
   Widget _buildCombosSection() {
@@ -1113,5 +1358,19 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
       ),
     );
   }
+}
+
+class _BookedSlot {
+  const _BookedSlot({
+    required this.date,
+    required this.start,
+    required this.end,
+    required this.status,
+  });
+
+  final DateTime date;
+  final TimeOfDay start;
+  final TimeOfDay end;
+  final String status;
 }
 

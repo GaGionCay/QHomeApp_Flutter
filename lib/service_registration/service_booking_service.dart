@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:dio/dio.dart';
+import 'package:intl/intl.dart';
 
 import '../auth/asset_maintenance_api_client.dart';
 
@@ -163,6 +164,37 @@ class ServiceBookingService {
       return Map<String, dynamic>.from(response.data as Map);
     } on DioException catch (e) {
       throw _wrapDioException(e, 'Không thể hủy đặt dịch vụ.');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getBookedSlots({
+    required String serviceId,
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    try {
+      final params = <String, String>{};
+      final formatter = DateFormat('yyyy-MM-dd');
+      if (from != null) {
+        params['from'] = formatter.format(from);
+      }
+      if (to != null) {
+        params['to'] = formatter.format(to);
+      }
+
+      final response = await _dio.get(
+        '/resident/services/$serviceId/booked-slots',
+        queryParameters: params.isEmpty ? null : params,
+      );
+
+      if (response.data is List) {
+        return List<Map<String, dynamic>>.from(
+          (response.data as List).map((item) => Map<String, dynamic>.from(item as Map)),
+        );
+      }
+      return const [];
+    } on DioException catch (e) {
+      throw _wrapDioException(e, 'Không thể tải danh sách slot đã được đặt.');
     }
   }
 
