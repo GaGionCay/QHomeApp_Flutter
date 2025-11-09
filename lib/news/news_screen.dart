@@ -312,7 +312,7 @@ class _NewsScreenState extends State<NewsScreen>
                             itemBuilder: (context, i) {
                                 
                                 final news = items[i];
-                                final bool isRead = false;
+                                const bool isRead = false;
 
                                 final String date = news.publishAt != null
                                     ? DateFormat('dd/MM/yyyy').format(news.publishAt!)

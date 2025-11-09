@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../auth/api_client.dart';
+import '../theme/app_colors.dart';
+import '../widgets/app_primary_button.dart';
 import 'profile_service.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -24,6 +26,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   File? _avatar;
   late AnimationController _anim;
   final picker = ImagePicker();
+  bool _saving = false;
 
   @override
   void initState() {
@@ -51,145 +54,205 @@ class _EditProfileScreenState extends State<EditProfileScreen>
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    final api = await ApiClient.create();
-    final service = ProfileService(api.dio);
+    setState(() => _saving = true);
+    try {
+      final api = await ApiClient.create();
+      final service = ProfileService(api.dio);
 
-    String? avatarUrl;
-    if (_avatar != null) {
-      // Upload file avatar
-      avatarUrl = await service.uploadAvatar(_avatar!.path);
-    }
+      String? avatarUrl;
+      if (_avatar != null) {
+        avatarUrl = await service.uploadAvatar(_avatar!.path);
+      }
 
-    // Gọi updateProfile, thêm avatarUrl nếu có
-    final data = {
-      "fullName": _nameCtrl.text.trim(),
-      "phoneNumber": _phoneCtrl.text.trim(),
-      "address": _addressCtrl.text.trim(),
-      "gender": _gender,
-      "dateOfBirth":
-          _dob != null ? DateFormat('yyyy-MM-dd').format(_dob!) : null,
-    };
-    if (avatarUrl != null) data["avatarUrl"] = avatarUrl;
+      final data = {
+        "fullName": _nameCtrl.text.trim(),
+        "phoneNumber": _phoneCtrl.text.trim(),
+        "address": _addressCtrl.text.trim(),
+        "gender": _gender,
+        "dateOfBirth":
+            _dob != null ? DateFormat('yyyy-MM-dd').format(_dob!) : null,
+      };
+      if (avatarUrl != null) data["avatarUrl"] = avatarUrl;
 
-    await service.updateProfile(data);
+      await service.updateProfile(data);
 
-    if (mounted) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Cập nhật thành công!')),
       );
       Navigator.pop(context, true);
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    if (mounted) {
+      super.setState(fn);
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _phoneCtrl.dispose();
+    _addressCtrl.dispose();
+    _anim.dispose();
+    super.dispose();
+  }
+
+  void _showDatePicker() async {
+    final now = DateTime.now();
+    final initialDate = _dob ?? DateTime(now.year - 20);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(now.year - 80),
+      lastDate: now,
+    );
+    if (picked != null) {
+      setState(() => _dob = picked);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final gradient = const LinearGradient(
-      colors: [Color(0xFF26A69A), Color(0xFF80CBC4)],
-      begin: Alignment.centerLeft,
-      end: Alignment.centerRight,
-    );
+    final theme = Theme.of(context);
+    final avatarProvider = _avatar != null
+        ? FileImage(_avatar!)
+        : (widget.initialData['avatarUrl'] != null
+            ? NetworkImage(widget.initialData['avatarUrl'])
+            : null) as ImageProvider?;
+    final dobText = _dob != null ? DateFormat('dd/MM/yyyy').format(_dob!) : 'Chưa cập nhật';
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
-        title: const Text("Chỉnh sửa hồ sơ"),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0.5,
+        title: const Text('Chỉnh sửa hồ sơ'),
+        centerTitle: false,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
       ),
       body: FadeTransition(
         opacity: _anim,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
           child: Form(
             key: _formKey,
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(
-                  onTap: _pickAvatar,
-                  child: Stack(
-                    children: [
-                      CircleAvatar(
-                        radius: 60,
-                        backgroundImage: _avatar != null
-                            ? FileImage(_avatar!)
-                            : (widget.initialData['avatarUrl'] != null
-                                ? NetworkImage(widget.initialData['avatarUrl'])
-                                : null) as ImageProvider?,
-                        backgroundColor: Colors.grey.shade100,
-                        child: (_avatar == null &&
-                                widget.initialData['avatarUrl'] == null)
-                            ? const Icon(Icons.person,
-                                size: 60, color: Colors.grey)
+                Center(
+                  child: GestureDetector(
+                    onTap: _pickAvatar,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: AppColors.primaryGradient(),
+                        boxShadow: AppColors.subtleShadow,
+                      ),
+                      child: CircleAvatar(
+                        radius: 64,
+                        backgroundImage: avatarProvider,
+                        backgroundColor: theme.colorScheme.surface,
+                        child: avatarProvider == null
+                            ? Icon(Icons.person_outline,
+                                size: 54,
+                                color: theme.colorScheme.primary.withValues(alpha: 0.6))
                             : null,
                       ),
-                      Positioned(
-                        bottom: 4,
-                        right: 4,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: gradient,
-                            shape: BoxShape.circle,
-                          ),
-                          padding: const EdgeInsets.all(6),
-                          child: const Icon(Icons.camera_alt,
-                              color: Colors.white, size: 18),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 20),
-
-                _buildField(_nameCtrl, "Họ và tên"),
-                _buildField(_phoneCtrl, "Số điện thoại",
-                    keyboardType: TextInputType.phone),
-                _buildField(_addressCtrl, "Địa chỉ"),
-
-                const SizedBox(height: 15),
+                const SizedBox(height: 18),
+                Center(
+                  child: TextButton.icon(
+                    onPressed: _pickAvatar,
+                    icon: const Icon(Icons.camera_alt_outlined),
+                    label: const Text('Thay đổi ảnh đại diện'),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                Text(
+                  'Thông tin cơ bản',
+                  style: theme.textTheme.titleLarge,
+                ),
+                const SizedBox(height: 16),
+                _buildField(
+                  controller: _nameCtrl,
+                  label: 'Họ và tên',
+                  keyboardType: TextInputType.name,
+                ),
+                _buildField(
+                  controller: _phoneCtrl,
+                  label: 'Số điện thoại',
+                  keyboardType: TextInputType.phone,
+                ),
+                _buildField(
+                  controller: _addressCtrl,
+                  label: 'Địa chỉ',
+                  keyboardType: TextInputType.streetAddress,
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _gender,
-                  decoration: _inputDecoration("Giới tính"),
+                  initialValue: _gender,
+                  decoration: _inputDecoration(context, 'Giới tính'),
                   items: const [
-                    DropdownMenuItem(value: "MALE", child: Text("Nam")),
-                    DropdownMenuItem(value: "FEMALE", child: Text("Nữ")),
-                    DropdownMenuItem(value: "OTHER", child: Text("Khác")),
+                    DropdownMenuItem(value: 'MALE', child: Text('Nam')),
+                    DropdownMenuItem(value: 'FEMALE', child: Text('Nữ')),
+                    DropdownMenuItem(value: 'OTHER', child: Text('Khác')),
                   ],
                   onChanged: (v) => setState(() => _gender = v ?? 'OTHER'),
                 ),
-                const SizedBox(height: 15),
-
-                // Save button
-                ElevatedButton(
-                  onPressed: _save,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    backgroundColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                  ),
-                  child: Ink(
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: _showDatePicker,
+                  borderRadius: BorderRadius.circular(18),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 16),
                     decoration: BoxDecoration(
-                      gradient: gradient,
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    child: const SizedBox(
-                      width: double.infinity,
-                      child: Center(
-                        child: Text(
-                          "💾 Lưu thay đổi",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
+                      color: theme.colorScheme.surface,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: theme.colorScheme.outline.withValues(alpha: 0.16),
                       ),
                     ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.calendar_today,
+                            color: theme.colorScheme.primary),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Ngày sinh',
+                          style: theme.textTheme.titleSmall,
+                        ),
+                        const Spacer(),
+                        Text(
+                          dobText,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color:
+                                theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.chevron_right_rounded),
+                      ],
+                    ),
                   ),
+                ),
+                const SizedBox(height: 32),
+                AppPrimaryButton(
+                  onPressed: _saving ? null : _save,
+                  label: 'Lưu thay đổi',
+                  icon: Icons.save_outlined,
+                  loading: _saving,
+                  enabled: !_saving,
                 ),
               ],
             ),
@@ -199,27 +262,50 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     );
   }
 
-  Widget _buildField(TextEditingController ctrl, String label,
-      {TextInputType keyboardType = TextInputType.text}) {
+  Widget _buildField({
+    required TextEditingController controller,
+    required String label,
+    TextInputType keyboardType = TextInputType.text,
+    int maxLines = 1,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: TextFormField(
-        controller: ctrl,
+        controller: controller,
         keyboardType: keyboardType,
-        decoration: _inputDecoration(label),
+        maxLines: maxLines,
+        decoration: _inputDecoration(context, label),
         validator: (v) =>
-            v == null || v.isEmpty ? "Vui lòng nhập $label" : null,
+            v == null || v.isEmpty ? 'Vui lòng nhập $label' : null,
       ),
     );
   }
 
-  InputDecoration _inputDecoration(String label) => InputDecoration(
-        labelText: label,
-        labelStyle: const TextStyle(fontSize: 14),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-        filled: true,
-        fillColor: Colors.grey.shade50,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      );
+  InputDecoration _inputDecoration(BuildContext context, String label) {
+    final theme = Theme.of(context);
+    return InputDecoration(
+      labelText: label,
+      labelStyle: theme.textTheme.bodyMedium,
+      filled: true,
+      fillColor: theme.colorScheme.surface,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(
+          color: theme.colorScheme.outline.withValues(alpha: 0.15),
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(
+          color: theme.colorScheme.primary,
+          width: 1.8,
+        ),
+      ),
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+    );
+  }
 }

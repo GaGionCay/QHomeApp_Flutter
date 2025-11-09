@@ -10,7 +10,7 @@ class BaseServiceClient {
   static const int BASE_SERVICE_PORT = 8081;
   static const int TIMEOUT_SECONDS = 10;
 
-  static final String HOST_IP = kIsWeb ? LOCALHOST_IP : LAN_HOST_IP;
+  static const String HOST_IP = kIsWeb ? LOCALHOST_IP : LAN_HOST_IP;
   static final String BASE_URL = 'http://$HOST_IP:$BASE_SERVICE_PORT/api';
 
   static Dio createPublicDio() {

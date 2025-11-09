@@ -1,10 +1,12 @@
+import 'package:animations/animations.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:dio/dio.dart';
 import '../auth/api_client.dart';
-import '../profile/profile_service.dart';
 import '../models/resident_notification.dart';
 import '../news/resident_service.dart';
+import '../profile/profile_service.dart';
+import '../theme/app_colors.dart';
 import 'notification_detail_screen.dart';
 
 class NotificationScreen extends StatefulWidget {
@@ -134,109 +136,57 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F9),
-      appBar: AppBar(
-        title: const Text('Thông báo hệ thống'),
-        elevation: 2,
-        backgroundColor: const Color(0xFF26A69A),
-        foregroundColor: Colors.white,
-      ),
-      body: RefreshIndicator(
-        color: const Color(0xFF26A69A),
-        onRefresh: _fetch,
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 400),
-          child: loading
-              ? const Center(child: CircularProgressIndicator())
-              : items.isEmpty
-                  ? _buildEmptyState()
-                  : ListView.builder(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
-                      itemCount: items.length,
-                      itemBuilder: (context, i) {
-                        final notification = items[i];
-                        final String date = DateFormat('dd/MM/yyyy HH:mm')
-                            .format(notification.createdAt);
-
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.grey.withOpacity(0.1),
-                                blurRadius: 8,
-                                offset: const Offset(0, 3),
-                              ),
+      backgroundColor: theme.colorScheme.surface,
+      body: SafeArea(
+        child: RefreshIndicator(
+          color: theme.colorScheme.primary,
+          onRefresh: _fetch,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 320),
+            child: loading
+                ? const Center(child: CircularProgressIndicator())
+                : items.isEmpty
+                    ? _buildEmptyState(theme)
+                    : ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 24,
+                        ),
+                        children: [
+                          _buildHeader(theme),
+                          const SizedBox(height: 24),
+                          Column(
+                            children: [
+                              for (final entry in items.asMap().entries)
+                                TweenAnimationBuilder<double>(
+                                  key: ValueKey(entry.value.id),
+                                  tween: Tween(begin: 0.0, end: 1.0),
+                                  duration: const Duration(milliseconds: 300),
+                                  curve: Curves.easeOutCubic,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(bottom: 16),
+                                    child: _NotificationCard(
+                                      notification: entry.value,
+                                      color: _getTypeColor(entry.value.type),
+                                      icon: _getTypeIcon(entry.value.type),
+                                    ),
+                                  ),
+                                  builder: (context, value, child) => Opacity(
+                                    opacity: value,
+                                    child: Transform.translate(
+                                      offset: Offset(0, (1 - value) * 16),
+                                      child: child,
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.only(
-                                left: 16, top: 12, right: 16, bottom: 12),
-                            leading: Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                color: _getTypeColor(notification.type)
-                                    .withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Icon(
-                                _getTypeIcon(notification.type),
-                                color: _getTypeColor(notification.type),
-                                size: 24,
-                              ),
-                            ),
-                            title: Text(
-                              notification.title,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                color: Color(0xFF004D40),
-                              ),
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 4),
-                                Text(
-                                  notification.message,
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey[700],
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  date,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey[500],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            onTap: () {
-                              // Navigate to detail screen
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => NotificationDetailScreen(
-                                    notificationId: notification.id,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        );
-                      },
-                    ),
+                        ],
+                      ),
+          ),
         ),
       ),
     );
@@ -245,11 +195,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
   Color _getTypeColor(String type) {
     switch (type.toUpperCase()) {
       case 'SYSTEM':
-        return const Color(0xFF26A69A);
+        return AppColors.primaryEmerald;
       case 'PAYMENT':
-        return Colors.blue;
+        return AppColors.primaryBlue;
       case 'SERVICE':
-        return Colors.orange;
+        return AppColors.warning;
       default:
         return Colors.grey;
     }
@@ -268,29 +218,154 @@ class _NotificationScreenState extends State<NotificationScreen> {
     }
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildHeader(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Thông báo hệ thống',
+          style: theme.textTheme.displaySmall?.copyWith(fontSize: 30),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Theo dõi các cập nhật mới nhất từ ban quản lý, thanh toán và dịch vụ cư dân.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState(ThemeData theme) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.notifications_off_outlined,
-              size: 80, color: Color(0xFFB0BEC5)),
+          Icon(Icons.notifications_off_outlined,
+              size: 80, color: theme.colorScheme.onSurface.withValues(alpha: 0.2)),
           const SizedBox(height: 16),
           Text(
             'Không có thông báo nào',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[700],
-              fontWeight: FontWeight.w500,
-            ),
+            style: theme.textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
           Text(
             'Kéo xuống để làm mới danh sách',
-            style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+            ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _NotificationCard extends StatelessWidget {
+  const _NotificationCard({
+    required this.notification,
+    required this.color,
+    required this.icon,
+  });
+
+  final ResidentNotification notification;
+  final Color color;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dateText =
+        DateFormat('dd MMM yyyy, HH:mm').format(notification.createdAt);
+
+    return OpenContainer<bool>(
+      useRootNavigator: true,
+      transitionType: ContainerTransitionType.fadeThrough,
+      openColor: theme.colorScheme.surface,
+      closedColor: theme.colorScheme.surface,
+      closedElevation: 0,
+      openElevation: 0,
+      closedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+      openBuilder: (context, _) => NotificationDetailScreen(
+        notificationId: notification.id,
+      ),
+      closedBuilder: (context, openContainer) {
+        return InkWell(
+          onTap: openContainer,
+          borderRadius: BorderRadius.circular(26),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      height: 52,
+                      width: 52,
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Icon(icon, color: color, size: 26),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            notification.title,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            notification.message,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Chip(
+                      label: Text(
+                        notification.type.toUpperCase(),
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: color,
+                        ),
+                      ),
+                      backgroundColor: color.withValues(alpha: 0.14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    Text(
+                      dateText,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

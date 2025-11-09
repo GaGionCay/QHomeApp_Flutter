@@ -95,13 +95,16 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F9),
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
         title: const Text('Chi tiết thông báo'),
-        elevation: 2,
-        backgroundColor: const Color(0xFF26A69A),
-        foregroundColor: Colors.white,
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        foregroundColor: colorScheme.onSurface,
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -149,7 +152,7 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                               borderRadius: BorderRadius.circular(16),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.grey.withOpacity(0.1),
+                                  color: Colors.grey.withValues(alpha: 0.1),
                                   blurRadius: 8,
                                   offset: const Offset(0, 3),
                                 ),
@@ -162,7 +165,7 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                                   height: 56,
                                   decoration: BoxDecoration(
                                     color: _getTypeColor(_notification!.type)
-                                        .withOpacity(0.1),
+                                        .withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Icon(
@@ -194,7 +197,7 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                                             ),
                                             decoration: BoxDecoration(
                                               color: _getTypeColor(_notification!.type)
-                                                  .withOpacity(0.1),
+                                                  .withValues(alpha: 0.1),
                                               borderRadius: BorderRadius.circular(8),
                                             ),
                                             child: Text(
@@ -213,7 +216,7 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                                               vertical: 4,
                                             ),
                                             decoration: BoxDecoration(
-                                              color: Colors.grey.withOpacity(0.1),
+                                              color: Colors.grey.withValues(alpha: 0.1),
                                               borderRadius: BorderRadius.circular(8),
                                             ),
                                             child: Text(
@@ -242,7 +245,7 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                               borderRadius: BorderRadius.circular(16),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.grey.withOpacity(0.1),
+                                  color: Colors.grey.withValues(alpha: 0.1),
                                   blurRadius: 8,
                                   offset: const Offset(0, 3),
                                 ),
@@ -280,7 +283,7 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                               borderRadius: BorderRadius.circular(16),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.grey.withOpacity(0.1),
+                                  color: Colors.grey.withValues(alpha: 0.1),
                                   blurRadius: 8,
                                   offset: const Offset(0, 3),
                                 ),

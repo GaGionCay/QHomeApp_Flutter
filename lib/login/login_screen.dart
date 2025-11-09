@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import '../common/main_shell.dart';
 import '../auth/auth_provider.dart';
-import 'forgot_password_screen.dart';
+import '../core/app_router.dart';
+import '../theme/app_colors.dart';
+import '../widgets/app_primary_button.dart';
+import '../widgets/app_text_field.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,6 +17,8 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final usernameCtrl = TextEditingController(); // Đổi từ email sang username
   final passCtrl = TextEditingController();
+  final FocusNode _usernameFocus = FocusNode();
+  final FocusNode _passwordFocus = FocusNode();
   bool loading = false;
   bool _obscurePassword = true;
 
@@ -21,269 +26,280 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final auth = context.read<AuthProvider>();
 
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        resizeToAvoidBottomInset: true,
-        body: Container(
-          width: double.infinity,
-          height: double.infinity,
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: NetworkImage(
-                'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=1200',
-              ),
-              fit: BoxFit.cover,
-            ),
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withOpacity(0.7),
-                  Colors.black.withOpacity(0.5),
-                  Colors.black.withOpacity(0.7),
-                ],
-              ),
-            ),
-            child: SafeArea(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    child: ConstrainedBox(
-                      constraints:
-                          BoxConstraints(minHeight: constraints.maxHeight),
-                      child: IntrinsicHeight(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 32),
-                          child: Column(
-                            children: [
-                              const SizedBox(height: 80),
-                              Hero(
-                                tag: 'qhome-logo',
-                                child: Container(
-                                  width: 120,
-                                  height: 120,
-                                  decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: [
-                                        Color(0xFF4DB6AC),
-                                        Color(0xFF26A69A),
-                                        Color(0xFF00897B),
-                                      ],
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final isWide = constraints.maxWidth > 720;
+            final formWidth = isWide ? constraints.maxWidth * 0.45 : double.infinity;
+
+            return Stack(
+              children: [
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.white,
+                          AppColors.neutralBackground,
+                          Colors.white,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: -120,
+                  right: -80,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 340),
+                    width: constraints.maxWidth * 0.8,
+                    height: constraints.maxWidth * 0.8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          AppColors.primaryEmerald.withValues(alpha: 0.22),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  bottom: -140,
+                  left: -60,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 340),
+                    width: constraints.maxWidth * 0.7,
+                    height: constraints.maxWidth * 0.7,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          AppColors.primaryBlue.withValues(alpha: 0.16),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                SafeArea(
+                  child: Align(
+                    alignment: isWide ? Alignment.center : Alignment.topCenter,
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isWide ? constraints.maxWidth * 0.08 : 24,
+                        vertical: 24,
+                      ),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: isWide ? formWidth : double.infinity,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Hero(
+                                  tag: 'qhome-logo',
+                                  child: Container(
+                                    width: 84,
+                                    height: 84,
+                                    decoration: BoxDecoration(
+                                      gradient: AppColors.primaryGradient(),
+                                      borderRadius: BorderRadius.circular(24),
+                                      boxShadow: AppColors.elevatedShadow,
                                     ),
-                                    borderRadius: BorderRadius.circular(20),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.2),
-                                        blurRadius: 10,
-                                        offset: const Offset(0, 4),
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.apartment_rounded,
+                                        size: 42,
+                                        color: Colors.white,
                                       ),
-                                    ],
+                                    ),
                                   ),
-                                  child: const Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.business,
-                                          size: 50, color: Colors.white),
-                                      SizedBox(height: 8),
-                                      Text(
-                                        'QHOME',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                          letterSpacing: 2,
-                                        ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 32),
+                            Text(
+                              'Chào mừng trở lại,',
+                              style: textTheme.headlineSmall?.copyWith(
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Đăng nhập để tiếp tục',
+                              style: textTheme.displaySmall?.copyWith(
+                                color: AppColors.textPrimary,
+                                fontSize: 32,
+                              ),
+                            ),
+                            const SizedBox(height: 32),
+                            AppLuxeTextField(
+                              controller: usernameCtrl,
+                              focusNode: _usernameFocus,
+                              hint: 'Tên đăng nhập',
+                              icon: Icons.person_outline,
+                              textInputAction: TextInputAction.next,
+                              onSubmitted: (_) =>
+                                  _passwordFocus.requestFocus(),
+                            ),
+                            const SizedBox(height: 16),
+                            AppLuxeTextField(
+                              controller: passCtrl,
+                              focusNode: _passwordFocus,
+                              hint: 'Mật khẩu',
+                              icon: Icons.lock_outline,
+                              obscure: _obscurePassword,
+                              suffix: IconButton(
+                                icon: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _obscurePassword = !_obscurePassword;
+                                  });
+                                },
+                              ),
+                              textInputAction: TextInputAction.done,
+                              onSubmitted: (_) => _submit(auth),
+                            ),
+                            const SizedBox(height: 12),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: () =>
+                                    context.push(AppRoute.forgotPassword.path),
+                                child: const Text('Quên mật khẩu?'),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            AppPrimaryButton(
+                              onPressed: loading ? null : () => _submit(auth),
+                              label: 'Đăng nhập',
+                              loading: loading,
+                              icon: Icons.lock_open_rounded,
+                              enabled: !loading,
+                            ),
+                            const SizedBox(height: 18),
+                            Center(
+                              child: Wrap(
+                                spacing: 4,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  Text(
+                                    'Chưa có tài khoản?',
+                                    style: textTheme.bodyMedium,
+                                  ),
+                                  GestureDetector(
+                                    onTap: () => context.push(
+                                      AppRoute.registerGuide.path,
+                                    ),
+                                    child: Text(
+                                      'Đăng ký ngay',
+                                      style: textTheme.labelLarge?.copyWith(
+                                        color: AppColors.primaryEmerald,
                                       ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 50),
-                              const Text(
-                                'Login',
-                                style: TextStyle(
-                                  fontSize: 36,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                  letterSpacing: 1,
-                                ),
-                              ),
-                              const SizedBox(height: 40),
-                              _inputField(
-                                controller: usernameCtrl,
-                                hint: 'Username',
-                                icon: Icons.person_outline,
-                              ),
-                              const SizedBox(height: 16),
-                              _inputField(
-                                controller: passCtrl,
-                                hint: 'Password',
-                                icon: Icons.lock_outline,
-                                obscure: _obscurePassword,
-                                suffix: IconButton(
-                                  icon: Icon(
-                                    _obscurePassword
-                                        ? Icons.visibility_off_outlined
-                                        : Icons.visibility_outlined,
-                                    color: Colors.black.withOpacity(0.6),
-                                  ),
-                                  onPressed: () {
-                                    setState(() {
-                                      _obscurePassword = !_obscurePassword;
-                                    });
-                                  },
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: TextButton(
-                                  onPressed: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          const ForgotPasswordScreen(),
                                     ),
                                   ),
-                                  child: const Text(
-                                    'Forgot Password?',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
+                                ],
                               ),
-                              const SizedBox(height: 24),
-                              SizedBox(
-                                width: double.infinity,
-                                height: 56,
-                                child: ElevatedButton(
-                                  onPressed: loading
-                                      ? null
-                                      : () async {
-                                          FocusScope.of(context).unfocus();
-                                          setState(() => loading = true);
-                                          // Login via iam-service (port 8088)
-                                          final ok = await auth.loginViaIam(
-                                            usernameCtrl.text.trim(),
-                                            passCtrl.text.trim(),
-                                          );
-                                          setState(() => loading = false);
-                                          if (ok) {
-                                            if (!mounted) return;
-                                            Navigator.pushReplacement(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (_) =>
-                                                    const MainShell(),
-                                              ),
-                                            );
-                                          } else {
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
-                                              const SnackBar(
-                                                content:
-                                                    Text('Đăng nhập thất bại'),
-                                                backgroundColor: Colors.red,
-                                              ),
-                                            );
-                                          }
-                                        },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF26A69A),
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    elevation: 8,
-                                    shadowColor: const Color(0xFF26A69A)
-                                        .withOpacity(0.5),
-                                  ),
-                                  child: loading
-                                      ? const SizedBox(
-                                          height: 24,
-                                          width: 24,
-                                          child: CircularProgressIndicator(
-                                            color: Colors.white,
-                                            strokeWidth: 2.5,
-                                          ),
-                                        )
-                                      : const Text(
-                                          'Login',
-                                          style: TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.w600,
-                                            letterSpacing: 1,
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              const Spacer(),
-                              const SizedBox(height: 40),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(height: 48),
+                            _SecurityFooter(textTheme: textTheme),
+                          ],
                         ),
                       ),
                     ),
-                  );
-                },
-              ),
-            ),
-          ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _inputField({
-    required TextEditingController controller,
-    required String hint,
-    required IconData icon,
-    bool obscure = false,
-    Widget? suffix,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: TextField(
-        controller: controller,
-        obscureText: obscure,
-        style: const TextStyle(fontSize: 16, color: Colors.black87),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: TextStyle(color: Colors.black.withOpacity(0.4)),
-          prefixIcon: Icon(icon, color: Colors.black.withOpacity(0.6)),
-          suffixIcon: suffix,
-          border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-        ),
-      ),
+  Future<void> _submit(AuthProvider auth) async {
+    FocusScope.of(context).unfocus();
+    setState(() => loading = true);
+
+    final ok = await auth.loginViaIam(
+      usernameCtrl.text.trim(),
+      passCtrl.text.trim(),
     );
+
+    setState(() => loading = false);
+
+    if (!mounted) return;
+
+    if (ok) {
+      context.go(AppRoute.main.path);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đăng nhập thất bại'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
   void dispose() {
     usernameCtrl.dispose();
     passCtrl.dispose();
+    _usernameFocus.dispose();
+    _passwordFocus.dispose();
     super.dispose();
+  }
+}
+
+class _SecurityFooter extends StatelessWidget {
+  const _SecurityFooter({required this.textTheme});
+
+  final TextTheme textTheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Icon(Icons.shield_moon_outlined,
+            color: AppColors.primaryEmerald.withValues(alpha: 0.8)),
+        const SizedBox(height: 12),
+        Text(
+          'Ứng dụng cư dân thông minh',
+          style: textTheme.labelLarge?.copyWith(
+            color: AppColors.textSecondary,
+            letterSpacing: 0.4,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Kết nối với các dịch vụ quản lý, thanh toán và tiện ích cộng đồng mọi lúc mọi nơi.',
+          style: textTheme.bodySmall?.copyWith(
+            color: AppColors.textSecondary.withValues(alpha: 0.78),
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
   }
 }

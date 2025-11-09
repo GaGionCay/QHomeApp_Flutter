@@ -403,7 +403,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
         labelText: 'Loại yêu cầu',
         border: OutlineInputBorder(),
       ),
-      value: _selectedCategory,
+      initialValue: _selectedCategory,
       items: _categories
           .map(
             (category) => DropdownMenuItem<String>(

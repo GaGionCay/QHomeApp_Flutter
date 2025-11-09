@@ -1,7 +1,9 @@
+import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
 import '../auth/api_client.dart';
-import 'profile_service.dart';
+import '../theme/app_colors.dart';
 import 'edit_profile_screen.dart';
+import 'profile_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -44,152 +46,212 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    final profile = _profile!;
     final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
         title: const Text('Hồ sơ cá nhân'),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 0.5,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_rounded),
-            tooltip: 'Chỉnh sửa hồ sơ',
-            onPressed: () async {
-              final updated = await Navigator.push(
-                context,
-                PageRouteBuilder(
-                  pageBuilder: (_, __, ___) =>
-                      EditProfileScreen(initialData: profile),
-                  transitionsBuilder: (_, a, __, child) =>
-                      FadeTransition(opacity: a, child: child),
+          if (!_loading)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: FilledButton.icon(
+                onPressed: () async {
+                  final updated = await Navigator.push(
+                    context,
+                    PageRouteBuilder(
+                      pageBuilder: (_, __, ___) =>
+                          EditProfileScreen(initialData: _profile!),
+                      transitionsBuilder: (_, animation, __, child) =>
+                          FadeThroughTransition(
+                        animation: animation,
+                        secondaryAnimation:
+                            Tween<double>(begin: 0.9, end: 1).animate(animation),
+                        child: child,
+                      ),
+                    ),
+                  );
+                  if (updated == true) _loadProfile();
+                },
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primaryEmerald,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
-              );
-              if (updated == true) _loadProfile();
-            },
+                icon: const Icon(Icons.edit_rounded, size: 18),
+                label: const Text('Chỉnh sửa'),
+              ),
+            ),
+        ],
+      ),
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 320),
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : FadeTransition(
+                opacity: _fadeCtrl,
+                child: RefreshIndicator(
+                  color: theme.colorScheme.primary,
+                  onRefresh: _loadProfile,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 24),
+                    children: [
+                      _ProfileHeader(profile: _profile!),
+                      const SizedBox(height: 24),
+                      _ProfileInfoCard(profile: _profile!),
+                    ],
+                  ),
+                ),
+              ),
+      ),
+    );
+  }
+
+}
+
+class _ProfileHeader extends StatelessWidget {
+  const _ProfileHeader({required this.profile});
+
+  final Map<String, dynamic> profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final avatarUrl = profile['avatarUrl'] as String?;
+    final name = profile['fullName'] ?? 'Chưa có tên';
+    final email = profile['email'] ?? '—';
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: AppColors.primaryGradient(),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: AppColors.elevatedShadow,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+      child: Row(
+        children: [
+          Container(
+            width: 88,
+            height: 88,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.4), width: 2),
+            ),
+            child: ClipOval(
+              child: avatarUrl != null && avatarUrl.isNotEmpty
+                  ? Image.network(avatarUrl, fit: BoxFit.cover)
+                  : Container(
+                      color: AppColors.neutralBackground.withValues(alpha: 0.3),
+                      child: const Icon(Icons.person_outline,
+                          size: 42, color: Colors.white),
+                    ),
+            ),
+          ),
+          const SizedBox(width: 24),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  email,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.85),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
-      body: FadeTransition(
-        opacity: _fadeCtrl,
-        child: RefreshIndicator(
-          onRefresh: _loadProfile,
-          child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-            children: [
-              // Avatar + Name
-              Center(
-                child: Column(
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.teal.withOpacity(0.25),
-                            blurRadius: 20,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                      child: CircleAvatar(
-                        radius: 60,
-                        backgroundImage: profile['avatarUrl'] != null
-                            ? NetworkImage(profile['avatarUrl'])
-                            : null,
-                        backgroundColor: Colors.grey.shade100,
-                        child: profile['avatarUrl'] == null
-                            ? const Icon(Icons.person,
-                                size: 60, color: Colors.grey)
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      profile['fullName'] ?? "Chưa có tên",
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      profile['email'] ?? "",
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 28),
+    );
+  }
+}
 
-              // Info card
-              Container(
+class _ProfileInfoCard extends StatelessWidget {
+  const _ProfileInfoCard({required this.profile});
+
+  final Map<String, dynamic> profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final infoItems = [
+      _InfoItem(Icons.phone_outlined, 'Số điện thoại',
+          profile['phoneNumber'] ?? '—'),
+      _InfoItem(Icons.person_outline, 'Giới tính',
+          profile['gender'] ?? '—'),
+      _InfoItem(Icons.cake_outlined, 'Ngày sinh',
+          profile['dateOfBirth'] ?? '—'),
+      _InfoItem(Icons.apartment_outlined, 'Căn hộ',
+          profile['apartmentName'] ?? '—'),
+      _InfoItem(Icons.location_on_outlined, 'Địa chỉ',
+          profile['address'] ?? '—'),
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.08),
+        ),
+        boxShadow: AppColors.subtleShadow,
+      ),
+      child: Column(
+        children: [
+          for (final item in infoItems) ...[
+            ListTile(
+              leading: Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.shade200,
-                      blurRadius: 16,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
+                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    _buildInfoTile(
-                        Icons.phone, "Số điện thoại", profile['phoneNumber']),
-                    _buildDivider(),
-                    _buildInfoTile(Icons.male, "Giới tính", profile['gender']),
-                    _buildDivider(),
-                    _buildInfoTile(
-                        Icons.cake, "Ngày sinh", profile['dateOfBirth']),
-                    _buildDivider(),
-                    _buildInfoTile(
-                        Icons.home, "Căn hộ", profile['apartmentName']),
-                    _buildDivider(),
-                    _buildInfoTile(
-                        Icons.location_on, "Địa chỉ", profile['address']),
-                  ],
+                padding: const EdgeInsets.all(10),
+                child: Icon(item.icon, color: theme.colorScheme.primary),
+              ),
+              title: Text(
+                item.title,
+                style: theme.textTheme.titleSmall,
+              ),
+              subtitle: Text(
+                item.value,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
                 ),
               ),
-            ],
-          ),
-        ),
+            ),
+            if (item != infoItems.last)
+              Divider(
+                height: 4,
+                indent: 72,
+                endIndent: 16,
+                color: theme.colorScheme.outline.withValues(alpha: 0.08),
+              ),
+          ],
+        ],
       ),
     );
   }
+}
 
-  Widget _buildInfoTile(IconData icon, String title, String? value) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Container(
-        decoration: BoxDecoration(
-          color: Colors.teal.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        padding: const EdgeInsets.all(8),
-        child: Icon(icon, color: Colors.teal),
-      ),
-      title: Text(title,
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-      subtitle: Text(value ?? "—", style: const TextStyle(fontSize: 13)),
-    );
-  }
-
-  Widget _buildDivider() => Divider(height: 4, color: Colors.grey.shade200);
+class _InfoItem {
+  const _InfoItem(this.icon, this.title, this.value);
+  final IconData icon;
+  final String title;
+  final String value;
 }

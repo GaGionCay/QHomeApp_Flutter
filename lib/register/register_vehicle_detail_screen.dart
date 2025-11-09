@@ -224,12 +224,10 @@ class _RegisterServiceDetailScreenState
         color = Colors.green.shade600;
         icon = Icons.check_circle_outline;
         label = 'Đã duyệt';
-        break;
       case 'REJECTED':
         color = Colors.red.shade600;
         icon = Icons.cancel_outlined;
         label = 'Từ chối';
-        break;
       default:
         color = Colors.orange.shade600;
         icon = Icons.hourglass_bottom;

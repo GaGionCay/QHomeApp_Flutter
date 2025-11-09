@@ -82,7 +82,6 @@ class AuthProvider extends ChangeNotifier {
 Future<void> logout(BuildContext context) async {
   try {
     await authService.logout();
-  } catch (e) {
   } finally {
     await storage.deleteAll();
     _isAuthenticated = false;

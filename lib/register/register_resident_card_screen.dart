@@ -1000,7 +1000,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
           ],
         ),
         child: DropdownButtonFormField<String>(
-          value: _requestType,
+          initialValue: _requestType,
           decoration: InputDecoration(
             labelText: 'Loại yêu cầu',
             prefixIcon: const Icon(Icons.category_outlined, color: Color(0xFF26A69A)),

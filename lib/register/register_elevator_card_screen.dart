@@ -284,7 +284,6 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     });
 
     _paymentSub = _appLinks.uriLinkStream.listen((uri) async {
-      if (uri == null) return;
       if (uri.scheme != 'qhomeapp' || uri.host != 'vnpay-elevator-card-result') return;
       await _handleDeepLinkPayment(uri);
     });
@@ -897,7 +896,7 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
           ],
         ),
         child: DropdownButtonFormField<String>(
-          value: _requestType,
+          initialValue: _requestType,
           decoration: InputDecoration(
             labelText: 'Loại yêu cầu',
             prefixIcon: const Icon(Icons.category_outlined, color: Color(0xFF26A69A)),

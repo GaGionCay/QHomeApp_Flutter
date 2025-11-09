@@ -10,7 +10,7 @@ static const String LAN_HOST_IP = '192.168.100.33';
   static const int TIMEOUT_SECONDS = 10;
 
   // SỬA DÒNG NÀY: Dùng localhost nếu là web, ngược lại dùng IP LAN
-  static final String HOST_IP = kIsWeb ? LOCALHOST_IP : LAN_HOST_IP; 
+  static const String HOST_IP = kIsWeb ? LOCALHOST_IP : LAN_HOST_IP; 
 
   static final String BASE_URL = 'http://$HOST_IP:$API_PORT/api';
   

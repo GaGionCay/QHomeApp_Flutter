@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
+import '../widgets/app_primary_button.dart';
 
 class RegisterGuideScreen extends StatefulWidget {
   const RegisterGuideScreen({super.key});
@@ -32,105 +34,124 @@ class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.colorScheme.surface,
       body: SafeArea(
-        child: Column(
-          children: [
-            // ====== TOP BAR ======
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.close, color: Colors.grey),
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded),
                     onPressed: () => Navigator.pop(context),
                   ),
-                  const Spacer(),
-                  Text(
-                    '${_pageIndex + 1}/${_steps.length}',
-                    style: const TextStyle(color: Colors.teal, fontWeight: FontWeight.w600),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Hướng dẫn đăng ký thẻ xe',
+                      style: theme.textTheme.headlineSmall,
+                    ),
+                  ),
+                  FilledButton.icon(
+                    onPressed: () {
+                      final nextPage = (_pageIndex + 1) % _steps.length;
+                      _pageCtrl.animateToPage(
+                        nextPage,
+                        duration: const Duration(milliseconds: 400),
+                        curve: Curves.easeOutCubic,
+                      );
+                    },
+                    icon: const Icon(Icons.navigate_next_rounded),
+                    label: const Text('Tiếp'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primaryEmerald,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 12),
-
-            // ====== PAGEVIEW ======
-            Expanded(
-              child: PageView.builder(
-                controller: _pageCtrl,
-                onPageChanged: (i) => setState(() => _pageIndex = i),
-                itemCount: _steps.length,
-                itemBuilder: (context, i) {
-                  final step = _steps[i];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Image.network(step['image']!, height: 200),
-                        const SizedBox(height: 30),
-                        Text(
-                          step['title']!,
-                          style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.teal),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          step['desc']!,
-                          style: const TextStyle(fontSize: 16, color: Colors.black54),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+              const SizedBox(height: 24),
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageCtrl,
+                  onPageChanged: (i) => setState(() => _pageIndex = i),
+                  itemCount: _steps.length,
+                  itemBuilder: (context, i) {
+                    final step = _steps[i];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 24),
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        gradient: AppColors.primaryGradient(),
+                        borderRadius: BorderRadius.circular(28),
+                        boxShadow: AppColors.elevatedShadow,
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Flexible(
+                            child: Image.network(
+                              step['image']!,
+                              height: 160,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          Text(
+                            step['title']!,
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            step['desc']!,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: Colors.white.withValues(alpha: 0.9),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(_steps.length, (index) {
+                  final isActive = index == _pageIndex;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 240),
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    width: isActive ? 24 : 10,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: isActive
+                          ? AppColors.primaryEmerald
+                          : AppColors.primaryEmerald.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(4),
                     ),
                   );
-                },
+                }),
               ),
-            ),
-
-            // ====== BOTTOM BUTTON ======
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: _pageIndex == _steps.length - 1
-                    ? ElevatedButton(
-                        key: const ValueKey('done'),
-                        onPressed: () => Navigator.pop(context),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF26A69A),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14)),
-                          minimumSize: const Size.fromHeight(50),
-                        ),
-                        child: const Text(
-                          'Bắt đầu đăng ký',
-                          style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white),
-                        ),
-                      )
-                    : ElevatedButton(
-                        key: const ValueKey('next'),
-                        onPressed: () =>
-                            _pageCtrl.nextPage(duration: const Duration(milliseconds: 400), curve: Curves.easeInOut),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.teal.shade300,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14)),
-                          minimumSize: const Size.fromHeight(50),
-                        ),
-                        child: const Text('Tiếp theo',
-                            style: TextStyle(fontSize: 17, color: Colors.white)),
-                      ),
+              const SizedBox(height: 24),
+              AppPrimaryButton(
+                onPressed: () => Navigator.pop(context),
+                label: 'Bắt đầu đăng ký',
+                icon: Icons.check_circle_outline,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

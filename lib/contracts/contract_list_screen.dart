@@ -278,13 +278,10 @@ class _ContractListScreenState extends State<ContractListScreen> {
     switch (contract.status.toUpperCase()) {
       case 'ACTIVE':
         statusColor = Colors.green;
-        break;
       case 'TERMINATED':
         statusColor = Colors.red;
-        break;
       case 'EXPIRED':
         statusColor = Colors.orange;
-        break;
       default:
         statusColor = theme.colorScheme.primary;
     }

@@ -1,17 +1,15 @@
-import 'dart:convert';
 import 'dart:io';
+import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/news/news_screen.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:stomp_dart_client/stomp_dart_client.dart';
 import 'package:http/http.dart' as http;
 import '../core/event_bus.dart';
 import '../home/home_screen.dart';
 import '../news/news_detail_screen.dart';
-import '../profile/profile_service.dart';
 import '../service_registration/service_category_screen.dart';
 import '../auth/api_client.dart';
+import '../theme/app_colors.dart';
 import 'menu_screen.dart';
 
 class NewsAttachmentDto {
@@ -39,8 +37,6 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   int _selectedIndex = 0;
   late final List<Widget> _pages;
-  StompClient? _stompClient;
-  final ApiClient _api = ApiClient();
 
   @override
   void initState() {
@@ -108,6 +104,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   }
   */
 
+  // ignore: unused_element
   void _showNotificationPopup(Map<String, dynamic> data) {
     if (!mounted) return;
     final attachments = (data['attachments'] as List<dynamic>?)
@@ -217,85 +214,55 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      extendBody: true,
-      body: IndexedStack(index: _selectedIndex, children: _pages),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.easeOutCubic,
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.95),
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          child: SafeArea(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavItem(0, Icons.home_outlined, Icons.home, 'Trang chủ'),
-                _buildNavItem(1, Icons.app_registration_outlined,
-                    Icons.app_registration, 'Đăng ký dịch vụ'),
-                _buildNavItem(2, Icons.menu_outlined, Icons.menu, 'Menu'),
-              ],
-            ),
-          ),
+      backgroundColor: theme.colorScheme.surface,
+      body: PageTransitionSwitcher(
+        duration: const Duration(milliseconds: 320),
+        transitionBuilder: (
+          Widget child,
+          Animation<double> primaryAnimation,
+          Animation<double> secondaryAnimation,
+        ) {
+          return FadeThroughTransition(
+            animation: primaryAnimation,
+            secondaryAnimation: secondaryAnimation,
+            child: child,
+          );
+        },
+        child: KeyedSubtree(
+          key: ValueKey(_selectedIndex),
+          child: _pages[_selectedIndex],
         ),
       ),
-    );
-  }
-
-  Widget _buildNavItem(
-      int index, IconData icon, IconData activeIcon, String label) {
-    final isSelected = _selectedIndex == index;
-
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => _onItemTapped(index),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOutQuad,
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? const Color(0xFF26A69A).withOpacity(0.1)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: AnimatedScale(
-            scale: isSelected ? 1.15 : 1.0,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutBack,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isSelected ? activeIcon : icon,
-                  color: isSelected
-                      ? const Color(0xFF26A69A)
-                      : Colors.grey.shade600,
-                  size: isSelected ? 26 : 24,
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: NavigationBar(
+              height: 72,
+              indicatorColor: AppColors.primaryEmerald.withOpacity(0.12),
+              backgroundColor: theme.colorScheme.surface,
+              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: _onItemTapped,
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.home_outlined),
+                  selectedIcon: Icon(Icons.home_rounded),
+                  label: 'Trang chủ',
                 ),
-                const SizedBox(height: 4),
-                AnimatedDefaultTextStyle(
-                  duration: const Duration(milliseconds: 250),
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: isSelected
-                        ? const Color(0xFF26A69A)
-                        : Colors.grey.shade600,
-                    fontWeight:
-                        isSelected ? FontWeight.w600 : FontWeight.normal,
-                  ),
-                  child: Text(label),
+                NavigationDestination(
+                  icon: Icon(Icons.qr_code_scanner_outlined),
+                  selectedIcon: Icon(Icons.app_registration_rounded),
+                  label: 'Dịch vụ',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.grid_view_outlined),
+                  selectedIcon: Icon(Icons.grid_view_rounded),
+                  label: 'Tiện ích',
                 ),
               ],
             ),
@@ -304,4 +271,5 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
       ),
     );
   }
+
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'login/login_screen.dart';
+import 'package:go_router/go_router.dart';
+import 'core/app_router.dart';
+import 'theme/app_colors.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -13,7 +15,8 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _controller;
   late Animation<double> _fadeIn;
   late Animation<double> _scaleUp;
-  late Animation<Color?> _bgFade;
+  late Animation<double> _blurTween;
+  late Animation<double> _glowTween;
 
   @override
   void initState() {
@@ -36,30 +39,25 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
 
-    _bgFade = ColorTween(
-      begin: Colors.white,
-      end: Colors.black.withOpacity(0.9),
-    ).animate(
+    _blurTween = Tween<double>(begin: 40, end: 10).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: const Interval(0.4, 1.0, curve: Curves.easeIn),
+        curve: const Interval(0.0, 0.9, curve: Curves.easeInOutCubic),
+      ),
+    );
+
+    _glowTween = Tween<double>(begin: 0.0, end: 0.45).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.2, 1.0, curve: Curves.easeInOutCubic),
       ),
     );
 
     _controller.forward();
 
     Future.delayed(const Duration(seconds: 3), () {
-      Navigator.pushReplacement(
-        context,
-        PageRouteBuilder(
-          transitionDuration: const Duration(milliseconds: 1200),
-          pageBuilder: (_, __, ___) => const LoginScreen(),
-          transitionsBuilder: (_, anim, __, child) => FadeTransition(
-            opacity: anim,
-            child: child,
-          ),
-        ),
-      );
+      if (!mounted) return;
+      context.go(AppRoute.login.path);
     });
   }
 
@@ -82,39 +80,32 @@ class _SplashScreenState extends State<SplashScreen>
       child: ScaleTransition(
         scale: _scaleUp,
         child: Container(
-          width: 120,
-          height: 120,
+          width: 128,
+          height: 128,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(0xFF4DB6AC),
-                Color(0xFF26A69A),
-                Color(0xFF00897B),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(20),
+            gradient: AppColors.primaryGradient(),
+            borderRadius: BorderRadius.circular(28),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                color: AppColors.primaryEmerald.withValues(alpha: 0.32),
+                blurRadius: 25,
+                spreadRadius: 2,
+                offset: const Offset(0, 12),
               ),
             ],
           ),
           child: const Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.business, size: 50, color: Colors.white),
-              SizedBox(height: 8),
+              Icon(Icons.apartment_rounded, size: 52, color: Colors.white),
+              SizedBox(height: 10),
               Text(
                 'QHOME',
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 18,
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  letterSpacing: 2,
+                  letterSpacing: 4,
                 ),
               ),
             ],
@@ -126,17 +117,52 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _bgFade,
-      builder: (context, child) {
-        return Scaffold(
-          backgroundColor: _bgFade.value,
-          body: FadeTransition(
-            opacity: _fadeIn,
-            child: Center(child: _buildLogo()),
-          ),
-        );
-      },
+    return Scaffold(
+      backgroundColor: AppColors.neutralBackground,
+      body: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white,
+                      AppColors.neutralBackground,
+                      AppColors.neutralBackground.withValues(alpha: 0.95),
+                    ],
+                  ),
+                ),
+              ),
+              Align(
+                alignment: Alignment.center,
+                child: FadeTransition(
+                  opacity: _fadeIn,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 320),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primaryEmerald
+                              .withValues(alpha: _glowTween.value),
+                          blurRadius: 160 - _blurTween.value,
+                          spreadRadius: 16,
+                        ),
+                      ],
+                    ),
+                    child: _buildLogo(),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }

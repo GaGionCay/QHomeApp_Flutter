@@ -66,7 +66,7 @@ class InvoiceService {
         return [];
       }
 
-      final invoices = (data as List)
+      final invoices = (data)
           .map((json) => InvoiceLineResponseDto.fromJson(json))
           .toList();
 
@@ -171,7 +171,7 @@ class InvoiceService {
         return [];
       }
 
-      final invoices = (data as List)
+      final invoices = (data)
           .map((json) => InvoiceLineResponseDto.fromJson(json))
           .toList();
 
@@ -250,7 +250,7 @@ class InvoiceService {
         return [];
       }
 
-      final monthlyData = (data as List)
+      final monthlyData = (data)
           .map((json) => ElectricityMonthly.fromJson(json))
           .toList();
 

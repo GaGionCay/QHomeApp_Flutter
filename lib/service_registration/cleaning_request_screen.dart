@@ -334,7 +334,7 @@ class _CleaningRequestScreenState extends State<CleaningRequestScreen> {
         labelText: 'Loại hình dọn dẹp',
         border: OutlineInputBorder(),
       ),
-      value: _selectedCleaningType,
+      initialValue: _selectedCleaningType,
       items: _cleaningTypes
           .map(
             (type) => DropdownMenuItem(

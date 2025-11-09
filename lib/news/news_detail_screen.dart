@@ -334,7 +334,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
   }
 
   Widget _buildImageItem(NewsImage image) {
-    final String? imageUrl = image.url.startsWith('http')
+    final String imageUrl = image.url.startsWith('http')
         ? image.url
         : ApiClient.fileUrl(image.url);
     

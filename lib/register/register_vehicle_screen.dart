@@ -774,7 +774,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
           ],
         ),
         child: DropdownButtonFormField<String>(
-          value: _requestType,
+          initialValue: _requestType,
           decoration: InputDecoration(
             labelText: 'Loại yêu cầu',
             prefixIcon: const Icon(Icons.category, color: Color(0xFF26A69A)),
@@ -979,7 +979,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
                     child: Column(
                       children: [
                         DropdownButtonFormField<String>(
-                          value: _vehicleType,
+                          initialValue: _vehicleType,
                           decoration: const InputDecoration(
                               labelText: 'Loại phương tiện'),
                           items: const [

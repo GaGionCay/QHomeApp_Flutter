@@ -1,331 +1,204 @@
+import 'dart:math';
+
 import 'package:dio/dio.dart';
-import '../auth/api_client.dart';
+
+import '../auth/asset_maintenance_api_client.dart';
 
 class ServiceBookingService {
-  final Dio _dio;
+  ServiceBookingService(AssetMaintenanceApiClient client) : _client = client;
 
-  ServiceBookingService(this._dio);
+  final AssetMaintenanceApiClient _client;
 
-  // Lấy danh sách tất cả categories
-  Future<List<Map<String, dynamic>>> getAllCategories() async {
+  Dio get _dio => _client.dio;
+
+  Future<List<Map<String, dynamic>>> getActiveCategories() async {
     try {
-      final response = await _dio.get('/service-booking/categories');
+      final response = await _dio.get('/resident/categories');
       if (response.data is List) {
-        return List<Map<String, dynamic>>.from(response.data);
+        return List<Map<String, dynamic>>.from(
+          (response.data as List).map((item) => Map<String, dynamic>.from(item as Map)),
+        );
       }
-      return [];
-    } catch (e) {
-      print('❌ Lỗi lấy categories: $e');
-      rethrow;
+      return const [];
+    } on DioException catch (e) {
+      throw _wrapDioException(e, 'Không thể tải danh sách danh mục dịch vụ.');
     }
   }
 
-  // Lấy danh sách service types theo category code (ví dụ: "ENTERTAINMENT")
-  // Trả về các loại dịch vụ như "BBQ", "Tennis", "Pool", v.v.
-  Future<List<Map<String, dynamic>>> getServiceTypesByCategoryCode(
-      String categoryCode) async {
+  Future<List<Map<String, dynamic>>> getServicesByCategory(String categoryCode) async {
     try {
-      final response = await _dio.get(
-        '/service-booking/categories/code/$categoryCode/service-types',
-      );
-
+      final response = await _dio.get('/resident/categories/$categoryCode/services');
       if (response.data is List) {
-        return List<Map<String, dynamic>>.from(response.data);
+        return List<Map<String, dynamic>>.from(
+          (response.data as List).map((item) => Map<String, dynamic>.from(item as Map)),
+        );
       }
-      return [];
-    } catch (e) {
-      print('❌ Lỗi lấy service types: $e');
-      rethrow;
+      return const [];
+    } on DioException catch (e) {
+      throw _wrapDioException(e, 'Không thể tải danh sách dịch vụ.');
     }
   }
 
-  // Lấy danh sách services theo category code và service type
-  // Ví dụ: categoryCode="ENTERTAINMENT", serviceType="BBQ"
-  Future<List<Map<String, dynamic>>> getServicesByCategoryCodeAndType(
-      String categoryCode, String serviceType) async {
+  Future<Map<String, dynamic>> getServiceDetail(String serviceId) async {
     try {
-      final response = await _dio.get(
-        '/service-booking/categories/code/$categoryCode/services/type/$serviceType',
-      );
-
-      if (response.data is List) {
-        return List<Map<String, dynamic>>.from(response.data);
-      }
-      return [];
-    } catch (e) {
-      print('❌ Lỗi lấy services: $e');
-      rethrow;
+      final response = await _dio.get('/resident/services/$serviceId');
+      return Map<String, dynamic>.from(response.data as Map);
+    } on DioException catch (e) {
+      throw _wrapDioException(e, 'Không thể tải thông tin dịch vụ.');
     }
   }
 
-  // Lấy danh sách services theo category code (ví dụ: "ENTERTAINMENT")
-  // Deprecated: Nên sử dụng getServiceTypesByCategoryCode trước
-  Future<List<Map<String, dynamic>>> getServicesByCategoryCode(
-      String categoryCode) async {
+  Future<Map<String, dynamic>> getServiceBookingCatalog(String serviceId) async {
     try {
-      final response = await _dio.get(
-        '/service-booking/categories/code/$categoryCode/services',
-      );
-
-      if (response.data is List) {
-        return List<Map<String, dynamic>>.from(response.data);
-      }
-      return [];
-    } catch (e) {
-      print('❌ Lỗi lấy services: $e');
-      rethrow;
+      final response = await _dio.get('/services/$serviceId/booking/catalog');
+      return Map<String, dynamic>.from(response.data as Map);
+    } on DioException catch (e) {
+      throw _wrapDioException(e, 'Không thể tải danh mục đặt dịch vụ.');
     }
   }
 
-  // Lấy chi tiết service theo ID
-  Future<Map<String, dynamic>> getServiceById(int serviceId) async {
-    try {
-      final response = await _dio.get('/service-booking/services/$serviceId');
-      return Map<String, dynamic>.from(response.data);
-    } catch (e) {
-      print('❌ Lỗi lấy chi tiết service: $e');
-      rethrow;
-    }
-  }
-
-  // Lấy danh sách available services theo category code, date, và time range
-  // serviceType là optional, nếu có thì chỉ trả về services thuộc type đó
-  Future<List<Map<String, dynamic>>> getAvailableServices({
-    required String categoryCode,
-    required DateTime date,
-    required String startTime, // Format: "14:00:00"
-    required String endTime, // Format: "17:00:00"
-    String? serviceType, // Optional: filter theo service type
-  }) async {
-    try {
-      final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-      
-      final queryParams = {
-        'categoryCode': categoryCode,
-        'date': dateStr,
-        'startTime': startTime,
-        'endTime': endTime,
-      };
-      
-      // Thêm serviceType nếu có
-      if (serviceType != null && serviceType.isNotEmpty) {
-        queryParams['serviceType'] = serviceType;
-      }
-      
-      final response = await _dio.get(
-        '/service-booking/available',
-        queryParameters: queryParams,
-      );
-
-      if (response.data is List) {
-        return List<Map<String, dynamic>>.from(response.data);
-      }
-      return [];
-    } catch (e) {
-      print('❌ Lỗi lấy available services: $e');
-      rethrow;
-    }
-  }
-
-  // Tạo booking
   Future<Map<String, dynamic>> createBooking({
-    required int serviceId,
+    required String serviceId,
     required DateTime bookingDate,
     required String startTime,
     required String endTime,
     required double durationHours,
     required int numberOfPeople,
+    required num totalAmount,
     String? purpose,
-    required bool termsAccepted,
-    // New fields for service-specific items
-    List<Map<String, dynamic>>? selectedOptions,
-    int? selectedComboId,
-    int? selectedTicketId,
-    int? selectedServiceSlotId,
-    int? extraHours,
+    bool termsAccepted = true,
+    List<Map<String, dynamic>>? items,
   }) async {
     try {
-      final dateStr = '${bookingDate.year}-${bookingDate.month.toString().padLeft(2, '0')}-${bookingDate.day.toString().padLeft(2, '0')}';
-      
-      final requestData = {
+      final payload = {
         'serviceId': serviceId,
-        'bookingDate': dateStr,
+        'bookingDate': _formatDate(bookingDate),
         'startTime': startTime,
         'endTime': endTime,
-        // durationHours không cần gửi, backend tự tính
+        'durationHours': double.parse(durationHours.toStringAsFixed(2)),
         'numberOfPeople': numberOfPeople,
-        if (purpose != null && purpose.isNotEmpty) 'purpose': purpose,
+        'totalAmount': double.parse(totalAmount.toStringAsFixed(2)),
         'termsAccepted': termsAccepted,
-        // Service-specific items
-        if (selectedOptions != null && selectedOptions.isNotEmpty)
-          'selectedOptions': selectedOptions.map((opt) => {
-            'itemId': opt['itemId'],
-            'itemType': 'OPTION',
-            'itemCode': opt['itemCode'],
-            'quantity': opt['quantity'],
-          }).toList(),
-        if (selectedComboId != null) 'selectedComboId': selectedComboId,
-        if (selectedTicketId != null) 'selectedTicketId': selectedTicketId,
-        if (selectedServiceSlotId != null) 'selectedServiceSlotId': selectedServiceSlotId,
-        if (extraHours != null && extraHours > 0) 'extraHours': extraHours,
+        if (purpose != null && purpose.trim().isNotEmpty) 'purpose': purpose.trim(),
+        if (items != null && items.isNotEmpty)
+          'items': items.map((item) => Map<String, dynamic>.from(item)).toList(),
       };
-      
-      final response = await _dio.post(
-        '/service-booking/book',
-        data: requestData,
-      );
 
-      return Map<String, dynamic>.from(response.data);
-    } catch (e) {
-      print('❌ Lỗi tạo booking: $e');
-      rethrow;
+      final response = await _dio.post('/bookings', data: payload);
+      return Map<String, dynamic>.from(response.data as Map);
+    } on DioException catch (e) {
+      throw _wrapDioException(e, 'Không thể tạo yêu cầu đặt dịch vụ.');
     }
   }
 
-  // Lấy VNPAY payment URL
-  Future<String> getVnpayPaymentUrl(int bookingId) async {
-    try {
-      final response = await _dio.post(
-        '/service-booking/$bookingId/vnpay-url',
-      );
-
-      if (response.data['success'] == true) {
-        return response.data['paymentUrl'] as String;
-      }
-      throw Exception(response.data['message'] ?? 'Lỗi tạo URL thanh toán');
-    } catch (e) {
-      print('❌ Lỗi lấy VNPAY URL: $e');
-      rethrow;
-    }
-  }
-
-  // Lấy danh sách bookings của user
   Future<List<Map<String, dynamic>>> getMyBookings() async {
     try {
-      final response = await _dio.get('/service-booking/my-bookings');
-
+      final response = await _dio.get('/bookings');
       if (response.data is List) {
-        return List<Map<String, dynamic>>.from(response.data);
+        return List<Map<String, dynamic>>.from(
+          (response.data as List).map((item) => Map<String, dynamic>.from(item as Map)),
+        );
       }
-      return [];
-    } catch (e) {
-      print('❌ Lỗi lấy bookings: $e');
-      rethrow;
+      return const [];
+    } on DioException catch (e) {
+      throw _wrapDioException(e, 'Không thể tải danh sách đặt dịch vụ của bạn.');
     }
   }
 
-  // Lấy chi tiết booking
-  Future<Map<String, dynamic>> getBookingById(int bookingId) async {
-    try {
-      final response = await _dio.get('/service-booking/my-bookings/$bookingId');
-      return Map<String, dynamic>.from(response.data);
-    } catch (e) {
-      print('❌ Lỗi lấy chi tiết booking: $e');
-      rethrow;
-    }
-  }
-
-  // Lấy danh sách bookings chưa thanh toán
   Future<List<Map<String, dynamic>>> getUnpaidBookings() async {
     try {
-      final response = await _dio.get('/service-booking/unpaid');
-
+      final response = await _dio.get('/bookings/unpaid');
       if (response.data is List) {
-        return List<Map<String, dynamic>>.from(response.data);
+        return List<Map<String, dynamic>>.from(
+          (response.data as List).map((item) => Map<String, dynamic>.from(item as Map)),
+        );
       }
-      return [];
-    } catch (e) {
-      print('❌ Lỗi lấy unpaid bookings: $e');
-      rethrow;
+      return const [];
+    } on DioException catch (e) {
+      throw _wrapDioException(e, 'Không thể tải danh sách dịch vụ chưa thanh toán.');
     }
   }
 
-  // Lấy danh sách time slots cho một service và ngày cụ thể
-  Future<List<Map<String, dynamic>>> getTimeSlotsForService({
-    required int serviceId,
-    required DateTime date,
-  }) async {
+  Future<List<Map<String, dynamic>>> getPaidBookings() async {
     try {
-      final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-      
-      final response = await _dio.get(
-        '/service-booking/services/$serviceId/time-slots',
-        queryParameters: {'date': dateStr},
+      final response = await _dio.get('/bookings/paid');
+      if (response.data is List) {
+        return List<Map<String, dynamic>>.from(
+          (response.data as List).map((item) => Map<String, dynamic>.from(item as Map)),
+        );
+      }
+      return const [];
+    } on DioException catch (e) {
+      throw _wrapDioException(e, 'Không thể tải danh sách dịch vụ đã thanh toán.');
+    }
+  }
+
+  Future<Map<String, dynamic>> getBookingById(String bookingId) async {
+    try {
+      final response = await _dio.get('/bookings/$bookingId');
+      return Map<String, dynamic>.from(response.data as Map);
+    } on DioException catch (e) {
+      throw _wrapDioException(e, 'Không thể tải thông tin đặt dịch vụ.');
+    }
+  }
+
+  Future<Map<String, dynamic>> createVnpayPaymentUrl(String bookingId) async {
+    try {
+      final response = await _dio.post('/bookings/$bookingId/vnpay-url');
+      return Map<String, dynamic>.from(response.data as Map);
+    } on DioException catch (e) {
+      throw _wrapDioException(e, 'Không thể khởi tạo thanh toán VNPAY.');
+    }
+  }
+
+  Future<Map<String, dynamic>> cancelBooking(String bookingId, {String? reason}) async {
+    try {
+      final payload = {
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      };
+      final response = await _dio.patch(
+        '/bookings/$bookingId/cancel',
+        data: payload.isEmpty ? null : payload,
       );
-
-      if (response.data is List) {
-        return List<Map<String, dynamic>>.from(response.data);
-      }
-      return [];
-    } catch (e) {
-      print('❌ Lỗi lấy time slots: $e');
-      rethrow;
+      return Map<String, dynamic>.from(response.data as Map);
+    } on DioException catch (e) {
+      throw _wrapDioException(e, 'Không thể hủy đặt dịch vụ.');
     }
   }
 
-  // Lấy danh sách options cho service (BBQ)
-  Future<List<Map<String, dynamic>>> getServiceOptions(int serviceId) async {
-    try {
-      final response = await _dio.get('/service-booking/services/$serviceId/options');
-      if (response.data is List) {
-        return List<Map<String, dynamic>>.from(response.data);
+  String _formatDate(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+  Exception _wrapDioException(DioException error, String fallback) {
+    if (error.response?.data is Map) {
+      final data = Map<String, dynamic>.from(error.response!.data as Map);
+      final message = data['message']?.toString();
+      if (message != null && message.isNotEmpty) {
+        return Exception(message);
       }
-      return [];
-    } catch (e) {
-      print('❌ Lỗi lấy options: $e');
-      rethrow;
     }
+    return Exception(fallback);
   }
 
-  // Lấy danh sách combos cho service (SPA, Bar)
-  Future<List<Map<String, dynamic>>> getServiceCombos(int serviceId) async {
-    try {
-      final response = await _dio.get('/service-booking/services/$serviceId/combos');
-      if (response.data is List) {
-        return List<Map<String, dynamic>>.from(response.data);
-      }
-      return [];
-    } catch (e) {
-      print('❌ Lỗi lấy combos: $e');
-      rethrow;
-    }
-  }
-
-  // Lấy danh sách tickets cho service (Pool, Playground)
-  Future<List<Map<String, dynamic>>> getServiceTickets(int serviceId) async {
-    try {
-      final response = await _dio.get('/service-booking/services/$serviceId/tickets');
-      if (response.data is List) {
-        return List<Map<String, dynamic>>.from(response.data);
-      }
-      return [];
-    } catch (e) {
-      print('❌ Lỗi lấy tickets: $e');
-      rethrow;
-    }
-  }
-
-  // Lấy danh sách service slots (generic - dùng cho Bar, BBQ, và các service khác)
-  Future<List<Map<String, dynamic>>> getServiceSlots(int serviceId, {DateTime? selectedDate}) async {
-    try {
-      final queryParams = <String, dynamic>{};
-      if (selectedDate != null) {
-        // Format date as yyyy-MM-dd
-        queryParams['date'] = '${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}';
-      }
-      
-      final response = await _dio.get(
-        '/service-booking/services/$serviceId/service-slots',
-        queryParameters: queryParams.isNotEmpty ? queryParams : null,
-      );
-      if (response.data is List) {
-        return List<Map<String, dynamic>>.from(response.data);
-      }
-      return [];
-    } catch (e) {
-      print('❌ Lỗi lấy service slots: $e');
-      rethrow;
-    }
+  /// Helper to build booking item payload.
+  Map<String, dynamic> buildBookingItem({
+    required String itemType,
+    required String itemId,
+    required String itemCode,
+    required String itemName,
+    required int quantity,
+    required num unitPrice,
+    num? totalPrice,
+  }) {
+    final price = totalPrice ?? unitPrice * max(quantity, 1);
+    return {
+      'itemType': itemType,
+      'itemId': itemId,
+      'itemCode': itemCode,
+      'itemName': itemName,
+      'quantity': quantity,
+      'unitPrice': double.parse(unitPrice.toStringAsFixed(2)),
+      'totalPrice': double.parse(price.toStringAsFixed(2)),
+    };
   }
 }
-

@@ -61,7 +61,7 @@ class ProfileService {
         avatarUrl = ApiClient.BASE_URL.replaceFirst('/api', '') + avatarUrl;
       }
       return avatarUrl;
-    } on DioError catch (e) {
+    } on DioException catch (e) {
       print('DioError: ${e.response?.statusCode}');
       print('DioError data: ${e.response?.data}');
       print('DioError message: ${e.message}');
