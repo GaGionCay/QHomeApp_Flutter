@@ -12,6 +12,8 @@ class ResidentNotification {
   final String? iconUrl;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final bool isRead;
+  final DateTime? readAt;
 
   ResidentNotification({
     required this.id,
@@ -27,6 +29,8 @@ class ResidentNotification {
     this.iconUrl,
     required this.createdAt,
     required this.updatedAt,
+    required this.isRead,
+    this.readAt,
   });
 
   factory ResidentNotification.fromJson(Map<String, dynamic> json) {
@@ -44,7 +48,31 @@ class ResidentNotification {
       iconUrl: json['iconUrl'],
       createdAt: DateTime.parse(json['createdAt']),
       updatedAt: DateTime.parse(json['updatedAt']),
+      isRead: json['read'] as bool? ?? false,
+      readAt: json['readAt'] != null ? DateTime.parse(json['readAt']) : null,
+    );
+  }
+
+  ResidentNotification copyWith({
+    bool? isRead,
+    DateTime? readAt,
+  }) {
+    return ResidentNotification(
+      id: id,
+      type: type,
+      title: title,
+      message: message,
+      scope: scope,
+      targetRole: targetRole,
+      targetBuildingId: targetBuildingId,
+      referenceId: referenceId,
+      referenceType: referenceType,
+      actionUrl: actionUrl,
+      iconUrl: iconUrl,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      isRead: isRead ?? this.isRead,
+      readAt: readAt ?? this.readAt,
     );
   }
 }
-

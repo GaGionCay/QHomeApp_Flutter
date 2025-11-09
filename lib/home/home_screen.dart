@@ -16,6 +16,9 @@ import '../invoices/invoice_service.dart';
 import '../charts/electricity_chart.dart';
 import '../models/electricity_monthly.dart';
 import '../models/unit_info.dart';
+import '../news/resident_service.dart';
+import '../notifications/notification_screen.dart';
+import '../notifications/notification_read_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
@@ -41,6 +44,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late final ContractService _contractService;
   late final AssetMaintenanceApiClient _assetMaintenanceClient;
   late final ServiceBookingService _serviceBookingService;
+  final ResidentService _residentService = ResidentService();
   final _eventBus = AppEventBus();
   late AppLinks _appLinks;
   StreamSubscription? _paymentSub;
@@ -51,6 +55,8 @@ class _HomeScreenState extends State<HomeScreen> {
   List<UnitInfo> _units = [];
   String? _selectedUnitId;
   int _unpaidBookingCount = 0;
+  int _unpaidInvoiceCount = 0;
+  int _unreadNotificationCount = 0;
   bool _isWeatherLoading = true;
   _WeatherSnapshot? _weatherSnapshot;
   String? _weatherError;
@@ -130,6 +136,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadAllData() async {
     setState(() => _loading = true);
 
+    final invoiceService = InvoiceService(_apiClient);
+
     // Load profile (required)
     try {
       final profile = await ProfileService(_apiClient.dio).getProfile();
@@ -145,7 +153,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // Load electricity data (optional)
     try {
-      final invoiceService = InvoiceService(_apiClient);
       final electricityData = await invoiceService.getElectricityMonthlyData(
         unitId: _selectedUnitId,
       );
@@ -164,7 +171,11 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    await _loadUnpaidServices();
+    await Future.wait([
+      _loadUnpaidServices(),
+      _loadUnpaidInvoices(invoiceService),
+      _loadUnreadNotifications(),
+    ]);
 
     if (mounted) {
       setState(() => _loading = false);
@@ -189,6 +200,77 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _unpaidBookingCount = 0;
         });
+      }
+    }
+  }
+
+  Future<void> _loadUnpaidInvoices(InvoiceService invoiceService) async {
+    try {
+      final categories = await invoiceService.getUnpaidInvoicesByCategory(
+          unitId: _selectedUnitId);
+      final total = categories.fold<int>(
+          0, (sum, category) => sum + category.invoiceCount);
+      if (mounted) {
+        setState(() {
+          _unpaidInvoiceCount = total;
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ Không thể tải hóa đơn chưa thanh toán: $e');
+      if (mounted) {
+        setState(() {
+          _unpaidInvoiceCount = 0;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadUnreadNotifications() async {
+    final residentId = _profile?['residentId']?.toString();
+    if (residentId == null || residentId.isEmpty) {
+      if (mounted) {
+        setState(() => _unreadNotificationCount = 0);
+      }
+      return;
+    }
+
+    UnitInfo? selectedUnit;
+    if (_selectedUnitId != null) {
+      for (final unit in _units) {
+        if (unit.id == _selectedUnitId) {
+          selectedUnit = unit;
+          break;
+        }
+      }
+    }
+    selectedUnit ??= _units.isNotEmpty ? _units.first : null;
+
+    String? targetBuildingId =
+        selectedUnit?.buildingId ?? _profile?['buildingId']?.toString();
+
+    if (targetBuildingId == null || targetBuildingId.isEmpty) {
+      if (mounted) {
+        setState(() => _unreadNotificationCount = 0);
+      }
+      return;
+    }
+
+    try {
+      final notifications = await _residentService.getResidentNotifications(
+        residentId,
+        targetBuildingId,
+      );
+      final readIds = await NotificationReadStore.load(residentId);
+      final unread = notifications
+          .where((notification) => !readIds.contains(notification.id))
+          .length;
+      if (mounted) {
+        setState(() => _unreadNotificationCount = unread);
+      }
+    } catch (e) {
+      debugPrint('⚠️ Không thể tải thông báo chưa đọc: $e');
+      if (mounted) {
+        setState(() => _unreadNotificationCount = 0);
       }
     }
   }
@@ -406,6 +488,28 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     await _loadUnpaidServices();
+  }
+
+  Future<void> _openUnpaidInvoicesScreen() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => InvoiceListScreen(
+          initialUnitId: _selectedUnitId,
+          initialUnits: _units,
+        ),
+      ),
+    );
+    final invoiceService = InvoiceService(_apiClient);
+    await _loadUnpaidInvoices(invoiceService);
+  }
+
+  Future<void> _openNotificationsScreen() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const NotificationScreen(),
+      ),
+    );
+    await _loadUnreadNotifications();
   }
 
   void _listenForPaymentResult() {
@@ -689,7 +793,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildWeatherAndAlerts(BuildContext context) {
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
-    final alertCount = _unpaidBookingCount;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -838,23 +941,45 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       const SizedBox(width: 16),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Thông báo nhanh',
-                            style: textTheme.titleMedium,
-                          ),
-                          Text(
-                            alertCount > 0
-                                ? '$alertCount dịch vụ cần xử lý'
-                                : 'Không có cảnh báo mới',
-                            style: textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurface
-                                  .withValues(alpha: 0.6),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Thông báo nhanh',
+                              style: textTheme.titleMedium,
                             ),
-                          ),
-                        ],
+                            Builder(
+                              builder: (context) {
+                                final summaryParts = <String>[];
+                                if (_unpaidInvoiceCount > 0) {
+                                  summaryParts.add(
+                                      '$_unpaidInvoiceCount hóa đơn chưa thanh toán');
+                                }
+                                if (_unreadNotificationCount > 0) {
+                                  summaryParts.add(
+                                      '$_unreadNotificationCount thông báo mới');
+                                }
+                                if (_unpaidBookingCount > 0) {
+                                  summaryParts.add(
+                                      '$_unpaidBookingCount dịch vụ chờ xử lý');
+                                }
+                                final summaryText = summaryParts.isEmpty
+                                    ? 'Không có cảnh báo mới'
+                                    : summaryParts.join(' • ');
+                                return Text(
+                                  summaryText,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurface
+                                        .withValues(alpha: 0.6),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -868,14 +993,24 @@ class _HomeScreenState extends State<HomeScreen> {
                           context,
                           icon: Icons.receipt_long,
                           label: 'Hóa đơn',
-                          value: _unpaidBookingCount.toString(),
+                          value: _unpaidInvoiceCount.toString(),
+                          onTap: _openUnpaidInvoicesScreen,
                         ),
                         const SizedBox(width: 8),
                         _buildStatusChip(
                           context,
                           icon: Icons.notifications_none,
                           label: 'Thông báo',
-                          value: unreadCount.toString(),
+                          value: _unreadNotificationCount.toString(),
+                          onTap: _openNotificationsScreen,
+                        ),
+                        const SizedBox(width: 8),
+                        _buildStatusChip(
+                          context,
+                          icon: Icons.pending_actions_outlined,
+                          label: 'Dịch vụ',
+                          value: _unpaidBookingCount.toString(),
+                          onTap: _openUnpaidBookingsScreen,
                         ),
                       ],
                     ),
@@ -912,9 +1047,10 @@ class _HomeScreenState extends State<HomeScreen> {
     required IconData icon,
     required String label,
     required String value,
+    VoidCallback? onTap,
   }) {
     final theme = Theme.of(context);
-    return AnimatedContainer(
+    final chip = AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
@@ -934,6 +1070,16 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
+    );
+
+    if (onTap == null) {
+      return chip;
+    }
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: chip,
     );
   }
 

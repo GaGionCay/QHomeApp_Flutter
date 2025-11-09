@@ -3,17 +3,23 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/notification_detail_response.dart';
 import '../news/resident_service.dart';
+import 'notification_read_store.dart';
 
 class NotificationDetailScreen extends StatefulWidget {
   final String notificationId;
+  final String? residentId;
+  final VoidCallback? onMarkedAsRead;
 
   const NotificationDetailScreen({
     super.key,
     required this.notificationId,
+    this.residentId,
+    this.onMarkedAsRead,
   });
 
   @override
-  State<NotificationDetailScreen> createState() => _NotificationDetailScreenState();
+  State<NotificationDetailScreen> createState() =>
+      _NotificationDetailScreenState();
 }
 
 class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
@@ -21,10 +27,13 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
   NotificationDetailResponse? _notification;
   bool _loading = true;
   String? _error;
+  bool _isMarking = false;
+  bool _marked = false;
 
   @override
   void initState() {
     super.initState();
+    _markAsRead();
     _loadNotificationDetail();
   }
 
@@ -35,7 +44,8 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
     });
 
     try {
-      final detail = await _residentService.getNotificationDetailById(widget.notificationId);
+      final detail = await _residentService
+          .getNotificationDetailById(widget.notificationId);
       setState(() {
         _notification = detail;
         _loading = false;
@@ -53,6 +63,27 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
           ),
         );
       }
+    }
+  }
+
+  Future<void> _markAsRead() async {
+    if (_marked || _isMarking || widget.residentId == null) {
+      return;
+    }
+    _isMarking = true;
+    try {
+      final added = await NotificationReadStore.markRead(
+        widget.residentId!,
+        widget.notificationId,
+      );
+      _marked = true;
+      if (added) {
+        widget.onMarkedAsRead?.call();
+      }
+    } catch (e) {
+      debugPrint('⚠️ Không thể đánh dấu thông báo đã đọc: $e');
+    } finally {
+      _isMarking = false;
     }
   }
 
@@ -101,10 +132,14 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
     return Scaffold(
       backgroundColor: colorScheme.surface,
       appBar: AppBar(
-        title: const Text('Chi tiết thông báo'),
+        automaticallyImplyLeading: false,
         elevation: 0,
         backgroundColor: Colors.transparent,
-        foregroundColor: colorScheme.onSurface,
+        title: const Text('Chi tiết thông báo'),
+        leading: IconButton(
+          onPressed: () => Navigator.of(context).maybePop(),
+          icon: const Icon(Icons.arrow_back_rounded),
+        ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -177,7 +212,8 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                                 const SizedBox(width: 16),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         _notification!.title,
@@ -196,16 +232,19 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                                               vertical: 4,
                                             ),
                                             decoration: BoxDecoration(
-                                              color: _getTypeColor(_notification!.type)
+                                              color: _getTypeColor(
+                                                      _notification!.type)
                                                   .withValues(alpha: 0.1),
-                                              borderRadius: BorderRadius.circular(8),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                             ),
                                             child: Text(
                                               _notification!.type,
                                               style: TextStyle(
                                                 fontSize: 12,
                                                 fontWeight: FontWeight.w500,
-                                                color: _getTypeColor(_notification!.type),
+                                                color: _getTypeColor(
+                                                    _notification!.type),
                                               ),
                                             ),
                                           ),
@@ -216,11 +255,14 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                                               vertical: 4,
                                             ),
                                             decoration: BoxDecoration(
-                                              color: Colors.grey.withValues(alpha: 0.1),
-                                              borderRadius: BorderRadius.circular(8),
+                                              color: Colors.grey
+                                                  .withValues(alpha: 0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                             ),
                                             child: Text(
-                                              _getScopeText(_notification!.scope),
+                                              _getScopeText(
+                                                  _notification!.scope),
                                               style: TextStyle(
                                                 fontSize: 12,
                                                 fontWeight: FontWeight.w500,
@@ -307,7 +349,8 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                                       .format(_notification!.createdAt),
                                   Icons.access_time,
                                 ),
-                                if (_notification!.targetBuildingId != null) ...[
+                                if (_notification!.targetBuildingId !=
+                                    null) ...[
                                   const SizedBox(height: 12),
                                   _buildInfoRow(
                                     'Tòa nhà',
@@ -437,11 +480,12 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
       }
 
       final Uri uri = Uri.parse(url);
-      
+
       if (await canLaunchUrl(uri)) {
         await launchUrl(
           uri,
-          mode: LaunchMode.externalApplication, // Mở trong trình duyệt bên ngoài
+          mode:
+              LaunchMode.externalApplication, // Mở trong trình duyệt bên ngoài
         );
       } else {
         if (mounted) {
@@ -465,4 +509,3 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
     }
   }
 }
-

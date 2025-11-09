@@ -6,13 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../auth/api_client.dart';
-import '../common/main_shell.dart';
 import '../contracts/contract_service.dart';
 import '../models/resident_notification.dart';
 import '../news/resident_service.dart';
 import '../profile/profile_service.dart';
 import '../theme/app_colors.dart';
 import 'notification_detail_screen.dart';
+import 'notification_read_store.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
@@ -30,6 +30,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
   bool loading = false;
   String? _residentId;
   String? _buildingId;
+  Set<String> _readIds = {};
 
   @override
   void initState() {
@@ -54,6 +55,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
           _buildingId!.isNotEmpty) {
         debugPrint(
             '✅ Tìm thấy residentId và buildingId trong profile: residentId=$_residentId, buildingId=$_buildingId');
+        _readIds = await NotificationReadStore.load(_residentId!);
         await _fetch();
         return;
       }
@@ -88,6 +90,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
         return;
       }
 
+      _readIds = await NotificationReadStore.load(_residentId!);
       await _fetch();
     } catch (e) {
       debugPrint('⚠️ Lỗi lấy residentId/buildingId: $e');
@@ -107,15 +110,19 @@ class _NotificationScreenState extends State<NotificationScreen> {
         '🔍 Bắt đầu fetch notifications với residentId=$_residentId, buildingId=$_buildingId');
     setState(() => loading = true);
     try {
-      items = await _residentService.getResidentNotifications(
+      final fetched = await _residentService.getResidentNotifications(
         _residentId!,
         _buildingId!,
       );
-      debugPrint('✅ Loaded ${items.length} notifications');
-      if (items.isEmpty) {
+      debugPrint('✅ Loaded ${fetched.length} notifications');
+      if (fetched.isEmpty) {
         debugPrint(
             '⚠️ Không có notifications nào. Có thể admin service chưa có data hoặc UUID không đúng.');
       }
+      final updated = fetched
+          .map((n) => _readIds.contains(n.id) ? n.copyWith(isRead: true) : n)
+          .toList();
+      items = updated;
     } catch (e) {
       debugPrint('❌ Lỗi tải notifications: $e');
       if (e is DioException) {
@@ -125,6 +132,27 @@ class _NotificationScreenState extends State<NotificationScreen> {
       items = [];
     } finally {
       if (mounted) setState(() => loading = false);
+    }
+  }
+
+  void _handleNotificationMarkedRead(String notificationId) {
+    final index = items.indexWhere((element) => element.id == notificationId);
+    if (index == -1) return;
+    final alreadyRead = _readIds.contains(notificationId);
+    _readIds = {..._readIds, notificationId};
+    setState(() {
+      final updated = items[index].copyWith(
+        isRead: true,
+        readAt: DateTime.now(),
+      );
+      items = [
+        ...items.sublist(0, index),
+        updated,
+        ...items.sublist(index + 1),
+      ];
+    });
+    if (!alreadyRead && _residentId != null) {
+      NotificationReadStore.markRead(_residentId!, notificationId);
     }
   }
 
@@ -218,6 +246,10 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                     notification: entry.value,
                                     color: _getTypeColor(entry.value.type),
                                     icon: _getTypeIcon(entry.value.type),
+                                    residentId: _residentId,
+                                    onMarkedAsRead: () =>
+                                        _handleNotificationMarkedRead(
+                                            entry.value.id),
                                   ),
                                 ),
                                 builder: (context, value, child) => Opacity(
@@ -232,13 +264,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
                         ),
                       ],
                     ),
-        ),
-      ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-          child: const _NotificationNavBar(),
         ),
       ),
     );
@@ -320,20 +345,24 @@ class _NotificationCard extends StatelessWidget {
     required this.notification,
     required this.color,
     required this.icon,
+    this.residentId,
+    this.onMarkedAsRead,
   });
 
   final ResidentNotification notification;
   final Color color;
   final IconData icon;
+  final String? residentId;
+  final VoidCallback? onMarkedAsRead;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final dateText =
         DateFormat('dd MMM yyyy, HH:mm').format(notification.createdAt);
+    final isUnread = !notification.isRead;
 
     return OpenContainer<bool>(
-      useRootNavigator: true,
       transitionType: ContainerTransitionType.fadeThrough,
       openColor: theme.colorScheme.surface,
       closedColor: theme.colorScheme.surface,
@@ -343,6 +372,8 @@ class _NotificationCard extends StatelessWidget {
           RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
       openBuilder: (context, _) => NotificationDetailScreen(
         notificationId: notification.id,
+        residentId: residentId,
+        onMarkedAsRead: onMarkedAsRead,
       ),
       closedBuilder: (context, openContainer) {
         return InkWell(
@@ -370,11 +401,30 @@ class _NotificationCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            notification.title,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  notification.title,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: isUnread
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                              if (isUnread) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                    color: color,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                           const SizedBox(height: 6),
                           Text(
@@ -382,8 +432,9 @@ class _NotificationCard extends StatelessWidget {
                             maxLines: 3,
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurface
-                                  .withValues(alpha: 0.7),
+                              color: theme.colorScheme.onSurface.withValues(
+                                alpha: isUnread ? 0.78 : 0.55,
+                              ),
                             ),
                           ),
                         ],
@@ -421,71 +472,6 @@ class _NotificationCard extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _NotificationNavBar extends StatelessWidget {
-  const _NotificationNavBar();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(26),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: isDark
-                ? AppColors.darkGlassLayerGradient()
-                : AppColors.glassLayerGradient(),
-            borderRadius: BorderRadius.circular(26),
-            border: Border.all(
-              color: theme.colorScheme.outline.withOpacity(0.12),
-            ),
-            boxShadow: AppColors.subtleShadow,
-          ),
-          child: NavigationBar(
-            height: 72,
-            backgroundColor: Colors.transparent,
-            indicatorColor: theme.colorScheme.primary.withOpacity(0.14),
-            selectedIndex: 3,
-            onDestinationSelected: (index) {
-              if (index == 3) return;
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(
-                  builder: (_) => MainShell(initialIndex: index),
-                ),
-                (route) => false,
-              );
-            },
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.home_outlined),
-                selectedIcon: Icon(Icons.home_rounded),
-                label: 'Trang chủ',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.qr_code_scanner_outlined),
-                selectedIcon: Icon(Icons.app_registration_rounded),
-                label: 'Dịch vụ',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.grid_view_outlined),
-                selectedIcon: Icon(Icons.grid_view_rounded),
-                label: 'Tiện ích',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.notifications_outlined),
-                selectedIcon: Icon(Icons.notifications_rounded),
-                label: 'Thông báo',
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

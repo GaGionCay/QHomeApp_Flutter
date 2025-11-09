@@ -6,10 +6,9 @@ import '../models/resident_notification.dart';
 import '../models/notification_detail_response.dart';
 
 class ResidentService {
-  final AdminApiClient _apiClient;
   final _publicDio = AdminApiClient.createPublicDio();
 
-  ResidentService() : _apiClient = AdminApiClient();
+  ResidentService();
 
   Future<List<ResidentNews>> getResidentNews(
     String residentId, {
@@ -47,16 +46,19 @@ class ResidentService {
         final startIndex = page * size;
         final endIndex = (startIndex + size).clamp(0, allItems.length);
         if (startIndex >= allItems.length) {
-          print('⚠️ [ResidentService] Start index $startIndex vượt quá tổng số items ${allItems.length}');
+          print(
+              '⚠️ [ResidentService] Start index $startIndex vượt quá tổng số items ${allItems.length}');
           return [];
         }
 
         final paginatedItems = allItems.sublist(startIndex, endIndex);
-        print('✅ [ResidentService] Paginated ở client: trang $page = ${paginatedItems.length} items (từ $startIndex đến $endIndex)');
+        print(
+            '✅ [ResidentService] Paginated ở client: trang $page = ${paginatedItems.length} items (từ $startIndex đến $endIndex)');
         return paginatedItems;
       }
 
-      print('⚠️ [ResidentService] Response format không hỗ trợ, trả về empty list');
+      print(
+          '⚠️ [ResidentService] Response format không hỗ trợ, trả về empty list');
       return [];
     } on DioException catch (e) {
       print('❌ Lỗi lấy resident news: ${e.message}');
@@ -116,7 +118,8 @@ class ResidentService {
     String buildingId,
   ) async {
     try {
-      print('🔍 [ResidentService] Gọi API notifications với residentId=$residentId, buildingId=$buildingId');
+      print(
+          '🔍 [ResidentService] Gọi API notifications với residentId=$residentId, buildingId=$buildingId');
       final response = await _publicDio.get(
         '/notifications/resident',
         queryParameters: {
@@ -124,11 +127,12 @@ class ResidentService {
           'buildingId': buildingId,
         },
       );
-      
+
       print('🔍 [ResidentService] Response status: ${response.statusCode}');
-      print('🔍 [ResidentService] Response data type: ${response.data.runtimeType}');
+      print(
+          '🔍 [ResidentService] Response data type: ${response.data.runtimeType}');
       print('🔍 [ResidentService] Response data: ${response.data}');
-      
+
       if (response.data is List) {
         final list = (response.data as List)
             .map((json) => ResidentNotification.fromJson(json))
@@ -136,44 +140,48 @@ class ResidentService {
         print('✅ [ResidentService] Parsed ${list.length} notifications');
         return list;
       }
-      
+
       print('⚠️ [ResidentService] Response không phải List, trả về empty list');
       return [];
     } catch (e) {
       print('❌ [ResidentService] Lỗi lấy resident notifications: $e');
       if (e is DioException) {
-        print('❌ [ResidentService] DioException status: ${e.response?.statusCode}');
+        print(
+            '❌ [ResidentService] DioException status: ${e.response?.statusCode}');
         print('❌ [ResidentService] DioException data: ${e.response?.data}');
       }
       rethrow;
     }
   }
 
-  Future<NotificationDetailResponse> getNotificationDetailById(String notificationId) async {
+  Future<NotificationDetailResponse> getNotificationDetailById(
+      String notificationId) async {
     try {
-      print('🔍 [ResidentService] Gọi API notification detail với id=$notificationId');
+      print(
+          '🔍 [ResidentService] Gọi API notification detail với id=$notificationId');
       final response = await _publicDio.get(
         '/notifications/$notificationId',
       );
-      
+
       print('🔍 [ResidentService] Response status: ${response.statusCode}');
       print('🔍 [ResidentService] Response data: ${response.data}');
-      
+
       if (response.data is Map) {
-        final detail = NotificationDetailResponse.fromJson(response.data as Map<String, dynamic>);
+        final detail = NotificationDetailResponse.fromJson(
+            response.data as Map<String, dynamic>);
         print('✅ [ResidentService] Parsed notification detail');
         return detail;
       }
-      
+
       throw Exception('Invalid response format');
     } catch (e) {
       print('❌ [ResidentService] Lỗi lấy notification detail: $e');
       if (e is DioException) {
-        print('❌ [ResidentService] DioException status: ${e.response?.statusCode}');
+        print(
+            '❌ [ResidentService] DioException status: ${e.response?.statusCode}');
         print('❌ [ResidentService] DioException data: ${e.response?.data}');
       }
       rethrow;
     }
   }
 }
-
