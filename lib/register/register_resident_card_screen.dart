@@ -14,12 +14,15 @@ import '../contracts/contract_service.dart';
 import '../core/event_bus.dart';
 import '../models/unit_info.dart';
 import '../profile/profile_service.dart';
+import '../theme/app_colors.dart';
+import 'widgets/register_glass_inputs.dart';
 
 class RegisterResidentCardScreen extends StatefulWidget {
   const RegisterResidentCardScreen({super.key});
 
   @override
-  State<RegisterResidentCardScreen> createState() => _RegisterResidentCardScreenState();
+  State<RegisterResidentCardScreen> createState() =>
+      _RegisterResidentCardScreenState();
 }
 
 class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
@@ -93,7 +96,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
       _autoSave();
     }
     if (state == AppLifecycleState.resumed) {
@@ -180,8 +184,10 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
 
       final data = jsonDecode(saved) as Map<String, dynamic>;
       setState(() {
-        _fullNameCtrl.text = data['fullName'] ?? data['residentName'] ?? _fullNameCtrl.text;
-        _apartmentNumberCtrl.text = data['apartmentNumber'] ?? _apartmentNumberCtrl.text;
+        _fullNameCtrl.text =
+            data['fullName'] ?? data['residentName'] ?? _fullNameCtrl.text;
+        _apartmentNumberCtrl.text =
+            data['apartmentNumber'] ?? _apartmentNumberCtrl.text;
         _buildingNameCtrl.text = data['buildingName'] ?? _buildingNameCtrl.text;
         _requestType = data['requestType'] ?? _requestType;
         _citizenIdCtrl.text = data['citizenId'] ?? _citizenIdCtrl.text;
@@ -251,8 +257,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       final candidateResidentId = profile['residentId']?.toString();
       final profileFullName =
           profile['fullName']?.toString() ?? profile['name']?.toString();
-      final profileCitizenId =
-          profile['citizenId']?.toString() ?? profile['identityNumber']?.toString();
+      final profileCitizenId = profile['citizenId']?.toString() ??
+          profile['identityNumber']?.toString();
       final profilePhone =
           profile['phoneNumber']?.toString() ?? profile['phone']?.toString();
 
@@ -261,13 +267,16 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         _defaultCitizenId = profileCitizenId ?? _defaultCitizenId;
         _defaultPhoneNumber = profilePhone ?? _defaultPhoneNumber;
 
-        if (_fullNameCtrl.text.isEmpty && (_defaultFullName?.isNotEmpty ?? false)) {
+        if (_fullNameCtrl.text.isEmpty &&
+            (_defaultFullName?.isNotEmpty ?? false)) {
           _fullNameCtrl.text = _defaultFullName!;
         }
-        if (_citizenIdCtrl.text.isEmpty && (_defaultCitizenId?.isNotEmpty ?? false)) {
+        if (_citizenIdCtrl.text.isEmpty &&
+            (_defaultCitizenId?.isNotEmpty ?? false)) {
           _citizenIdCtrl.text = _defaultCitizenId!;
         }
-        if (_phoneNumberCtrl.text.isEmpty && (_defaultPhoneNumber?.isNotEmpty ?? false)) {
+        if (_phoneNumberCtrl.text.isEmpty &&
+            (_defaultPhoneNumber?.isNotEmpty ?? false)) {
           _phoneNumberCtrl.text = _defaultPhoneNumber!;
         }
         if (_residentId == null || _residentId!.isEmpty) {
@@ -345,7 +354,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
 
     _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
       if (uri == null) return;
-      if (uri.scheme != 'qhomeapp' || uri.host != 'vnpay-resident-card-result') return;
+      if (uri.scheme != 'qhomeapp' || uri.host != 'vnpay-resident-card-result')
+        return;
       await _handleDeepLinkPayment(uri);
     });
   }
@@ -398,7 +408,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     );
   }
 
-  Future<void> _handleFailedPayment(String? registrationId, String message) async {
+  Future<void> _handleFailedPayment(
+      String? registrationId, String message) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_pendingPaymentKey);
@@ -520,7 +531,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Đã kiểm tra', style: TextStyle(color: Colors.teal)),
+              child: const Text('Đã kiểm tra',
+                  style: TextStyle(color: Colors.teal)),
             ),
           ],
         ),
@@ -560,7 +572,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Đã kiểm tra', style: TextStyle(color: Colors.teal)),
+              child: const Text('Đã kiểm tra',
+                  style: TextStyle(color: Colors.teal)),
             ),
           ],
         ),
@@ -772,6 +785,31 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final media = MediaQuery.of(context);
+
+    final backgroundGradient = isDark
+        ? const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF050F1F),
+              Color(0xFF10243E),
+              Color(0xFF050B14),
+            ],
+          )
+        : const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFE7F3FF),
+              Color(0xFFF5FAFF),
+              Colors.white,
+            ],
+          );
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
@@ -783,129 +821,163 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF5F7F9),
+        extendBody: true,
+        backgroundColor: colorScheme.surface,
         appBar: AppBar(
-          title: const Text(
+          title: Text(
             'Đăng ký thẻ cư dân',
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w700,
             ),
           ),
-          backgroundColor: const Color(0xFF26A69A),
-          foregroundColor: Colors.white,
           elevation: 0,
-        ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildFeeInfoCard(),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _fullNameCtrl,
-                  label: 'Họ tên cư dân',
-                  hint: 'Nhập họ tên cư dân',
-                  fieldKey: 'fullName',
-                  icon: Icons.person_outline,
-                  validator: (v) => v == null || v.isEmpty
-                      ? 'Vui lòng nhập họ tên cư dân'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _apartmentNumberCtrl,
-                  label: 'Số căn hộ',
-                  hint: 'Hệ thống tự điền theo căn hộ đang chọn',
-                  fieldKey: 'apartmentNumber',
-                  icon: Icons.home_outlined,
-                  validator: (v) => v == null || v.isEmpty
-                      ? 'Vui lòng kiểm tra lại số căn hộ'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _buildingNameCtrl,
-                  label: 'Tòa nhà',
-                  hint: 'Hệ thống tự điền theo căn hộ đang chọn',
-                  fieldKey: 'buildingName',
-                  icon: Icons.apartment_outlined,
-                  validator: (v) => v == null || v.isEmpty
-                      ? 'Vui lòng kiểm tra lại tòa nhà'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                _buildRequestTypeDropdown(),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _citizenIdCtrl,
-                  label: 'Căn cước công dân',
-                  hint: 'Nhập số căn cước công dân',
-                  fieldKey: 'citizenId',
-                  icon: Icons.badge_outlined,
-                  validator: (v) => v == null || v.isEmpty
-                      ? 'Vui lòng nhập căn cước công dân'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _phoneNumberCtrl,
-                  label: 'Số điện thoại',
-                  hint: 'Nhập số điện thoại liên hệ',
-                  fieldKey: 'phoneNumber',
-                  icon: Icons.phone_iphone,
-                  keyboardType: TextInputType.phone,
-                  validator: (v) {
-                    if (v == null || v.isEmpty) {
-                      return 'Vui lòng nhập số điện thoại';
-                    }
-                    if (!RegExp(r'^[0-9]{10,11}$').hasMatch(v)) {
-                      return 'Số điện thoại không hợp lệ';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _noteCtrl,
-                  label: 'Ghi chú',
-                  hint: 'Nhập ghi chú nếu có',
-                  fieldKey: 'note',
-                  icon: Icons.notes,
-                  maxLines: 3,
-                ),
-                const SizedBox(height: 32),
-                ElevatedButton(
-                  onPressed: _submitting ? null : _handleRegisterPressed,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF26A69A),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+          backgroundColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
+          foregroundColor: colorScheme.onSurface,
+          flexibleSpace: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: isDark
+                  ? const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0xFF07121F),
+                        Color(0x3307121F),
+                      ],
+                    )
+                  : const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0xE6FFFFFF),
+                        Color(0x00FFFFFF),
+                      ],
                     ),
-                  ),
-                  child: _submitting
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : const Text(
-                          'Gửi yêu cầu và thanh toán',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
+            ),
+          ),
+        ),
+        body: DecoratedBox(
+          decoration: BoxDecoration(gradient: backgroundGradient),
+          child: SafeArea(
+            bottom: false,
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(
+                20,
+                24,
+                20,
+                media.padding.bottom + 36,
+              ),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildFeeInfoCard(),
+                    const SizedBox(height: 20),
+                    _buildTextField(
+                      controller: _fullNameCtrl,
+                      label: 'Họ tên cư dân',
+                      hint: 'Nhập họ tên cư dân',
+                      fieldKey: 'fullName',
+                      icon: Icons.person_outline,
+                      validator: (v) => v == null || v.isEmpty
+                          ? 'Vui lòng nhập họ tên cư dân'
+                          : null,
+                    ),
+                    const SizedBox(height: 18),
+                    _buildTextField(
+                      controller: _apartmentNumberCtrl,
+                      label: 'Số căn hộ',
+                      hint: 'Hệ thống tự điền theo căn hộ đang chọn',
+                      fieldKey: 'apartmentNumber',
+                      icon: Icons.home_outlined,
+                      validator: (v) => v == null || v.isEmpty
+                          ? 'Vui lòng kiểm tra lại số căn hộ'
+                          : null,
+                    ),
+                    const SizedBox(height: 18),
+                    _buildTextField(
+                      controller: _buildingNameCtrl,
+                      label: 'Tòa nhà',
+                      hint: 'Hệ thống tự điền theo căn hộ đang chọn',
+                      fieldKey: 'buildingName',
+                      icon: Icons.apartment_outlined,
+                      validator: (v) => v == null || v.isEmpty
+                          ? 'Vui lòng kiểm tra lại tòa nhà'
+                          : null,
+                    ),
+                    const SizedBox(height: 18),
+                    _buildRequestTypeDropdown(),
+                    const SizedBox(height: 18),
+                    _buildTextField(
+                      controller: _citizenIdCtrl,
+                      label: 'Căn cước công dân',
+                      hint: 'Nhập số căn cước công dân',
+                      fieldKey: 'citizenId',
+                      icon: Icons.badge_outlined,
+                      validator: (v) => v == null || v.isEmpty
+                          ? 'Vui lòng nhập căn cước công dân'
+                          : null,
+                    ),
+                    const SizedBox(height: 18),
+                    _buildTextField(
+                      controller: _phoneNumberCtrl,
+                      label: 'Số điện thoại',
+                      hint: 'Nhập số điện thoại liên hệ',
+                      fieldKey: 'phoneNumber',
+                      icon: Icons.phone_iphone,
+                      keyboardType: TextInputType.phone,
+                      validator: (v) {
+                        if (v == null || v.isEmpty) {
+                          return 'Vui lòng nhập số điện thoại';
+                        }
+                        if (!RegExp(r'^[0-9]{10,11}$').hasMatch(v)) {
+                          return 'Số điện thoại không hợp lệ';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 18),
+                    _buildTextField(
+                      controller: _noteCtrl,
+                      label: 'Ghi chú',
+                      hint: 'Nhập ghi chú nếu có',
+                      fieldKey: 'note',
+                      icon: Icons.notes,
+                      maxLines: 3,
+                    ),
+                    const SizedBox(height: 28),
+                    FilledButton(
+                      onPressed: _submitting ? null : _handleRegisterPressed,
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
                         ),
+                      ),
+                      child: _submitting
+                          ? SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  theme.colorScheme.onPrimary,
+                                ),
+                              ),
+                            )
+                          : Text(
+                              'Gửi yêu cầu và thanh toán',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: theme.colorScheme.onPrimary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -914,62 +986,57 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   }
 
   Widget _buildFeeInfoCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return RegisterGlassPanel(
+      padding: const EdgeInsets.all(22),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
-            decoration: const BoxDecoration(
-              color: Color(0x1A26A69A),
-              shape: BoxShape.circle,
+            height: 56,
+            width: 56,
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient(),
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x1A0B4F6C),
+                  blurRadius: 18,
+                  offset: Offset(0, 8),
+                ),
+              ],
             ),
             child: const Icon(
               Icons.payments_outlined,
-              color: Color(0xFF26A69A),
+              color: Colors.white,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 18),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Phí đăng ký thẻ cư dân',
-                  style: TextStyle(
-                    fontSize: 15,
+                  style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF1F2933),
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   _formatVnd(_registrationFee),
-                  style: const TextStyle(
-                    fontSize: 16,
+                  style: theme.textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF26A69A),
+                    color: colorScheme.primary,
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'Sau khi gửi yêu cầu, bạn sẽ được chuyển tới cổng thanh toán VNPAY để hoàn tất thanh toán.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF617079),
-                    height: 1.3,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurface.withOpacity(0.68),
+                    height: 1.45,
                   ),
                 ),
               ],
@@ -982,61 +1049,36 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
 
   Widget _buildRequestTypeDropdown() {
     final isEditable = _isEditable('requestType');
-    return GestureDetector(
-      onDoubleTap: () => _requestEditField('requestType'),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: DropdownButtonFormField<String>(
-          initialValue: _requestType,
-          decoration: InputDecoration(
-            labelText: 'Loại yêu cầu',
-            prefixIcon: const Icon(Icons.category_outlined, color: Color(0xFF26A69A)),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            filled: true,
-            fillColor: isEditable ? Colors.white : Colors.grey[100],
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 16,
-            ),
-          ),
-          items: const [
-            DropdownMenuItem(
-              value: 'NEW_CARD',
-              child: Text('Làm thẻ mới'),
-            ),
-            DropdownMenuItem(
-              value: 'REPLACE_CARD',
-              child: Text('Cấp lại thẻ bị mất'),
-            ),
-          ],
-          onChanged: isEditable
-              ? (value) {
-                  setState(() {
-                    _requestType = value ?? 'NEW_CARD';
-                    if (_confirmed) {
-                      _editingField = 'requestType';
-                      _hasEditedAfterConfirm = true;
-                    }
-                  });
-                  _autoSave();
+    return RegisterGlassDropdown<String>(
+      value: _requestType,
+      label: 'Loại yêu cầu',
+      hint: 'Chọn loại yêu cầu',
+      icon: Icons.category_outlined,
+      enabled: isEditable,
+      onDoubleTap: isEditable ? null : () => _requestEditField('requestType'),
+      onChanged: isEditable
+          ? (value) {
+              setState(() {
+                _requestType = value ?? 'NEW_CARD';
+                if (_confirmed) {
+                  _editingField = 'requestType';
+                  _hasEditedAfterConfirm = true;
                 }
-              : null,
-          validator: (v) => v == null ? 'Vui lòng chọn loại yêu cầu' : null,
+              });
+              _autoSave();
+            }
+          : null,
+      validator: (v) => v == null ? 'Vui lòng chọn loại yêu cầu' : null,
+      items: const [
+        DropdownMenuItem(
+          value: 'NEW_CARD',
+          child: Text('Làm thẻ mới'),
         ),
-      ),
+        DropdownMenuItem(
+          value: 'REPLACE_CARD',
+          child: Text('Cấp lại thẻ bị mất'),
+        ),
+      ],
     );
   }
 
@@ -1050,47 +1092,25 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     TextInputType? keyboardType,
     int maxLines = 1,
   }) {
-    final isEditable = _isEditable(fieldKey);
+    final editable = _isEditable(fieldKey);
     final isAutoField = _isAutoFilledField(fieldKey);
-    final canEdit = !isAutoField && isEditable;
-    return GestureDetector(
+    final canEdit = !isAutoField && editable;
+
+    final displayHint = _confirmed && !editable && !isAutoField
+        ? 'Nhấn đúp để yêu cầu chỉnh sửa'
+        : hint;
+
+    return RegisterGlassTextField(
+      controller: controller,
+      label: label,
+      hint: displayHint,
+      icon: icon,
+      validator: validator,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      enabled: true,
+      readOnly: !canEdit,
       onDoubleTap: isAutoField ? null : () => _requestEditField(fieldKey),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: TextFormField(
-          controller: controller,
-          enabled: isAutoField ? true : isEditable,
-          readOnly: !canEdit,
-          validator: validator,
-          keyboardType: keyboardType,
-          maxLines: maxLines,
-          decoration: InputDecoration(
-            labelText: label,
-            hintText: hint,
-            prefixIcon: Icon(icon, color: const Color(0xFF26A69A)),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            filled: true,
-            fillColor: canEdit ? Colors.white : Colors.grey[100],
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 16,
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -1108,5 +1128,3 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     return buffer.toString();
   }
 }
-
-

@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../auth/api_client.dart';
 import '../contracts/contract_service.dart';
 import '../models/resident_notification.dart';
+import '../core/event_bus.dart';
 import '../news/resident_service.dart';
 import '../profile/profile_service.dart';
 import '../theme/app_colors.dart';
@@ -25,6 +26,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
   final ApiClient _api = ApiClient();
   final ResidentService _residentService = ResidentService();
   late final ContractService _contractService;
+  late final AppEventBus _bus;
 
   List<ResidentNotification> items = [];
   bool loading = false;
@@ -36,6 +38,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
   void initState() {
     super.initState();
     _contractService = ContractService(_api);
+    _bus = AppEventBus();
+    _bus.on('notifications_refetch', (_) async {
+      if (!mounted) return;
+      if (_residentId != null && _buildingId != null) {
+        await _fetch();
+      }
+    });
     _loadIdsAndFetch();
   }
 
@@ -98,6 +107,12 @@ class _NotificationScreenState extends State<NotificationScreen> {
         setState(() => loading = false);
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _bus.off('notifications_refetch');
+    super.dispose();
   }
 
   Future<void> _fetch() async {

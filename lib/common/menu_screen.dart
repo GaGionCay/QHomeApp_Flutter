@@ -1,13 +1,19 @@
+import 'dart:ui';
+
 import 'package:dio/dio.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+
+import '../auth/api_client.dart';
 import '../auth/auth_service.dart';
+import '../contracts/contract_list_screen.dart';
 import '../core/event_bus.dart';
 import '../login/login_screen.dart';
+import '../notifications/notification_screen.dart';
 import '../profile/profile_screen.dart';
 import '../profile/profile_service.dart';
-import '../auth/api_client.dart';
-import '../notifications/notification_screen.dart';
-import '../contracts/contract_list_screen.dart';
+import '../theme/app_colors.dart';
+import 'layout_insets.dart';
 
 class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key});
@@ -38,7 +44,7 @@ class _MenuScreenState extends State<MenuScreen> {
       _authService = AuthService(_dio, api.storage);
       await _loadProfile();
     } catch (e) {
-      print('❌ Lỗi khởi tạo service: $e');
+      debugPrint('❌ Lỗi khởi tạo service: $e');
       setState(() => _loading = false);
     }
   }
@@ -51,29 +57,38 @@ class _MenuScreenState extends State<MenuScreen> {
         _loading = false;
       });
     } catch (e) {
-      print('❌ Lỗi tải thông tin người dùng: $e');
+      debugPrint('❌ Lỗi tải thông tin người dùng: $e');
       setState(() => _loading = false);
     }
   }
 
   Future<void> _logout(BuildContext context) async {
+    final theme = Theme.of(context);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Xác nhận đăng xuất'),
-        content: const Text('Bạn có chắc muốn đăng xuất không?'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text('Xác nhận đăng xuất', style: theme.textTheme.titleMedium),
+        content: Text(
+          'Bạn chắc chắn muốn kết thúc phiên làm việc?\nBạn có thể đăng nhập lại bất cứ lúc nào.',
+          style: theme.textTheme.bodyMedium,
+        ),
+        actionsPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Hủy'),
           ),
-          ElevatedButton(
+          FilledButton.icon(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
+            icon: const Icon(CupertinoIcons.square_arrow_right),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFFF4D67),
               foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
             ),
-            child: const Text('Đăng xuất'),
+            label: const Text('Đăng xuất'),
           ),
         ],
       ),
@@ -87,7 +102,6 @@ class _MenuScreenState extends State<MenuScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Đăng xuất thành công!')),
           );
-
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const LoginScreen()),
             (route) => false,
@@ -105,24 +119,242 @@ class _MenuScreenState extends State<MenuScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final double bottomInset = LayoutInsets.bottomNavContentPadding(
+      context,
+      extra: -LayoutInsets.navBarHeight + 100,
+      minimumGap: 160,
+    );
+
+    final backgroundGradient = isDark
+        ? const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF050F1F),
+              Color(0xFF102240),
+              Color(0xFF071117),
+            ],
+          )
+        : const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFE9F4FF),
+              Color(0xFFF7FBFF),
+              Colors.white,
+            ],
+          );
+
     return Scaffold(
+      extendBody: true,
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
-        title: const Text('Tài khoản'),
-        backgroundColor: const Color(0xFF26A69A),
-        foregroundColor: Colors.white,
+        title: const Text('Không gian cư dân'),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
+      body: DecoratedBox(
+        decoration: BoxDecoration(gradient: backgroundGradient),
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: EdgeInsets.fromLTRB(20, 24, 20, bottomInset),
+                children: [
+                  _buildProfileHeader(theme),
+                  const SizedBox(height: 24),
+                  _buildQuickActions(theme),
+                  const SizedBox(height: 32),
+                  Text(
+                    'Tiện ích tài khoản',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _MenuGlassTile(
+                    icon: CupertinoIcons.person_crop_circle,
+                    label: 'Hồ sơ cá nhân',
+                    subtitle: 'Xem và chỉnh sửa thông tin cư dân',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const ProfileScreen()),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _MenuGlassTile(
+                    icon: CupertinoIcons.bell_solid,
+                    label: 'Thông báo hệ thống',
+                    subtitle: 'Theo dõi cập nhật từ ban quản lý',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const NotificationScreen()),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _MenuGlassTile(
+                    icon: CupertinoIcons.doc_text_fill,
+                    label: 'Hợp đồng của tôi',
+                    subtitle: 'Quản lý hợp đồng cư trú và tiện ích',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const ContractListScreen()),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 32),
+                  Text(
+                    'An toàn tài khoản',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _MenuGlassTile(
+                    icon: CupertinoIcons.lock_shield,
+                    label: 'Đổi mật khẩu',
+                    subtitle: 'Thiết lập mật khẩu mạnh hơn',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const ProfileScreen()),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _MenuGlassTile(
+                    icon: CupertinoIcons.square_arrow_right,
+                    label: 'Đăng xuất',
+                    subtitle: 'Thoát khỏi tài khoản hiện tại',
+                    iconColor: const Color(0xFFFF4D67),
+                    onTap: () => _logout(context),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildProfileHeader(ThemeData theme) {
+    final avatarUrl = _profile?['avatarUrl'] as String?;
+    final name = _profile?['fullName'] ?? 'Người dùng';
+    final email = _profile?['email'] ?? '';
+
+    return _ProfileGlassCard(
+      child: Row(
+        children: [
+          Container(
+            height: 64,
+            width: 64,
+            decoration: BoxDecoration(
+              gradient: AppColors.heroBackdropGradient(),
+              shape: BoxShape.circle,
+              boxShadow: AppColors.elevatedShadow,
+            ),
+            child: ClipOval(
+              child: avatarUrl != null && avatarUrl.isNotEmpty
+                  ? Image.network(avatarUrl, fit: BoxFit.cover)
+                  : Image.asset(
+                      'assets/images/avatar_placeholder.png',
+                      fit: BoxFit.cover,
+                    ),
+            ),
+          ),
+          const SizedBox(width: 18),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildProfileHeader(),
-                const SizedBox(height: 16),
-                _buildMenuCard(
-                  context,
-                  icon: Icons.person_outline,
-                  title: 'Hồ sơ cá nhân',
-                  subtitle: 'Xem và chỉnh sửa thông tin',
+                Text(
+                  name,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                if (email.isNotEmpty)
+                  Text(
+                    email,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                  ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _ProfilePill(
+                      icon: CupertinoIcons.shield_lefthalf_fill,
+                      label: 'Cư dân đã xác thực',
+                    ),
+                    _ProfilePill(
+                      icon: CupertinoIcons.star_fill,
+                      label: 'Thành viên Emerald',
+                      gradient: const [Color(0xFF7EC8E3), Color(0xFF007AFF)],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickActions(ThemeData theme) {
+    return _ServiceGlassCard(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Tiện ích nổi bật',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                _QuickActionChip(
+                  icon: CupertinoIcons.doc_text_fill,
+                  label: 'Theo dõi hợp đồng',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const ContractListScreen()),
+                    );
+                  },
+                ),
+                _QuickActionChip(
+                  icon: CupertinoIcons.bell_circle_fill,
+                  label: 'Thông báo mới',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const NotificationScreen()),
+                    );
+                  },
+                ),
+                _QuickActionChip(
+                  icon: CupertinoIcons.lock_shield_fill,
+                  label: 'Bảo mật tài khoản',
                   onTap: () {
                     Navigator.push(
                       context,
@@ -130,148 +362,249 @@ class _MenuScreenState extends State<MenuScreen> {
                     );
                   },
                 ),
-                const SizedBox(height: 12),
-                _buildMenuCard(
-                  context,
-                  icon: Icons.notifications_outlined,
-                  title: 'Thông báo hệ thống',
-                  subtitle: 'Xem thông báo từ quản lý',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const NotificationScreen()),
-                    );
-                  },
-                ),
-                const SizedBox(height: 12),
-                _buildMenuCard(
-                  context,
-                  icon: Icons.description_outlined,
-                  title: 'Hợp đồng của tôi',
-                  subtitle: 'Xem hợp đồng của căn hộ',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const ContractListScreen(),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 12),
-                _buildMenuCard(
-                  context,
-                  icon: Icons.logout,
-                  title: 'Đăng xuất',
-                  subtitle: 'Thoát khỏi tài khoản',
-                  isDestructive: true,
-                  onTap: () => _logout(context),
-                ),
               ],
-            ),
-    );
-  }
-
-  Widget _buildProfileHeader() {
-    final avatarUrl = _profile?['avatarUrl'] as String?;
-    final name = _profile?['fullName'] ?? 'Người dùng';
-    final email = _profile?['email'] ?? '';
-
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey[200]!),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 30,
-              backgroundColor: const Color(0xFF26A69A),
-              backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty
-                  ? NetworkImage(avatarUrl)
-                  : const AssetImage('assets/images/avatar_placeholder.png')
-                      as ImageProvider,
-              child: avatarUrl == null || avatarUrl.isEmpty
-                  ? const Icon(Icons.person, color: Colors.white, size: 30)
-                  : null,
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  if (email.isNotEmpty)
-                    Text(
-                      email,
-                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                    ),
-                ],
-              ),
             ),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildMenuCard(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-    bool isDestructive = false,
-  }) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey[200]!),
-      ),
-      child: ListTile(
-        onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(
-          width: 48,
-          height: 48,
+class _ProfileGlassCard extends StatelessWidget {
+  const _ProfileGlassCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(28),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: DecoratedBox(
           decoration: BoxDecoration(
-            color: isDestructive
-                ? Colors.red.withOpacity(0.1)
-                : const Color(0xFF26A69A).withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
+            gradient: isDark
+                ? AppColors.darkGlassLayerGradient()
+                : AppColors.glassLayerGradient(),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: theme.colorScheme.outline.withOpacity(0.08),
+            ),
+            boxShadow: AppColors.elevatedShadow,
           ),
-          child: Icon(
-            icon,
-            color: isDestructive ? Colors.red : const Color(0xFF26A69A),
-            size: 24,
-          ),
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: isDestructive ? Colors.red : Colors.black87,
+          child: Padding(
+            padding: const EdgeInsets.all(22),
+            child: child,
           ),
         ),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+      ),
+    );
+  }
+}
+
+class _ServiceGlassCard extends StatelessWidget {
+  const _ServiceGlassCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(26),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: isDark
+                ? AppColors.darkGlassLayerGradient()
+                : AppColors.glassLayerGradient(),
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(
+              color: theme.colorScheme.outline.withOpacity(0.08),
+            ),
+            boxShadow: AppColors.subtleShadow,
+          ),
+          child: child,
         ),
-        trailing: Icon(
-          Icons.chevron_right,
-          color: Colors.grey[400],
+      ),
+    );
+  }
+}
+
+class _ProfilePill extends StatelessWidget {
+  const _ProfilePill({
+    required this.icon,
+    required this.label,
+    this.gradient,
+  });
+
+  final IconData icon;
+  final String label;
+  final List<Color>? gradient;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        gradient: gradient != null ? LinearGradient(colors: gradient!) : null,
+        color: gradient == null
+            ? theme.colorScheme.surface.withOpacity(0.72)
+            : null,
+        borderRadius: BorderRadius.circular(16),
+        border: gradient == null
+            ? Border.all(color: theme.colorScheme.outline.withOpacity(0.08))
+            : null,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.white),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MenuGlassTile extends StatelessWidget {
+  const _MenuGlassTile({
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.onTap,
+    this.iconColor,
+  });
+
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final VoidCallback onTap;
+  final Color? iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final effectiveColor = iconColor ?? colorScheme.primary;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(24),
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: isDark
+                  ? AppColors.darkGlassLayerGradient()
+                  : AppColors.glassLayerGradient(),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: colorScheme.outline.withOpacity(0.08),
+              ),
+              boxShadow: AppColors.subtleShadow,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            child: Row(
+              children: [
+                Container(
+                  height: 48,
+                  width: 48,
+                  decoration: BoxDecoration(
+                    color: effectiveColor.withOpacity(isDark ? 0.22 : 0.16),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(icon, color: effectiveColor),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  CupertinoIcons.chevron_forward,
+                  color: colorScheme.onSurface.withOpacity(0.4),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickActionChip extends StatelessWidget {
+  const _QuickActionChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          color: colorScheme.surface.withOpacity(0.78),
+          border: Border.all(
+            color: colorScheme.outline.withOpacity(0.08),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: colorScheme.primary),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
       ),
     );

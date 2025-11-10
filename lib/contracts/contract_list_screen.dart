@@ -1,3 +1,6 @@
+import 'dart:ui';
+
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../auth/api_client.dart';
 import '../models/contract.dart';
 import '../models/unit_info.dart';
+import '../theme/app_colors.dart';
 import 'contract_service.dart';
 
 class ContractListScreen extends StatefulWidget {
@@ -42,6 +46,7 @@ class _ContractListScreenState extends State<ContractListScreen> {
       _contractService = ContractService(apiClient);
       await _loadUnits();
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = 'Không thể khởi tạo dịch vụ: $e';
         _loadingUnits = false;
@@ -120,50 +125,111 @@ class _ContractListScreenState extends State<ContractListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    const double navHeight = 72;
+    const double navVerticalPadding = 18;
+    final double bottomInset = navHeight +
+        (navVerticalPadding * 2) +
+        MediaQuery.of(context).padding.bottom;
+
+    final backgroundGradient = isDark
+        ? const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF0B1728),
+              Color(0xFF0F213A),
+              Color(0xFF071117),
+            ],
+          )
+        : const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFE7F3FF),
+              Color(0xFFF5FAFF),
+              Colors.white,
+            ],
+          );
+
     return Scaffold(
+      extendBody: true,
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
         title: const Text('Hợp đồng của tôi'),
-        backgroundColor: const Color(0xFF26A69A),
-        foregroundColor: Colors.white,
       ),
-      body: _buildBody(),
+      body: DecoratedBox(
+        decoration: BoxDecoration(gradient: backgroundGradient),
+        child: _buildBody(theme, bottomInset),
+      ),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(ThemeData theme, double bottomInset) {
     if (_loadingUnits) {
       return const Center(child: CircularProgressIndicator());
     }
 
     if (_error != null) {
       return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _error!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 16, color: Colors.red),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _init,
-                child: const Text('Thử lại'),
-              ),
-            ],
+        child: _ServiceGlassCard(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(24, 24, 24, bottomInset),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.error_outline,
+                  size: 48,
+                  color: theme.colorScheme.error,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.74),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: _init,
+                  icon: const Icon(CupertinoIcons.refresh),
+                  label: const Text('Thử lại'),
+                ),
+              ],
+            ),
           ),
         ),
       );
     }
 
     if (_units.isEmpty) {
-      return const Center(
-        child: Text(
-          'Bạn chưa được gắn vào căn hộ nào.\nLiên hệ quản lý để được cấp quyền.',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 16, color: Colors.grey),
+      return Center(
+        child: _ServiceGlassCard(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(28, 28, 28, bottomInset),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  CupertinoIcons.person_crop_square,
+                  size: 56,
+                  color: theme.colorScheme.onSurface.withOpacity(0.3),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Bạn chưa được gán vào căn hộ nào.\nLiên hệ quản lý để được cấp quyền.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.65),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       );
     }
@@ -174,17 +240,17 @@ class _ContractListScreenState extends State<ContractListScreen> {
     );
 
     return RefreshIndicator(
-      color: const Color(0xFF26A69A),
+      color: theme.colorScheme.primary,
       onRefresh: _refresh,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.fromLTRB(20, 24, 20, bottomInset),
         children: [
           _buildUnitSummary(selectedUnit),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           if (_loadingContracts)
             const Center(child: CircularProgressIndicator())
           else if (_contracts.isEmpty)
-            _buildEmptyContracts()
+            _buildEmptyContracts(theme)
           else
             ..._contracts.map(_buildContractCard),
         ],
@@ -193,65 +259,149 @@ class _ContractListScreenState extends State<ContractListScreen> {
   }
 
   Widget _buildUnitSummary(UnitInfo selectedUnit) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey[200]!),
-      ),
+    final theme = Theme.of(context);
+    return _ServiceGlassCard(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(22),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Căn hộ đang xem',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            Row(
+              children: [
+                Container(
+                  height: 56,
+                  width: 56,
+                  decoration: BoxDecoration(
+                    gradient: AppColors.primaryGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: const Icon(
+                    CupertinoIcons.house_fill,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 18),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        selectedUnit.displayName,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.1,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Tòa ${selectedUnit.buildingName ?? selectedUnit.buildingCode ?? '-'}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withOpacity(0.7),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  icon: const Icon(CupertinoIcons.chevron_down),
+                  onSelected: (value) async {
+                    if (_selectedUnitId == value) return;
+                    setState(() => _selectedUnitId = value);
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setString(_selectedUnitPrefsKey, value);
+                    await _loadContracts(value);
+                  },
+                  itemBuilder: (_) => _units
+                      .map(
+                        (unit) => PopupMenuItem<String>(
+                          value: unit.id,
+                          child: Text(unit.displayName),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              selectedUnit.displayName,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            const SizedBox(height: 18),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                if (selectedUnit.floor != null)
+                  _buildUnitChip(
+                    icon: CupertinoIcons.layers,
+                    label: 'Tầng ${selectedUnit.floor}',
+                  ),
+                if (selectedUnit.areaM2 != null)
+                  _buildUnitChip(
+                    icon: CupertinoIcons.square_stack_3d_down_right,
+                    label:
+                        'Diện tích ${selectedUnit.areaM2!.toStringAsFixed(1)} m²',
+                  ),
+              ],
             ),
-            const SizedBox(height: 6),
-            Text(
-              'Tòa nhà: ${selectedUnit.buildingName ?? selectedUnit.buildingCode ?? '-'}',
-              style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-            ),
-            if (selectedUnit.floor != null)
-              Text(
-                'Tầng: ${selectedUnit.floor}',
-                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-              ),
-            if (selectedUnit.areaM2 != null)
-              Text(
-                'Diện tích: ${selectedUnit.areaM2!.toStringAsFixed(1)} m²',
-                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-              ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildEmptyContracts() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
+  Widget _buildUnitChip({required IconData icon, required String label}) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey[200]!),
+        color: theme.colorScheme.surface.withOpacity(0.75),
+        border: Border.all(
+          color: theme.colorScheme.outline.withOpacity(0.08),
+        ),
       ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: theme.colorScheme.primary),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyContracts(ThemeData theme) {
+    return _ServiceGlassCard(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(Icons.description_outlined, size: 36, color: Colors.grey),
-            SizedBox(height: 12),
+          children: [
+            Icon(
+              CupertinoIcons.doc_text_search,
+              size: 56,
+              color: theme.colorScheme.onSurface.withOpacity(0.3),
+            ),
+            const SizedBox(height: 16),
             Text(
               'Chưa có hợp đồng nào cho căn hộ này.',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Bạn sẽ nhận thông báo khi hợp đồng được ban quản lý cập nhật.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 15, color: Colors.grey),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.58),
+              ),
             ),
           ],
         ),
@@ -274,27 +424,29 @@ class _ContractListScreenState extends State<ContractListScreen> {
       return formatter.format(value);
     }
 
-    Color statusColor;
+    late Color statusColor;
+    late IconData statusIcon;
     switch (contract.status.toUpperCase()) {
       case 'ACTIVE':
-        statusColor = Colors.green;
+        statusColor = const Color(0xFF34C759);
+        statusIcon = CupertinoIcons.check_mark_circled_solid;
+        break;
       case 'TERMINATED':
-        statusColor = Colors.red;
+        statusColor = const Color(0xFFFF3B30);
+        statusIcon = CupertinoIcons.xmark_circle_fill;
+        break;
       case 'EXPIRED':
-        statusColor = Colors.orange;
+        statusColor = const Color(0xFFFF9500);
+        statusIcon = CupertinoIcons.time_solid;
+        break;
       default:
         statusColor = theme.colorScheme.primary;
+        statusIcon = CupertinoIcons.info_circle_fill;
     }
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey[200]!),
-      ),
+    return _ServiceGlassCard(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(22),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -307,88 +459,83 @@ class _ContractListScreenState extends State<ContractListScreen> {
                     children: [
                       Text(
                         contract.contractNumber,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'Loại: ${contract.contractType}',
-                        style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withOpacity(0.65),
+                        ),
                       ),
                     ],
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(999),
+                    color: statusColor.withOpacity(0.16),
+                    borderRadius: BorderRadius.circular(18),
                   ),
-                  child: Text(
-                    contract.status.toUpperCase(),
-                    style: TextStyle(
-                      color: statusColor,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(statusIcon, size: 16, color: statusColor),
+                      const SizedBox(width: 6),
+                      Text(
+                        contract.status.toUpperCase(),
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: statusColor,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
-                const SizedBox(width: 6),
-                Text(
-                  'Bắt đầu: ${formatDate(contract.startDate)}',
-                  style: const TextStyle(fontSize: 13),
-                ),
-              ],
+            const SizedBox(height: 16),
+            _buildInfoRow(
+              icon: CupertinoIcons.calendar,
+              label: 'Bắt đầu',
+              value: formatDate(contract.startDate),
             ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                const Icon(Icons.event_busy, size: 14, color: Colors.grey),
-                const SizedBox(width: 6),
-                Text(
-                  'Kết thúc: ${formatDate(contract.endDate)}',
-                  style: const TextStyle(fontSize: 13),
-                ),
-              ],
+            const SizedBox(height: 6),
+            _buildInfoRow(
+              icon: CupertinoIcons.calendar_badge_minus,
+              label: 'Kết thúc',
+              value: formatDate(contract.endDate),
             ),
             if (contract.monthlyRent != null) ...[
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  const Icon(Icons.payments_outlined, size: 14, color: Colors.grey),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Tiền thuê: ${formatCurrency(contract.monthlyRent)}',
-                    style: const TextStyle(fontSize: 13),
-                  ),
-                ],
+              const SizedBox(height: 6),
+              _buildInfoRow(
+                icon: CupertinoIcons.creditcard,
+                label: 'Tiền thuê',
+                value: formatCurrency(contract.monthlyRent),
               ),
             ],
             if (contract.notes != null && contract.notes!.isNotEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               Text(
                 contract.notes!,
-                style: const TextStyle(fontSize: 13),
+                style: theme.textTheme.bodySmall,
               ),
             ],
             if (contract.files.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              const Text(
+              const SizedBox(height: 14),
+              Text(
                 'Tài liệu đính kèm',
-                style: TextStyle(fontWeight: FontWeight.w600),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: 10,
+                runSpacing: 10,
                 children: contract.files.map(_buildFileChip).toList(),
               ),
             ],
@@ -398,37 +545,101 @@ class _ContractListScreenState extends State<ContractListScreen> {
     );
   }
 
-  Widget _buildFileChip(ContractFileDto file) {
-    final label = file.originalFileName.isNotEmpty
-        ? file.originalFileName
-        : file.fileName;
-    return ActionChip(
-      avatar: const Icon(Icons.attach_file, size: 16),
-      label: Text(label, overflow: TextOverflow.ellipsis),
-      onPressed: () => _openFile(file.fileUrl),
+  Widget _buildInfoRow({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: theme.colorScheme.primary),
+        const SizedBox(width: 8),
+        Text(
+          '$label: ',
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+      ],
     );
   }
 
-  Future<void> _openFile(String url) async {
-    final normalized = _resolveFileUrl(url);
-    final uri = Uri.tryParse(normalized);
-    if (uri == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đường dẫn tải không hợp lệ.')),
-      );
-      return;
-    }
-
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Không thể mở file.')),
-      );
-    }
+  Widget _buildFileChip(ContractFileDto file) {
+    final theme = Theme.of(context);
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () async {
+        final url = ApiClient.fileUrl(file.fileUrl);
+        if (await canLaunchUrl(Uri.parse(url))) {
+          await launchUrl(Uri.parse(url));
+        } else {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Không thể mở tệp ${file.fileName}')),
+          );
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: theme.colorScheme.surface.withOpacity(0.75),
+          border: Border.all(
+            color: theme.colorScheme.outline.withOpacity(0.1),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(CupertinoIcons.doc_plaintext, size: 16),
+            const SizedBox(width: 8),
+            Text(
+              file.fileName,
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
+}
 
-  String _resolveFileUrl(String url) {
-    if (url.startsWith('http')) return url;
-    return 'http://${ApiClient.HOST_IP}:8082$url';
+class _ServiceGlassCard extends StatelessWidget {
+  const _ServiceGlassCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(26),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: isDark
+                ? AppColors.darkGlassLayerGradient()
+                : AppColors.glassLayerGradient(),
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(
+              color: theme.colorScheme.outline.withOpacity(0.08),
+            ),
+            boxShadow: AppColors.subtleShadow,
+          ),
+          child: child,
+        ),
+      ),
+    );
   }
 }

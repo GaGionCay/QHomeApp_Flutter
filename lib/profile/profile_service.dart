@@ -18,7 +18,7 @@ class ProfileService {
     if (data['avatarUrl'] != null &&
         !data['avatarUrl'].toString().startsWith('http')) {
       data['avatarUrl'] =
-          ApiClient.BASE_URL.replaceFirst('/api', '') + data['avatarUrl'];
+          ApiClient.activeFileBaseUrl + data['avatarUrl'];
     }
     return data;
   }
@@ -30,7 +30,7 @@ class ProfileService {
     if (updated['avatarUrl'] != null &&
         !updated['avatarUrl'].toString().startsWith('http')) {
       updated['avatarUrl'] =
-          ApiClient.BASE_URL.replaceFirst('/api', '') + updated['avatarUrl'];
+          ApiClient.activeFileBaseUrl + updated['avatarUrl'];
     }
     return updated;
   }
@@ -58,7 +58,7 @@ class ProfileService {
 
       String avatarUrl = res.data['avatarUrl'];
       if (!avatarUrl.startsWith('http')) {
-        avatarUrl = ApiClient.BASE_URL.replaceFirst('/api', '') + avatarUrl;
+        avatarUrl = ApiClient.activeFileBaseUrl + avatarUrl;
       }
       return avatarUrl;
     } on DioException catch (e) {

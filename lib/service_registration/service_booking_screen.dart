@@ -112,7 +112,8 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
     _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
       if (uri == null) return;
 
-      if (uri.scheme == 'qhomeapp' && uri.host == 'vnpay-service-booking-result') {
+      if (uri.scheme == 'qhomeapp' &&
+          uri.host == 'vnpay-service-booking-result') {
         final responseCode = uri.queryParameters['responseCode'];
         final success = uri.queryParameters['success'] == 'true';
 
@@ -175,7 +176,8 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Đang chuyển tới cổng VNPAY, vui lòng hoàn tất thanh toán.'),
+            content: Text(
+                'Đang chuyển tới cổng VNPAY, vui lòng hoàn tất thanh toán.'),
           ),
         );
       } else {
@@ -609,8 +611,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                                   width: 20,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor:
-                                        AlwaysStoppedAnimation<Color>(
+                                    valueColor: AlwaysStoppedAnimation<Color>(
                                       Colors.white,
                                     ),
                                   ),
@@ -715,7 +716,41 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
     if (detail == null) return const SizedBox.shrink();
 
     final today = DateTime.now();
-    final lastDate = today.add(Duration(days: _advanceBookingDays(detail)));
+    final normalizedToday = DateTime(today.year, today.month, today.day);
+    final lastDate =
+        normalizedToday.add(Duration(days: _advanceBookingDays(detail)));
+    final predicate = (DateTime date) => _isDateAllowed(detail, date);
+
+    final firstSelectable =
+        _nextAllowedDate(detail, normalizedToday, lastDate, predicate);
+    if (firstSelectable == null) {
+      return Card(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: const ListTile(
+          title: Text(
+            'Ngày sử dụng',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+          subtitle: Text('Hiện không có ngày phù hợp để đặt lịch'),
+          trailing: Icon(Icons.calendar_today),
+        ),
+      );
+    }
+
+    DateTime initialCandidate =
+        (_selectedDate ?? normalizedToday).isBefore(firstSelectable)
+            ? firstSelectable
+            : _selectedDate ?? normalizedToday;
+
+    if (initialCandidate.isAfter(lastDate)) {
+      initialCandidate = firstSelectable;
+    }
+
+    if (!predicate(initialCandidate)) {
+      final fallback =
+          _nextAllowedDate(detail, initialCandidate, lastDate, predicate);
+      initialCandidate = fallback ?? firstSelectable;
+    }
 
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -733,10 +768,10 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
         onTap: () async {
           final picked = await showDatePicker(
             context: context,
-            initialDate: _selectedDate ?? today,
-            firstDate: today,
+            initialDate: initialCandidate,
+            firstDate: firstSelectable,
             lastDate: lastDate,
-            selectableDayPredicate: (date) => _isDateAllowed(detail, date),
+            selectableDayPredicate: predicate,
           );
           if (picked != null) {
             setState(() {
@@ -758,6 +793,23 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
     );
   }
 
+  DateTime? _nextAllowedDate(
+    Map<String, dynamic> detail,
+    DateTime start,
+    DateTime end,
+    bool Function(DateTime) predicate,
+  ) {
+    DateTime current =
+        DateTime(start.year, start.month, start.day); // normalize
+    while (!current.isAfter(end)) {
+      if (predicate(current)) {
+        return current;
+      }
+      current = current.add(const Duration(days: 1));
+    }
+    return null;
+  }
+
   Widget _buildTimeSelector() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -766,8 +818,8 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
           children: [
             Expanded(
               child: Card(
-                shape:
-                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
                 child: ListTile(
                   title: const Text('Bắt đầu'),
                   subtitle: Text(_startTime != null
@@ -791,8 +843,8 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: Card(
-                shape:
-                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
                 child: ListTile(
                   title: const Text('Kết thúc'),
                   subtitle: Text(_endTime != null
@@ -804,7 +856,8 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                       context: context,
                       initialTime: _endTime ??
                           (_startTime != null
-                              ? _addDuration(_startTime!, 1.0) ?? TimeOfDay.now()
+                              ? _addDuration(_startTime!, 1.0) ??
+                                  TimeOfDay.now()
                               : TimeOfDay.now()),
                     );
                     if (time != null) {
@@ -868,7 +921,8 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton.icon(
-                  onPressed: () => _reloadBookedSlots(anchor: _selectedDate ?? DateTime.now()),
+                  onPressed: () => _reloadBookedSlots(
+                      anchor: _selectedDate ?? DateTime.now()),
                   icon: const Icon(Icons.refresh),
                   label: const Text('Thử lại'),
                 ),
@@ -915,7 +969,8 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                       padding: const EdgeInsets.only(bottom: 6),
                       child: Row(
                         children: [
-                          const Icon(Icons.lock_clock, size: 16, color: Colors.redAccent),
+                          const Icon(Icons.lock_clock,
+                              size: 16, color: Colors.redAccent),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -1372,4 +1427,3 @@ class _BookedSlot {
   final TimeOfDay end;
   final String status;
 }
-

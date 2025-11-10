@@ -6,7 +6,7 @@ import 'iam_api_client.dart';
 class AuthService {
   final Dio dio;
   final TokenStorage storage;
-  final Dio? iamDio; // Optional: Dio instance for iam-service
+  final Dio? iamDio;
 
   AuthService(this.dio, this.storage, {this.iamDio});
 
@@ -20,43 +20,11 @@ class AuthService {
     }
   }
 
-  /// Login via iam-service (port 8088) - NEW METHOD
-  /// Uses username instead of email
   Future<Map<String, dynamic>> loginViaIam(String username, String password) async {
     final iamClient = _iamClient();
-    
-    final res = await iamClient.post(
-      '/auth/login',
-      data: {
-        'username': username,
-        'password': password,
-      },
-    );
-
+    final res = await iamClient.post('/auth/login', data: {'username': username, 'password': password});
     final data = Map<String, dynamic>.from(res.data);
-
-    // iam-service response format:
-    // {
-    //   "accessToken": "...",
-    //   "tokenType": "Bearer",
-    //   "expiresIn": 3600,
-    //   "expiresAt": "2025-...",
-    //   "userInfo": {
-    //     "userId": "...",
-    //     "username": "...",
-    //     "email": "...",
-    //     "roles": [...],
-    //     "permissions": [...]
-    //   }
-    // }
-
-    if (data['accessToken'] != null) {
-      await storage.writeAccessToken(data['accessToken'].toString());
-      // iam-service không có refreshToken trong response
-      // Nếu cần refresh, sẽ gọi lại login hoặc dùng refresh endpoint của iam-service
-    }
-
-    // Map userInfo để tương thích với code hiện tại
+    if (data['accessToken'] != null) await storage.writeAccessToken(data['accessToken'].toString());
     if (data['userInfo'] != null) {
       final userInfo = Map<String, dynamic>.from(data['userInfo']);
       data['userId'] = userInfo['userId']?.toString();
@@ -65,34 +33,20 @@ class AuthService {
       data['roles'] = userInfo['roles'];
       data['permissions'] = userInfo['permissions'];
     }
-
     return data;
   }
 
-  /// Login via backend hiện tại (port 8080) - KEEP FOR BACKWARD COMPATIBILITY
   Future<Map<String, dynamic>> login(String email, String password) async {
     await ensureDeviceId();
     final deviceId = await storage.readDeviceId();
-
-    final res = await dio.post(
-      '/auth/login',
-      data: {'email': email, 'password': password},
-      options: Options(headers: {'X-Device-Id': deviceId}),
-    );
-
+    final res = await dio.post('/auth/login', data: {'email': email, 'password': password},
+        options: Options(headers: {'X-Device-Id': deviceId}));
     final data = Map<String, dynamic>.from(res.data);
-
-    // Ép kiểu tất cả giá trị quan trọng thành String để an toàn
     if (data['accessToken'] != null) {
       await storage.writeAccessToken(data['accessToken'].toString());
       await storage.writeRefreshToken(data['refreshToken']?.toString());
     }
-
-    // ⚠️ Ép userId về String để tránh lỗi "int is not a subtype of String"
-    if (data['userId'] != null) {
-      data['userId'] = data['userId'].toString();
-    }
-
+    if (data['userId'] != null) data['userId'] = data['userId'].toString();
     return data;
   }
 
@@ -102,8 +56,7 @@ class AuthService {
     final refresh = await storage.readRefreshToken();
     if (refresh == null) throw Exception('No refresh token');
     final res = await dio.post('/auth/refresh-token',
-        data: {'refreshToken': refresh},
-        options: Options(headers: {'X-Device-Id': deviceId}));
+        data: {'refreshToken': refresh}, options: Options(headers: {'X-Device-Id': deviceId}));
     final data = Map<String, dynamic>.from(res.data);
     if (data['accessToken'] != null) {
       await storage.writeAccessToken(data['accessToken'].toString());
@@ -117,17 +70,12 @@ class AuthService {
     await ensureDeviceId();
     final deviceId = await storage.readDeviceId();
     final accessToken = await storage.readAccessToken();
-
     try {
-      await dio.post(
-        '/auth/logout',
-        options: Options(
-          headers: {
+      await dio.post('/auth/logout',
+          options: Options(headers: {
             if (accessToken != null) 'Authorization': 'Bearer $accessToken',
             if (deviceId != null) 'X-Device-Id': deviceId,
-          },
-        ),
-      );
+          }));
     } catch (e) {
       print('Logout failed: $e');
     } finally {
@@ -145,8 +93,7 @@ class AuthService {
     await client.post('/auth/verify-otp', data: {'email': email, 'otp': otp});
   }
 
-  Future<void> confirmReset(
-      String email, String otp, String newPassword) async {
+  Future<void> confirmReset(String email, String otp, String newPassword) async {
     final client = _iamClient();
     await client.post('/auth/confirm-reset',
         data: {'email': email, 'otp': otp, 'newPassword': newPassword});

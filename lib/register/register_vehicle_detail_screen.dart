@@ -126,8 +126,11 @@ class _RegisterServiceDetailScreenState
       if (uri == null) return;
       
       if (uri.scheme == 'qhomeapp' && uri.host == 'vnpay-registration-result') {
-        final registrationId = uri.queryParameters['registrationId'];
         final responseCode = uri.queryParameters['responseCode'];
+        final registrationId = uri.queryParameters['registrationId'];
+        debugPrint(
+          'ℹ️ Nhận kết quả thanh toán đăng ký xe #$registrationId với mã $responseCode',
+        );
 
         if (!mounted) return;
 
@@ -163,7 +166,7 @@ class _RegisterServiceDetailScreenState
   Future<Dio> _servicesCardClient() async {
     if (_servicesCardDio == null) {
       _servicesCardDio = Dio(BaseOptions(
-        baseUrl: 'http://${ApiClient.HOST_IP}:8083/api',
+      baseUrl: ApiClient.buildServiceBase(port: 8083, path: '/api'),
         connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
         receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
       ));
@@ -195,7 +198,7 @@ class _RegisterServiceDetailScreenState
   String _makeFullImageUrl(String? imageUrl) {
     if (imageUrl == null || imageUrl.isEmpty) return '';
     if (imageUrl.startsWith('http')) return imageUrl;
-    const base = 'http://${ApiClient.HOST_IP}:8083';
+    final base = ApiClient.buildServiceBase(port: 8083);
     return base + imageUrl;
   }
 

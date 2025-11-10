@@ -1,5 +1,7 @@
 import 'package:stomp_dart_client/stomp_dart_client.dart';
 
+import '../auth/api_client.dart';
+
 class WebSocketService {
   StompClient? client;
   bool _connected = false;
@@ -13,7 +15,7 @@ class WebSocketService {
 
     client = StompClient(
       config: StompConfig.sockJS(
-        url: 'http://192.168.100.33:8080/ws',
+        url: ApiClient.buildServiceBase(port: 8080, path: '/ws'),
         onConnect: (StompFrame frame) {
           _connected = true;
           print('✅ WebSocket connected: $frame');

@@ -16,7 +16,7 @@ class InvoiceService {
   Dio _financeBillingClient() {
     if (financeBillingDio != null) return financeBillingDio!;
     // Create finance-billing-service client (port 8085)
-    const baseUrl = 'http://${ApiClient.HOST_IP}:8085';
+    final baseUrl = ApiClient.buildServiceBase(port: 8085);
     final dio = Dio(BaseOptions(
       baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),

@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:ui';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../auth/api_client.dart';
@@ -9,6 +11,8 @@ import '../profile/profile_service.dart';
 import '../models/resident_news.dart';
 import 'resident_service.dart';
 import 'news_detail_screen.dart';
+import 'news_read_store.dart';
+import '../theme/app_colors.dart';
 
 class NewsScreen extends StatefulWidget {
   const NewsScreen({super.key});
@@ -16,6 +20,8 @@ class NewsScreen extends StatefulWidget {
   @override
   State<NewsScreen> createState() => _NewsScreenState();
 }
+
+enum InfoListFilter { all, unread, read }
 
 class _NewsScreenState extends State<NewsScreen> {
   final ApiClient _api = ApiClient();
@@ -26,6 +32,8 @@ class _NewsScreenState extends State<NewsScreen> {
   List<ResidentNews> items = [];
   bool loading = false;
   String? _residentId;
+  Set<String> _readNewsIds = <String>{};
+  InfoListFilter _filter = InfoListFilter.all;
   
   // Pagination state
   int _currentPage = 0;
@@ -55,6 +63,11 @@ class _NewsScreenState extends State<NewsScreen> {
         _fetch();
       }
     });
+    _bus.on('news_read_status_updated', (_) {
+      if (_residentId != null) {
+        _loadReadState();
+      }
+    });
   }
 
   Future<void> _loadResidentIdAndFetch() async {
@@ -68,6 +81,7 @@ class _NewsScreenState extends State<NewsScreen> {
       // If found in profile, use it directly
       if (_residentId != null && _residentId!.isNotEmpty) {
         debugPrint('✅ Tìm thấy residentId trong profile: $_residentId');
+        await _loadReadState();
         await _fetch();
         return;
       }
@@ -88,6 +102,7 @@ class _NewsScreenState extends State<NewsScreen> {
         return;
       }
       
+      await _loadReadState();
       await _fetch();
     } catch (e) {
       debugPrint('⚠️ Lỗi lấy residentId: $e');
@@ -126,6 +141,15 @@ class _NewsScreenState extends State<NewsScreen> {
     } catch (e) {
       debugPrint('⚠️ [NewsScreen] Lỗi lấy dữ liệu căn hộ: $e');
     }
+  }
+
+  Future<void> _loadReadState() async {
+    if (_residentId == null || _residentId!.isEmpty) return;
+    final stored = await NewsReadStore.load(_residentId!);
+    if (!mounted) return;
+    setState(() {
+      _readNewsIds = stored;
+    });
   }
 
   Future<void> _fetch({int? targetPage}) async {
@@ -270,140 +294,603 @@ class _NewsScreenState extends State<NewsScreen> {
     _fetch(targetPage: page);
   }
 
+  Future<void> _markAsRead(ResidentNews news) async {
+    if (_residentId == null || _residentId!.isEmpty) return;
+    final updated = await NewsReadStore.markRead(_residentId!, news.id);
+    if (!mounted) return;
+    if (updated) {
+      setState(() {
+        _readNewsIds = {..._readNewsIds, news.id};
+      });
+      _bus.emit('news_read_status_updated', news.id);
+    }
+  }
+
+  Future<void> _openNewsDetail(ResidentNews news) async {
+    await _markAsRead(news);
+    if (!mounted) return;
+
+    await Navigator.of(context).push(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 420),
+        reverseTransitionDuration: const Duration(milliseconds: 320),
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return FadeTransition(
+            opacity: CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+              reverseCurve: Curves.easeInCubic,
+            ),
+            child: NewsDetailScreen(
+              residentNews: news,
+            ),
+          );
+        },
+      ),
+    );
+
+    if (!mounted) return;
+    setState(() {
+      // Trigger rebuild to refresh read state visuals when returning.
+    });
+  }
+
+  String _formatCardDate(ResidentNews news) {
+    final date = news.publishAt ?? news.createdAt;
+    try {
+      return DateFormat('EEE, dd MMM yyyy • HH:mm', 'vi_VN').format(date);
+    } catch (_) {
+      return DateFormat('dd/MM/yyyy HH:mm').format(date);
+    }
+  }
+
   @override
   void dispose() {
     _bus.off('news_update');
+   _bus.off('news_read_status_updated');
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final totalItems = _allCachedItems?.length ?? items.length;
+    final unreadTotal = _allCachedItems != null
+        ? _allCachedItems!.where((news) => !_readNewsIds.contains(news.id)).length
+        : items.where((news) => !_readNewsIds.contains(news.id)).length;
+    final hasAnyItems = totalItems > 0;
+    final readTotal = hasAnyItems
+        ? (_allCachedItems != null
+            ? _allCachedItems!
+                .where((news) => _readNewsIds.contains(news.id))
+                .length
+            : items.where((news) => _readNewsIds.contains(news.id)).length)
+        : 0;
+
+    final visibleItems = _filter == InfoListFilter.all
+        ? items
+        : items
+            .where((news) {
+              final isRead = _readNewsIds.contains(news.id);
+              if (_filter == InfoListFilter.unread) {
+                return !isRead;
+              }
+              return isRead;
+            })
+            .toList();
+
+    final gradient = theme.brightness == Brightness.dark
+        ? const LinearGradient(
+            colors: [Color(0xFF050F1F), Color(0xFF0D2036)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          )
+        : const LinearGradient(
+            colors: [Color(0xFFF4F7FE), Color(0xFFFFFFFF)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          );
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F9),
+      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Thông báo'),
-        elevation: 2,
-        backgroundColor: const Color(0xFF26A69A),
-        foregroundColor: Colors.white,
+        title: const Text('Thông tin'),
+        centerTitle: true,
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        foregroundColor: theme.colorScheme.onSurface,
       ),
-      body: RefreshIndicator(
-        color: const Color(0xFF26A69A),
-        onRefresh: _fetch,
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 400),
-          child: loading
-              ? const Center(child: CircularProgressIndicator())
-              : items.isEmpty
-                  ? _buildEmptyState()
-                  : Column(
-                      children: [
-                        Expanded(
-                          child: ListView.builder(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            itemCount: items.length,
-                            itemBuilder: (context, index) {
-                              final news = items[index];
-                              final String date = news.publishAt != null
-                                  ? DateFormat('dd/MM/yyyy').format(news.publishAt!)
-                                  : DateFormat('dd/MM/yyyy').format(news.createdAt);
-
-                              return AnimatedContainer(
-                                duration: const Duration(milliseconds: 300),
-                                margin: const EdgeInsets.only(bottom: 10),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFE0F2F1),
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.teal.withOpacity(0.15),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 3),
+      body: Container(
+        decoration: BoxDecoration(gradient: gradient),
+        child: SafeArea(
+          child: Column(
+            children: [
+              _buildHeader(context, unreadTotal, totalItems),
+              const SizedBox(height: 12),
+              Expanded(
+                child: RefreshIndicator(
+                  color: theme.colorScheme.primary,
+                  edgeOffset: 20,
+                  onRefresh: () => _fetch(targetPage: _currentPage),
+                  child: CustomScrollView(
+                    physics: const BouncingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics(),
+                    ),
+                    slivers: [
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                        sliver: loading
+                            ? SliverFillRemaining(
+                                hasScrollBody: false,
+                                child: _buildLoadingState(),
+                              )
+                            : visibleItems.isEmpty
+                                ? SliverFillRemaining(
+                                    hasScrollBody: false,
+                                    child: _buildEmptyState(
+                                      filter: _filter,
+                                      hasAnyItems: hasAnyItems,
+                                      unreadTotal: unreadTotal,
+                                      readTotal: readTotal,
                                     ),
-                                  ],
-                                ),
-                                child: ListTile(
-                                  contentPadding:
-                                      const EdgeInsets.only(left: 16, top: 10, right: 16, bottom: 10),
-                                  title: Text(
-                                    news.title,
-                                    style: theme.textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: const Color(0xFF004D40),
+                                  )
+                                : SliverList(
+                                    delegate: SliverChildBuilderDelegate(
+                                      (context, index) {
+                                        final news = visibleItems[index];
+                                        final isRead = _readNewsIds.contains(news.id);
+                                        return _buildInfoCard(context, news, isRead);
+                                      },
+                                      childCount: visibleItems.length,
                                     ),
                                   ),
-                                  subtitle: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        news.summary,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        date,
-                                        style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-                                      ),
-                                    ],
-                                  ),
-                                  onTap: () {
-                                    Navigator.of(context).push(
-                                      PageRouteBuilder(
-                                        transitionDuration: const Duration(milliseconds: 500),
-                                        pageBuilder: (_, animation, __) => FadeTransition(
-                                          opacity: animation,
-                                          child: NewsDetailScreen(
-                                            residentNews: news,
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              );
-                            },
+                      ),
+                      if (!loading && items.isNotEmpty)
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+                          sliver: SliverToBoxAdapter(
+                            child: _buildPaginationControls(context),
                           ),
                         ),
-                        _buildPaginationControls(),
-                      ],
-                    ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.inbox_outlined, size: 80, color: Color(0xFFB0BEC5)),
-          const SizedBox(height: 16),
-          Text(
-            'Không có thông báo nào',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[700],
-              fontWeight: FontWeight.w500,
+  Widget _buildHeader(BuildContext context, int unreadCount, int totalCount) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final gradient = isDark
+        ? AppColors.darkGlassLayerGradient()
+        : AppColors.glassLayerGradient();
+    final borderColor = (isDark ? AppColors.navyOutline : AppColors.neutralOutline)
+        .withOpacity(0.45);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: gradient,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: borderColor),
+              boxShadow: AppColors.subtleShadow,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Thông tin cư dân',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? Colors.white : AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      _buildStatChip(
+                        context,
+                        label: 'Chưa đọc',
+                        value: unreadCount,
+                        isAccent: true,
+                      ),
+                      const SizedBox(width: 12),
+                      _buildStatChip(
+                        context,
+                        label: 'Tổng số',
+                        value: totalCount,
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: 'Làm mới',
+                        onPressed: loading ? null : () => _fetch(targetPage: _currentPage),
+                        icon: const Icon(CupertinoIcons.refresh),
+                        color: theme.colorScheme.primary,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  _buildFilterControl(theme),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 8),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatChip(
+    BuildContext context, {
+    required String label,
+    required int value,
+    bool isAccent = false,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final Color badgeColor = isAccent
+        ? theme.colorScheme.primary
+        : (isDark ? Colors.white.withOpacity(0.4) : AppColors.primaryBlue.withOpacity(0.85));
+    final Color chipColor = isAccent
+        ? badgeColor.withOpacity(isDark ? 0.28 : 0.18)
+        : (isDark ? Colors.white.withOpacity(0.08) : Colors.white.withOpacity(0.72));
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: chipColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isAccent
+              ? badgeColor.withOpacity(isDark ? 0.9 : 0.45)
+              : (isDark ? AppColors.navyOutline : AppColors.neutralOutline)
+                  .withOpacity(0.4),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
           Text(
-            'Kéo xuống để làm mới danh sách',
-            style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white : AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: badgeColor,
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: [
+                BoxShadow(
+                  color: badgeColor.withOpacity(0.32),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Text(
+              '$value',
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildPaginationControls() {
-    if (items.isEmpty && !loading) return const SizedBox.shrink();
+  Widget _buildFilterControl(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    final thumbColor = theme.colorScheme.primary.withOpacity(isDark ? 0.4 : 0.9);
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        color: isDark ? Colors.white.withOpacity(0.05) : Colors.white.withOpacity(0.7),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: CupertinoSlidingSegmentedControl<InfoListFilter>(
+        groupValue: _filter,
+        backgroundColor: Colors.transparent,
+        thumbColor: thumbColor,
+        onValueChanged: (value) {
+          if (value == null) return;
+          setState(() => _filter = value);
+        },
+        children: {
+          InfoListFilter.all: _buildSegmentLabel(theme, InfoListFilter.all, 'Tất cả'),
+          InfoListFilter.unread:
+              _buildSegmentLabel(theme, InfoListFilter.unread, 'Chưa đọc'),
+          InfoListFilter.read: _buildSegmentLabel(theme, InfoListFilter.read, 'Đã đọc'),
+        },
+      ),
+    );
+  }
+
+  Widget _buildSegmentLabel(
+    ThemeData theme,
+    InfoListFilter filter,
+    String label,
+  ) {
+    final isDark = theme.brightness == Brightness.dark;
+    final isSelected = _filter == filter;
+    final Color color = isSelected
+        ? Colors.white
+        : (isDark ? Colors.white70 : AppColors.textSecondary);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: AnimatedDefaultTextStyle(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              color: color,
+            ) ??
+            TextStyle(
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              color: color,
+            ),
+        child: Text(label),
+      ),
+    );
+  }
+
+  Widget _buildInfoCard(
+    BuildContext context,
+    ResidentNews news,
+    bool isRead,
+  ) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final gradient = isDark
+        ? LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isRead
+                ? [
+                    const Color(0xAA0E1B33),
+                    const Color(0x66102238),
+                  ]
+                : [
+                    const Color(0xFF1C3C87),
+                    const Color(0xFF0F1E36),
+                  ],
+          )
+        : LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isRead
+                ? [
+                    Colors.white.withOpacity(0.95),
+                    Colors.white.withOpacity(0.88),
+                  ]
+                : [
+                    const Color(0xFFE6F1FF),
+                    const Color(0xFFF3FBFF),
+                  ],
+          );
+
+    final borderColor = isRead
+        ? (isDark ? AppColors.navyOutline : AppColors.neutralOutline).withOpacity(0.42)
+        : theme.colorScheme.primary.withOpacity(isDark ? 0.6 : 0.35);
+
+    return Hero(
+      tag: 'news_${news.id}',
+      child: GestureDetector(
+        onTap: () => _openNewsDetail(news),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: AppColors.subtleShadow,
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: gradient,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: borderColor),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (!isRead) ...[
+                            _buildUnreadDot(theme),
+                            const SizedBox(width: 10),
+                          ],
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  news.title,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: isDark ? Colors.white : AppColors.textPrimary,
+                                    letterSpacing: -0.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  _formatCardDate(news),
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                    color: isDark
+                                        ? Colors.white70
+                                        : AppColors.textSecondary,
+                                    letterSpacing: 0.2,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Icon(
+                            CupertinoIcons.chevron_right,
+                            size: 18,
+                            color: isDark ? Colors.white54 : AppColors.textSecondary,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        news.summary,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          height: 1.45,
+                          color: isDark
+                              ? Colors.white.withOpacity(0.78)
+                              : AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUnreadDot(ThemeData theme) {
+    final color = theme.colorScheme.primary;
+    return Container(
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.4),
+            blurRadius: 8,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState({
+    required InfoListFilter filter,
+    required bool hasAnyItems,
+    required int unreadTotal,
+    required int readTotal,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    late final IconData icon;
+    late final String title;
+    late final String subtitle;
+
+    if (!hasAnyItems) {
+      icon = CupertinoIcons.bell_slash;
+      title = 'Chưa có thông tin';
+      subtitle = 'Chúng tôi sẽ cập nhật khi có thông tin mới cho cư dân.';
+    } else if (filter == InfoListFilter.unread && unreadTotal == 0) {
+      icon = CupertinoIcons.check_mark_circled_solid;
+      title = 'Bạn đã đọc hết thông tin';
+      subtitle = 'Thông tin mới sẽ hiển thị ngay khi được cập nhật.';
+    } else if (filter == InfoListFilter.read && readTotal == 0) {
+      icon = CupertinoIcons.doc_text;
+      title = 'Chưa có thông tin đã đọc';
+      subtitle = 'Mở một thông tin bất kỳ để đánh dấu là đã xem.';
+    } else {
+      icon = CupertinoIcons.search;
+      title = 'Không có mục phù hợp';
+      subtitle = 'Thử chuyển sang trang khác hoặc thay đổi bộ lọc.';
+    }
+
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 72,
+            color: isDark ? Colors.white24 : AppColors.textSecondary.withOpacity(0.35),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: isDark ? Colors.white : AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: 280,
+            child: Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: isDark ? Colors.white70 : AppColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoadingState() {
+    final theme = Theme.of(context);
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CupertinoActivityIndicator(
+            radius: 14,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Đang tải thông tin mới...',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.72),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaginationControls(BuildContext context) {
+    if (items.isEmpty || loading) return const SizedBox.shrink();
     
     final totalPages = _getTotalPages();
     final currentPageNumber = _currentPage + 1;
@@ -435,110 +922,161 @@ class _NewsScreenState extends State<NewsScreen> {
       
       pageNumbers.add(totalPages - 1); // Last page
     }
-    
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 4,
-            offset: const Offset(0, -2),
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final gradient = isDark
+        ? AppColors.darkGlassLayerGradient()
+        : AppColors.glassLayerGradient();
+    final borderColor = (isDark ? AppColors.navyOutline : AppColors.neutralOutline)
+        .withOpacity(0.45);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: gradient,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: borderColor),
+            boxShadow: AppColors.subtleShadow,
           ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // Page info
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              'Trang $currentPageNumber / $totalPages',
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF004D40),
-              ),
-            ),
-          ),
-          // Page numbers
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Previous button
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                onPressed: _currentPage > 0 && !loading
-                    ? () => _goToPage(_currentPage - 1)
-                    : null,
-                color: _currentPage > 0 && !loading
-                    ? const Color(0xFF26A69A)
-                    : Colors.grey,
-                iconSize: 24,
-              ),
-              
-              // Page number buttons
-              ...pageNumbers.map((pageIndex) {
-                if (pageIndex == -1) {
-                  // Ellipsis
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: Text('...', style: TextStyle(color: Colors.grey)),
-                  );
-                }
-                
-                final pageNumber = pageIndex + 1;
-                final isCurrentPage = pageIndex == _currentPage;
-                
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: Material(
-                    color: isCurrentPage
-                        ? const Color(0xFF26A69A)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(8),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: !loading && pageIndex != _currentPage
-                          ? () => _goToPage(pageIndex)
-                          : null,
-                      child: Container(
-                        width: 36,
-                        height: 36,
-                        alignment: Alignment.center,
-                        child: Text(
-                          '$pageNumber',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: isCurrentPage
-                                ? FontWeight.bold
-                                : FontWeight.normal,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Column(
+              children: [
+                Text(
+                  'Trang $currentPageNumber / $totalPages',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _buildPageNavigationButton(
+                      context,
+                      icon: CupertinoIcons.chevron_left,
+                      enabled: _currentPage > 0,
+                      onTap: () => _goToPage(_currentPage - 1),
+                    ),
+                    const SizedBox(width: 6),
+                    ...pageNumbers.map((pageIndex) {
+                      if (pageIndex == -1) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4),
+                          child: Text(
+                            '•••',
+                            style: TextStyle(
+                              letterSpacing: 6,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        );
+                      }
+
+                      final pageNumber = pageIndex + 1;
+                      final isCurrentPage = pageIndex == _currentPage;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 3),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.easeOut,
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
                             color: isCurrentPage
-                                ? Colors.white
-                                : const Color(0xFF004D40),
+                                ? theme.colorScheme.primary
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isCurrentPage
+                                  ? theme.colorScheme.primary
+                                  : borderColor,
+                            ),
+                          ),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: isCurrentPage
+                                ? null
+                                : () => _goToPage(pageIndex),
+                            child: Center(
+                              child: Text(
+                                '$pageNumber',
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                  fontWeight: isCurrentPage
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                  color: isCurrentPage
+                                      ? Colors.white
+                                      : (isDark
+                                          ? Colors.white70
+                                          : AppColors.textPrimary),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                      );
+                    }),
+                    const SizedBox(width: 6),
+                    _buildPageNavigationButton(
+                      context,
+                      icon: CupertinoIcons.chevron_right,
+                      enabled: _currentPage < totalPages - 1,
+                      onTap: () => _goToPage(_currentPage + 1),
                     ),
-                  ),
-                );
-              }).toList(),
-              
-              // Next button
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                onPressed: _currentPage < totalPages - 1 && !loading
-                    ? () => _goToPage(_currentPage + 1)
-                    : null,
-                color: _currentPage < totalPages - 1 && !loading
-                    ? const Color(0xFF26A69A)
-                    : Colors.grey,
-                iconSize: 24,
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPageNavigationButton(
+    BuildContext context, {
+    required IconData icon,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final Color color = theme.colorScheme.primary;
+
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 150),
+      opacity: enabled ? 1 : 0.35,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: enabled
+                ? color.withOpacity(isDark ? 0.3 : 0.18)
+                : Colors.transparent,
+            border: Border.all(
+              color: enabled
+                  ? color.withOpacity(isDark ? 0.8 : 0.5)
+                  : (isDark ? AppColors.navyOutline : AppColors.neutralOutline)
+                      .withOpacity(0.35),
+            ),
+          ),
+          child: Icon(
+            icon,
+            size: 18,
+            color: enabled
+                ? color
+                : (isDark ? Colors.white54 : AppColors.textSecondary),
+          ),
+        ),
       ),
     );
   }

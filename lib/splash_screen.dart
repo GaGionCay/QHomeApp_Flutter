@@ -117,25 +117,47 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final scaffoldColor =
+        isDark ? AppColors.deepNight : AppColors.neutralBackground;
+
+    final backgroundGradient = isDark
+        ? const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF050F1F),
+              Color(0xFF0C2139),
+              Color(0xFF081526),
+            ],
+          )
+        : const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.white,
+              Color(0xFFF4F6FA),
+              Color(0xFFF0F4FF),
+            ],
+          );
+
     return Scaffold(
-      backgroundColor: AppColors.neutralBackground,
+      backgroundColor: scaffoldColor,
       body: AnimatedBuilder(
         animation: _controller,
         builder: (context, child) {
+          final glowColor = isDark
+              ? AppColors.primaryBlue.withOpacity(_glowTween.value)
+              : AppColors.primaryEmerald.withOpacity(_glowTween.value);
+
           return Stack(
             fit: StackFit.expand,
             children: [
               DecoratedBox(
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.white,
-                      AppColors.neutralBackground,
-                      AppColors.neutralBackground.withValues(alpha: 0.95),
-                    ],
-                  ),
+                  gradient: backgroundGradient,
                 ),
               ),
               Align(
@@ -148,8 +170,7 @@ class _SplashScreenState extends State<SplashScreen>
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.primaryEmerald
-                              .withValues(alpha: _glowTween.value),
+                          color: glowColor,
                           blurRadius: 160 - _blurTween.value,
                           spreadRadius: 16,
                         ),

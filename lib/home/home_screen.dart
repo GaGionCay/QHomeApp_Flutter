@@ -19,6 +19,7 @@ import '../models/unit_info.dart';
 import '../news/resident_service.dart';
 import '../notifications/notification_screen.dart';
 import '../notifications/notification_read_store.dart';
+import '../residents/household_member_request_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
@@ -30,6 +31,7 @@ import '../service_registration/unpaid_service_bookings_screen.dart';
 import '../feedback/feedback_screen.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
+import '../common/layout_insets.dart';
 
 class HomeScreen extends StatefulWidget {
   final void Function(int)? onNavigateToTab;
@@ -83,6 +85,11 @@ class _HomeScreenState extends State<HomeScreen> {
     _eventBus.on('news_update', (_) async {
       debugPrint('🔔 HomeScreen nhận event news_update -> reload dữ liệu...');
       await _refreshAll();
+    });
+    _eventBus.on('notifications_update', (_) async {
+      debugPrint(
+          '🔔 HomeScreen nhận event notifications_update -> cập nhật quick alerts...');
+      await _loadUnreadNotifications();
     });
   }
 
@@ -543,6 +550,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final theme = Theme.of(context);
     final media = MediaQuery.of(context);
     final themeController = context.watch<ThemeController>();
+    final double bottomNavInset = LayoutInsets.bottomNavContentPadding(
+      context,
+      extra: -LayoutInsets.navBarHeight + 60,
+      minimumGap: 16,
+    );
 
     final name = _profile?['fullName'] ?? _profile?['username'] ?? 'Cư dân';
     final avatarUrl = _profile?['avatarUrl'] as String?;
@@ -597,6 +609,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           SafeArea(
+            bottom: false,
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 280),
               child: _loading
@@ -641,10 +654,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                   if (_ownerUnits.isNotEmpty)
                                     const SizedBox(height: 24),
                                   _buildCompactFeatureRow(media.size),
-                                  const SizedBox(height: 48),
+                                  const SizedBox(height: 16),
                                 ],
                               ),
                             ),
+                          ),
+                          SliverToBoxAdapter(
+                            child: SizedBox(height: bottomNavInset),
                           ),
                         ],
                       ),
@@ -1287,6 +1303,27 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 16),
+          _HomeActionTile(
+            icon: Icons.person_add_outlined,
+            accentColor: AppColors.primaryAqua,
+            title: 'Đăng ký thành viên mới',
+            subtitle: const [
+              'Gửi yêu cầu thêm thành viên vào hộ gia đình của bạn.',
+            ],
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => HouseholdMemberRequestScreen(
+                    units: ownerUnits,
+                    initialUnitId: defaultUnitId,
+                  ),
+                ),
+              );
+            },
+            actionLabel: 'Gửi yêu cầu',
+          ),
+          const Divider(),
           _HomeActionTile(
             icon: Icons.group_add_outlined,
             accentColor: AppColors.primaryEmerald,

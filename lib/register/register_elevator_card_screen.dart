@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 
@@ -13,12 +13,15 @@ import '../common/main_shell.dart';
 import '../contracts/contract_service.dart';
 import '../core/event_bus.dart';
 import '../models/unit_info.dart';
+import '../theme/app_colors.dart';
+import 'widgets/register_glass_inputs.dart';
 
 class RegisterElevatorCardScreen extends StatefulWidget {
   const RegisterElevatorCardScreen({super.key});
 
   @override
-  State<RegisterElevatorCardScreen> createState() => _RegisterElevatorCardScreenState();
+  State<RegisterElevatorCardScreen> createState() =>
+      _RegisterElevatorCardScreenState();
 }
 
 class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
@@ -86,7 +89,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
       _autoSave();
     }
     if (state == AppLifecycleState.resumed) {
@@ -284,7 +288,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     });
 
     _paymentSub = _appLinks.uriLinkStream.listen((uri) async {
-      if (uri.scheme != 'qhomeapp' || uri.host != 'vnpay-elevator-card-result') return;
+      if (uri.scheme != 'qhomeapp' || uri.host != 'vnpay-elevator-card-result')
+        return;
       await _handleDeepLinkPayment(uri);
     });
   }
@@ -295,7 +300,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     final successParam = uri.queryParameters['success'];
     final message = uri.queryParameters['message'];
 
-    final success = (successParam ?? '').toLowerCase() == 'true' || responseCode == '00';
+    final success =
+        (successParam ?? '').toLowerCase() == 'true' || responseCode == '00';
 
     if (success) {
       await _finalizeSuccessfulPayment(registrationId);
@@ -336,7 +342,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     );
   }
 
-  Future<void> _handleFailedPayment(String? registrationId, String message) async {
+  Future<void> _handleFailedPayment(
+      String? registrationId, String message) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_pendingPaymentKey);
@@ -437,7 +444,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     if (_selectedUnitId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Không xác định được căn hộ hiện tại. Vui lòng quay lại màn hình chính.'),
+          content: Text(
+              'Không xác định được căn hộ hiện tại. Vui lòng quay lại màn hình chính.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -459,7 +467,8 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Đã kiểm tra', style: TextStyle(color: Colors.teal)),
+              child: const Text('Đã kiểm tra',
+                  style: TextStyle(color: Colors.teal)),
             ),
           ],
         ),
@@ -474,7 +483,8 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('✅ Vui lòng kiểm tra lại thông tin. Double-tap vào trường để chỉnh sửa nếu cần.'),
+              content: Text(
+                  '✅ Vui lòng kiểm tra lại thông tin. Double-tap vào trường để chỉnh sửa nếu cần.'),
               duration: Duration(seconds: 3),
             ),
           );
@@ -498,7 +508,8 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Đã kiểm tra', style: TextStyle(color: Colors.teal)),
+              child: const Text('Đã kiểm tra',
+                  style: TextStyle(color: Colors.teal)),
             ),
           ],
         ),
@@ -513,7 +524,8 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('✅ Vui lòng kiểm tra lại thông tin. Double-tap vào trường để chỉnh sửa nếu cần.'),
+              content: Text(
+                  '✅ Vui lòng kiểm tra lại thông tin. Double-tap vào trường để chỉnh sửa nếu cần.'),
               duration: Duration(seconds: 3),
             ),
           );
@@ -671,6 +683,31 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final media = MediaQuery.of(context);
+
+    final backgroundGradient = isDark
+        ? const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF050F1F),
+              Color(0xFF10243E),
+              Color(0xFF050B14),
+            ],
+          )
+        : const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFE7F3FF),
+              Color(0xFFF5FAFF),
+              Colors.white,
+            ],
+          );
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
@@ -682,129 +719,164 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF5F7F9),
+        extendBody: true,
+        backgroundColor: colorScheme.surface,
         appBar: AppBar(
-          title: const Text(
+          title: Text(
             'Đăng ký thẻ thang máy',
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w700,
             ),
           ),
-          backgroundColor: const Color(0xFF26A69A),
-          foregroundColor: Colors.white,
           elevation: 0,
-        ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildFeeInfoCard(),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _fullNameCtrl,
-                  label: 'Họ và tên',
-                  hint: 'Nhập họ và tên',
-                  fieldKey: 'fullName',
-                  icon: Icons.person_outline,
-                  validator: (v) => v == null || v.isEmpty
-                      ? 'Vui lòng nhập họ và tên'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _apartmentNumberCtrl,
-                  label: 'Số căn hộ',
-                  hint: 'Hệ thống tự điền theo căn hộ đang chọn',
-                  fieldKey: 'apartmentNumber',
-                  icon: Icons.home_outlined,
-                  validator: (v) => v == null || v.isEmpty
-                      ? 'Vui lòng kiểm tra lại số căn hộ'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _buildingNameCtrl,
-                  label: 'Tòa nhà',
-                  hint: 'Hệ thống tự điền theo căn hộ đang chọn',
-                  fieldKey: 'buildingName',
-                  icon: Icons.apartment_outlined,
-                  validator: (v) => v == null || v.isEmpty
-                      ? 'Vui lòng kiểm tra lại tòa nhà'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                _buildRequestTypeDropdown(),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _citizenIdCtrl,
-                  label: 'Căn cước công dân',
-                  hint: 'Nhập số căn cước công dân',
-                  fieldKey: 'citizenId',
-                  icon: Icons.badge_outlined,
-                  validator: (v) => v == null || v.isEmpty
-                      ? 'Vui lòng nhập căn cước công dân'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _phoneNumberCtrl,
-                  label: 'Số điện thoại',
-                  hint: 'Nhập số điện thoại liên hệ',
-                  fieldKey: 'phoneNumber',
-                  icon: Icons.phone_iphone,
-                  keyboardType: TextInputType.phone,
-                  validator: (v) {
-                    if (v == null || v.isEmpty) {
-                      return 'Vui lòng nhập số điện thoại';
-                    }
-                    if (!RegExp(r'^[0-9]{10,11}$').hasMatch(v)) {
-                      return 'Số điện thoại không hợp lệ';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _noteCtrl,
-                  label: 'Ghi chú',
-                  hint: 'Nhập ghi chú nếu có',
-                  fieldKey: 'note',
-                  icon: Icons.notes,
-                  maxLines: 3,
-                ),
-                const SizedBox(height: 32),
-                ElevatedButton(
-                  onPressed: _submitting ? null : _handleRegisterPressed,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF26A69A),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+          backgroundColor: Colors.transparent,
+          foregroundColor: colorScheme.onSurface,
+          centerTitle: false,
+          surfaceTintColor: Colors.transparent,
+          flexibleSpace: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: isDark
+                  ? const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0xFF07121F),
+                        Color(0x4407121F),
+                      ],
+                    )
+                  : const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0xE6FFFFFF),
+                        Color(0x00FFFFFF),
+                      ],
                     ),
-                  ),
-                  child: _submitting
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : const Text(
-                          'Gửi yêu cầu và thanh toán',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
+            ),
+          ),
+        ),
+        body: DecoratedBox(
+          decoration: BoxDecoration(gradient: backgroundGradient),
+          child: SafeArea(
+            bottom: false,
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(
+                20,
+                24,
+                20,
+                media.padding.bottom + 36,
+              ),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildFeeInfoCard(),
+                    const SizedBox(height: 20),
+                    _buildTextField(
+                      controller: _fullNameCtrl,
+                      label: 'Họ và tên',
+                      hint: 'Nhập họ và tên',
+                      fieldKey: 'fullName',
+                      icon: Icons.person_outline,
+                      validator: (v) => v == null || v.isEmpty
+                          ? 'Vui lòng nhập họ và tên'
+                          : null,
+                    ),
+                    const SizedBox(height: 18),
+                    _buildTextField(
+                      controller: _apartmentNumberCtrl,
+                      label: 'Số căn hộ',
+                      hint: 'Hệ thống tự điền theo căn hộ đang chọn',
+                      fieldKey: 'apartmentNumber',
+                      icon: Icons.home_outlined,
+                      validator: (v) => v == null || v.isEmpty
+                          ? 'Vui lòng kiểm tra lại số căn hộ'
+                          : null,
+                    ),
+                    const SizedBox(height: 18),
+                    _buildTextField(
+                      controller: _buildingNameCtrl,
+                      label: 'Tòa nhà',
+                      hint: 'Hệ thống tự điền theo căn hộ đang chọn',
+                      fieldKey: 'buildingName',
+                      icon: Icons.apartment_outlined,
+                      validator: (v) => v == null || v.isEmpty
+                          ? 'Vui lòng kiểm tra lại tòa nhà'
+                          : null,
+                    ),
+                    const SizedBox(height: 18),
+                    _buildRequestTypeDropdown(),
+                    const SizedBox(height: 18),
+                    _buildTextField(
+                      controller: _citizenIdCtrl,
+                      label: 'Căn cước công dân',
+                      hint: 'Nhập số căn cước công dân',
+                      fieldKey: 'citizenId',
+                      icon: Icons.badge_outlined,
+                      validator: (v) => v == null || v.isEmpty
+                          ? 'Vui lòng nhập căn cước công dân'
+                          : null,
+                    ),
+                    const SizedBox(height: 18),
+                    _buildTextField(
+                      controller: _phoneNumberCtrl,
+                      label: 'Số điện thoại',
+                      hint: 'Nhập số điện thoại liên hệ',
+                      fieldKey: 'phoneNumber',
+                      icon: Icons.phone_iphone,
+                      keyboardType: TextInputType.phone,
+                      validator: (v) {
+                        if (v == null || v.isEmpty) {
+                          return 'Vui lòng nhập số điện thoại';
+                        }
+                        if (!RegExp(r'^[0-9]{10,11}$').hasMatch(v)) {
+                          return 'Số điện thoại không hợp lệ';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 18),
+                    _buildTextField(
+                      controller: _noteCtrl,
+                      label: 'Ghi chú',
+                      hint: 'Nhập ghi chú nếu có',
+                      fieldKey: 'note',
+                      icon: Icons.notes,
+                      maxLines: 3,
+                    ),
+                    const SizedBox(height: 28),
+                    FilledButton(
+                      onPressed: _submitting ? null : _handleRegisterPressed,
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
                         ),
+                      ),
+                      child: _submitting
+                          ? SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  theme.colorScheme.onPrimary,
+                                ),
+                              ),
+                            )
+                          : Text(
+                              'Gửi yêu cầu và thanh toán',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: theme.colorScheme.onPrimary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -813,65 +885,71 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
   }
 
   Widget _buildFeeInfoCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return RegisterGlassPanel(
+      padding: const EdgeInsets.all(22),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: const BoxDecoration(
-              color: Color(0x1A26A69A),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.payments_outlined,
-              color: Color(0xFF26A69A),
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                height: 56,
+                width: 56,
+                decoration: BoxDecoration(
+                  gradient: AppColors.primaryGradient(),
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x1A0B4F6C),
+                      blurRadius: 18,
+                      offset: Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.payments_outlined,
+                  color: Colors.white,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(width: 18),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Phí đăng ký thẻ thang máy',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _formatVnd(_registrationFee),
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Phí đăng ký thẻ thang máy',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1F2933),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _formatVnd(_registrationFee),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF26A69A),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Sau khi gửi yêu cầu, bạn sẽ được chuyển tới cổng thanh toán VNPAY để hoàn tất thanh toán.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF617079),
-                    height: 1.3,
-                  ),
-                ),
-              ],
+          const SizedBox(height: 18),
+          Divider(
+            height: 1,
+            color: colorScheme.outlineVariant.withOpacity(0.3),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Sau khi gửi yêu cầu, bạn sẽ được chuyển tới cổng thanh toán VNPAY để hoàn tất thanh toán. Vui lòng chuẩn bị thông tin thanh toán trước khi tiếp tục.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurface.withOpacity(0.68),
+              height: 1.45,
             ),
           ),
         ],
@@ -881,61 +959,36 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
 
   Widget _buildRequestTypeDropdown() {
     final isEditable = _isEditable('requestType');
-    return GestureDetector(
-      onDoubleTap: () => _requestEditField('requestType'),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
+    return RegisterGlassDropdown<String>(
+      value: _requestType,
+      label: 'Loại yêu cầu',
+      hint: 'Chọn loại thẻ',
+      icon: Icons.category_outlined,
+      enabled: isEditable,
+      validator: (v) => v == null ? 'Vui lòng chọn loại yêu cầu' : null,
+      items: const [
+        DropdownMenuItem(
+          value: 'NEW_CARD',
+          child: Text('Làm thẻ mới'),
         ),
-        child: DropdownButtonFormField<String>(
-          initialValue: _requestType,
-          decoration: InputDecoration(
-            labelText: 'Loại yêu cầu',
-            prefixIcon: const Icon(Icons.category_outlined, color: Color(0xFF26A69A)),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            filled: true,
-            fillColor: isEditable ? Colors.white : Colors.grey[100],
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 16,
-            ),
-          ),
-          items: const [
-            DropdownMenuItem(
-              value: 'NEW_CARD',
-              child: Text('Làm thẻ mới'),
-            ),
-            DropdownMenuItem(
-              value: 'REPLACE_CARD',
-              child: Text('Cấp lại thẻ bị mất'),
-            ),
-          ],
-          onChanged: isEditable
-              ? (value) {
-                  setState(() {
-                    _requestType = value ?? 'NEW_CARD';
-                    if (_confirmed) {
-                      _editingField = 'requestType';
-                      _hasEditedAfterConfirm = true;
-                    }
-                  });
-                  _autoSave();
+        DropdownMenuItem(
+          value: 'REPLACE_CARD',
+          child: Text('Cấp lại thẻ bị mất'),
+        ),
+      ],
+      onChanged: isEditable
+          ? (value) {
+              setState(() {
+                _requestType = value ?? 'NEW_CARD';
+                if (_confirmed) {
+                  _editingField = 'requestType';
+                  _hasEditedAfterConfirm = true;
                 }
-              : null,
-          validator: (v) => v == null ? 'Vui lòng chọn loại yêu cầu' : null,
-        ),
-      ),
+              });
+              _autoSave();
+            }
+          : null,
+      onDoubleTap: isEditable ? null : () => _requestEditField('requestType'),
     );
   }
 
@@ -952,44 +1005,24 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
     final isEditable = _isEditable(fieldKey);
     final isAutoField = _isAutoFilledField(fieldKey);
     final canEdit = !isAutoField && isEditable;
-    return GestureDetector(
+    final isEditing = _editingField == fieldKey;
+    final displayHint = _confirmed && !isEditable && !isAutoField
+        ? 'Nhấn đúp để yêu cầu chỉnh sửa'
+        : hint;
+
+    return RegisterGlassTextField(
+      controller: controller,
+      label: label,
+      hint: displayHint,
+      icon: icon,
+      validator: validator,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      enabled: true,
+      readOnly: !canEdit,
+      helperText:
+          isEditing ? 'Đang chỉnh sửa... (Nhấn Done để hoàn tất)' : null,
       onDoubleTap: isAutoField ? null : () => _requestEditField(fieldKey),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: TextFormField(
-          controller: controller,
-          enabled: isAutoField ? true : isEditable,
-          readOnly: !canEdit,
-          validator: validator,
-          keyboardType: keyboardType,
-          maxLines: maxLines,
-          decoration: InputDecoration(
-            labelText: label,
-            hintText: hint,
-            prefixIcon: Icon(icon, color: const Color(0xFF26A69A)),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            filled: true,
-            fillColor: canEdit ? Colors.white : Colors.grey[100],
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 16,
-            ),
-          ),
-        ),
-      ),
     );
   }
 

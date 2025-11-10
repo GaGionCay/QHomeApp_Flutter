@@ -13,7 +13,7 @@ class ContractService {
     if (contractsDio != null) {
       return contractsDio!;
     }
-    const baseUrl = 'http://${ApiClient.HOST_IP}:8082/api';
+    final baseUrl = ApiClient.buildServiceBase(port: 8082, path: '/api');
     return Dio(BaseOptions(
       baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),

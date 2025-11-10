@@ -7,6 +7,7 @@ import '../register/register_elevator_card_screen.dart';
 import '../register/register_resident_card_screen.dart';
 import '../register/register_vehicle_screen.dart';
 import '../theme/app_colors.dart';
+import '../common/layout_insets.dart';
 import 'cleaning_request_screen.dart';
 import 'repair_request_screen.dart';
 import 'service_booking_service.dart';
@@ -136,6 +137,12 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
             ],
           );
 
+    final bottomInset = LayoutInsets.bottomNavContentPadding(
+      context,
+      extra: -LayoutInsets.navBarHeight + 6,
+      minimumGap: 16,
+    );
+
     return Scaffold(
       backgroundColor: colorScheme.surface,
       appBar: AppBar(
@@ -149,7 +156,7 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
           child: SingleChildScrollView(
             controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(20, 28, 20, 32),
+            padding: EdgeInsets.fromLTRB(20, 28, 20, bottomInset),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -158,28 +165,7 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
                 _buildDynamicCategories(context),
                 const SizedBox(height: 28),
                 _buildStaticCards(context),
-                const SizedBox(height: 36),
-                Center(
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.miscellaneous_services_outlined,
-                        color: colorScheme.onSurface.withOpacity(0.25),
-                        size: 64,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Các dịch vụ khác sẽ được cập nhật\ntrong các phiên bản tiếp theo.',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurface.withOpacity(0.58),
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 40),
               ],
             ),
           ),
