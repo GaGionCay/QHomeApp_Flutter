@@ -28,6 +28,34 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    final backgroundGradient = isDark
+        ? const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF04111E),
+              Color(0xFF0B1D32),
+              Color(0xFF04111E),
+            ],
+          )
+        : const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.white,
+              AppColors.neutralBackground,
+              Colors.white,
+            ],
+          );
+
+    final topGlowColor = isDark
+        ? theme.colorScheme.primary.withOpacity(0.18)
+        : AppColors.primaryEmerald.withValues(alpha: 0.22);
+    final bottomGlowColor = isDark
+        ? theme.colorScheme.secondary.withOpacity(0.12)
+        : AppColors.primaryBlue.withValues(alpha: 0.16);
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
@@ -43,15 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 Positioned.fill(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.white,
-                          AppColors.neutralBackground,
-                          Colors.white,
-                        ],
-                      ),
+                      gradient: backgroundGradient,
                     ),
                   ),
                 ),
@@ -66,7 +86,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       shape: BoxShape.circle,
                       gradient: RadialGradient(
                         colors: [
-                          AppColors.primaryEmerald.withValues(alpha: 0.22),
+                          topGlowColor,
                           Colors.transparent,
                         ],
                       ),
@@ -84,7 +104,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       shape: BoxShape.circle,
                       gradient: RadialGradient(
                         colors: [
-                          AppColors.primaryBlue.withValues(alpha: 0.16),
+                          bottomGlowColor,
                           Colors.transparent,
                         ],
                       ),
@@ -135,7 +155,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             Text(
                               'Chào mừng trở lại,',
                               style: textTheme.headlineSmall?.copyWith(
-                                color: AppColors.textSecondary,
+                                color: theme.colorScheme.onSurface
+                                    .withOpacity(0.65),
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -143,7 +164,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             Text(
                               'Đăng nhập để tiếp tục',
                               style: textTheme.displaySmall?.copyWith(
-                                color: AppColors.textPrimary,
+                                color: theme.colorScheme.onSurface,
                                 fontSize: 32,
                               ),
                             ),

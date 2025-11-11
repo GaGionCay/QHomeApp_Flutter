@@ -194,9 +194,15 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
           return;
         }
 
+        if (eventType == 'NOTIFICATION_UPDATED') {
+          AppEventBus().emit('notifications_update', data);
+          AppEventBus().emit('notifications_refetch', data);
+          return;
+        }
+
         _showNotificationBanner(data);
         AppEventBus().emit('notifications_update', data);
-        AppEventBus().emit('notifications_refetch', data);
+        AppEventBus().emit('notifications_incoming', data);
       }
     } catch (e) {
       debugPrint('⚠️ Lỗi parse notification realtime: $e');

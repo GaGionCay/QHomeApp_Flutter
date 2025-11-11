@@ -16,7 +16,14 @@ import 'notification_detail_screen.dart';
 import 'notification_read_store.dart';
 
 class NotificationScreen extends StatefulWidget {
-  const NotificationScreen({super.key});
+  const NotificationScreen({
+    super.key,
+    this.initialResidentId,
+    this.initialBuildingId,
+  });
+
+  final String? initialResidentId;
+  final String? initialBuildingId;
 
   @override
   State<NotificationScreen> createState() => _NotificationScreenState();
@@ -27,6 +34,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
   final ResidentService _residentService = ResidentService();
   late final ContractService _contractService;
   late final AppEventBus _bus;
+  final List<Map<String, dynamic>> _pendingRealtime = [];
 
   List<ResidentNotification> items = [];
   bool loading = false;
@@ -39,10 +47,18 @@ class _NotificationScreenState extends State<NotificationScreen> {
     super.initState();
     _contractService = ContractService(_api);
     _bus = AppEventBus();
+    _residentId = widget.initialResidentId;
+    _buildingId = widget.initialBuildingId;
     _bus.on('notifications_refetch', (_) async {
       if (!mounted) return;
       if (_residentId != null && _buildingId != null) {
-        await _fetch();
+        await _fetch(silent: true);
+      }
+    });
+    _bus.on('notifications_incoming', (payload) {
+      if (!mounted) return;
+      if (payload is Map<String, dynamic>) {
+        _handleIncomingRealtime(payload);
       }
     });
     _loadIdsAndFetch();
@@ -50,6 +66,16 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   Future<void> _loadIdsAndFetch() async {
     try {
+      if ((_residentId?.isNotEmpty ?? false) &&
+          (_buildingId?.isNotEmpty ?? false)) {
+        debugPrint(
+            'ℹ️ Đã có sẵn residentId=$_residentId & buildingId=$_buildingId từ tham số truyền vào.');
+        _readIds = await NotificationReadStore.load(_residentId!);
+        await _fetch();
+        _flushPendingRealtime();
+        return;
+      }
+
       final profileService = ProfileService(_api.dio);
       final profile = await profileService.getProfile();
 
@@ -66,6 +92,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
             '✅ Tìm thấy residentId và buildingId trong profile: residentId=$_residentId, buildingId=$_buildingId');
         _readIds = await NotificationReadStore.load(_residentId!);
         await _fetch();
+        _flushPendingRealtime();
         return;
       }
 
@@ -101,6 +128,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
       _readIds = await NotificationReadStore.load(_residentId!);
       await _fetch();
+      _flushPendingRealtime();
     } catch (e) {
       debugPrint('⚠️ Lỗi lấy residentId/buildingId: $e');
       if (mounted) {
@@ -112,10 +140,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
   @override
   void dispose() {
     _bus.off('notifications_refetch');
+    _bus.off('notifications_incoming');
     super.dispose();
   }
 
-  Future<void> _fetch() async {
+  Future<void> _fetch({bool silent = false}) async {
     if (_residentId == null || _buildingId == null) {
       debugPrint('⚠️ Không thể fetch: residentId hoặc buildingId null');
       return;
@@ -123,7 +152,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
     debugPrint(
         '🔍 Bắt đầu fetch notifications với residentId=$_residentId, buildingId=$_buildingId');
-    setState(() => loading = true);
+    if (!silent) {
+      setState(() => loading = true);
+    }
     try {
       final fetched = await _residentService.getResidentNotifications(
         _residentId!,
@@ -137,7 +168,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
       final updated = fetched
           .map((n) => _readIds.contains(n.id) ? n.copyWith(isRead: true) : n)
           .toList();
-      items = updated;
+      if (mounted) {
+        setState(() {
+          items = updated;
+        });
+      } else {
+        items = updated;
+      }
     } catch (e) {
       debugPrint('❌ Lỗi tải notifications: $e');
       if (e is DioException) {
@@ -146,7 +183,95 @@ class _NotificationScreenState extends State<NotificationScreen> {
       }
       items = [];
     } finally {
-      if (mounted) setState(() => loading = false);
+      if (!silent && mounted) setState(() => loading = false);
+    }
+  }
+
+  void _handleIncomingRealtime(Map<String, dynamic> payload,
+      {bool queueIfNotReady = true}) {
+    if (_residentId == null || _buildingId == null) {
+      if (queueIfNotReady) {
+        _pendingRealtime.add(payload);
+      }
+      return;
+    }
+
+    if (!_shouldAcceptRealtimeNotification(payload)) {
+      return;
+    }
+
+    final notification = _parseRealtimeNotification(payload);
+    if (notification == null) return;
+    final alreadyExists = items.any((element) => element.id == notification.id);
+    if (alreadyExists) return;
+
+    setState(() {
+      items = [notification, ...items];
+    });
+  }
+
+  void _flushPendingRealtime() {
+    if (_pendingRealtime.isEmpty) return;
+    final pending = List<Map<String, dynamic>>.from(_pendingRealtime);
+    _pendingRealtime.clear();
+    for (final payload in pending) {
+      _handleIncomingRealtime(payload, queueIfNotReady: false);
+    }
+  }
+
+  bool _shouldAcceptRealtimeNotification(Map<String, dynamic> payload) {
+    final scope = (payload['scope'] ??
+            payload['notificationScope'] ??
+            payload['notification_scope'])
+        ?.toString()
+        .toUpperCase();
+    final targetBuildingId =
+        payload['targetBuildingId']?.toString().toLowerCase();
+
+    if (scope == 'EXTERNAL' || scope == null) {
+      if (targetBuildingId == null || targetBuildingId.isEmpty) {
+        return true;
+      }
+      if (_buildingId == null) return false;
+      return targetBuildingId == _buildingId!.toLowerCase();
+    }
+    return false;
+  }
+
+  ResidentNotification? _parseRealtimeNotification(
+      Map<String, dynamic> payload) {
+    final id =
+        payload['notificationId']?.toString() ?? payload['id']?.toString();
+    if (id == null || id.isEmpty) return null;
+    final createdAt = payload['createdAt']?.toString() ??
+        DateTime.now().toUtc().toIso8601String();
+    final updatedAt = payload['updatedAt']?.toString() ?? createdAt;
+
+    final normalized = {
+      'id': id,
+      'type': (payload['notificationType'] ?? payload['type'] ?? 'SYSTEM')
+          .toString(),
+      'title': payload['title']?.toString() ?? 'Thông báo hệ thống',
+      'message':
+          payload['message']?.toString() ?? payload['body']?.toString() ?? '',
+      'scope': (payload['scope'] ?? 'EXTERNAL').toString(),
+      'targetRole': payload['targetRole']?.toString(),
+      'targetBuildingId': payload['targetBuildingId']?.toString(),
+      'referenceId': payload['referenceId']?.toString(),
+      'referenceType': payload['referenceType']?.toString(),
+      'actionUrl': payload['actionUrl']?.toString(),
+      'iconUrl': payload['iconUrl']?.toString(),
+      'createdAt': createdAt,
+      'updatedAt': updatedAt,
+      'read': false,
+      'readAt': null,
+    };
+
+    try {
+      return ResidentNotification.fromJson(normalized);
+    } catch (e) {
+      debugPrint('⚠️ Không thể parse realtime notification: $e');
+      return null;
     }
   }
 
@@ -231,7 +356,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
       ),
       body: RefreshIndicator(
         color: theme.colorScheme.primary,
-        onRefresh: _fetch,
+        onRefresh: () => _fetch(silent: true),
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 320),
           child: loading

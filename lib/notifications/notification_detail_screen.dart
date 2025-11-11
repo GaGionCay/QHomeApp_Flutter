@@ -1,8 +1,11 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/notification_detail_response.dart';
 import '../news/resident_service.dart';
+import '../theme/app_colors.dart';
 import 'notification_read_store.dart';
 
 class NotificationDetailScreen extends StatefulWidget {
@@ -128,261 +131,301 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    final backgroundGradient = isDark
+        ? const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF04101F),
+              Color(0xFF0A1D34),
+              Color(0xFF071225),
+            ],
+          )
+        : const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFEFF6FF),
+              Color(0xFFF8FBFF),
+              Colors.white,
+            ],
+          );
 
     return Scaffold(
-      backgroundColor: colorScheme.surface,
+      extendBody: true,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         automaticallyImplyLeading: false,
         elevation: 0,
         backgroundColor: Colors.transparent,
+        foregroundColor: colorScheme.onSurface,
+        surfaceTintColor: Colors.transparent,
         title: const Text('Chi tiết thông báo'),
         leading: IconButton(
           onPressed: () => Navigator.of(context).maybePop(),
           icon: const Icon(Icons.arrow_back_rounded),
         ),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
+      body: DecoratedBox(
+        decoration: BoxDecoration(gradient: backgroundGradient),
+        child: SafeArea(
+          bottom: false,
+          child: _loading
               ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.error_outline,
-                        size: 64,
-                        color: Colors.red[300],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Lỗi: $_error',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey[600],
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadNotificationDetail,
-                        child: const Text('Thử lại'),
-                      ),
-                    ],
+                  child: CircularProgressIndicator(
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(colorScheme.primary),
                   ),
                 )
-              : _notification == null
-                  ? const Center(
-                      child: Text('Không tìm thấy thông báo'),
-                    )
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.all(16),
+              : _error != null
+                  ? Center(
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          // Header Card
-                          Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.grey.withValues(alpha: 0.1),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 56,
-                                  height: 56,
-                                  decoration: BoxDecoration(
-                                    color: _getTypeColor(_notification!.type)
-                                        .withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Icon(
-                                    _getTypeIcon(_notification!.type),
-                                    color: _getTypeColor(_notification!.type),
-                                    size: 28,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        _notification!.title,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 18,
-                                          color: Color(0xFF004D40),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 4,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: _getTypeColor(
-                                                      _notification!.type)
-                                                  .withValues(alpha: 0.1),
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                            child: Text(
-                                              _notification!.type,
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w500,
-                                                color: _getTypeColor(
-                                                    _notification!.type),
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 4,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.grey
-                                                  .withValues(alpha: 0.1),
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                            child: Text(
-                                              _getScopeText(
-                                                  _notification!.scope),
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w500,
-                                                color: Colors.grey[700],
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                          Icon(
+                            Icons.error_outline,
+                            size: 64,
+                            color: colorScheme.error,
+                          ),
+                          const SizedBox(height: 16),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            child: Text(
+                              'Lỗi: $_error',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.onSurface
+                                    .withValues(alpha: 0.7),
+                              ),
+                              textAlign: TextAlign.center,
                             ),
                           ),
                           const SizedBox(height: 16),
-                          // Message Card
-                          Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.grey.withValues(alpha: 0.1),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Nội dung',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    color: Color(0xFF004D40),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  _notification!.message,
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    color: Colors.grey[800],
-                                    height: 1.5,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          // Info Card
-                          Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.grey.withValues(alpha: 0.1),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Thông tin',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    color: Color(0xFF004D40),
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                _buildInfoRow(
-                                  'Thời gian tạo',
-                                  DateFormat('dd/MM/yyyy HH:mm')
-                                      .format(_notification!.createdAt),
-                                  Icons.access_time,
-                                ),
-                                if (_notification!.targetBuildingId !=
-                                    null) ...[
-                                  const SizedBox(height: 12),
-                                  _buildInfoRow(
-                                    'Tòa nhà',
-                                    _notification!.targetBuildingId!,
-                                    Icons.business,
-                                  ),
-                                ],
-                                if (_notification!.actionUrl != null) ...[
-                                  const SizedBox(height: 12),
-                                  _buildActionUrlRow(
-                                    'URL hành động',
-                                    _notification!.actionUrl!,
-                                    Icons.link,
-                                  ),
-                                ],
-                              ],
-                            ),
+                          FilledButton(
+                            onPressed: _loadNotificationDetail,
+                            child: const Text('Thử lại'),
                           ),
                         ],
                       ),
-                    ),
+                    )
+                  : _notification == null
+                      ? Center(
+                          child: Text(
+                            'Không tìm thấy thông báo',
+                            style: theme.textTheme.titleMedium,
+                          ),
+                        )
+                      : LayoutBuilder(
+                          builder: (context, constraints) {
+                            final media = MediaQuery.of(context);
+                            final availableWidth = constraints.maxWidth;
+                            final availableHeight = constraints.maxHeight;
+
+                            double targetWidth = availableWidth;
+                            if (availableWidth > 860) {
+                              targetWidth = availableWidth * 0.72;
+                            }
+                            if (targetWidth > 980) {
+                              targetWidth = 980;
+                            }
+
+                            double horizontalPadding =
+                                (availableWidth - targetWidth) / 2;
+                            if (horizontalPadding < 20) {
+                              horizontalPadding = 20;
+                              targetWidth =
+                                  availableWidth - horizontalPadding * 2;
+                            }
+
+                            final bottomPadding =
+                                32 + media.padding.bottom.clamp(0.0, 40.0);
+
+                            return SingleChildScrollView(
+                              padding: EdgeInsets.fromLTRB(
+                                horizontalPadding,
+                                24,
+                                horizontalPadding,
+                                bottomPadding,
+                              ),
+                              child: Align(
+                                alignment: Alignment.topCenter,
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxWidth: targetWidth,
+                                    minWidth: targetWidth,
+                                    minHeight:
+                                        (availableHeight - bottomPadding - 24)
+                                            .clamp(0.0, double.infinity),
+                                  ),
+                                  child: IntrinsicHeight(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        _buildHeaderCard(theme),
+                                        const SizedBox(height: 20),
+                                        _buildMessageCard(theme),
+                                        const SizedBox(height: 20),
+                                        Expanded(
+                                          child: _buildInfoCard(theme),
+                                        ),
+                                        const SizedBox(height: 24),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+        ),
+      ),
     );
   }
 
-  Widget _buildInfoRow(String label, String value, IconData icon) {
+  Widget _buildHeaderCard(ThemeData theme) {
+    final notification = _notification!;
+    final colorScheme = theme.colorScheme;
+    final typeColor = _getTypeColor(notification.type);
+
+    return _DetailGlassCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: typeColor.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(
+              _getTypeIcon(notification.type),
+              color: typeColor,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 18),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  notification.title,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildChip(
+                      label: notification.type,
+                      background: typeColor.withValues(alpha: 0.14),
+                      textColor: typeColor,
+                    ),
+                    _buildChip(
+                      label: _getScopeText(notification.scope),
+                      background: colorScheme.primary.withValues(alpha: 0.1),
+                      textColor: colorScheme.primary,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageCard(ThemeData theme) {
+    final colorScheme = theme.colorScheme;
+    return _DetailGlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Nội dung',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _notification!.message,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              height: 1.6,
+              color: colorScheme.onSurface.withValues(alpha: 0.82),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoCard(ThemeData theme) {
+    final colorScheme = theme.colorScheme;
+    return _DetailGlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Thông tin',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: 20),
+          _buildInfoRow(
+            theme,
+            'Thời gian tạo',
+            DateFormat('dd/MM/yyyy HH:mm').format(_notification!.createdAt),
+            Icons.access_time,
+          ),
+          if (_notification!.targetBuildingId != null) ...[
+            const SizedBox(height: 16),
+            _buildInfoRow(
+              theme,
+              'Tòa nhà',
+              _notification!.targetBuildingId!,
+              Icons.business,
+            ),
+          ],
+          if (_notification!.actionUrl != null) ...[
+            const SizedBox(height: 16),
+            _buildActionUrlRow(
+              theme,
+              'URL hành động',
+              _notification!.actionUrl!,
+              Icons.link,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(
+    ThemeData theme,
+    String label,
+    String value,
+    IconData icon,
+  ) {
+    final colorScheme = theme.colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(
           icon,
           size: 20,
-          color: Colors.grey[600],
+          color: colorScheme.primary,
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -391,18 +434,16 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
             children: [
               Text(
                 label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: colorScheme.onSurface.withValues(alpha: 0.58),
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 value,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[800],
-                  fontWeight: FontWeight.w500,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurface.withValues(alpha: 0.9),
                 ),
               ),
             ],
@@ -412,7 +453,13 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
     );
   }
 
-  Widget _buildActionUrlRow(String label, String url, IconData icon) {
+  Widget _buildActionUrlRow(
+    ThemeData theme,
+    String label,
+    String url,
+    IconData icon,
+  ) {
+    final colorScheme = theme.colorScheme;
     return InkWell(
       onTap: () => _launchUrl(url),
       borderRadius: BorderRadius.circular(8),
@@ -424,7 +471,7 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
             Icon(
               icon,
               size: 20,
-              color: const Color(0xFF26A69A),
+              color: colorScheme.primary,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -433,9 +480,9 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                 children: [
                   Text(
                     label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color:
+                          theme.colorScheme.onSurface.withValues(alpha: 0.58),
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -444,10 +491,9 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                       Expanded(
                         child: Text(
                           url,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF26A69A),
-                            fontWeight: FontWeight.w500,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.primary,
+                            fontWeight: FontWeight.w600,
                             decoration: TextDecoration.underline,
                           ),
                           maxLines: 2,
@@ -455,10 +501,10 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      const Icon(
+                      Icon(
                         Icons.open_in_new,
                         size: 16,
-                        color: Color(0xFF26A69A),
+                        color: colorScheme.primary,
                       ),
                     ],
                   ),
@@ -507,5 +553,60 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
         );
       }
     }
+  }
+
+  Widget _buildChip({
+    required String label,
+    required Color background,
+    required Color textColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: textColor,
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailGlassCard extends StatelessWidget {
+  const _DetailGlassCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: isDark
+                ? AppColors.darkGlassLayerGradient()
+                : AppColors.glassLayerGradient(),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: theme.colorScheme.outline.withOpacity(0.08),
+            ),
+            boxShadow: AppColors.subtleShadow,
+          ),
+          padding: const EdgeInsets.all(22),
+          child: child,
+        ),
+      ),
+    );
   }
 }

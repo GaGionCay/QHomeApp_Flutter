@@ -3,8 +3,10 @@ import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'package:geocoding/geocoding.dart';
 import '../auth/api_client.dart';
 import '../core/event_bus.dart';
 import '../news/news_screen.dart';
@@ -90,6 +92,11 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint(
           '🔔 HomeScreen nhận event notifications_update -> cập nhật quick alerts...');
       await _loadUnreadNotifications();
+    });
+    _eventBus.on('unit_context_changed', (data) {
+      if (!mounted) return;
+      final unitId = (data is String && data.isNotEmpty) ? data : null;
+      unawaited(_onUnitChanged(unitId));
     });
   }
 
@@ -304,36 +311,52 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      final locationResponse =
-          await http.get(Uri.parse('https://ipapi.co/json/')).timeout(
-                const Duration(seconds: 6),
-              );
+      double? latitude;
+      double? longitude;
+      String? city;
 
-      if (locationResponse.statusCode == 429) {
-        throw _WeatherRateLimitException(source: 'ipapi.co');
+      final position = await _getDevicePosition();
+      if (position != null) {
+        latitude = position.latitude;
+        longitude = position.longitude;
+        city = await _resolveLocality(latitude, longitude);
       }
-
-      if (locationResponse.statusCode != 200) {
-        throw Exception(
-            'Location lookup failed with status ${locationResponse.statusCode}');
-      }
-
-      final locationJson =
-          jsonDecode(locationResponse.body) as Map<String, dynamic>;
-      final latitude = (locationJson['latitude'] as num?)?.toDouble();
-      final longitude = (locationJson['longitude'] as num?)?.toDouble();
-      final city = (locationJson['city'] as String?) ?? 'Khu dân cư của bạn';
 
       if (latitude == null || longitude == null) {
-        throw Exception('Missing geolocation data');
+        final locationResponse =
+            await http.get(Uri.parse('https://ipapi.co/json/')).timeout(
+                  const Duration(seconds: 6),
+                );
+
+        if (locationResponse.statusCode == 429) {
+          throw _WeatherRateLimitException(source: 'ipapi.co');
+        }
+
+        if (locationResponse.statusCode != 200) {
+          throw Exception(
+              'Location lookup failed with status ${locationResponse.statusCode}');
+        }
+
+        final locationJson =
+            jsonDecode(locationResponse.body) as Map<String, dynamic>;
+        latitude = (locationJson['latitude'] as num?)?.toDouble();
+        longitude = (locationJson['longitude'] as num?)?.toDouble();
+        city = (locationJson['city'] as String?) ?? 'Khu dân cư của bạn';
+
+        if (latitude == null || longitude == null) {
+          throw Exception('Missing geolocation data');
+        }
       }
+
+      final double lat = latitude;
+      final double lon = longitude;
 
       final weatherUri = Uri.https(
         'api.open-meteo.com',
         '/v1/forecast',
         <String, String>{
-          'latitude': latitude.toString(),
-          'longitude': longitude.toString(),
+          'latitude': lat.toString(),
+          'longitude': lon.toString(),
           'current_weather': 'true',
           'hourly': 'relativehumidity_2m',
           'timezone': 'auto',
@@ -357,6 +380,15 @@ class _HomeScreenState extends State<HomeScreen> {
       final current = weatherJson['current_weather'] as Map<String, dynamic>?;
       if (current == null) throw Exception('Missing current weather payload');
 
+      final timezone = weatherJson['timezone'] as String?;
+      final derivedCity = city ??
+          (() {
+            if (timezone == null) return null;
+            if (!timezone.contains('/')) return timezone;
+            final parts = timezone.split('/');
+            return parts.last.replaceAll('_', ' ');
+          })();
+
       final temperature = (current['temperature'] as num?)?.toDouble();
       final windSpeed = (current['windspeed'] as num?)?.toDouble();
       final weatherCode = current['weathercode'] as int? ?? 0;
@@ -367,8 +399,10 @@ class _HomeScreenState extends State<HomeScreen> {
           : null;
 
       final descriptor = _describeWeatherCode(weatherCode);
+      final fallbackLat = lat.toStringAsFixed(2);
+      final fallbackLon = lon.toStringAsFixed(2);
       final snapshot = _WeatherSnapshot(
-        city: city,
+        city: derivedCity ?? 'Lat $fallbackLat, Lon $fallbackLon',
         temperatureCelsius: temperature ?? 0,
         weatherLabel: descriptor.label,
         weatherIcon: descriptor.icon,
@@ -386,7 +420,9 @@ class _HomeScreenState extends State<HomeScreen> {
           _isWeatherLoading = false;
         });
       }
-    } on _WeatherRateLimitException {
+    } on _WeatherRateLimitException catch (e) {
+      debugPrint(
+          '⚠️ Weather rate limited by ${e.source}. Using cached data when available.');
       if (mounted) {
         setState(() {
           _weatherError =
@@ -394,8 +430,9 @@ class _HomeScreenState extends State<HomeScreen> {
           _isWeatherLoading = false;
         });
       }
-    } catch (e) {
+    } catch (e, stack) {
       debugPrint('⚠️ Không thể tải thời tiết: $e');
+      debugPrint('↪ Weather stack trace: $stack');
       if (mounted) {
         setState(() {
           _weatherError = 'Không thể cập nhật thời tiết';
@@ -403,6 +440,73 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     }
+  }
+
+  Future<Position?> _getDevicePosition() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        debugPrint('ℹ️ Location services disabled. Falling back to IP lookup.');
+        return null;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.deniedForever ||
+          permission == LocationPermission.denied) {
+        debugPrint(
+            'ℹ️ Location permission not granted. Falling back to IP lookup.');
+        return null;
+      }
+
+      return Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.low,
+      );
+    } catch (e, stack) {
+      debugPrint('⚠️ Failed to obtain device location: $e');
+      debugPrint('↪ Location stack trace: $stack');
+      return null;
+    }
+  }
+
+  Future<String?> _resolveLocality(double latitude, double longitude) async {
+    try {
+      final placemarks = await placemarkFromCoordinates(latitude, longitude);
+
+      for (final placemark in placemarks) {
+        final seen = <String>{};
+        final ordered = <String>[];
+
+        void addCandidate(String? value) {
+          final trimmed = value?.trim();
+          if (trimmed == null || trimmed.isEmpty || seen.contains(trimmed)) {
+            return;
+          }
+          seen.add(trimmed);
+          ordered.add(trimmed);
+        }
+
+        addCandidate(placemark.subLocality);
+        addCandidate(placemark.locality);
+        addCandidate(placemark.subAdministrativeArea);
+        addCandidate(placemark.administrativeArea);
+        addCandidate(placemark.country);
+
+        if (ordered.isNotEmpty) {
+          debugPrint(
+              'ℹ️ Reverse geocode resolved to: ${ordered.take(4).join(' • ')}');
+          final display = ordered.take(3).join(', ');
+          return display;
+        }
+      }
+    } catch (e, stack) {
+      debugPrint('⚠️ Failed to reverse geocode position: $e');
+      debugPrint('↪ Reverse geocode stack trace: $stack');
+    }
+    return null;
   }
 
   Future<void> _onUnitChanged(String? unitId) async {
@@ -753,11 +857,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
-              _ThemeModeToggleChip(
-                isDark: isDark,
-                onToggle: themeController.toggleThemeMode,
-              ),
             ],
           ),
           const SizedBox(height: 22),
@@ -856,11 +955,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               ),
                               const SizedBox(width: 12),
-                              Text(
-                                'Đang cập nhật khí hậu...',
-                                style: textTheme.bodyMedium?.copyWith(
-                                  color: theme.colorScheme.onSurface
-                                      .withOpacity(0.7),
+                              Expanded(
+                                child: Text(
+                                  'Đang cập nhật khí hậu...',
+                                  style: textTheme.bodyMedium?.copyWith(
+                                    color: theme.colorScheme.onSurface
+                                        .withOpacity(0.7),
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                 ),
                               ),
                             ],
@@ -1162,16 +1265,21 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final currentUnitId = _selectedUnitId ?? _units.first.id;
-
+    final selectedUnit = _units.firstWhere(
+      (unit) => unit.id == currentUnitId,
+      orElse: () => _units.first,
+    );
+    final theme = Theme.of(context);
     final backgroundGradient = isDarkMode
         ? AppColors.darkGlassLayerGradient()
         : AppColors.glassLayerGradient();
     final outlineColor = isDarkMode
         ? Colors.white.withOpacity(0.18)
         : Colors.white.withOpacity(0.32);
-    final textColor = isDarkMode ? Colors.white : AppColors.textPrimary;
-    final dropdownColor =
-        isDarkMode ? AppColors.navySurfaceElevated : Colors.white;
+    final textColor =
+        isDarkMode ? Colors.white : theme.colorScheme.onSurface.withOpacity(0.86);
+    final secondaryTextColor =
+        isDarkMode ? Colors.white70 : theme.colorScheme.onSurface.withOpacity(0.6);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
@@ -1194,41 +1302,57 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: currentUnitId,
-              dropdownColor: dropdownColor,
-              icon: Icon(
-                CupertinoIcons.chevron_down,
-                color: textColor,
-                size: 18,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                height: 48,
+                width: 48,
+                decoration: BoxDecoration(
+                  gradient: AppColors.primaryGradient(),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: AppColors.subtleShadow,
+                ),
+                child: const Icon(
+                  CupertinoIcons.house_alt_fill,
+                  color: Colors.white,
+                  size: 24,
+                ),
               ),
-              style: TextStyle(
-                color: textColor,
-                fontSize: size.width * 0.038,
-                fontWeight: FontWeight.w600,
-              ),
-              selectedItemBuilder: (context) {
-                return _units.map((unit) {
-                  return Text(
-                    unit.displayName,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: textColor,
-                      fontWeight: FontWeight.w700,
-                      fontSize: size.width * 0.038,
+              const SizedBox(width: 18),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Căn hộ mặc định',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: secondaryTextColor,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.2,
+                      ),
                     ),
-                  );
-                }).toList();
-              },
-              items: _units.map((unit) {
-                return DropdownMenuItem<String>(
-                  value: unit.id,
-                  child: Text(unit.displayName),
-                );
-              }).toList(),
-              onChanged: _onUnitChanged,
-            ),
+                    const SizedBox(height: 4),
+                    Text(
+                      selectedUnit.displayName,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: textColor,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Bạn có thể đổi căn hộ trong phần Cài đặt.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: secondaryTextColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1554,64 +1678,6 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ),
     ];
-  }
-}
-
-class _ThemeModeToggleChip extends StatelessWidget {
-  const _ThemeModeToggleChip({
-    required this.isDark,
-    required this.onToggle,
-  });
-
-  final bool isDark;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final label = isDark ? 'Dark' : 'Light';
-    final icon =
-        isDark ? CupertinoIcons.moon_stars_fill : CupertinoIcons.sun_max_fill;
-
-    return Tooltip(
-      message: 'Chuyển chế độ sáng/tối',
-      child: InkWell(
-        onTap: onToggle,
-        borderRadius: BorderRadius.circular(18),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.18),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white.withOpacity(0.32)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x2209141F),
-                blurRadius: 12,
-                offset: Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 18, color: Colors.white),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.2,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }
 

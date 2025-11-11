@@ -12,6 +12,7 @@ import '../login/login_screen.dart';
 import '../notifications/notification_screen.dart';
 import '../profile/profile_screen.dart';
 import '../profile/profile_service.dart';
+import '../settings/settings_screen.dart';
 import '../theme/app_colors.dart';
 import 'layout_insets.dart';
 
@@ -117,6 +118,24 @@ class _MenuScreenState extends State<MenuScreen> {
     }
   }
 
+  Future<void> _openNotificationScreen(BuildContext context) async {
+    final residentId = _profile?['residentId']?.toString();
+    final buildingId = _profile?['buildingId']?.toString() ??
+        _profile?['defaultBuildingId']?.toString();
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NotificationScreen(
+          initialResidentId:
+              (residentId != null && residentId.isNotEmpty) ? residentId : null,
+          initialBuildingId:
+              (buildingId != null && buildingId.isNotEmpty) ? buildingId : null,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -189,13 +208,7 @@ class _MenuScreenState extends State<MenuScreen> {
                     icon: CupertinoIcons.bell_solid,
                     label: 'Thông báo hệ thống',
                     subtitle: 'Theo dõi cập nhật từ ban quản lý',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const NotificationScreen()),
-                      );
-                    },
+                    onTap: () => _openNotificationScreen(context),
                   ),
                   const SizedBox(height: 12),
                   _MenuGlassTile(
@@ -207,6 +220,20 @@ class _MenuScreenState extends State<MenuScreen> {
                         context,
                         MaterialPageRoute(
                             builder: (_) => const ContractListScreen()),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _MenuGlassTile(
+                    icon: CupertinoIcons.gear_solid,
+                    label: 'Cài đặt',
+                    subtitle: 'Tùy chỉnh giao diện và trải nghiệm',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const SettingsScreen(),
+                        ),
                       );
                     },
                   ),
@@ -344,13 +371,7 @@ class _MenuScreenState extends State<MenuScreen> {
                 _QuickActionChip(
                   icon: CupertinoIcons.bell_circle_fill,
                   label: 'Thông báo mới',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const NotificationScreen()),
-                    );
-                  },
+                  onTap: () => _openNotificationScreen(context),
                 ),
                 _QuickActionChip(
                   icon: CupertinoIcons.lock_shield_fill,
@@ -450,27 +471,43 @@ class _ProfilePill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final hasGradient = gradient != null;
+    final bool useLightTreatment = hasGradient && !isDark;
+    final Color backgroundColor = hasGradient
+        ? Colors.transparent
+        : theme.colorScheme.surface.withOpacity(isDark ? 0.28 : 0.92);
+    final Color borderColor = hasGradient
+        ? Colors.transparent
+        : theme.colorScheme.outline.withOpacity(isDark ? 0.15 : 0.2);
+    final Color textColor = hasGradient
+        ? (useLightTreatment
+            ? theme.colorScheme.onSurface.withOpacity(0.86)
+            : Colors.white)
+        : theme.colorScheme.onSurface;
+    final Color iconColor = hasGradient
+        ? (useLightTreatment
+            ? theme.colorScheme.primary
+            : Colors.white)
+        : theme.colorScheme.primary;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        gradient: gradient != null ? LinearGradient(colors: gradient!) : null,
-        color: gradient == null
-            ? theme.colorScheme.surface.withOpacity(0.72)
-            : null,
+        gradient: hasGradient ? LinearGradient(colors: gradient!) : null,
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(16),
-        border: gradient == null
-            ? Border.all(color: theme.colorScheme.outline.withOpacity(0.08))
-            : null,
+        border: hasGradient ? null : Border.all(color: borderColor),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: Colors.white),
+          Icon(icon, size: 14, color: iconColor),
           const SizedBox(width: 6),
           Text(
             label,
             style: theme.textTheme.labelSmall?.copyWith(
-              color: Colors.white,
+              color: textColor,
               fontWeight: FontWeight.w600,
             ),
           ),

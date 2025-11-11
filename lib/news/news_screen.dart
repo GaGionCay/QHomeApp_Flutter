@@ -28,13 +28,14 @@ class _NewsScreenState extends State<NewsScreen> {
   late final ContractService _contractService;
   final ResidentService _residentService = ResidentService();
   final AppEventBus _bus = AppEventBus();
+  final List<Map<String, dynamic>> _pendingRealtime = [];
 
   List<ResidentNews> items = [];
   bool loading = false;
   String? _residentId;
   Set<String> _readNewsIds = <String>{};
   InfoListFilter _filter = InfoListFilter.all;
-  
+
   // Pagination state
   int _currentPage = 0;
   int _pageSize = 10;
@@ -46,21 +47,25 @@ class _NewsScreenState extends State<NewsScreen> {
     super.initState();
     _contractService = ContractService(_api);
     _loadResidentIdAndFetch();
-    _bus.on('news_update', (data) {
-      try {
-        if (data is String) {
-          final parsed = jsonDecode(data);
-          debugPrint('📨 Parsed event data: $parsed');
-        } else if (data is Map) {
-          debugPrint('📨 Event data (Map): $data');
-        }
-      } catch (e) {
-        debugPrint('⚠️ Parse error: $e');
+    _bus.on('news_update', (data) async {
+      final payload = _normalizeEventPayload(data);
+      if (payload == null) {
+        debugPrint('⚠️ Không thể parse news_update payload: $data');
+        await _refreshFromServer(silent: true);
+        return;
       }
 
-      debugPrint('🔔 Nhận sự kiện news_update → reload NewsScreen');
-      if (_residentId != null) {
-        _fetch();
+      final eventType =
+          (payload['type'] ?? payload['eventType'] ?? '').toString();
+      debugPrint('🔔 Nhận sự kiện news_update với type=$eventType');
+
+      if (eventType.endsWith('_CREATED')) {
+        _handleIncomingRealtime(payload);
+      } else if (eventType.endsWith('_UPDATED') ||
+          eventType.endsWith('_DELETED')) {
+        await _refreshFromServer(silent: true);
+      } else {
+        await _refreshFromServer(silent: true);
       }
     });
     _bus.on('news_read_status_updated', (_) {
@@ -74,36 +79,39 @@ class _NewsScreenState extends State<NewsScreen> {
     try {
       final profileService = ProfileService(_api.dio);
       final profile = await profileService.getProfile();
-      
+
       // Try multiple possible field names for residentId
       _residentId = profile['residentId']?.toString();
-      
+
       // If found in profile, use it directly
       if (_residentId != null && _residentId!.isNotEmpty) {
         debugPrint('✅ Tìm thấy residentId trong profile: $_residentId');
         await _loadReadState();
         await _fetch();
+        _flushPendingRealtime();
         return;
       }
-      
+
       // Nếu chưa có residentId, thử lấy từ danh sách căn hộ
       if (_residentId == null || _residentId!.isEmpty) {
         await _tryPopulateResidentFromUnits();
       }
-      
+
       debugPrint('🔍 Profile data: ${profile.keys.toList()}');
       debugPrint('🔍 ResidentId found: $_residentId');
-      
+
       if (_residentId == null || _residentId!.isEmpty) {
-        debugPrint('⚠️ Không tìm thấy residentId. Profile keys: ${profile.keys}');
+        debugPrint(
+            '⚠️ Không tìm thấy residentId. Profile keys: ${profile.keys}');
         if (mounted) {
           setState(() => loading = false);
         }
         return;
       }
-      
+
       await _loadReadState();
       await _fetch();
+      _flushPendingRealtime();
     } catch (e) {
       debugPrint('⚠️ Lỗi lấy residentId: $e');
       if (mounted) {
@@ -152,105 +160,129 @@ class _NewsScreenState extends State<NewsScreen> {
     });
   }
 
-  Future<void> _fetch({int? targetPage}) async {
+  Future<void> _fetch({int? targetPage, bool silent = false}) async {
     if (_residentId == null) return;
-    
+
     final page = targetPage ?? _currentPage;
-    
+
     // Validate page number
     if (page < 0) {
       debugPrint('⚠️ Page number cannot be negative: $page');
       return;
     }
-    
-    setState(() {
-      loading = true;
-      _currentPage = page;
-    });
-    
+    if (!silent) {
+      setState(() {
+        loading = true;
+      });
+    }
+    _currentPage = page;
+
     try {
       // Load total items and cache all items if not already done
       if (_totalItems == null || _allCachedItems == null) {
         await _loadAndCacheAllItems();
       }
-      
+
       // Validate page against total pages
       final totalPages = _getTotalPages();
       if (page >= totalPages) {
-        debugPrint('⚠️ Page $page vượt quá tổng số trang ($totalPages), chuyển về trang ${totalPages - 1}');
-        setState(() {
-          _currentPage = totalPages > 0 ? totalPages - 1 : 0;
-          loading = false;
-        });
-        return;
+        debugPrint(
+            '⚠️ Page $page vượt quá tổng số trang ($totalPages), chuyển về trang ${totalPages - 1}');
+        _currentPage = totalPages > 0 ? totalPages - 1 : 0;
       }
-      
+      final effectivePage = _currentPage;
+
       // Get items for current page from cache
       if (_allCachedItems != null && _allCachedItems!.isNotEmpty) {
-        final startIndex = page * _pageSize;
-        final endIndex = (startIndex + _pageSize).clamp(0, _allCachedItems!.length);
-        
+        final startIndex = effectivePage * _pageSize;
+        final endIndex =
+            (startIndex + _pageSize).clamp(0, _allCachedItems!.length);
+
         if (startIndex < _allCachedItems!.length) {
           final pageItems = _allCachedItems!.sublist(
             startIndex,
             endIndex,
           );
-          
-          setState(() {
+
+          if (mounted) {
+            setState(() {
+              items = pageItems;
+              if (!silent) loading = false;
+            });
+          } else {
             items = pageItems;
-          });
-          
-          debugPrint('✅ Loaded ${pageItems.length} resident news items (page ${page + 1}/$totalPages, items $startIndex-$endIndex)');
+          }
+
+          debugPrint(
+              '✅ Loaded ${pageItems.length} resident news items (page ${effectivePage + 1}/$totalPages, items $startIndex-$endIndex)');
         } else {
-          debugPrint('⚠️ Start index $startIndex vượt quá tổng số items ${_allCachedItems!.length}');
-          setState(() {
+          debugPrint(
+              '⚠️ Start index $startIndex vượt quá tổng số items ${_allCachedItems!.length}');
+          if (mounted) {
+            setState(() {
+              items = [];
+              if (!silent) loading = false;
+            });
+          } else {
             items = [];
-          });
+          }
         }
       } else {
-        setState(() {
+        if (mounted) {
+          setState(() {
+            items = [];
+            if (!silent) loading = false;
+          });
+        } else {
           items = [];
-        });
+        }
       }
     } catch (e) {
       debugPrint('⚠️ Lỗi tải tin tức: $e');
-      setState(() {
-        items = [];
-      });
-    } finally {
       if (mounted) {
         setState(() {
-          loading = false;
+          items = [];
+          if (!silent) loading = false;
         });
+      } else {
+        items = [];
+      }
+    } finally {
+      if (!silent && mounted) {
+        if (loading) {
+          setState(() {
+            loading = false;
+          });
+        }
       }
     }
   }
-  
+
   Future<void> _loadAndCacheAllItems() async {
     if (_residentId == null) return;
-    
+
     try {
       // Try to get total from API first
       _totalItems = await _residentService.getResidentNewsCount(_residentId!);
-      
+
       if (_totalItems != null && _totalItems! > 0) {
         debugPrint('📊 Total news items from API: $_totalItems');
       }
     } catch (e) {
       debugPrint('⚠️ Không thể lấy total count từ API: $e');
     }
-    
+
     // Load all items from API (API trả về toàn bộ list)
     try {
       debugPrint('🔍 Đang load toàn bộ items từ API...');
-      
+
       // Load page 0 with a large size to get all items (or load without pagination)
       final allItems = await _residentService.getResidentNews(
         _residentId!,
         page: 0,
         size: 1000, // Request large size to get all items
       );
-      
+
       // If API returns paginated response, we need to load all pages
       // But since API returns full list, we should get all items in one call
       if (allItems.length >= 1000) {
@@ -263,9 +295,15 @@ class _NewsScreenState extends State<NewsScreen> {
         _allCachedItems = allItems;
         _totalItems = allItems.length;
       }
-      
+
       debugPrint('✅ Đã cache ${_allCachedItems!.length} items');
-      
+      _allCachedItems!.sort((a, b) {
+        final aDate = a.publishAt ?? a.createdAt;
+        final bDate = b.publishAt ?? b.createdAt;
+        return bDate.compareTo(aDate);
+      });
+      debugPrint('📌 Items đã được sắp xếp theo thời gian mới nhất trước');
+
       // Verify total pages calculation
       final totalPages = _getTotalPages();
       debugPrint('📊 Tổng số items: $_totalItems, Tổng số trang: $totalPages');
@@ -275,7 +313,7 @@ class _NewsScreenState extends State<NewsScreen> {
       _totalItems = 0;
     }
   }
-  
+
   int _getTotalPages() {
     if (_totalItems == null || _totalItems == 0) return 1;
     // Calculate: ceil(totalItems / pageSize)
@@ -283,12 +321,133 @@ class _NewsScreenState extends State<NewsScreen> {
     final pages = (_totalItems! / _pageSize).ceil();
     return pages > 0 ? pages : 1;
   }
-  
+
+  Future<void> _refreshFromServer({bool silent = false}) async {
+    final targetPage = _currentPage;
+    _totalItems = null;
+    _allCachedItems = null;
+    await _fetch(targetPage: targetPage, silent: silent);
+    _flushPendingRealtime();
+  }
+
+  Map<String, dynamic>? _normalizeEventPayload(dynamic data) {
+    if (data == null) return null;
+    if (data is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(data);
+    }
+    if (data is Map) {
+      return data.map((key, value) => MapEntry(key.toString(), value));
+    }
+    if (data is String) {
+      try {
+        final decoded = jsonDecode(data);
+        if (decoded is Map) {
+          return decoded.map((key, value) => MapEntry(key.toString(), value));
+        }
+      } catch (e) {
+        debugPrint('⚠️ Không thể decode JSON từ payload: $e');
+      }
+    }
+    return null;
+  }
+
+  void _handleIncomingRealtime(Map<String, dynamic> payload,
+      {bool queueIfNotReady = true}) {
+    if (_residentId == null) {
+      if (queueIfNotReady) {
+        _pendingRealtime.add(Map<String, dynamic>.from(payload));
+      }
+      return;
+    }
+
+    final news = _parseRealtimeNews(payload);
+    if (news == null) return;
+
+    _insertNewsIntoCache(news);
+
+    if (_currentPage == 0) {
+      final latestItems = _buildPageItems(0);
+      if (mounted) {
+        setState(() {
+          items = latestItems;
+        });
+      } else {
+        items = latestItems;
+      }
+    }
+  }
+
+  void _flushPendingRealtime() {
+    if (_pendingRealtime.isEmpty) return;
+    final pending = List<Map<String, dynamic>>.from(_pendingRealtime);
+    _pendingRealtime.clear();
+    for (final payload in pending) {
+      _handleIncomingRealtime(payload, queueIfNotReady: false);
+    }
+  }
+
+  ResidentNews? _parseRealtimeNews(Map<String, dynamic> payload) {
+    final id = payload['newsId']?.toString() ?? payload['id']?.toString() ?? '';
+    if (id.isEmpty) return null;
+
+    final summary =
+        payload['summary']?.toString() ?? payload['message']?.toString() ?? '';
+    final title = payload['title']?.toString() ?? 'Tin tức mới';
+    final cover = payload['coverImageUrl']?.toString();
+    final timestampStr = payload['timestamp']?.toString();
+    DateTime timestamp;
+    if (timestampStr != null) {
+      timestamp = DateTime.tryParse(timestampStr)?.toLocal() ??
+          DateTime.now().toLocal();
+    } else {
+      timestamp = DateTime.now().toLocal();
+    }
+
+    return ResidentNews(
+      id: id,
+      title: title,
+      summary: summary,
+      bodyHtml: '',
+      coverImageUrl: cover,
+      status: 'PUBLISHED',
+      publishAt: timestamp,
+      expireAt: null,
+      displayOrder: 0,
+      viewCount: 0,
+      images: const [],
+      createdBy: null,
+      createdAt: timestamp,
+      updatedBy: null,
+      updatedAt: timestamp,
+    );
+  }
+
+  void _insertNewsIntoCache(ResidentNews news) {
+    _allCachedItems ??= [];
+    _allCachedItems!.removeWhere((element) => element.id == news.id);
+    _allCachedItems!.insert(0, news);
+    _allCachedItems!.sort((a, b) {
+      final aDate = a.publishAt ?? a.createdAt;
+      final bDate = b.publishAt ?? b.createdAt;
+      return bDate.compareTo(aDate);
+    });
+    _totalItems = _allCachedItems!.length;
+  }
+
+  List<ResidentNews> _buildPageItems(int page) {
+    if (_allCachedItems == null || _allCachedItems!.isEmpty) return [];
+    final startIndex = page * _pageSize;
+    final endIndex = (startIndex + _pageSize).clamp(0, _allCachedItems!.length);
+    if (startIndex >= _allCachedItems!.length) return [];
+    return _allCachedItems!.sublist(startIndex, endIndex);
+  }
+
   void _goToPage(int page) {
     if (page == _currentPage || loading || page < 0) return;
     final totalPages = _getTotalPages();
     if (page >= totalPages) {
-      debugPrint('⚠️ Không thể chuyển đến trang $page, tổng số trang là $totalPages');
+      debugPrint(
+          '⚠️ Không thể chuyển đến trang $page, tổng số trang là $totalPages');
       return;
     }
     _fetch(targetPage: page);
@@ -347,7 +506,7 @@ class _NewsScreenState extends State<NewsScreen> {
   @override
   void dispose() {
     _bus.off('news_update');
-   _bus.off('news_read_status_updated');
+    _bus.off('news_read_status_updated');
     super.dispose();
   }
 
@@ -356,7 +515,9 @@ class _NewsScreenState extends State<NewsScreen> {
     final theme = Theme.of(context);
     final totalItems = _allCachedItems?.length ?? items.length;
     final unreadTotal = _allCachedItems != null
-        ? _allCachedItems!.where((news) => !_readNewsIds.contains(news.id)).length
+        ? _allCachedItems!
+            .where((news) => !_readNewsIds.contains(news.id))
+            .length
         : items.where((news) => !_readNewsIds.contains(news.id)).length;
     final hasAnyItems = totalItems > 0;
     final readTotal = hasAnyItems
@@ -369,15 +530,13 @@ class _NewsScreenState extends State<NewsScreen> {
 
     final visibleItems = _filter == InfoListFilter.all
         ? items
-        : items
-            .where((news) {
-              final isRead = _readNewsIds.contains(news.id);
-              if (_filter == InfoListFilter.unread) {
-                return !isRead;
-              }
-              return isRead;
-            })
-            .toList();
+        : items.where((news) {
+            final isRead = _readNewsIds.contains(news.id);
+            if (_filter == InfoListFilter.unread) {
+              return !isRead;
+            }
+            return isRead;
+          }).toList();
 
     final gradient = theme.brightness == Brightness.dark
         ? const LinearGradient(
@@ -439,8 +598,10 @@ class _NewsScreenState extends State<NewsScreen> {
                                     delegate: SliverChildBuilderDelegate(
                                       (context, index) {
                                         final news = visibleItems[index];
-                                        final isRead = _readNewsIds.contains(news.id);
-                                        return _buildInfoCard(context, news, isRead);
+                                        final isRead =
+                                            _readNewsIds.contains(news.id);
+                                        return _buildInfoCard(
+                                            context, news, isRead);
                                       },
                                       childCount: visibleItems.length,
                                     ),
@@ -470,8 +631,9 @@ class _NewsScreenState extends State<NewsScreen> {
     final gradient = isDark
         ? AppColors.darkGlassLayerGradient()
         : AppColors.glassLayerGradient();
-    final borderColor = (isDark ? AppColors.navyOutline : AppColors.neutralOutline)
-        .withOpacity(0.45);
+    final borderColor =
+        (isDark ? AppColors.navyOutline : AppColors.neutralOutline)
+            .withOpacity(0.45);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
@@ -516,7 +678,9 @@ class _NewsScreenState extends State<NewsScreen> {
                       const Spacer(),
                       IconButton(
                         tooltip: 'Làm mới',
-                        onPressed: loading ? null : () => _fetch(targetPage: _currentPage),
+                        onPressed: loading
+                            ? null
+                            : () => _fetch(targetPage: _currentPage),
                         icon: const Icon(CupertinoIcons.refresh),
                         color: theme.colorScheme.primary,
                       ),
@@ -543,10 +707,14 @@ class _NewsScreenState extends State<NewsScreen> {
     final isDark = theme.brightness == Brightness.dark;
     final Color badgeColor = isAccent
         ? theme.colorScheme.primary
-        : (isDark ? Colors.white.withOpacity(0.4) : AppColors.primaryBlue.withOpacity(0.85));
+        : (isDark
+            ? Colors.white.withOpacity(0.4)
+            : AppColors.primaryBlue.withOpacity(0.85));
     final Color chipColor = isAccent
         ? badgeColor.withOpacity(isDark ? 0.28 : 0.18)
-        : (isDark ? Colors.white.withOpacity(0.08) : Colors.white.withOpacity(0.72));
+        : (isDark
+            ? Colors.white.withOpacity(0.08)
+            : Colors.white.withOpacity(0.72));
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -599,12 +767,15 @@ class _NewsScreenState extends State<NewsScreen> {
 
   Widget _buildFilterControl(ThemeData theme) {
     final isDark = theme.brightness == Brightness.dark;
-    final thumbColor = theme.colorScheme.primary.withOpacity(isDark ? 0.4 : 0.9);
+    final thumbColor =
+        theme.colorScheme.primary.withOpacity(isDark ? 0.4 : 0.9);
 
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        color: isDark ? Colors.white.withOpacity(0.05) : Colors.white.withOpacity(0.7),
+        color: isDark
+            ? Colors.white.withOpacity(0.05)
+            : Colors.white.withOpacity(0.7),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       child: CupertinoSlidingSegmentedControl<InfoListFilter>(
@@ -616,10 +787,12 @@ class _NewsScreenState extends State<NewsScreen> {
           setState(() => _filter = value);
         },
         children: {
-          InfoListFilter.all: _buildSegmentLabel(theme, InfoListFilter.all, 'Tất cả'),
+          InfoListFilter.all:
+              _buildSegmentLabel(theme, InfoListFilter.all, 'Tất cả'),
           InfoListFilter.unread:
               _buildSegmentLabel(theme, InfoListFilter.unread, 'Chưa đọc'),
-          InfoListFilter.read: _buildSegmentLabel(theme, InfoListFilter.read, 'Đã đọc'),
+          InfoListFilter.read:
+              _buildSegmentLabel(theme, InfoListFilter.read, 'Đã đọc'),
         },
       ),
     );
@@ -691,7 +864,8 @@ class _NewsScreenState extends State<NewsScreen> {
           );
 
     final borderColor = isRead
-        ? (isDark ? AppColors.navyOutline : AppColors.neutralOutline).withOpacity(0.42)
+        ? (isDark ? AppColors.navyOutline : AppColors.neutralOutline)
+            .withOpacity(0.42)
         : theme.colorScheme.primary.withOpacity(isDark ? 0.6 : 0.35);
 
     return Hero(
@@ -717,7 +891,8 @@ class _NewsScreenState extends State<NewsScreen> {
                   border: Border.all(color: borderColor),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -736,7 +911,9 @@ class _NewsScreenState extends State<NewsScreen> {
                                   news.title,
                                   style: theme.textTheme.titleMedium?.copyWith(
                                     fontWeight: FontWeight.w700,
-                                    color: isDark ? Colors.white : AppColors.textPrimary,
+                                    color: isDark
+                                        ? Colors.white
+                                        : AppColors.textPrimary,
                                     letterSpacing: -0.2,
                                   ),
                                 ),
@@ -757,7 +934,9 @@ class _NewsScreenState extends State<NewsScreen> {
                           Icon(
                             CupertinoIcons.chevron_right,
                             size: 18,
-                            color: isDark ? Colors.white54 : AppColors.textSecondary,
+                            color: isDark
+                                ? Colors.white54
+                                : AppColors.textSecondary,
                           ),
                         ],
                       ),
@@ -841,7 +1020,9 @@ class _NewsScreenState extends State<NewsScreen> {
           Icon(
             icon,
             size: 72,
-            color: isDark ? Colors.white24 : AppColors.textSecondary.withOpacity(0.35),
+            color: isDark
+                ? Colors.white24
+                : AppColors.textSecondary.withOpacity(0.35),
           ),
           const SizedBox(height: 20),
           Text(
@@ -891,35 +1072,35 @@ class _NewsScreenState extends State<NewsScreen> {
 
   Widget _buildPaginationControls(BuildContext context) {
     if (items.isEmpty || loading) return const SizedBox.shrink();
-    
+
     final totalPages = _getTotalPages();
     final currentPageNumber = _currentPage + 1;
-    
+
     List<int> pageNumbers = [];
     if (totalPages <= 7) {
       for (int i = 0; i < totalPages; i++) {
         pageNumbers.add(i);
       }
     } else {
-      pageNumbers.add(0); 
-      
+      pageNumbers.add(0);
+
       if (_currentPage > 2) {
         pageNumbers.add(-1);
       }
-      
+
       int start = (_currentPage - 1).clamp(1, totalPages - 2);
       int end = (_currentPage + 1).clamp(1, totalPages - 2);
-      
+
       for (int i = start; i <= end; i++) {
         if (!pageNumbers.contains(i)) {
           pageNumbers.add(i);
         }
       }
-      
+
       if (_currentPage < totalPages - 3) {
         pageNumbers.add(-1); // Ellipsis
       }
-      
+
       pageNumbers.add(totalPages - 1); // Last page
     }
     final theme = Theme.of(context);
@@ -927,8 +1108,9 @@ class _NewsScreenState extends State<NewsScreen> {
     final gradient = isDark
         ? AppColors.darkGlassLayerGradient()
         : AppColors.glassLayerGradient();
-    final borderColor = (isDark ? AppColors.navyOutline : AppColors.neutralOutline)
-        .withOpacity(0.45);
+    final borderColor =
+        (isDark ? AppColors.navyOutline : AppColors.neutralOutline)
+            .withOpacity(0.45);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
