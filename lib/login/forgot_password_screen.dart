@@ -22,110 +22,150 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Widget build(BuildContext context) {
     final auth = context.read<AuthProvider>();
 
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final backgroundGradient = isDark
+        ? const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF040F1D),
+              Color(0xFF0A1C33),
+              Color(0xFF050F1F),
+            ],
+          )
+        : const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white,
+              AppColors.neutralBackground,
+              Colors.white,
+            ],
+          );
+
+    final accentGlow = isDark
+        ? theme.colorScheme.primary.withOpacity(0.18)
+        : AppColors.primaryBlue.withValues(alpha: 0.18);
+
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        body: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final isWide = constraints.maxWidth > 720;
-              final formWidth = isWide ? constraints.maxWidth * 0.45 : double.infinity;
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final availableWidth = constraints.maxWidth;
+            final double availableHeight = constraints.maxHeight.isFinite
+                ? constraints.maxHeight
+                : MediaQuery.of(context).size.height;
+            final isWide = availableWidth > 720;
 
-              return Stack(
-                children: [
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Colors.white,
-                            AppColors.neutralBackground,
-                            Colors.white,
-                          ],
-                        ),
+            double targetWidth = isWide ? availableWidth * 0.7 : availableWidth;
+            if (isWide && targetWidth < 560) {
+              targetWidth = 560;
+            }
+            if (targetWidth > availableWidth) {
+              targetWidth = availableWidth;
+            }
+
+            double horizontalPadding = (availableWidth - targetWidth) / 2;
+            if (horizontalPadding < 24) {
+              horizontalPadding = 24;
+              targetWidth = availableWidth - horizontalPadding * 2;
+            }
+
+            const double verticalPadding = 64; // 32 top + 32 bottom
+            final double minBodyHeight =
+                (availableHeight - verticalPadding).clamp(0.0, double.infinity);
+
+            return Stack(
+              children: [
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(gradient: backgroundGradient),
+                  ),
+                ),
+                Positioned(
+                  top: -160,
+                  right: -80,
+                  child: Container(
+                    width: constraints.maxWidth * 0.6,
+                    height: constraints.maxWidth * 0.6,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [accentGlow, Colors.transparent],
                       ),
                     ),
                   ),
-                  Positioned(
-                    top: -160,
-                    right: -80,
-                    child: Container(
-                      width: constraints.maxWidth * 0.6,
-                      height: constraints.maxWidth * 0.6,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: [
-                            AppColors.primaryBlue.withValues(alpha: 0.18),
-                            Colors.transparent,
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  SingleChildScrollView(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isWide ? constraints.maxWidth * 0.2 : 24,
-                      vertical: 32,
+                ),
+                SafeArea(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      32,
+                      horizontalPadding,
+                      32,
                     ),
                     child: ConstrainedBox(
                       constraints: BoxConstraints(
-                        maxWidth: formWidth,
+                        maxWidth: targetWidth,
+                        minHeight: minBodyHeight,
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          IconButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            icon: const Icon(Icons.arrow_back_rounded),
-                          ),
-                          const SizedBox(height: 32),
-                          Text(
-                            'Quên mật khẩu',
-                            style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Nhập email đã đăng ký. Chúng tôi sẽ gửi mã OTP để giúp bạn đặt lại mật khẩu.',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurface
-                                      .withValues(alpha: 0.65),
-                                ),
-                          ),
-                          const SizedBox(height: 32),
-                          AppLuxeTextField(
-                            controller: emailCtrl,
-                            focusNode: _emailFocus,
-                            hint: 'Email đăng nhập',
-                            icon: Icons.email_outlined,
-                            keyboardType: TextInputType.emailAddress,
-                            textInputAction: TextInputAction.done,
-                            onSubmitted: (_) => _submit(auth),
-                          ),
-                          const SizedBox(height: 24),
-                          AppPrimaryButton(
-                            onPressed: loading ? null : () => _submit(auth),
-                            label: 'Gửi OTP',
-                            loading: loading,
-                            icon: Icons.send_rounded,
-                            enabled: !loading,
-                          ),
-                          const SizedBox(height: 120),
-                        ],
+                      child: IntrinsicHeight(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            IconButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              icon: const Icon(Icons.arrow_back_rounded),
+                            ),
+                            const SizedBox(height: 32),
+                            Text(
+                              'Quên mật khẩu',
+                              style: theme.textTheme.displaySmall?.copyWith(
+                                fontSize: 32,
+                                fontWeight: FontWeight.w600,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Nhập email đã đăng ký. Chúng tôi sẽ gửi mã OTP để giúp bạn đặt lại mật khẩu.',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.65),
+                              ),
+                            ),
+                            const SizedBox(height: 32),
+                            AppLuxeTextField(
+                              controller: emailCtrl,
+                              focusNode: _emailFocus,
+                              hint: 'Email đăng nhập',
+                              icon: Icons.email_outlined,
+                              keyboardType: TextInputType.emailAddress,
+                              textInputAction: TextInputAction.done,
+                              onSubmitted: (_) => _submit(auth),
+                            ),
+                            const SizedBox(height: 24),
+                            const Spacer(),
+                            AppPrimaryButton(
+                              onPressed: loading ? null : () => _submit(auth),
+                              label: 'Gửi OTP',
+                              loading: loading,
+                              icon: Icons.send_rounded,
+                              enabled: !loading,
+                            ),
+                            const SizedBox(height: 24),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ],
-              );
-            },
-          ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );

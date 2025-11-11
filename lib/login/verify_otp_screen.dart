@@ -23,6 +23,33 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
   Widget build(BuildContext context) {
     final auth = context.read<AuthProvider>();
 
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final backgroundGradient = isDark
+        ? const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF04111E),
+              Color(0xFF0A1D33),
+              Color(0xFF04111E),
+            ],
+          )
+        : const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.white,
+              AppColors.neutralBackground,
+              Colors.white,
+            ],
+          );
+
+    final bottomGlow = isDark
+        ? theme.colorScheme.primary.withOpacity(0.16)
+        : AppColors.primaryEmerald.withValues(alpha: 0.18);
+
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
@@ -30,22 +57,15 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
           child: LayoutBuilder(
             builder: (context, constraints) {
               final isWide = constraints.maxWidth > 720;
-              final formWidth = isWide ? constraints.maxWidth * 0.45 : double.infinity;
+              final formWidth =
+                  isWide ? constraints.maxWidth * 0.45 : double.infinity;
 
               return Stack(
                 children: [
                   Positioned.fill(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.white,
-                            AppColors.neutralBackground,
-                            Colors.white,
-                          ],
-                        ),
+                        gradient: backgroundGradient,
                       ),
                     ),
                   ),
@@ -59,7 +79,7 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
                         shape: BoxShape.circle,
                         gradient: RadialGradient(
                           colors: [
-                            AppColors.primaryEmerald.withValues(alpha: 0.18),
+                            bottomGlow,
                             Colors.transparent,
                           ],
                         ),
@@ -83,18 +103,23 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
                           const SizedBox(height: 32),
                           Text(
                             'Xác thực OTP',
-                            style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                            style: Theme.of(context)
+                                .textTheme
+                                .displaySmall
+                                ?.copyWith(
                                   fontSize: 32,
                                   fontWeight: FontWeight.w600,
+                                  color: theme.colorScheme.onSurface,
                                 ),
                           ),
                           const SizedBox(height: 8),
                           Text(
                             'Nhập mã OTP vừa được gửi đến ${widget.email}. Mã có hiệu lực trong vòng 5 phút.',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurface
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  color: theme.colorScheme.onSurface
                                       .withValues(alpha: 0.65),
                                 ),
                           ),

@@ -8,7 +8,8 @@ import '../widgets/app_text_field.dart';
 class ResetPasswordScreen extends StatefulWidget {
   final String email;
   final String otp;
-  const ResetPasswordScreen({required this.email, required this.otp, super.key});
+  const ResetPasswordScreen(
+      {required this.email, required this.otp, super.key});
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
@@ -24,6 +25,33 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   Widget build(BuildContext context) {
     final auth = context.read<AuthProvider>();
 
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final backgroundGradient = isDark
+        ? const LinearGradient(
+            begin: Alignment.topRight,
+            end: Alignment.bottomLeft,
+            colors: [
+              Color(0xFF04111E),
+              Color(0xFF0B2137),
+              Color(0xFF051323),
+            ],
+          )
+        : const LinearGradient(
+            begin: Alignment.topRight,
+            end: Alignment.bottomLeft,
+            colors: [
+              Colors.white,
+              AppColors.neutralBackground,
+              Colors.white,
+            ],
+          );
+
+    final topGlow = isDark
+        ? theme.colorScheme.primary.withOpacity(0.16)
+        : AppColors.primaryBlue.withValues(alpha: 0.16);
+
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
@@ -31,22 +59,15 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           child: LayoutBuilder(
             builder: (context, constraints) {
               final isWide = constraints.maxWidth > 720;
-              final formWidth = isWide ? constraints.maxWidth * 0.45 : double.infinity;
+              final formWidth =
+                  isWide ? constraints.maxWidth * 0.45 : double.infinity;
 
               return Stack(
                 children: [
                   Positioned.fill(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topRight,
-                          end: Alignment.bottomLeft,
-                          colors: [
-                            Colors.white,
-                            AppColors.neutralBackground,
-                            Colors.white,
-                          ],
-                        ),
+                        gradient: backgroundGradient,
                       ),
                     ),
                   ),
@@ -60,7 +81,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         shape: BoxShape.circle,
                         gradient: RadialGradient(
                           colors: [
-                            AppColors.primaryBlue.withValues(alpha: 0.16),
+                            topGlow,
                             Colors.transparent,
                           ],
                         ),
@@ -84,18 +105,23 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                           const SizedBox(height: 32),
                           Text(
                             'Đặt lại mật khẩu',
-                            style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                            style: Theme.of(context)
+                                .textTheme
+                                .displaySmall
+                                ?.copyWith(
                                   fontSize: 32,
                                   fontWeight: FontWeight.w600,
+                                  color: theme.colorScheme.onSurface,
                                 ),
                           ),
                           const SizedBox(height: 8),
                           Text(
                             'Tạo mật khẩu mới để bảo vệ tài khoản của bạn. Mật khẩu nên có ít nhất 8 ký tự.',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurface
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  color: theme.colorScheme.onSurface
                                       .withValues(alpha: 0.65),
                                 ),
                           ),
@@ -114,7 +140,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                                     ? Icons.visibility_off_outlined
                                     : Icons.visibility_outlined,
                               ),
-                              onPressed: () => setState(() => obscure = !obscure),
+                              onPressed: () =>
+                                  setState(() => obscure = !obscure),
                             ),
                           ),
                           const SizedBox(height: 24),
