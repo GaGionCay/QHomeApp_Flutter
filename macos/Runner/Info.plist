@@ -28,5 +28,7 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSLocationUsageDescription</key>
+	<string>Ứng dụng cần truy cập vị trí để hiển thị thời tiết hiện tại.</string>
 </dict>
 </plist>

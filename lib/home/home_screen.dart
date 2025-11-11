@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import '../auth/api_client.dart';
@@ -304,28 +305,41 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      final locationResponse =
-          await http.get(Uri.parse('https://ipapi.co/json/')).timeout(
-                const Duration(seconds: 6),
-              );
+      double? latitude;
+      double? longitude;
+      String? city;
 
-      if (locationResponse.statusCode == 429) {
-        throw _WeatherRateLimitException(source: 'ipapi.co');
+      final position = await _getDevicePosition();
+      if (position != null) {
+        latitude = position.latitude;
+        longitude = position.longitude;
+        city = 'Vị trí của bạn';
       }
-
-      if (locationResponse.statusCode != 200) {
-        throw Exception(
-            'Location lookup failed with status ${locationResponse.statusCode}');
-      }
-
-      final locationJson =
-          jsonDecode(locationResponse.body) as Map<String, dynamic>;
-      final latitude = (locationJson['latitude'] as num?)?.toDouble();
-      final longitude = (locationJson['longitude'] as num?)?.toDouble();
-      final city = (locationJson['city'] as String?) ?? 'Khu dân cư của bạn';
 
       if (latitude == null || longitude == null) {
-        throw Exception('Missing geolocation data');
+        final locationResponse =
+            await http.get(Uri.parse('https://ipapi.co/json/')).timeout(
+                  const Duration(seconds: 6),
+                );
+
+        if (locationResponse.statusCode == 429) {
+          throw _WeatherRateLimitException(source: 'ipapi.co');
+        }
+
+        if (locationResponse.statusCode != 200) {
+          throw Exception(
+              'Location lookup failed with status ${locationResponse.statusCode}');
+        }
+
+        final locationJson =
+            jsonDecode(locationResponse.body) as Map<String, dynamic>;
+        latitude = (locationJson['latitude'] as num?)?.toDouble();
+        longitude = (locationJson['longitude'] as num?)?.toDouble();
+        city = (locationJson['city'] as String?) ?? 'Khu dân cư của bạn';
+
+        if (latitude == null || longitude == null) {
+          throw Exception('Missing geolocation data');
+        }
       }
 
       final weatherUri = Uri.https(
@@ -357,6 +371,15 @@ class _HomeScreenState extends State<HomeScreen> {
       final current = weatherJson['current_weather'] as Map<String, dynamic>?;
       if (current == null) throw Exception('Missing current weather payload');
 
+      final derivedCity = (() {
+        final timezone = weatherJson['timezone'] as String?;
+        if (city != null) return city;
+        if (timezone == null) return null;
+        if (!timezone.contains('/')) return timezone;
+        final parts = timezone.split('/');
+        return parts.last.replaceAll('_', ' ');
+      })();
+
       final temperature = (current['temperature'] as num?)?.toDouble();
       final windSpeed = (current['windspeed'] as num?)?.toDouble();
       final weatherCode = current['weathercode'] as int? ?? 0;
@@ -368,7 +391,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final descriptor = _describeWeatherCode(weatherCode);
       final snapshot = _WeatherSnapshot(
-        city: city,
+        city: derivedCity ?? 'Khu dân cư của bạn',
         temperatureCelsius: temperature ?? 0,
         weatherLabel: descriptor.label,
         weatherIcon: descriptor.icon,
@@ -386,7 +409,9 @@ class _HomeScreenState extends State<HomeScreen> {
           _isWeatherLoading = false;
         });
       }
-    } on _WeatherRateLimitException {
+    } on _WeatherRateLimitException catch (e) {
+      debugPrint(
+          '⚠️ Weather rate limited by ${e.source}. Using cached data when available.');
       if (mounted) {
         setState(() {
           _weatherError =
@@ -394,14 +419,45 @@ class _HomeScreenState extends State<HomeScreen> {
           _isWeatherLoading = false;
         });
       }
-    } catch (e) {
+    } catch (e, stack) {
       debugPrint('⚠️ Không thể tải thời tiết: $e');
+      debugPrint('↪ Weather stack trace: $stack');
       if (mounted) {
         setState(() {
           _weatherError = 'Không thể cập nhật thời tiết';
           _isWeatherLoading = false;
         });
       }
+    }
+  }
+
+  Future<Position?> _getDevicePosition() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        debugPrint('ℹ️ Location services disabled. Falling back to IP lookup.');
+        return null;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.deniedForever ||
+          permission == LocationPermission.denied) {
+        debugPrint(
+            'ℹ️ Location permission not granted. Falling back to IP lookup.');
+        return null;
+      }
+
+      return Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.low,
+      );
+    } catch (e, stack) {
+      debugPrint('⚠️ Failed to obtain device location: $e');
+      debugPrint('↪ Location stack trace: $stack');
+      return null;
     }
   }
 

@@ -117,6 +117,24 @@ class _MenuScreenState extends State<MenuScreen> {
     }
   }
 
+  Future<void> _openNotificationScreen(BuildContext context) async {
+    final residentId = _profile?['residentId']?.toString();
+    final buildingId = _profile?['buildingId']?.toString() ??
+        _profile?['defaultBuildingId']?.toString();
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NotificationScreen(
+          initialResidentId:
+              (residentId != null && residentId.isNotEmpty) ? residentId : null,
+          initialBuildingId:
+              (buildingId != null && buildingId.isNotEmpty) ? buildingId : null,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -189,13 +207,7 @@ class _MenuScreenState extends State<MenuScreen> {
                     icon: CupertinoIcons.bell_solid,
                     label: 'Thông báo hệ thống',
                     subtitle: 'Theo dõi cập nhật từ ban quản lý',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const NotificationScreen()),
-                      );
-                    },
+                    onTap: () => _openNotificationScreen(context),
                   ),
                   const SizedBox(height: 12),
                   _MenuGlassTile(
@@ -344,13 +356,7 @@ class _MenuScreenState extends State<MenuScreen> {
                 _QuickActionChip(
                   icon: CupertinoIcons.bell_circle_fill,
                   label: 'Thông báo mới',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const NotificationScreen()),
-                    );
-                  },
+                  onTap: () => _openNotificationScreen(context),
                 ),
                 _QuickActionChip(
                   icon: CupertinoIcons.lock_shield_fill,
