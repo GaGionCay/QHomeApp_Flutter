@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:ui';
 
 import 'package:animations/animations.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
@@ -14,6 +16,7 @@ import '../contracts/contract_service.dart';
 import '../news/news_detail_screen.dart';
 import '../notifications/realtime_notification_banner.dart';
 import '../notifications/notification_screen.dart';
+import '../core/push_notification_service.dart';
 import '../profile/profile_service.dart';
 import '../service_registration/service_category_screen.dart';
 import '../theme/app_colors.dart';
@@ -35,12 +38,21 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   StompClient? _stompClient;
   final Queue<String> _recentRealtimeKeys = Queue<String>();
   Set<String> _userBuildingIds = <String>{};
+  StreamSubscription<RemoteMessage>? _pushSubscription;
 
   @override
   void initState() {
     super.initState();
     _selectedIndex = widget.initialIndex;
     _connectWebSocket();
+    _pushSubscription =
+        PushNotificationService.instance.notificationClicks.listen(
+      (message) {
+        if (!mounted) return;
+        final data = Map<String, dynamic>.from(message.data);
+        _handleNotificationTap(data);
+      },
+    );
 
     _pages = [
       HomeScreen(onNavigateToTab: _onItemTapped),
@@ -301,6 +313,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
     _stompClient?.deactivate();
     RealtimeNotificationBanner.dismiss();
     AppEventBus().clear();
+    _pushSubscription?.cancel();
     super.dispose();
   }
 

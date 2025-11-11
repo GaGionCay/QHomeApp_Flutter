@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "445549586617",
+    "project_id": "qhomeapp",
+    "storage_bucket": "qhomeapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:445549586617:android:4120e91501a51b9c755368",
+        "android_client_info": {
+          "package_name": "com.qhome.resident"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDqDqXusVKeqEMGR857AzUt65kev7-Q3qo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

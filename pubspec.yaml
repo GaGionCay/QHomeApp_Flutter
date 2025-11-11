@@ -45,7 +45,13 @@ dependencies:
   network_info_plus: ^7.0.0
   geolocator: ^14.0.2
   geocoding: ^4.0.0
-
+  flutter_displaymode: ^0.6.0
+  firebase_core: ^3.4.1
+  firebase_analytics: ^11.3.0
+  firebase_messaging: ^15.0.3
+  flutter_local_notifications: ^17.2.1
+  package_info_plus: ^8.0.2
+  
 dev_dependencies:
   flutter_test:
     sdk: flutter

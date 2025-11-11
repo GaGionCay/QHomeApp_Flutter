@@ -1,4 +1,4 @@
 {
     "cmake.sourceDirectory": "D:/GitHub/QHomeApp_Flutter/linux",
-    "java.configuration.updateBuildConfiguration": "interactive"
+    "java.configuration.updateBuildConfiguration": "automatic"
 }

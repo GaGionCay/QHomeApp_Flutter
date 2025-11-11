@@ -1,11 +1,16 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
-import 'package:dio/dio.dart';
+
+import '../contracts/contract_service.dart';
+import '../core/push_notification_service.dart';
 import '../login/login_screen.dart';
-import 'token_storage.dart';
+import '../models/unit_info.dart';
+import '../profile/profile_service.dart';
 import 'api_client.dart';
 import 'auth_service.dart';
 import 'iam_api_client.dart';
+import 'token_storage.dart';
 
 class AuthProvider extends ChangeNotifier {
   late final ApiClient apiClient;
@@ -23,7 +28,6 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> _init() async {
     apiClient = await ApiClient.create();
-    // Tạo iamDio instance để login qua iam-service
     final iamDio = await _createIamDio();
     authService = AuthService(apiClient.dio, storage, iamDio: iamDio);
 
@@ -45,16 +49,19 @@ class AuthProvider extends ChangeNotifier {
       _isAuthenticated = false;
     }
 
+    if (_isAuthenticated) {
+      await _syncPushContext();
+    }
+
     _isLoading = false;
     notifyListeners();
   }
 
-  /// Login via iam-service (port 8088) - NEW METHOD
-  /// Uses username instead of email
   Future<bool> loginViaIam(String username, String password) async {
     try {
       await authService.loginViaIam(username, password);
       _isAuthenticated = true;
+      await _syncPushContext();
       notifyListeners();
       return true;
     } catch (e) {
@@ -65,11 +72,11 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Login via backend hiện tại (port 8080) - KEEP FOR BACKWARD COMPATIBILITY
   Future<bool> login(String email, String password) async {
     try {
       await authService.login(email, password);
       _isAuthenticated = true;
+      await _syncPushContext();
       notifyListeners();
       return true;
     } catch (e) {
@@ -83,6 +90,7 @@ Future<void> logout(BuildContext context) async {
   try {
     await authService.logout();
   } finally {
+    await PushNotificationService.instance.unregisterToken();
     await storage.deleteAll();
     _isAuthenticated = false;
     notifyListeners();
@@ -95,6 +103,46 @@ Future<void> logout(BuildContext context) async {
     }
   }
 }
+
+  Future<void> _syncPushContext() async {
+    try {
+      final profileService = ProfileService(apiClient.dio);
+      final profile = await profileService.getProfile();
+
+      final residentId =
+          profile['residentId']?.toString() ?? profile['id']?.toString();
+      await storage.writeResidentId(residentId);
+
+      final roles = profile['roles'];
+      if (roles is List && roles.isNotEmpty) {
+        final primaryRole = roles.first?.toString();
+        await storage.writeRole(primaryRole);
+      } else {
+        await storage.writeRole(null);
+      }
+
+      final contractService = ContractService(apiClient);
+      final units = await contractService.getMyUnits();
+      String? buildingId;
+      if (units.isNotEmpty) {
+        UnitInfo primaryUnit = units.first;
+        if (residentId != null && residentId.isNotEmpty) {
+          for (final unit in units) {
+            if (unit.isPrimaryResident(residentId)) {
+              primaryUnit = unit;
+              break;
+            }
+          }
+        }
+        buildingId = primaryUnit.buildingId;
+      }
+      await storage.writeBuildingId(buildingId);
+
+      await PushNotificationService.instance.refreshRegistration();
+    } catch (e) {
+      debugPrint('⚠️ Unable to sync push context: $e');
+    }
+  }
 
   Future<void> requestReset(String email) => authService.requestReset(email);
   Future<void> verifyOtp(String email, String otp) => authService.verifyOtp(email, otp);
