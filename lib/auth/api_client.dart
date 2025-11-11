@@ -8,28 +8,29 @@ import 'auth_service.dart';
 import 'token_storage.dart';
 
 class ApiClient {
-  static const String LAN_HOST_IP = '192.168.100.33'; // Mạng nhà
-  static const String OFFICE_HOST_IP = '10.33.63.155'; // Mạng công ty (cũ)
-  static const String OFFICE_BACKUP_HOST_IP = '10.189.244.236'; // Mạng công ty (mới)
+  static const String LAN_HOST_IP = '192.168.100.33';
+  static const String LAN_BACKUP_HOST_IP = '192.168.1.15'; 
+  static const String OFFICE_HOST_IP = '10.33.63.155';
+  static const String OFFICE_BACKUP_HOST_IP = '10.189.244.236'; 
   static const String LOCALHOST_IP = 'localhost';
 
   static const int API_PORT = 8081;
   static const int TIMEOUT_SECONDS = 10;
 
-  // ⚠️ Giữ nguyên theo yêu cầu
   static const String HOST_IP = kIsWeb ? LOCALHOST_IP : OFFICE_HOST_IP;
   static const String BASE_URL = 'http://$HOST_IP:$API_PORT/api';
   static const String FILE_BASE_URL = 'http://$HOST_IP:$API_PORT';
 
   static const Map<String, String> _wifiHostOverrides = {
-    // ⚙️ Đổi lại tên Wi-Fi theo thực tế
     'WifiNha': LAN_HOST_IP,
+    'WifiNha2': LAN_BACKUP_HOST_IP,
     'WifiCongTy': OFFICE_HOST_IP,
     'WifiCongTyMoi': OFFICE_BACKUP_HOST_IP,
   };
 
   static const Map<String, String> _localIpPrefixOverrides = {
     '192.168.100.': LAN_HOST_IP,
+    '192.168.1.': LAN_BACKUP_HOST_IP,
     '10.33.': OFFICE_HOST_IP,
     '10.189.': OFFICE_BACKUP_HOST_IP,
   };
@@ -83,8 +84,6 @@ class ApiClient {
     print('🌐 ApiClient → Using $_activeBaseUrl');
     return ApiClient._(dio, storage, authService);
   }
-
-  /// 🧠 Chọn host phù hợp tùy theo mạng
   static Future<void> _initializeDynamicHost() async {
     if (kIsWeb) {
       _setActiveHost(LOCALHOST_IP);
