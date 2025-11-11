@@ -25,6 +25,14 @@ class AuthService {
     final res = await iamClient.post('/auth/login', data: {'username': username, 'password': password});
     final data = Map<String, dynamic>.from(res.data);
     if (data['accessToken'] != null) await storage.writeAccessToken(data['accessToken'].toString());
+    if (data['userInfo'] is Map<String, dynamic>) {
+      final userInfo = Map<String, dynamic>.from(data['userInfo']);
+      await storage.writeUsername(userInfo['username']?.toString() ?? username);
+    } else if (data['username'] != null) {
+      await storage.writeUsername(data['username']?.toString());
+    } else {
+      await storage.writeUsername(username);
+    }
     if (data['userInfo'] != null) {
       final userInfo = Map<String, dynamic>.from(data['userInfo']);
       data['userId'] = userInfo['userId']?.toString();
@@ -42,6 +50,7 @@ class AuthService {
     final res = await dio.post('/auth/login', data: {'email': email, 'password': password},
         options: Options(headers: {'X-Device-Id': deviceId}));
     final data = Map<String, dynamic>.from(res.data);
+    await storage.writeUsername(email);
     if (data['accessToken'] != null) {
       await storage.writeAccessToken(data['accessToken'].toString());
       await storage.writeRefreshToken(data['refreshToken']?.toString());

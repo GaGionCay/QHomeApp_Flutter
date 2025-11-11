@@ -21,6 +21,9 @@ class TokenStorage {
   Future<void> writeRole(dynamic role) async =>
       _storage.write(key: 'role', value: role?.toString());
 
+  Future<void> writeUsername(String? username) async =>
+      _storage.write(key: 'username', value: username);
+
   Future<String?> readAccessToken() async => _storage.read(key: 'accessToken');
 
   Future<String?> readRefreshToken() async =>
@@ -30,6 +33,34 @@ class TokenStorage {
   Future<String?> readResidentId() async => _storage.read(key: 'residentId');
   Future<String?> readBuildingId() async => _storage.read(key: 'buildingId');
   Future<String?> readRole() async => _storage.read(key: 'role');
+  Future<String?> readUsername() async => _storage.read(key: 'username');
+
+  Future<void> writeBiometricCredentials({
+    required String username,
+    required String password,
+  }) async {
+    await _storage.write(key: 'biometricUsername', value: username);
+    await _storage.write(key: 'biometricPassword', value: password);
+  }
+
+  Future<void> writeBiometricEnabled(bool enabled) async =>
+      _storage.write(key: 'biometricEnabled', value: enabled.toString());
+
+  Future<String?> readBiometricUsername() async =>
+      _storage.read(key: 'biometricUsername');
+
+  Future<String?> readBiometricPassword() async =>
+      _storage.read(key: 'biometricPassword');
+
+  Future<bool> readBiometricEnabled() async {
+    final value = await _storage.read(key: 'biometricEnabled');
+    return value == 'true';
+  }
+
+  Future<void> clearBiometricCredentials() async {
+    await _storage.delete(key: 'biometricUsername');
+    await _storage.delete(key: 'biometricPassword');
+  }
 
   Future<void> deleteAll() async => _storage.deleteAll();
 }

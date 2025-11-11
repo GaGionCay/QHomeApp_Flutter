@@ -2,9 +2,12 @@ import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:local_auth/local_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../auth/auth_provider.dart';
 import '../auth/api_client.dart';
 import '../common/layout_insets.dart';
 import '../contracts/contract_service.dart';
@@ -60,6 +63,8 @@ class SettingsScreen extends StatelessWidget {
           padding: EdgeInsets.fromLTRB(20, 24, 20, bottomInset),
           children: const [
             _ThemeModeSection(),
+            SizedBox(height: 24),
+            _BiometricSettingsSection(),
             SizedBox(height: 24),
             _UnitSwitcherSection(),
           ],
@@ -248,6 +253,321 @@ class _UnitSwitcherSection extends StatefulWidget {
 
   @override
   State<_UnitSwitcherSection> createState() => _UnitSwitcherSectionState();
+}
+
+class _BiometricSettingsSection extends StatefulWidget {
+  const _BiometricSettingsSection();
+
+  @override
+  State<_BiometricSettingsSection> createState() =>
+      _BiometricSettingsSectionState();
+}
+
+class _BiometricSettingsSectionState extends State<_BiometricSettingsSection> {
+  final LocalAuthentication _localAuth = LocalAuthentication();
+  bool _loading = true;
+  bool _supportsBiometrics = false;
+  bool _biometricEnabled = false;
+  bool _processing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadState();
+  }
+
+  Future<void> _loadState() async {
+    final auth = context.read<AuthProvider>();
+    try {
+      final supported = await _localAuth.isDeviceSupported();
+      final canCheck = await _localAuth.canCheckBiometrics;
+      final available = await _localAuth.getAvailableBiometrics();
+      final enabled = await auth.isBiometricLoginEnabled();
+      if (!mounted) return;
+      setState(() {
+        _supportsBiometrics = supported && (canCheck || available.isNotEmpty);
+        _biometricEnabled = enabled;
+        _loading = false;
+      });
+    } on PlatformException catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _supportsBiometrics = false;
+        _biometricEnabled = false;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _registerBiometric() async {
+    if (_processing) return;
+    final auth = context.read<AuthProvider>();
+    final username = await auth.getStoredUsername();
+    if (username == null) {
+      _showSnack('Không tìm thấy tên đăng nhập. Vui lòng đăng nhập lại.');
+      return;
+    }
+    final password = await _promptPassword();
+    if (password == null || password.isEmpty) {
+      return;
+    }
+
+    setState(() => _processing = true);
+
+    final supported = await _localAuth.isDeviceSupported();
+    final canCheck = await _localAuth.canCheckBiometrics;
+    final available = await _localAuth.getAvailableBiometrics();
+    if (!(supported && (canCheck || available.isNotEmpty))) {
+      setState(() => _processing = false);
+      _showSnack('Thiết bị của bạn không hỗ trợ đăng nhập bằng vân tay.');
+      return;
+    }
+
+    final reauthOk = await auth.reauthenticateForBiometrics(password);
+    if (!reauthOk) {
+      setState(() => _processing = false);
+      _showSnack('Mật khẩu không chính xác. Vui lòng thử lại.');
+      return;
+    }
+
+    try {
+      final didAuthenticate = await _localAuth.authenticate(
+        localizedReason: 'Xác thực vân tay để hoàn tất đăng ký',
+        options: const AuthenticationOptions(
+          biometricOnly: true,
+          stickyAuth: true,
+        ),
+      );
+
+      if (!didAuthenticate) {
+        setState(() => _processing = false);
+        return;
+      }
+    } on PlatformException catch (e) {
+      setState(() => _processing = false);
+      _showSnack('Không thể xác thực vân tay: ${e.message ?? e.code}');
+      return;
+    }
+
+    await auth.enableBiometricLogin(username, password);
+    if (!mounted) return;
+    setState(() {
+      _biometricEnabled = true;
+      _processing = false;
+    });
+    _showSnack('Đã bật đăng nhập bằng vân tay.');
+  }
+
+  Future<void> _disableBiometric() async {
+    if (_processing) return;
+    final auth = context.read<AuthProvider>();
+    setState(() => _processing = true);
+    await auth.disableBiometricLogin();
+    if (!mounted) return;
+    setState(() {
+      _biometricEnabled = false;
+      _processing = false;
+    });
+    _showSnack('Đã tắt đăng nhập bằng vân tay.');
+  }
+
+  Future<String?> _promptPassword() async {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xác nhận mật khẩu'),
+        content: TextField(
+          controller: controller,
+          obscureText: true,
+          decoration: const InputDecoration(
+            labelText: 'Mật khẩu hiện tại',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Huỷ'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop(controller.text.trim());
+            },
+            child: const Text('Xác nhận'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    if (_loading) {
+      return const _SettingsGlassCard(
+        padding: EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+        child: Center(
+          child: SizedBox(
+            height: 36,
+            width: 36,
+            child: CircularProgressIndicator(strokeWidth: 3),
+          ),
+        ),
+      );
+    }
+
+    if (!_supportsBiometrics) {
+      return _SettingsGlassCard(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  height: 44,
+                  width: 44,
+                  decoration: BoxDecoration(
+                    gradient: AppColors.primaryGradient(),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: AppColors.subtleShadow,
+                  ),
+                  child: const Icon(
+                    Icons.block,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    'Thiết bị không hỗ trợ vân tay',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Thiết bị của bạn không có cảm biến sinh trắc học được hỗ trợ. Bạn vẫn có thể đăng nhập bằng mật khẩu thông thường.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurface.withOpacity(0.7),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return _SettingsGlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                height: 44,
+                width: 44,
+                decoration: BoxDecoration(
+                  gradient: AppColors.primaryGradient(),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: AppColors.subtleShadow,
+                ),
+                child: const Icon(
+                  Icons.fingerprint,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  'Đăng nhập bằng vân tay',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                transitionBuilder: (child, animation) => FadeTransition(
+                  opacity: animation,
+                  child: child,
+                ),
+                child: _biometricEnabled
+                    ? Chip(
+                        key: const ValueKey('enabled'),
+                        avatar: const Icon(
+                          Icons.check_circle,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                        label: const Text(
+                          'Đang bật',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        backgroundColor: colorScheme.primary,
+                      )
+                    : Chip(
+                        key: const ValueKey('disabled'),
+                        label: Text(
+                          'Đang tắt',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurface.withOpacity(0.8),
+                          ),
+                        ),
+                        backgroundColor:
+                            colorScheme.surfaceVariant.withOpacity(0.5),
+                      ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            _biometricEnabled
+                ? 'Bạn đã kích hoạt đăng nhập bằng vân tay. Lần sau có thể dùng vân tay ngay tại màn hình đăng nhập.'
+                : 'Đăng ký vân tay để lần sau có thể đăng nhập nhanh mà không cần nhập mật khẩu.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurface.withOpacity(0.7),
+            ),
+          ),
+          const SizedBox(height: 20),
+          if (_processing)
+            const Center(
+              child: SizedBox(
+                height: 32,
+                width: 32,
+                child: CircularProgressIndicator(strokeWidth: 3),
+              ),
+            )
+          else if (_biometricEnabled)
+            OutlinedButton.icon(
+              onPressed: _disableBiometric,
+              icon: const Icon(Icons.block),
+              label: const Text('Tắt đăng nhập vân tay'),
+            )
+          else
+            FilledButton.icon(
+              onPressed: _registerBiometric,
+              icon: const Icon(Icons.fingerprint),
+              label: const Text('Đăng ký vân tay'),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _UnitSwitcherSectionState extends State<_UnitSwitcherSection> {

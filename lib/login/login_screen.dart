@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:local_auth/local_auth.dart';
 import '../auth/auth_provider.dart';
 import '../core/app_router.dart';
 import '../theme/app_colors.dart';
@@ -19,8 +21,84 @@ class _LoginScreenState extends State<LoginScreen> {
   final passCtrl = TextEditingController();
   final FocusNode _usernameFocus = FocusNode();
   final FocusNode _passwordFocus = FocusNode();
+  final LocalAuthentication _localAuth = LocalAuthentication();
   bool loading = false;
   bool _obscurePassword = true;
+  bool _supportsBiometrics = false;
+  bool _hasStoredBiometrics = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_refreshBiometricState);
+  }
+
+  Future<void> _refreshBiometricState() async {
+    final auth = context.read<AuthProvider>();
+    try {
+      final canCheck = await _localAuth.canCheckBiometrics;
+      final available = await _localAuth.getAvailableBiometrics();
+      final supported = await _localAuth.isDeviceSupported();
+      final credentials = await auth.getBiometricCredentials();
+      if (!mounted) return;
+      setState(() {
+        _supportsBiometrics =
+            supported && (canCheck || available.isNotEmpty);
+        _hasStoredBiometrics = credentials != null;
+      });
+    } on PlatformException catch (e) {
+      debugPrint('Biometric availability check failed: $e');
+      if (!mounted) return;
+      setState(() {
+        _supportsBiometrics = false;
+        _hasStoredBiometrics = false;
+      });
+    }
+  }
+
+  Future<void> _authenticateWithBiometrics(AuthProvider auth) async {
+    if (loading) return;
+    final credentials = await auth.getBiometricCredentials();
+    if (credentials == null) {
+      if (!mounted) return;
+      _showSnack('Vui lòng bật đăng nhập bằng vân tay trước');
+      return;
+    }
+    try {
+      final didAuthenticate = await _localAuth.authenticate(
+        localizedReason: 'Xác thực vân tay để đăng nhập',
+        options: const AuthenticationOptions(
+          biometricOnly: true,
+          stickyAuth: true,
+        ),
+      );
+      if (!didAuthenticate) return;
+
+      setState(() => loading = true);
+      final ok = await auth.tryBiometricLogin();
+      setState(() => loading = false);
+
+      if (!mounted) return;
+
+      if (ok) {
+        context.go(AppRoute.main.path);
+      } else {
+        _showSnack('Đăng nhập bằng vân tay thất bại');
+      }
+    } on PlatformException catch (e) {
+      if (!mounted) return;
+      _showSnack('Không thể sử dụng vân tay: ${e.message ?? e.code}');
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('Có lỗi khi xác thực vân tay');
+    }
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -208,6 +286,19 @@ class _LoginScreenState extends State<LoginScreen> {
                                 child: const Text('Quên mật khẩu?'),
                               ),
                             ),
+                            if (_supportsBiometrics && !_hasStoredBiometrics)
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 8),
+                                child: Text(
+                                  'Bạn có thể bật đăng nhập bằng vân tay trong phần Cài đặt sau khi đăng nhập.',
+                                  style: textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurface
+                                        .withOpacity(0.7),
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
                             const SizedBox(height: 20),
                             AppPrimaryButton(
                               onPressed: loading ? null : () => _submit(auth),
@@ -216,6 +307,16 @@ class _LoginScreenState extends State<LoginScreen> {
                               icon: Icons.lock_open_rounded,
                               enabled: !loading,
                             ),
+                            if (_supportsBiometrics && _hasStoredBiometrics) ...[
+                              const SizedBox(height: 12),
+                              OutlinedButton.icon(
+                                onPressed: loading
+                                    ? null
+                                    : () => _authenticateWithBiometrics(auth),
+                                icon: const Icon(Icons.fingerprint),
+                                label: const Text('Đăng nhập bằng vân tay'),
+                              ),
+                            ],
                             const SizedBox(height: 40),
                             _SecurityFooter(textTheme: textTheme),
                           ],
@@ -236,9 +337,12 @@ class _LoginScreenState extends State<LoginScreen> {
     FocusScope.of(context).unfocus();
     setState(() => loading = true);
 
+    final username = usernameCtrl.text.trim();
+    final password = passCtrl.text.trim();
+
     final ok = await auth.loginViaIam(
-      usernameCtrl.text.trim(),
-      passCtrl.text.trim(),
+      username,
+      password,
     );
 
     setState(() => loading = false);
@@ -246,14 +350,11 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
 
     if (ok) {
+      await _refreshBiometricState();
+      if (!mounted) return;
       context.go(AppRoute.main.path);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Đăng nhập thất bại'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnack('Đăng nhập thất bại');
     }
   }
 
@@ -263,6 +364,8 @@ class _LoginScreenState extends State<LoginScreen> {
     passCtrl.dispose();
     _usernameFocus.dispose();
     _passwordFocus.dispose();
+    // ignore: discarded_futures
+    _localAuth.stopAuthentication();
     super.dispose();
   }
 }

@@ -28,6 +28,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> _init() async {
     apiClient = await ApiClient.create();
+    // Tạo iamDio instance để login qua iam-service
     final iamDio = await _createIamDio();
     authService = AuthService(apiClient.dio, storage, iamDio: iamDio);
 
@@ -57,6 +58,8 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Login via iam-service (port 8088) - NEW METHOD
+  /// Uses username instead of email
   Future<bool> loginViaIam(String username, String password) async {
     try {
       await authService.loginViaIam(username, password);
@@ -72,6 +75,55 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> enableBiometricLogin(String username, String password) async {
+    await storage.writeBiometricCredentials(
+      username: username,
+      password: password,
+    );
+    await storage.writeBiometricEnabled(true);
+  }
+
+  Future<void> disableBiometricLogin() async {
+    await storage.clearBiometricCredentials();
+    await storage.writeBiometricEnabled(false);
+  }
+
+  Future<bool> isBiometricLoginEnabled() => storage.readBiometricEnabled();
+
+  Future<({String username, String password})?> getBiometricCredentials() async {
+    final enabled = await storage.readBiometricEnabled();
+    if (!enabled) return null;
+    final username = await storage.readBiometricUsername();
+    final password = await storage.readBiometricPassword();
+    if (username == null || password == null) {
+      return null;
+    }
+    return (username: username, password: password);
+  }
+
+  Future<bool> tryBiometricLogin() async {
+    final credentials = await getBiometricCredentials();
+    if (credentials == null) return false;
+    return loginViaIam(credentials.username, credentials.password);
+  }
+
+  Future<String?> getStoredUsername() => storage.readUsername();
+
+  Future<bool> reauthenticateForBiometrics(String password) async {
+    final username = await storage.readUsername();
+    if (username == null) return false;
+    try {
+      await authService.loginViaIam(username, password);
+      _isAuthenticated = true;
+      await _syncPushContext();
+      notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Login via backend hiện tại (port 8080) - KEEP FOR BACKWARD COMPATIBILITY
   Future<bool> login(String email, String password) async {
     try {
       await authService.login(email, password);
