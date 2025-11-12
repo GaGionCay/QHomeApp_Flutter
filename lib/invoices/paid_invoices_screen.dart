@@ -41,10 +41,27 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
   String _selectedMonthKey = _allMonthsKey;
 
   Future<_PaidData> _loadData() async {
-    final String? unitFilter =
+    String? unitFilter =
         _selectedUnitId == _allUnitsKey ? null : _selectedUnitId;
+    if (unitFilter == null || unitFilter.isEmpty) {
+      if (_units.isNotEmpty) {
+        unitFilter = _units.first.id;
+      } else if (widget.initialUnitId != null &&
+          widget.initialUnitId!.isNotEmpty) {
+        unitFilter = widget.initialUnitId;
+      }
+    }
+
+    if (unitFilter == null || unitFilter.isEmpty) {
+      debugPrint(
+          '⚠️ [PaidInvoicesScreen] Không có căn hộ hợp lệ để tải hóa đơn');
+      final bookings = await _bookingService.getPaidBookings();
+      return _PaidData(categories: const [], paidBookings: bookings);
+    }
+
+    final String unitIdForRequest = unitFilter;
     final categoriesFuture =
-        _invoiceService.getPaidInvoicesByCategory(unitId: unitFilter);
+        _invoiceService.getPaidInvoicesByCategory(unitId: unitIdForRequest);
     final bookingsFuture = _bookingService.getPaidBookings();
 
     final categories = await categoriesFuture;
@@ -631,35 +648,41 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: isDark
-            ? theme.colorScheme.surface.withOpacity(0.16)
-            : Colors.white.withOpacity(0.78),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.08),
+    return IntrinsicWidth(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: isDark
+              ? theme.colorScheme.surface.withOpacity(0.16)
+              : Colors.white.withOpacity(0.78),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: theme.colorScheme.outline.withOpacity(0.08),
+          ),
         ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 16,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: theme.textTheme.labelSmall?.copyWith(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 16,
                 color: theme.colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w500,
               ),
-            ),
-          ],
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1134,17 +1157,26 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
             const SizedBox(height: 14),
             Row(
               children: [
-                Text(
-                  _formatMoney(invoice.lineTotal),
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: serviceColor,
+                Expanded(
+                  child: Text(
+                    _formatMoney(invoice.lineTotal),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: serviceColor,
+                    ),
+                    softWrap: true,
                   ),
                 ),
-                const Spacer(),
-                _buildMetaChip(
-                  icon: Icons.receipt_long_outlined,
-                  label: invoice.invoiceId,
+                const SizedBox(width: 12),
+                Flexible(
+                  fit: FlexFit.loose,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: _buildMetaChip(
+                      icon: Icons.receipt_long_outlined,
+                      label: invoice.invoiceId,
+                    ),
+                  ),
                 ),
               ],
             ),

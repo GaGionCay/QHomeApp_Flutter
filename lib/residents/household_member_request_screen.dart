@@ -295,6 +295,12 @@ class _HouseholdMemberRequestScreenState
                           labelText: 'Quan hệ với chủ hộ',
                           hintText: 'Ví dụ: Con, Vợ/Chồng, Anh/Chị/Em',
                         ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Vui lòng cho biết quan hệ với chủ hộ.';
+                          }
+                          return null;
+                        },
                       ),
                       const SizedBox(height: 8),
                       Wrap(
@@ -321,17 +327,28 @@ class _HouseholdMemberRequestScreenState
                           labelText: 'Số điện thoại',
                           hintText: 'Nhập số điện thoại liên hệ',
                         ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Vui lòng nhập số điện thoại.';
+                          }
+                          final phoneRegex = RegExp(r'^[0-9+ ]{8,}$');
+                          if (!phoneRegex.hasMatch(value.trim())) {
+                            return 'Số điện thoại không hợp lệ.';
+                          }
+                          return null;
+                        },
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _emailCtrl,
                         keyboardType: TextInputType.emailAddress,
                         decoration: const InputDecoration(
-                          labelText: 'Email (nếu có)',
+                          labelText: 'Email',
+                          hintText: 'Nhập email liên hệ',
                         ),
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
-                            return null;
+                            return 'Vui lòng nhập email.';
                           }
                           final emailRegex =
                               RegExp(r'^[\w\.\-+]+@[\w\.\-]+\.[A-Za-z]{2,}$');

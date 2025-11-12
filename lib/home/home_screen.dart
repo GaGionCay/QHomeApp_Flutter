@@ -220,8 +220,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadUnpaidInvoices(InvoiceService invoiceService) async {
     try {
-      final categories = await invoiceService.getUnpaidInvoicesByCategory(
-          unitId: _selectedUnitId);
+      final unitId =
+          _selectedUnitId ?? (_units.isNotEmpty ? _units.first.id : null);
+      if (unitId == null || unitId.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _unpaidInvoiceCount = 0;
+          });
+        }
+        return;
+      }
+
+      final categories =
+          await invoiceService.getUnpaidInvoicesByCategory(unitId: unitId);
       final total = categories.fold<int>(
           0, (sum, category) => sum + category.invoiceCount);
       if (mounted) {
@@ -1374,6 +1385,8 @@ class _HomeScreenState extends State<HomeScreen> {
               Text(
                 'Theo dõi điện năng',
                 style: theme.textTheme.titleMedium,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               const Spacer(),
               IconButton(

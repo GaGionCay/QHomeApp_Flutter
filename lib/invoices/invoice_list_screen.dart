@@ -130,10 +130,9 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
       }
     }
 
-    debugPrint(
-        '🧾 [InvoiceList] Gọi API unpaid-by-category (unitId=$_selectedUnitId)');
-    final result =
-        await _service.getUnpaidInvoicesByCategory(unitId: _selectedUnitId);
+    final unitId = _selectedUnitId!;
+    debugPrint('🧾 [InvoiceList] Gọi API unpaid-by-category (unitId=$unitId)');
+    final result = await _service.getUnpaidInvoicesByCategory(unitId: unitId);
     debugPrint('🧾 [InvoiceList] API trả về ${result.length} nhóm');
     return result;
   }

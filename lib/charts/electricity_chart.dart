@@ -153,12 +153,12 @@ class _ElectricityChartState extends State<ElectricityChart> {
                 _buildHeader(context),
                 const SizedBox(height: 20),
                 SizedBox(
-                  height: 220,
+                  height: 240,
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 350),
                     switchInCurve: Curves.easeOutCubic,
                     switchOutCurve: Curves.easeInCubic,
-                    child: _buildBarChart(
+                    child: _buildResponsiveBarChart(
                       context,
                       visible,
                       key: ValueKey('${_range.name}-${visible.length}'),
@@ -179,7 +179,6 @@ class _ElectricityChartState extends State<ElectricityChart> {
 
   Widget _buildHeader(BuildContext context) {
     final theme = Theme.of(context);
-    final secondary = theme.colorScheme.onSurfaceVariant;
 
     return Row(
       children: [
@@ -192,14 +191,11 @@ class _ElectricityChartState extends State<ElectricityChart> {
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 4),
-              Text(
-                'Theo dõi mức tiêu thụ và biến động chi phí',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: secondary,
-                ),
-              ),
+              // Removed subtitle per latest design feedback to keep header compact.
             ],
           ),
         ),
@@ -256,148 +252,174 @@ class _ElectricityChartState extends State<ElectricityChart> {
     );
   }
 
-  Widget _buildBarChart(
+  Widget _buildResponsiveBarChart(
     BuildContext context,
     List<ElectricityMonthly> data, {
     Key? key,
   }) {
-    final theme = Theme.of(context);
     final maxY = _maxAmount;
 
-    return BarChart(
-      key: key,
-      BarChartData(
-        maxY: maxY,
-        alignment: BarChartAlignment.spaceAround,
-        barTouchData: BarTouchData(
-          enabled: true,
-          touchTooltipData: BarTouchTooltipData(
-            tooltipBgColor: theme.brightness == Brightness.dark
-                ? AppColors.navySurface.withOpacity(0.85)
-                : Colors.black.withOpacity(0.82),
-            tooltipRoundedRadius: 12,
-            tooltipPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 8,
-            ),
-            getTooltipItem: (group, groupIndex, rod, rodIndex) {
-              return BarTooltipItem(
-                _currencyFormatter.format(rod.toY),
-                const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-              );
-            },
-          ),
-        ),
-        titlesData: FlTitlesData(
-          rightTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          topTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (value, meta) {
-                final index = value.toInt();
-                if (index < 0 || index >= data.length) {
-                  return const SizedBox.shrink();
-                }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final theme = Theme.of(context);
+        final availableWidth = constraints.maxWidth;
+        final barCount = data.length;
+        const minBarWidth = 18.0;
+        const maxBarWidth = 42.0;
+        const minSpacing = 12.0;
 
-                final label = data[index].monthDisplay;
-                return Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    label,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant
-                              .withOpacity(0.8),
+        final desiredContentWidth =
+            minBarWidth * barCount + (barCount + 1) * minSpacing;
+        final baseWidth = math.max(availableWidth, desiredContentWidth);
+
+        double computedBarWidth =
+            ((baseWidth - (barCount + 1) * minSpacing) / barCount)
+                .clamp(minBarWidth, maxBarWidth);
+        final barSpacing = minSpacing;
+
+        final chartContentWidth =
+            barCount * computedBarWidth + (barCount + 1) * barSpacing;
+        final chartWidth = math.max(chartContentWidth, availableWidth);
+        final textScale = (availableWidth / 360).clamp(0.85, 1.2);
+
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: chartWidth,
+            child: BarChart(
+              key: key,
+              BarChartData(
+                maxY: maxY,
+                minY: 0,
+                alignment: BarChartAlignment.start,
+                groupsSpace: barSpacing,
+                barTouchData: BarTouchData(
+                  enabled: true,
+                  touchTooltipData: BarTouchTooltipData(
+                    tooltipBgColor: theme.brightness == Brightness.dark
+                        ? AppColors.navySurface.withOpacity(0.9)
+                        : Colors.black.withOpacity(0.85),
+                    tooltipRoundedRadius: 14,
+                    tooltipPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                      return BarTooltipItem(
+                        '${data[groupIndex].monthDisplay}\n${_currencyFormatter.format(rod.toY)}',
+                        const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
                         ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
-          ),
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 72,
-              getTitlesWidget: (value, meta) {
-                final interval = maxY / 4;
-                final matchesInterval =
-                    (value % interval).abs() < interval * 0.05;
-                if (value == maxY || matchesInterval) {
-                  return _buildAxisLabel(context, value);
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-          ),
-        ),
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: false,
-          horizontalInterval: maxY / 4,
-          getDrawingHorizontalLine: (value) => FlLine(
-            color: theme.colorScheme.outline.withOpacity(0.08),
-            strokeWidth: 1,
-          ),
-        ),
-        borderData: FlBorderData(
-          show: true,
-          border: Border(
-            left: BorderSide(
-              color: theme.colorScheme.outline.withOpacity(0.12),
-            ),
-            bottom: BorderSide(
-              color: theme.colorScheme.outline.withOpacity(0.12),
-            ),
-          ),
-        ),
-        barGroups: List.generate(data.length, (index) {
-          final monthly = data[index];
-          return BarChartGroupData(
-            x: index,
-            barRods: [
-              BarChartRodData(
-                toY: monthly.amount,
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [
-                    AppColors.primaryEmerald.withOpacity(0.95),
-                    AppColors.primaryAqua.withOpacity(0.85),
-                  ],
                 ),
-                width: 28,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(14),
-                ),
-              ),
-            ],
-          );
-        }),
-      ),
-    );
-  }
+                titlesData: FlTitlesData(
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      interval: 1,
+                      getTitlesWidget: (value, meta) {
+                        final index = value.toInt();
+                        if (index < 0 || index >= data.length) {
+                          return const SizedBox.shrink();
+                        }
 
-  Widget _buildAxisLabel(BuildContext context, double value) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: Text(
-        _compactFormatter.format(value),
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: Theme.of(context)
-                  .colorScheme
-                  .onSurfaceVariant
-                  .withOpacity(0.7),
+                        final label = data[index].monthDisplay;
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            label,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              fontSize:
+                                  (theme.textTheme.labelSmall?.fontSize ?? 12) *
+                                      textScale,
+                              color: theme.colorScheme.onSurfaceVariant
+                                  .withOpacity(0.8),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 60 * textScale,
+                      interval: maxY / 4,
+                      getTitlesWidget: (value, meta) {
+                        final interval = maxY / 4;
+                        final matchesInterval =
+                            (value % interval).abs() < interval * 0.05;
+                        if (value == maxY || matchesInterval) {
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: Text(
+                              _compactFormatter.format(value),
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                fontSize:
+                                    (theme.textTheme.labelSmall?.fontSize ??
+                                            12) *
+                                        textScale,
+                                color: theme.colorScheme.onSurfaceVariant
+                                    .withOpacity(0.7),
+                              ),
+                            ),
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                  ),
+                ),
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: maxY / 4,
+                  getDrawingHorizontalLine: (value) => FlLine(
+                    color: theme.colorScheme.outline.withOpacity(0.08),
+                    strokeWidth: 1,
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                barGroups: List.generate(barCount, (index) {
+                  final monthly = data[index];
+                  return BarChartGroupData(
+                    x: index,
+                    barRods: [
+                      BarChartRodData(
+                        toY: monthly.amount,
+                        width: computedBarWidth,
+                        borderRadius: BorderRadius.circular(14),
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [
+                            AppColors.primaryEmerald.withOpacity(0.95),
+                            AppColors.primaryAqua.withOpacity(0.85),
+                          ],
+                        ),
+                        backDrawRodData: BackgroundBarChartRodData(
+                          show: true,
+                          toY: maxY,
+                          color: theme.colorScheme.surface.withOpacity(0.08),
+                        ),
+                      ),
+                    ],
+                  );
+                }),
+              ),
             ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -409,81 +431,101 @@ class _ElectricityChartState extends State<ElectricityChart> {
     final theme = Theme.of(context);
     final secondary = theme.colorScheme.onSurfaceVariant;
 
-    return Row(
-      children: [
-        Expanded(
-          child: _MiniStatCard(
-            label: 'Tổng ${_range.months} tháng',
-            value: _currencyFormatter.format(_total),
-            icon: Icons.flash_on_rounded,
-            gradient: AppColors.primaryGradient(),
+    final cards = [
+      _MiniStatCard(
+        label: 'Tổng ${_range.months} tháng',
+        value: _currencyFormatter.format(_total),
+        icon: Icons.flash_on_rounded,
+        gradient: AppColors.primaryGradient(),
+      ),
+      _MiniStatCard(
+        label: 'Bình quân tháng',
+        value: _currencyFormatter.format(_average),
+        icon: Icons.auto_graph_rounded,
+        gradient: LinearGradient(
+          colors: [
+            AppColors.skyMist.withOpacity(0.95),
+            AppColors.primaryBlue.withOpacity(0.85),
+          ],
+        ),
+      ),
+      DecoratedBox(
+        decoration: BoxDecoration(
+          color: theme.brightness == Brightness.dark
+              ? theme.colorScheme.surface.withOpacity(0.14)
+              : Colors.white.withOpacity(0.78),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: theme.colorScheme.outline.withOpacity(0.08),
           ),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _MiniStatCard(
-            label: 'Bình quân tháng',
-            value: _currencyFormatter.format(_average),
-            icon: Icons.auto_graph_rounded,
-            gradient: LinearGradient(
-              colors: [
-                AppColors.skyMist.withOpacity(0.95),
-                AppColors.primaryBlue.withOpacity(0.85),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: theme.brightness == Brightness.dark
-                  ? theme.colorScheme.surface.withOpacity(0.14)
-                  : Colors.white.withOpacity(0.78),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: theme.colorScheme.outline.withOpacity(0.08),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          child: Row(
+            children: [
+              Icon(
+                deltaLabel.startsWith('+')
+                    ? Icons.trending_up_rounded
+                    : deltaLabel.startsWith('-')
+                        ? Icons.trending_down_rounded
+                        : Icons.horizontal_rule_rounded,
+                color: deltaColor,
+                size: 18,
               ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        deltaLabel.startsWith('+')
-                            ? Icons.trending_up_rounded
-                            : deltaLabel.startsWith('-')
-                                ? Icons.trending_down_rounded
-                                : Icons.horizontal_rule_rounded,
+              const SizedBox(width: 10),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      deltaLabel,
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
                         color: deltaColor,
-                        size: 18,
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        deltaLabel,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: deltaColor,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'So với kỳ trước',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: secondary,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    Text(
+                      'So với kỳ trước',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: secondary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
         ),
-      ],
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 360;
+        final spacing = isNarrow ? 12.0 : 16.0;
+        final crossAxisCount = isNarrow ? 1 : 3;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          alignment: WrapAlignment.spaceBetween,
+          children: cards
+              .map(
+                (card) => SizedBox(
+                  width: isNarrow
+                      ? double.infinity
+                      : (constraints.maxWidth -
+                              spacing * (crossAxisCount - 1)) /
+                          crossAxisCount,
+                  child: card,
+                ),
+              )
+              .toList(),
+        );
+      },
     );
   }
 
