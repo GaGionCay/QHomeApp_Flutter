@@ -32,6 +32,7 @@ class _NewsScreenState extends State<NewsScreen> {
 
   List<ResidentNews> items = [];
   bool loading = false;
+  bool _suppressLoadingIndicator = false;
   String? _residentId;
   Set<String> _readNewsIds = <String>{};
   InfoListFilter _filter = InfoListFilter.all;
@@ -170,7 +171,7 @@ class _NewsScreenState extends State<NewsScreen> {
       debugPrint('⚠️ Page number cannot be negative: $page');
       return;
     }
-    if (!silent) {
+    if (!silent && !_suppressLoadingIndicator) {
       setState(() {
         loading = true;
       });
@@ -207,7 +208,9 @@ class _NewsScreenState extends State<NewsScreen> {
           if (mounted) {
             setState(() {
               items = pageItems;
-              if (!silent) loading = false;
+              if (!silent && !_suppressLoadingIndicator) {
+                loading = false;
+              }
             });
           } else {
             items = pageItems;
@@ -221,7 +224,9 @@ class _NewsScreenState extends State<NewsScreen> {
           if (mounted) {
             setState(() {
               items = [];
-              if (!silent) loading = false;
+              if (!silent && !_suppressLoadingIndicator) {
+                loading = false;
+              }
             });
           } else {
             items = [];
@@ -231,7 +236,9 @@ class _NewsScreenState extends State<NewsScreen> {
         if (mounted) {
           setState(() {
             items = [];
-            if (!silent) loading = false;
+            if (!silent && !_suppressLoadingIndicator) {
+              loading = false;
+            }
           });
         } else {
           items = [];
@@ -242,13 +249,15 @@ class _NewsScreenState extends State<NewsScreen> {
       if (mounted) {
         setState(() {
           items = [];
-          if (!silent) loading = false;
+          if (!silent && !_suppressLoadingIndicator) {
+            loading = false;
+          }
         });
       } else {
         items = [];
       }
     } finally {
-      if (!silent && mounted) {
+      if (!silent && mounted && !_suppressLoadingIndicator) {
         if (loading) {
           setState(() {
             loading = false;
@@ -369,12 +378,24 @@ class _NewsScreenState extends State<NewsScreen> {
       final latestItems = _buildPageItems(0);
       if (mounted) {
         setState(() {
+          _suppressLoadingIndicator = true;
+          loading = false;
           items = latestItems;
         });
       } else {
         items = latestItems;
       }
+      _scheduleLoadingIndicatorReset();
     }
+  }
+
+  void _scheduleLoadingIndicatorReset() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_suppressLoadingIndicator) return;
+      setState(() {
+        _suppressLoadingIndicator = false;
+      });
+    });
   }
 
   void _flushPendingRealtime() {
@@ -550,6 +571,8 @@ class _NewsScreenState extends State<NewsScreen> {
             end: Alignment.bottomCenter,
           );
 
+    final showLoading = loading && !_suppressLoadingIndicator;
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       backgroundColor: Colors.transparent,
@@ -565,7 +588,7 @@ class _NewsScreenState extends State<NewsScreen> {
         child: SafeArea(
           child: Column(
             children: [
-              _buildHeader(context, unreadTotal, totalItems),
+              _buildHeader(context, unreadTotal, totalItems, showLoading),
               const SizedBox(height: 12),
               Expanded(
                 child: RefreshIndicator(
@@ -579,7 +602,7 @@ class _NewsScreenState extends State<NewsScreen> {
                     slivers: [
                       SliverPadding(
                         padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                        sliver: loading
+                        sliver: showLoading
                             ? SliverFillRemaining(
                                 hasScrollBody: false,
                                 child: _buildLoadingState(),
@@ -607,7 +630,7 @@ class _NewsScreenState extends State<NewsScreen> {
                                     ),
                                   ),
                       ),
-                      if (!loading && items.isNotEmpty)
+                      if (!showLoading && items.isNotEmpty)
                         SliverPadding(
                           padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
                           sliver: SliverToBoxAdapter(
@@ -625,7 +648,12 @@ class _NewsScreenState extends State<NewsScreen> {
     );
   }
 
-  Widget _buildHeader(BuildContext context, int unreadCount, int totalCount) {
+  Widget _buildHeader(
+    BuildContext context,
+    int unreadCount,
+    int totalCount,
+    bool showLoading,
+  ) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final gradient = isDark
@@ -662,23 +690,31 @@ class _NewsScreenState extends State<NewsScreen> {
                   ),
                   const SizedBox(height: 12),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildStatChip(
-                        context,
-                        label: 'Chưa đọc',
-                        value: unreadCount,
-                        isAccent: true,
+                      Expanded(
+                        child: Wrap(
+                          spacing: 12,
+                          runSpacing: 10,
+                          children: [
+                            _buildStatChip(
+                              context,
+                              label: 'Chưa đọc',
+                              value: unreadCount,
+                              isAccent: true,
+                            ),
+                            _buildStatChip(
+                              context,
+                              label: 'Tổng số',
+                              value: totalCount,
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(width: 12),
-                      _buildStatChip(
-                        context,
-                        label: 'Tổng số',
-                        value: totalCount,
-                      ),
-                      const Spacer(),
                       IconButton(
                         tooltip: 'Làm mới',
-                        onPressed: loading
+                        onPressed: showLoading
                             ? null
                             : () => _fetch(targetPage: _currentPage),
                         icon: const Icon(CupertinoIcons.refresh),
@@ -1071,7 +1107,9 @@ class _NewsScreenState extends State<NewsScreen> {
   }
 
   Widget _buildPaginationControls(BuildContext context) {
-    if (items.isEmpty || loading) return const SizedBox.shrink();
+    if (items.isEmpty || (loading && !_suppressLoadingIndicator)) {
+      return const SizedBox.shrink();
+    }
 
     final totalPages = _getTotalPages();
     final currentPageNumber = _currentPage + 1;
