@@ -6,7 +6,7 @@ import '../models/resident_notification.dart';
 import '../models/notification_detail_response.dart';
 
 class ResidentService {
-  final _publicDio = AdminApiClient.createPublicDio();
+  final Dio _secureDio = AdminApiClient().dio;
 
   ResidentService();
 
@@ -17,7 +17,7 @@ class ResidentService {
   }) async {
     try {
       print('🔍 [ResidentService] Gọi API với page=$page, size=$size');
-      final response = await _publicDio.get(
+      final response = await _secureDio.get(
         '/news/resident',
         queryParameters: {
           'residentId': residentId,
@@ -73,7 +73,7 @@ class ResidentService {
   /// Returns null if API doesn't support count
   Future<int?> getResidentNewsCount(String residentId) async {
     try {
-      final response = await _publicDio.get(
+      final response = await _secureDio.get(
         '/news/resident',
         queryParameters: {
           'residentId': residentId,
@@ -89,7 +89,7 @@ class ResidentService {
       }
 
       if (response.data is List) {
-        final fullResponse = await _publicDio.get(
+        final fullResponse = await _secureDio.get(
           '/news/resident',
           queryParameters: {
             'residentId': residentId,
@@ -120,7 +120,7 @@ class ResidentService {
     try {
       print(
           '🔍 [ResidentService] Gọi API notifications với residentId=$residentId, buildingId=$buildingId');
-      final response = await _publicDio.get(
+      final response = await _secureDio.get(
         '/notifications/resident',
         queryParameters: {
           'residentId': residentId,
@@ -159,7 +159,7 @@ class ResidentService {
     try {
       print(
           '🔍 [ResidentService] Gọi API notification detail với id=$notificationId');
-      final response = await _publicDio.get(
+      final response = await _secureDio.get(
         '/notifications/$notificationId',
       );
 

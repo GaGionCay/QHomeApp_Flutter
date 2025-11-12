@@ -7,7 +7,7 @@ class ProfileService {
   ProfileService(this.dio);
 
   Future<Map<String, dynamic>> getProfile() async {
-    final res = await dio.get('/users/me');
+    final res = await dio.get('/residents/me');
     final data = Map<String, dynamic>.from(res.data);
 
     // ✅ Ép kiểu id sang String để tránh lỗi type
@@ -24,7 +24,7 @@ class ProfileService {
   }
 
   Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> data) async {
-    final res = await dio.put('/users/me', data: data);
+    final res = await dio.put('/residents/me', data: data);
     final updated = Map<String, dynamic>.from(res.data);
 
     if (updated['avatarUrl'] != null &&
@@ -44,7 +44,7 @@ class ProfileService {
       print('Uploading avatar: $filePath'); // log đường dẫn file
 
       final res = await dio.post(
-        '/users/me/avatar',
+        '/residents/me/avatar',
         data: formData,
         options: Options(
           headers: {

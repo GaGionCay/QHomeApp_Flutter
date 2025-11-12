@@ -46,33 +46,67 @@ class InvoiceService {
   }
 
   Future<List<InvoiceLineResponseDto>> getMyInvoices({String? unitId}) async {
+    if (unitId == null || unitId.isEmpty) {
+      debugPrint('⚠️ [InvoiceService] unitId bị trống khi lấy invoices – trả về danh sách rỗng');
+      return [];
+    }
+
     try {
-      debugPrint('🔍 [InvoiceService] Lấy invoices của user hiện tại');
-      
+      debugPrint('🔍 [InvoiceService] Lấy invoices cho unitId=$unitId từ finance-billing (group theo serviceCode)');
+
       final client = await _prepareFinanceClient();
-      final res = await client.get(
-        '/api/invoices/me',
-        queryParameters: unitId != null ? {'unitId': unitId} : null,
-      );
-      
+      final res = await client.get('/api/invoices/unit/$unitId');
+
       if (res.statusCode != 200) {
         debugPrint('⚠️ [InvoiceService] API trả mã ${res.statusCode}: ${res.data}');
         return [];
       }
 
-      final data = res.data['data'] as List?;
-      if (data == null || data.isEmpty) {
-        debugPrint('ℹ️ [InvoiceService] Không có invoice nào cho user hiện tại');
+      final data = res.data;
+      if (data is! List) {
+        debugPrint('⚠️ [InvoiceService] Payload invoices không phải dạng List: ${res.data.runtimeType}');
         return [];
       }
 
-      final invoices = (data)
-          .map((json) => InvoiceLineResponseDto.fromJson(json))
-          .toList();
+      final List<InvoiceLineResponseDto> flattened = [];
 
-      debugPrint('✅ [InvoiceService] Lấy được ${invoices.length} invoices cho user hiện tại');
-      
-      return invoices;
+      for (final invoiceRaw in data) {
+        if (invoiceRaw is! Map) continue;
+        final invoice = Map<String, dynamic>.from(invoiceRaw);
+
+        final String invoiceId = invoice['id']?.toString() ?? '';
+        final String payerUnit = invoice['payerUnitId']?.toString() ?? unitId;
+        final String status = invoice['status']?.toString() ?? 'UNKNOWN';
+        final List<dynamic>? lines = invoice['lines'] as List<dynamic>?;
+
+        if (lines == null || lines.isEmpty) continue;
+
+        for (final lineRaw in lines) {
+          if (lineRaw is! Map) continue;
+          final line = Map<String, dynamic>.from(lineRaw);
+
+          final mappedJson = <String, dynamic>{
+            'payerUnitId': payerUnit,
+            'invoiceId': invoiceId,
+            'serviceDate': _formatServiceDate(line['serviceDate']),
+            'description': line['description']?.toString() ?? '',
+            'quantity': _toDouble(line['quantity']),
+            'unit': line['unit']?.toString() ?? '',
+            'unitPrice': _toDouble(line['unitPrice']),
+            'taxAmount': _toDouble(line['taxAmount']),
+            'lineTotal': _toDouble(line['lineTotal']),
+            'serviceCode': line['serviceCode']?.toString() ?? '',
+            'status': status,
+          };
+
+          flattened.add(
+            InvoiceLineResponseDto.fromJson(mappedJson),
+          );
+        }
+      }
+
+      debugPrint('✅ [InvoiceService] Flatten được ${flattened.length} dòng hóa đơn cho unitId=$unitId');
+      return flattened;
     } catch (e, s) {
       debugPrint('ℹ️ [InvoiceService] Không lấy được invoices (coi như đã thanh toán): $e');
       debugPrint('Chi tiết stacktrace: $s');
@@ -82,31 +116,10 @@ class InvoiceService {
 
   Future<List<InvoiceCategory>> getUnpaidInvoicesByCategory({String? unitId}) async {
     try {
-      debugPrint('🔍 [InvoiceService] Lấy hóa đơn chưa thanh toán theo nhóm dịch vụ');
-
-      final client = await _prepareFinanceClient();
-      final res = await client.get(
-        '/api/invoices/me/unpaid-by-category',
-        queryParameters: unitId != null ? {'unitId': unitId} : null,
-      );
-
-      if (res.statusCode != 200) {
-        debugPrint('⚠️ [InvoiceService] API trả mã ${res.statusCode}: ${res.data}');
-        return [];
-      }
-
-      final data = res.data['data'] as List?;
-      if (data == null || data.isEmpty) {
-        debugPrint('ℹ️ [InvoiceService] Không còn hóa đơn chưa thanh toán');
-        return [];
-      }
-
-      final categories = data
-          .map((json) => InvoiceCategory.fromJson(
-                Map<String, dynamic>.from(json as Map),
-              ))
-          .toList();
-
+      debugPrint('🔍 [InvoiceService] Lấy hóa đơn chưa thanh toán theo serviceCode (client grouping)');
+      final invoices = await getMyInvoices(unitId: unitId);
+      final unpaid = invoices.where((inv) => !inv.isPaid).toList();
+      final categories = _groupInvoicesByService(unpaid);
       debugPrint('✅ [InvoiceService] Có ${categories.length} nhóm hóa đơn chưa thanh toán');
       return categories;
     } catch (e, s) {
@@ -118,31 +131,10 @@ class InvoiceService {
 
   Future<List<InvoiceCategory>> getPaidInvoicesByCategory({String? unitId}) async {
     try {
-      debugPrint('🔍 [InvoiceService] Lấy hóa đơn đã thanh toán theo nhóm dịch vụ');
-
-      final client = await _prepareFinanceClient();
-      final res = await client.get(
-        '/api/invoices/me/paid-by-category',
-        queryParameters: unitId != null ? {'unitId': unitId} : null,
-      );
-
-      if (res.statusCode != 200) {
-        debugPrint('⚠️ [InvoiceService] API trả mã ${res.statusCode}: ${res.data}');
-        return [];
-      }
-
-      final data = res.data['data'] as List?;
-      if (data == null || data.isEmpty) {
-        debugPrint('ℹ️ [InvoiceService] Không còn hóa đơn đã thanh toán');
-        return [];
-      }
-
-      final categories = data
-          .map((json) => InvoiceCategory.fromJson(
-                Map<String, dynamic>.from(json as Map),
-              ))
-          .toList();
-
+      debugPrint('🔍 [InvoiceService] Lấy hóa đơn đã thanh toán theo serviceCode (client grouping)');
+      final invoices = await getMyInvoices(unitId: unitId);
+      final paid = invoices.where((inv) => inv.isPaid).toList();
+      final categories = _groupInvoicesByService(paid);
       debugPrint('✅ [InvoiceService] Có ${categories.length} nhóm hóa đơn đã thanh toán');
       return categories;
     } catch (e, s) {
@@ -262,6 +254,56 @@ class InvoiceService {
       log('Chi tiết stacktrace: $s');
       return [];
     }
+  }
+
+  List<InvoiceCategory> _groupInvoicesByService(List<InvoiceLineResponseDto> invoices) {
+    if (invoices.isEmpty) return [];
+
+    final Map<String, List<InvoiceLineResponseDto>> grouped = {};
+
+    for (final invoice in invoices) {
+      final code = (invoice.serviceCode.isNotEmpty
+              ? invoice.serviceCode.toUpperCase()
+              : 'OTHER')
+          .trim();
+      grouped.putIfAbsent(code, () => []).add(invoice);
+    }
+
+    final List<InvoiceCategory> categories = grouped.entries.map((entry) {
+      final serviceInvoices = entry.value;
+      final total = serviceInvoices.fold<double>(
+        0,
+        (prev, invoice) => prev + invoice.lineTotal,
+      );
+      final displayName = serviceInvoices.first.serviceCodeDisplay;
+
+      return InvoiceCategory(
+        categoryCode: entry.key,
+        categoryName: displayName,
+        totalAmount: total,
+        invoiceCount: serviceInvoices.length,
+        invoices: serviceInvoices,
+      );
+    }).toList();
+
+    categories.sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
+
+    return categories;
+  }
+
+  String _formatServiceDate(dynamic value) {
+    if (value == null) return '';
+    if (value is String) return value;
+    return value.toString();
+  }
+
+  double _toDouble(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      return double.tryParse(value) ?? 0;
+    }
+    return 0;
   }
 }
 
