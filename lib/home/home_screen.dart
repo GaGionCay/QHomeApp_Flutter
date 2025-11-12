@@ -34,6 +34,7 @@ import '../feedback/feedback_screen.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../common/layout_insets.dart';
+import '../services/card_registrations_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final void Function(int)? onNavigateToTab;
@@ -612,6 +613,44 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadUnpaidServices();
   }
 
+  Future<void> _openCardRegistrationScreen() async {
+    final residentId = _profile?['residentId']?.toString();
+    final unitId = _selectedUnitId ?? (_units.isNotEmpty ? _units.first.id : null);
+
+    if (residentId == null || residentId.isEmpty || unitId == null || unitId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không xác định được cư dân hoặc căn hộ để hiển thị thẻ'),
+        ),
+      );
+      return;
+    }
+
+    final unitName = _unitDisplayName(unitId);
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CardRegistrationsScreen(
+          residentId: residentId,
+          unitId: unitId,
+          unitDisplayName: unitName,
+          units: _units,
+        ),
+      ),
+    );
+  }
+
+  String? _unitDisplayName(String? unitId) {
+    if (unitId == null || unitId.isEmpty) return null;
+    for (final unit in _units) {
+      if (unit.id == unitId) {
+        return unit.displayName;
+      }
+    }
+    return null;
+  }
+
   Future<void> _openUnpaidInvoicesScreen() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -753,6 +792,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                   const SizedBox(height: 24),
                                   _buildWeatherAndAlerts(context),
+                                  const SizedBox(height: 24),
+                                  _buildCardRegistrationCallout(context),
                                   const SizedBox(height: 24),
                                   _buildServiceDeck(context),
                                   const SizedBox(height: 24),
@@ -1263,6 +1304,69 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildCardRegistrationCallout(BuildContext context) {
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+
+    return _HomeGlassCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: 48,
+              width: 48,
+              decoration: BoxDecoration(
+                color: AppColors.primaryAqua.withOpacity(0.16),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(
+                CupertinoIcons.creditcard_fill,
+                color: AppColors.primaryAqua,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Quản lý thẻ cư dân',
+                    style: textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Tạo, quản lý và theo dõi thẻ cư dân, thang máy, thẻ xe của hộ gia đình.',
+                    style: textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _openCardRegistrationScreen,
+            icon: const Icon(Icons.open_in_new_rounded, size: 18),
+            label: const Text('Mở màn hình thẻ'),
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildUnitSelectorWidget(Size size, {required bool isDarkMode}) {
     if (_units.isEmpty) {
       return Text(
@@ -1684,6 +1788,13 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           );
         },
+      ),
+      _ServiceCardData(
+        title: 'Trạng thái thẻ',
+        subtitle: 'Theo dõi thẻ cư dân, thang máy, thẻ xe',
+        icon: Icons.credit_card_outlined,
+        accent: AppColors.primaryAqua,
+        onTap: () => _openCardRegistrationScreen(),
       ),
     ];
   }
