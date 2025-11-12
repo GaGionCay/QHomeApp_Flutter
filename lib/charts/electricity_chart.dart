@@ -1,7 +1,32 @@
-import 'package:flutter/material.dart';
+import 'dart:math' as math;
+import 'dart:ui';
+
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../models/electricity_monthly.dart';
+import '../theme/app_colors.dart';
+
+enum _ElectricityRange {
+  three,
+  six,
+  twelve,
+}
+
+extension _ElectricityRangeX on _ElectricityRange {
+  int get months => switch (this) {
+        _ElectricityRange.three => 3,
+        _ElectricityRange.six => 6,
+        _ElectricityRange.twelve => 12,
+      };
+
+  String get label => switch (this) {
+        _ElectricityRange.three => '3 tháng',
+        _ElectricityRange.six => '6 tháng',
+        _ElectricityRange.twelve => '12 tháng',
+      };
+}
 
 class ElectricityChart extends StatefulWidget {
   final List<ElectricityMonthly> monthlyData;
@@ -16,283 +41,619 @@ class ElectricityChart extends StatefulWidget {
 }
 
 class _ElectricityChartState extends State<ElectricityChart> {
-  late PageController _pageController;
-  int _currentPage = 0;
-  int _itemsPerPage = 3; // Hiển thị 3 tháng mỗi lần
+  late List<ElectricityMonthly> _sortedData;
+  _ElectricityRange _range = _ElectricityRange.three;
+
+  final NumberFormat _currencyFormatter = NumberFormat.currency(
+    locale: 'vi_VN',
+    symbol: '₫',
+    decimalDigits: 0,
+  );
+  final NumberFormat _compactFormatter = NumberFormat.compactCurrency(
+    locale: 'vi_VN',
+    symbol: '₫',
+    decimalDigits: 0,
+  );
 
   @override
   void initState() {
     super.initState();
-    // Initialize to show the most recent 3 months
-    if (widget.monthlyData.isNotEmpty) {
-      final totalPages = (widget.monthlyData.length / _itemsPerPage).ceil();
-      _currentPage = totalPages > 0 ? totalPages - 1 : 0; // Start from last page
-    }
-    _pageController = PageController(initialPage: _currentPage);
+    _sortedData = _prepare(widget.monthlyData);
   }
 
   @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  int get _totalPages {
-    if (widget.monthlyData.isEmpty) return 1;
-    return (widget.monthlyData.length / _itemsPerPage).ceil();
-  }
-
-  List<ElectricityMonthly> _getCurrentPageData() {
-    if (widget.monthlyData.isEmpty) return [];
-    
-    final startIndex = _currentPage * _itemsPerPage;
-    final endIndex = (startIndex + _itemsPerPage).clamp(0, widget.monthlyData.length);
-    
-    if (startIndex >= widget.monthlyData.length) {
-      return [];
+  void didUpdateWidget(ElectricityChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.monthlyData, widget.monthlyData)) {
+      _sortedData = _prepare(widget.monthlyData);
     }
-    
-    return widget.monthlyData.sublist(startIndex, endIndex);
   }
 
-  double _getMaxAmount() {
-    if (widget.monthlyData.isEmpty) return 1000000;
-    return widget.monthlyData
-            .map((e) => e.amount)
-            .reduce((a, b) => a > b ? a : b) *
-        1.2; // Add 20% padding
+  List<ElectricityMonthly> _prepare(List<ElectricityMonthly> data) {
+    final sorted = List<ElectricityMonthly>.from(data)
+      ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
+    return sorted;
+  }
+
+  List<ElectricityMonthly> get _visibleData {
+    final data = _sortedData;
+    final months = _range.months;
+    if (data.length <= months) return data;
+    return data.sublist(data.length - months);
+  }
+
+  double get _maxAmount {
+    final data = _visibleData;
+    if (data.isEmpty) return 1;
+    final maxValue = data.map((e) => e.amount).reduce(math.max);
+    if (maxValue <= 0) return 1;
+    return maxValue * 1.2;
+  }
+
+  double get _total =>
+      _visibleData.fold(0, (double sum, item) => sum + item.amount);
+
+  double get _average {
+    final data = _visibleData;
+    if (data.isEmpty) return 0;
+    return _total / data.length;
+  }
+
+  double? get _delta {
+    final data = _visibleData;
+    if (data.length < 2) return null;
+    final latest = data.last.amount;
+    final previous = data[data.length - 2].amount;
+    if (previous == 0) return null;
+    return ((latest - previous) / previous) * 100;
+  }
+
+  LinearGradient _cardGradient(BuildContext context) {
+    final theme = Theme.of(context);
+    return theme.brightness == Brightness.dark
+        ? AppColors.darkGlassLayerGradient()
+        : AppColors.glassLayerGradient();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.monthlyData.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(24),
-        child: const Center(
-          child: Text(
-            'Chưa có dữ liệu tiền điện',
-            style: TextStyle(color: Colors.grey),
-          ),
-        ),
-      );
+    final theme = Theme.of(context);
+
+    if (_sortedData.isEmpty) {
+      return _buildEmptyState(context);
     }
 
-    final currentData = _getCurrentPageData();
-    final maxAmount = _getMaxAmount();
+    final visible = _visibleData;
+    final delta = _delta;
+    final deltaLabel = delta == null
+        ? 'Không đổi'
+        : '${delta >= 0 ? '+' : ''}${delta.toStringAsFixed(1)}%';
+    final deltaColor = delta == null
+        ? theme.colorScheme.onSurfaceVariant
+        : (delta >= 0 ? AppColors.success : AppColors.danger);
 
-    return Column(
-      children: [
-        // Chart header with month info
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Tiền điện',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[800],
-                ),
-              ),
-              if (_totalPages > 1)
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.chevron_left),
-                      onPressed: _currentPage > 0
-                          ? () {
-                              setState(() {
-                                _currentPage--;
-                                _pageController.previousPage(
-                                  duration: const Duration(milliseconds: 300),
-                                  curve: Curves.easeInOut,
-                                );
-                              });
-                            }
-                          : null,
-                      iconSize: 20,
-                    ),
-                    Text(
-                      '${_currentPage + 1}/$_totalPages',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.chevron_right),
-                      onPressed: _currentPage < _totalPages - 1
-                          ? () {
-                              setState(() {
-                                _currentPage++;
-                                _pageController.nextPage(
-                                  duration: const Duration(milliseconds: 300),
-                                  curve: Curves.easeInOut,
-                                );
-                              });
-                            }
-                          : null,
-                      iconSize: 20,
-                    ),
-                  ],
-                ),
-            ],
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(28),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: _cardGradient(context),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: theme.colorScheme.outline.withOpacity(0.08),
+            ),
+            boxShadow: AppColors.subtleShadow,
           ),
-        ),
-
-        // Chart container with horizontal scroll
-        Container(
-          height: 250,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: PageView.builder(
-            controller: _pageController,
-            onPageChanged: (page) {
-              setState(() {
-                _currentPage = page;
-              });
-            },
-            itemCount: _totalPages,
-            itemBuilder: (context, pageIndex) {
-              final startIndex = pageIndex * _itemsPerPage;
-              final endIndex = (startIndex + _itemsPerPage)
-                  .clamp(0, widget.monthlyData.length);
-              final pageData = widget.monthlyData.sublist(startIndex, endIndex);
-
-              return _buildChart(pageData, maxAmount);
-            },
-          ),
-        ),
-
-        // Month labels
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: currentData.map((data) {
-              return Expanded(
-                child: Center(
-                  child: Text(
-                    data.monthDisplay,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[700],
-                      fontWeight: FontWeight.w500,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(context),
+                const SizedBox(height: 20),
+                SizedBox(
+                  height: 220,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 350),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    child: _buildBarChart(
+                      context,
+                      visible,
+                      key: ValueKey('${_range.name}-${visible.length}'),
                     ),
                   ),
                 ),
-              );
-            }).toList(),
+                const SizedBox(height: 18),
+                _buildStatsRow(context, deltaLabel, deltaColor),
+                const SizedBox(height: 18),
+                _buildBreakdown(context, visible),
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    final theme = Theme.of(context);
+    final secondary = theme.colorScheme.onSurfaceVariant;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Tiền điện sinh hoạt',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Theo dõi mức tiêu thụ và biến động chi phí',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: secondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        _buildRangeSelector(context),
       ],
     );
   }
 
-  Widget _buildChart(List<ElectricityMonthly> data, double maxAmount) {
-    if (data.isEmpty) {
-      return const Center(child: Text('Không có dữ liệu'));
-    }
+  Widget _buildRangeSelector(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: isDark
+            ? theme.colorScheme.surface.withOpacity(0.12)
+            : Colors.white.withOpacity(0.72),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: theme.colorScheme.outline.withOpacity(0.08),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: _ElectricityRange.values.map((range) {
+          final selected = range == _range;
+          return GestureDetector(
+            onTap: () {
+              if (selected) return;
+              setState(() => _range = range);
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: selected
+                    ? theme.colorScheme.primary.withOpacity(0.16)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                range.label,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildBarChart(
+    BuildContext context,
+    List<ElectricityMonthly> data, {
+    Key? key,
+  }) {
+    final theme = Theme.of(context);
+    final maxY = _maxAmount;
 
     return BarChart(
+      key: key,
       BarChartData(
+        maxY: maxY,
         alignment: BarChartAlignment.spaceAround,
-        maxY: maxAmount,
         barTouchData: BarTouchData(
           enabled: true,
           touchTooltipData: BarTouchTooltipData(
-            tooltipBgColor: Colors.teal,
-            tooltipRoundedRadius: 8,
-            tooltipPadding: const EdgeInsets.all(8),
-            tooltipMargin: 8,
+            tooltipBgColor: theme.brightness == Brightness.dark
+                ? AppColors.navySurface.withOpacity(0.85)
+                : Colors.black.withOpacity(0.82),
+            tooltipRoundedRadius: 12,
+            tooltipPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 8,
+            ),
             getTooltipItem: (group, groupIndex, rod, rodIndex) {
               return BarTooltipItem(
-                NumberFormat.currency(
-                  locale: 'vi_VN',
-                  symbol: '₫',
-                  decimalDigits: 0,
-                ).format(rod.toY),
+                _currencyFormatter.format(rod.toY),
                 const TextStyle(
                   color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
                 ),
               );
             },
           ),
         ),
         titlesData: FlTitlesData(
-          show: true,
           rightTitles: const AxisTitles(
             sideTitles: SideTitles(showTitles: false),
           ),
           topTitles: const AxisTitles(
             sideTitles: SideTitles(showTitles: false),
           ),
-          bottomTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) {
+                final index = value.toInt();
+                if (index < 0 || index >= data.length) {
+                  return const SizedBox.shrink();
+                }
+
+                final label = data[index].monthDisplay;
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant
+                              .withOpacity(0.8),
+                        ),
+                  ),
+                );
+              },
+            ),
           ),
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 60,
+              reservedSize: 72,
               getTitlesWidget: (value, meta) {
-                if (value % (maxAmount / 4) == 0 || value == maxAmount) {
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: Text(
-                      NumberFormat.compactCurrency(
-                        locale: 'vi_VN',
-                        symbol: '₫',
-                        decimalDigits: 0,
-                      ).format(value),
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  );
+                final interval = maxY / 4;
+                final matchesInterval =
+                    (value % interval).abs() < interval * 0.05;
+                if (value == maxY || matchesInterval) {
+                  return _buildAxisLabel(context, value);
                 }
-                return const Text('');
+                return const SizedBox.shrink();
               },
             ),
-          ),
-        ),
-        borderData: FlBorderData(
-          show: true,
-          border: Border(
-            bottom: BorderSide(color: Colors.grey[300]!),
-            left: BorderSide(color: Colors.grey[300]!),
           ),
         ),
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,
-          horizontalInterval: maxAmount / 4,
-          getDrawingHorizontalLine: (value) {
-            return FlLine(
-              color: Colors.grey[200]!,
-              strokeWidth: 1,
-            );
-          },
+          horizontalInterval: maxY / 4,
+          getDrawingHorizontalLine: (value) => FlLine(
+            color: theme.colorScheme.outline.withOpacity(0.08),
+            strokeWidth: 1,
+          ),
         ),
-        barGroups: data.asMap().entries.map((entry) {
-          final index = entry.key;
-          final monthly = entry.value;
+        borderData: FlBorderData(
+          show: true,
+          border: Border(
+            left: BorderSide(
+              color: theme.colorScheme.outline.withOpacity(0.12),
+            ),
+            bottom: BorderSide(
+              color: theme.colorScheme.outline.withOpacity(0.12),
+            ),
+          ),
+        ),
+        barGroups: List.generate(data.length, (index) {
+          final monthly = data[index];
           return BarChartGroupData(
             x: index,
             barRods: [
               BarChartRodData(
                 toY: monthly.amount,
-                color: const Color(0xFF26A69A),
-                width: 40,
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [
+                    AppColors.primaryEmerald.withOpacity(0.95),
+                    AppColors.primaryAqua.withOpacity(0.85),
+                  ],
+                ),
+                width: 28,
                 borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(8),
+                  top: Radius.circular(14),
                 ),
               ),
             ],
           );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildAxisLabel(BuildContext context, double value) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Text(
+        _compactFormatter.format(value),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: Theme.of(context)
+                  .colorScheme
+                  .onSurfaceVariant
+                  .withOpacity(0.7),
+            ),
+      ),
+    );
+  }
+
+  Widget _buildStatsRow(
+    BuildContext context,
+    String deltaLabel,
+    Color deltaColor,
+  ) {
+    final theme = Theme.of(context);
+    final secondary = theme.colorScheme.onSurfaceVariant;
+
+    return Row(
+      children: [
+        Expanded(
+          child: _MiniStatCard(
+            label: 'Tổng ${_range.months} tháng',
+            value: _currencyFormatter.format(_total),
+            icon: Icons.flash_on_rounded,
+            gradient: AppColors.primaryGradient(),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _MiniStatCard(
+            label: 'Bình quân tháng',
+            value: _currencyFormatter.format(_average),
+            icon: Icons.auto_graph_rounded,
+            gradient: LinearGradient(
+              colors: [
+                AppColors.skyMist.withOpacity(0.95),
+                AppColors.primaryBlue.withOpacity(0.85),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: theme.brightness == Brightness.dark
+                  ? theme.colorScheme.surface.withOpacity(0.14)
+                  : Colors.white.withOpacity(0.78),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: theme.colorScheme.outline.withOpacity(0.08),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        deltaLabel.startsWith('+')
+                            ? Icons.trending_up_rounded
+                            : deltaLabel.startsWith('-')
+                                ? Icons.trending_down_rounded
+                                : Icons.horizontal_rule_rounded,
+                        color: deltaColor,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        deltaLabel,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: deltaColor,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'So với kỳ trước',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: secondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBreakdown(
+    BuildContext context,
+    List<ElectricityMonthly> visibleData,
+  ) {
+    final theme = Theme.of(context);
+    final secondary = theme.colorScheme.onSurfaceVariant;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Chi tiết từng tháng',
+          style: theme.textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...visibleData.reversed.map((item) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    item.monthDisplay,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: secondary,
+                    ),
+                  ),
+                ),
+                Text(
+                  _currencyFormatter.format(item.amount),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          );
         }).toList(),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context) {
+    final theme = Theme.of(context);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(28),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: _cardGradient(context),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: theme.colorScheme.outline.withOpacity(0.08),
+            ),
+            boxShadow: AppColors.subtleShadow,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(28, 32, 28, 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  height: 58,
+                  width: 58,
+                  decoration: BoxDecoration(
+                    gradient: AppColors.primaryGradient(),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: AppColors.subtleShadow,
+                  ),
+                  child: const Icon(
+                    Icons.flash_off_rounded,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Chưa có dữ liệu tiền điện',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Dữ liệu sẽ xuất hiện khi có hóa đơn điện đầu tiên từ ban quản lý.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
 }
 
+class _MiniStatCard extends StatelessWidget {
+  const _MiniStatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.gradient,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Gradient gradient;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final secondary = theme.colorScheme.onSurfaceVariant;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.brightness == Brightness.dark
+            ? theme.colorScheme.surface.withOpacity(0.14)
+            : Colors.white.withOpacity(0.78),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: theme.colorScheme.outline.withOpacity(0.08),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: 36,
+              width: 36,
+              decoration: BoxDecoration(
+                gradient: gradient,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: AppColors.subtleShadow,
+              ),
+              child: Icon(
+                icon,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              value,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: secondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

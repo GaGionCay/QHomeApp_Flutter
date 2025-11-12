@@ -1,14 +1,20 @@
+import 'dart:async';
+import 'dart:ui';
+
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:app_links/app_links.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:async';
+import 'package:url_launcher/url_launcher.dart';
+
 import '../auth/api_client.dart';
-import '../models/invoice_line.dart';
+import '../common/layout_insets.dart';
 import '../models/invoice_category.dart';
+import '../models/invoice_line.dart';
 import '../models/unit_info.dart';
+import '../theme/app_colors.dart';
 import 'invoice_service.dart';
+import 'paid_invoices_screen.dart';
 
 class InvoiceListScreen extends StatefulWidget {
   final String? initialUnitId;
@@ -22,6 +28,46 @@ class InvoiceListScreen extends StatefulWidget {
 
   @override
   State<InvoiceListScreen> createState() => _InvoiceListScreenState();
+}
+
+class _InvoicesGlassCard extends StatelessWidget {
+  const _InvoicesGlassCard({
+    required this.child,
+    this.padding,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final borderRadius = BorderRadius.circular(28);
+    final gradient = theme.brightness == Brightness.dark
+        ? AppColors.darkGlassLayerGradient()
+        : AppColors.glassLayerGradient();
+
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: gradient,
+            borderRadius: borderRadius,
+            border: Border.all(
+              color: theme.colorScheme.outline.withOpacity(0.08),
+            ),
+            boxShadow: AppColors.subtleShadow,
+          ),
+          child: Padding(
+            padding: padding ?? const EdgeInsets.all(24),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _InvoiceListScreenState extends State<InvoiceListScreen>
@@ -47,7 +93,8 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
         ? List<UnitInfo>.from(widget.initialUnits!)
         : <UnitInfo>[];
     _selectedUnitId = widget.initialUnitId;
-    debugPrint('🧾 [InvoiceList] initState - initialUnit=${_selectedUnitId ?? 'null'}, initialUnits=${_units.length}');
+    debugPrint(
+        '🧾 [InvoiceList] initState - initialUnit=${_selectedUnitId ?? 'null'}, initialUnits=${_units.length}');
     _futureCategories = _loadCategories();
     _listenForPaymentResult();
     _checkPendingPayment();
@@ -68,20 +115,25 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
   }
 
   Future<List<InvoiceCategory>> _loadCategories() async {
-    debugPrint('🧾 [InvoiceList] _loadCategories() bắt đầu - units=${_units.length}, selectedUnit=$_selectedUnitId');
+    debugPrint(
+        '🧾 [InvoiceList] _loadCategories() bắt đầu - units=${_units.length}, selectedUnit=$_selectedUnitId');
     if (_selectedUnitId == null) {
       final saved = await _getSavedUnitId();
       if (saved != null) {
         _selectedUnitId = saved;
-        debugPrint('🧾 [InvoiceList] Sử dụng unit từ SharedPreferences: $_selectedUnitId');
+        debugPrint(
+            '🧾 [InvoiceList] Sử dụng unit từ SharedPreferences: $_selectedUnitId');
       } else {
-        debugPrint('⚠️ [InvoiceList] Chưa chọn căn hộ nào, trả về danh sách rỗng');
+        debugPrint(
+            '⚠️ [InvoiceList] Chưa chọn căn hộ nào, trả về danh sách rỗng');
         return [];
       }
     }
 
-    debugPrint('🧾 [InvoiceList] Gọi API unpaid-by-category (unitId=$_selectedUnitId)');
-    final result = await _service.getUnpaidInvoicesByCategory(unitId: _selectedUnitId);
+    debugPrint(
+        '🧾 [InvoiceList] Gọi API unpaid-by-category (unitId=$_selectedUnitId)');
+    final result =
+        await _service.getUnpaidInvoicesByCategory(unitId: _selectedUnitId);
     debugPrint('🧾 [InvoiceList] API trả về ${result.length} nhóm');
     return result;
   }
@@ -100,7 +152,8 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
 
       final unitId = _selectedUnitId ?? await _getSavedUnitId();
       if (unitId == null) {
-        debugPrint('⚠️ [InvoiceList] Không xác định được căn hộ khi kiểm tra thanh toán');
+        debugPrint(
+            '⚠️ [InvoiceList] Không xác định được căn hộ khi kiểm tra thanh toán');
         return;
       }
 
@@ -171,6 +224,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
 
       if (uri.scheme == 'qhomeapp' && uri.host == 'vnpay-result') {
         final invoiceId = uri.queryParameters['invoiceId'];
+        final invoiceLabel = invoiceId ?? 'hóa đơn';
         final responseCode = uri.queryParameters['responseCode'];
 
         if (!mounted) return;
@@ -184,8 +238,8 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
 
         if (responseCode == '00') {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ Thanh toán hóa đơn thành công!'),
+            SnackBar(
+              content: Text('✅ $invoiceLabel đã được thanh toán thành công!'),
               behavior: SnackBarBehavior.floating,
               backgroundColor: Colors.green,
             ),
@@ -195,8 +249,8 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
           });
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ Thanh toán hóa đơn thất bại'),
+            SnackBar(
+              content: Text('❌ Thanh toán $invoiceLabel thất bại'),
               behavior: SnackBarBehavior.floating,
               backgroundColor: Colors.red,
             ),
@@ -211,6 +265,31 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
     if (initialUri != null) {
       debugPrint('🚀 [InvoiceList] App được mở từ link: $initialUri');
     }
+  }
+
+  LinearGradient _backgroundGradient(BuildContext context) {
+    final theme = Theme.of(context);
+    if (theme.brightness == Brightness.dark) {
+      return const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Color(0xFF050F1F),
+          Color(0xFF0F1E33),
+          Color(0xFF152B47),
+        ],
+      );
+    }
+
+    return const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        Color(0xFFE8F4FF),
+        Color(0xFFF2F6FF),
+        Color(0xFFF9FBFF),
+      ],
+    );
   }
 
   IconData _iconForServiceCode(String serviceCode) {
@@ -259,18 +338,252 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
     }
   }
 
+  DateTime? _parseServiceDate(String value) {
+    if (value.isEmpty) return null;
+    try {
+      return DateTime.parse(value);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Widget _buildSummaryStatTile({
+    required String label,
+    required String value,
+    required IconData icon,
+    required Color accent,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final onSurface = theme.colorScheme.onSurface;
+    final secondary = isDark
+        ? Colors.white.withOpacity(0.7)
+        : theme.colorScheme.onSurfaceVariant;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: isDark
+            ? theme.colorScheme.surface.withOpacity(0.12)
+            : Colors.white.withOpacity(0.78),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: theme.colorScheme.outline.withOpacity(0.08),
+        ),
+        boxShadow: AppColors.subtleShadow,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomLeft,
+                  end: Alignment.topRight,
+                  colors: [
+                    accent.withOpacity(0.9),
+                    accent.withOpacity(0.5),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: AppColors.subtleShadow,
+              ),
+              padding: const EdgeInsets.all(10),
+              child: Icon(
+                icon,
+                size: 22,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              value,
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: onSurface,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: secondary,
+                height: 1.3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOverviewHeader(List<InvoiceCategory> categories) {
+    final unpaidInvoices = <InvoiceLineResponseDto>[];
+    double totalAmount = 0;
+    int totalInvoices = 0;
+
+    for (final category in categories) {
+      totalAmount += category.totalAmount;
+      totalInvoices += category.invoiceCount;
+      unpaidInvoices.addAll(
+        category.invoices.where((invoice) => !invoice.isPaid),
+      );
+    }
+
+    unpaidInvoices.sort((a, b) {
+      final aDate = _parseServiceDate(a.serviceDate);
+      final bDate = _parseServiceDate(b.serviceDate);
+      if (aDate == null && bDate == null) return 0;
+      if (aDate == null) return 1;
+      if (bDate == null) return -1;
+      return aDate.compareTo(bDate);
+    });
+
+    final average =
+        unpaidInvoices.isEmpty ? 0.0 : totalAmount / unpaidInvoices.length;
+    final nextBillingDate = unpaidInvoices.isNotEmpty
+        ? _parseServiceDate(unpaidInvoices.first.serviceDate)
+        : null;
+
+    final nextBillingText =
+        (unpaidInvoices.isNotEmpty && nextBillingDate != null)
+            ? DateFormat('dd/MM', 'vi_VN').format(nextBillingDate)
+            : 'Không còn kỳ hạn';
+
+    return _InvoicesGlassCard(
+      padding: const EdgeInsets.fromLTRB(24, 26, 24, 22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Tổng quan thanh toán',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: _buildSummaryStatTile(
+                  label: 'Cần thanh toán',
+                  value: _formatMoney(totalAmount),
+                  icon: Icons.payments_rounded,
+                  accent: AppColors.primaryEmerald,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: _buildSummaryStatTile(
+                  label: 'Số hóa đơn',
+                  value: '$totalInvoices khoản',
+                  icon: Icons.receipt_long_outlined,
+                  accent: AppColors.primaryBlue,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _buildSummaryStatTile(
+                  label: 'Bình quân mỗi hóa đơn',
+                  value: _formatMoney(average),
+                  icon: Icons.timeline_rounded,
+                  accent: AppColors.skyMist,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: _buildSummaryStatTile(
+                  label: 'Kỳ thanh toán gần nhất',
+                  value: nextBillingText,
+                  icon: Icons.event_available_outlined,
+                  accent: AppColors.warning,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetaChip({
+    required IconData icon,
+    required String label,
+  }) {
+    final theme = Theme.of(context);
+    final secondary = theme.colorScheme.onSurfaceVariant;
+    final isDark = theme.brightness == Brightness.dark;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: isDark
+            ? theme.colorScheme.surface.withOpacity(0.14)
+            : Colors.white.withOpacity(0.78),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: theme.colorScheme.outline.withOpacity(0.08),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: secondary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: secondary,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildUnitSummary() {
     if (_selectedUnitId == null) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        child: const Text(
-          'Bạn chưa được gán vào căn hộ nào',
-          style: TextStyle(fontSize: 14, color: Colors.black54),
+      return _InvoicesGlassCard(
+        padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+        child: Row(
+          children: [
+            Container(
+              height: 54,
+              width: 54,
+              decoration: BoxDecoration(
+                gradient: AppColors.primaryGradient(),
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: AppColors.subtleShadow,
+              ),
+              child: const Icon(
+                Icons.apartment_rounded,
+                color: Colors.white,
+                size: 26,
+              ),
+            ),
+            const SizedBox(width: 18),
+            Expanded(
+              child: Text(
+                'Bạn chưa được gán vào căn hộ nào',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -286,30 +599,64 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
     final unitName = unit?.displayName ?? _selectedUnitId;
     final building = unit?.buildingName ?? unit?.buildingCode ?? '';
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
+    final theme = Theme.of(context);
+    final textColor = theme.brightness == Brightness.dark
+        ? Colors.white
+        : AppColors.textPrimary;
+    final secondaryColor = theme.colorScheme.onSurfaceVariant;
+
+    return _InvoicesGlassCard(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Căn hộ đang xem',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            unitName!,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-          ),
-          if (building.isNotEmpty)
-            Text(
-              'Tòa: $building',
-              style: const TextStyle(fontSize: 13, color: Colors.black54),
+          Container(
+            height: 58,
+            width: 58,
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient(),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: AppColors.subtleShadow,
             ),
+            child: const Icon(
+              Icons.home_work_outlined,
+              color: Colors.white,
+              size: 26,
+            ),
+          ),
+          const SizedBox(width: 18),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Căn hộ đang xem',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: secondaryColor,
+                    letterSpacing: 0.3,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  unitName!,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: textColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (building.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Thuộc tòa $building',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: secondaryColor,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -388,11 +735,10 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_pendingInvoicePaymentKey, invoice.invoiceId);
 
-      final paymentUrl =
-          await _service.createVnpayPaymentUrl(
-            invoice.invoiceId,
-            unitId: _selectedUnitId,
-          );
+      final paymentUrl = await _service.createVnpayPaymentUrl(
+        invoice.invoiceId,
+        unitId: _selectedUnitId,
+      );
 
       final uri = Uri.parse(paymentUrl);
       if (await canLaunchUrl(uri)) {
@@ -427,88 +773,145 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
   }
 
   Widget _buildCategorySelector(List<InvoiceCategory> categories) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: categories.map((category) {
-          final bool selected = category.categoryCode == _selectedCategoryCode;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ChoiceChip(
-              label:
-                  Text('${category.categoryName} (${category.invoiceCount})'),
-              selected: selected,
-              onSelected: (value) {
-                if (!value) return;
-                setState(() {
-                  _selectedCategoryCode = category.categoryCode;
-                });
-              },
-              selectedColor: const Color(0xFF26A69A),
-              labelStyle: TextStyle(
-                color: selected ? Colors.white : Colors.black87,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+    final theme = Theme.of(context);
+    return SizedBox(
+      height: 48,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: categories.length,
+        separatorBuilder: (context, _) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          final category = categories[index];
+          final selected = category.categoryCode == _selectedCategoryCode;
+          final accent = _colorForServiceCode(category.categoryCode);
+          final icon = _iconForServiceCode(category.categoryCode);
+
+          return GestureDetector(
+            onTap: () {
+              setState(() {
+                _selectedCategoryCode = category.categoryCode;
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                color: selected
+                    ? accent.withOpacity(0.18)
+                    : theme.brightness == Brightness.dark
+                        ? theme.colorScheme.surface.withOpacity(0.12)
+                        : Colors.white.withOpacity(0.74),
+                border: Border.all(
+                  color: selected
+                      ? accent.withOpacity(0.7)
+                      : theme.colorScheme.outline.withOpacity(0.16),
+                ),
+                boxShadow: selected ? AppColors.subtleShadow : const [],
               ),
-              backgroundColor: Colors.white,
-              side: BorderSide(
-                color:
-                    selected ? const Color(0xFF26A69A) : Colors.grey.shade300,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    icon,
+                    size: 18,
+                    color: selected
+                        ? accent
+                        : theme.colorScheme.onSurfaceVariant.withOpacity(0.8),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${category.categoryName} (${category.invoiceCount})',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: selected
+                          ? accent
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
-              elevation: selected ? 2 : 0,
             ),
           );
-        }).toList(),
+        },
       ),
     );
   }
 
   Widget _buildCategorySummary(InvoiceCategory category) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+    final theme = Theme.of(context);
+    final accent = _colorForServiceCode(category.categoryCode);
+    final icon = _iconForServiceCode(category.categoryCode);
+    final secondary = theme.colorScheme.onSurfaceVariant;
+
+    return _InvoicesGlassCard(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            category.categoryName,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 12),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.payments, color: Color(0xFF26A69A)),
-              const SizedBox(width: 8),
+              Container(
+                height: 54,
+                width: 54,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomLeft,
+                    end: Alignment.topRight,
+                    colors: [
+                      accent.withOpacity(0.9),
+                      accent.withOpacity(0.55),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: AppColors.subtleShadow,
+                ),
+                child: Icon(icon, color: Colors.white, size: 26),
+              ),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Tổng cần thanh toán: ${_formatMoney(category.totalAmount)}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
+                      category.categoryName,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
+                    const SizedBox(height: 6),
                     Text(
                       '${category.invoiceCount} hóa đơn chưa thanh toán',
-                      style:
-                          const TextStyle(fontSize: 13, color: Colors.black54),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: secondary,
+                      ),
                     ),
                   ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Divider(
+            color: secondary.withOpacity(0.1),
+            height: 1,
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Text(
+                'Tổng cần thanh toán',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: secondary,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                _formatMoney(category.totalAmount),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: accent,
                 ),
               ),
             ],
@@ -519,27 +922,46 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
   }
 
   Widget _buildAllPaidState() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+    final theme = Theme.of(context);
+    final secondary = theme.colorScheme.onSurfaceVariant;
+    return _InvoicesGlassCard(
+      padding: const EdgeInsets.fromLTRB(24, 26, 24, 28),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        children: const [
-          Icon(Icons.celebration, color: Colors.green, size: 48),
-          SizedBox(height: 12),
+        children: [
+          Container(
+            height: 58,
+            width: 58,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.success.withOpacity(0.85),
+                  AppColors.primaryEmerald.withOpacity(0.8),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: AppColors.subtleShadow,
+            ),
+            child: const Icon(
+              Icons.celebration,
+              color: Colors.white,
+              size: 30,
+            ),
+          ),
+          const SizedBox(height: 18),
           Text(
-            '🎉 Bạn đã thanh toán hết các hóa đơn chưa thanh toán',
-            style: TextStyle(fontSize: 15, color: Colors.black54),
+            'Bạn đã hoàn tất tất cả hóa đơn chưa thanh toán',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Kiểm tra mục lịch sử để xem lại các giao dịch đã thanh toán.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: secondary,
+            ),
             textAlign: TextAlign.center,
           ),
         ],
@@ -548,27 +970,45 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
   }
 
   Widget _buildCategoryEmptyState(InvoiceCategory category) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+    final theme = Theme.of(context);
+    final accent = _colorForServiceCode(category.categoryCode);
+    final icon = _iconForServiceCode(category.categoryCode);
+    final secondary = theme.colorScheme.onSurfaceVariant;
+
+    return _InvoicesGlassCard(
+      padding: const EdgeInsets.fromLTRB(24, 26, 24, 28),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.celebration, color: Colors.green, size: 48),
-          const SizedBox(height: 12),
+          Container(
+            height: 54,
+            width: 54,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  accent.withOpacity(0.85),
+                  accent.withOpacity(0.55),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: AppColors.subtleShadow,
+            ),
+            child: Icon(icon, color: Colors.white, size: 28),
+          ),
+          const SizedBox(height: 16),
           Text(
-            'Bạn đã thanh toán hết hóa đơn ${category.categoryName.toLowerCase()}',
-            style: const TextStyle(fontSize: 15, color: Colors.black54),
+            'Không còn hóa đơn ${category.categoryName.toLowerCase()} chưa thanh toán',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Chúng tôi sẽ thông báo ngay khi có hóa đơn mới được phát hành.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: secondary,
+            ),
             textAlign: TextAlign.center,
           ),
         ],
@@ -582,21 +1022,13 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
     final statusColor = _statusColor(invoice.status);
     final bool isPaid = invoice.isPaid;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
+    final theme = Theme.of(context);
+    final secondary = theme.colorScheme.onSurfaceVariant;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: _InvoicesGlassCard(
+        padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -604,14 +1036,23 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  height: 54,
+                  width: 54,
                   decoration: BoxDecoration(
-                    color: serviceColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomLeft,
+                      end: Alignment.topRight,
+                      colors: [
+                        serviceColor.withOpacity(0.92),
+                        serviceColor.withOpacity(0.6),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: AppColors.subtleShadow,
                   ),
-                  child: Icon(serviceIcon, color: serviceColor, size: 28),
+                  child: Icon(serviceIcon, color: Colors.white, size: 26),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 18),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -621,119 +1062,113 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                           Expanded(
                             child: Text(
                               invoice.serviceCodeDisplay,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 16,
-                                color: Colors.black87,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                           ),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
+                              color: statusColor.withOpacity(0.16),
+                              borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
                               invoice.status.toUpperCase(),
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
                                 color: statusColor,
+                                letterSpacing: 0.6,
                               ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 6),
                       Text(
                         invoice.description,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Colors.black54,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: secondary,
+                          height: 1.4,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 6),
-                      Row(
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 16,
+                        runSpacing: 8,
                         children: [
-                          const Icon(Icons.calendar_today,
-                              size: 14, color: Colors.black54),
-                          const SizedBox(width: 4),
-                          Text(
-                            _formatDate(invoice.serviceDate),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.black54,
-                            ),
+                          _buildMetaChip(
+                            icon: Icons.calendar_today_outlined,
+                            label: _formatDate(invoice.serviceDate),
                           ),
-                          const SizedBox(width: 16),
-                          Text(
-                            '${invoice.quantity.toStringAsFixed(2)} ${invoice.unit}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.black54,
+                          if (invoice.quantity > 0 && invoice.unit.isNotEmpty)
+                            _buildMetaChip(
+                              icon: Icons.align_horizontal_left_rounded,
+                              label:
+                                  '${invoice.quantity.toStringAsFixed(2)} ${invoice.unit}',
                             ),
-                          ),
                         ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _formatMoney(invoice.lineTotal),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF26A69A),
-                        ),
                       ),
                     ],
                   ),
                 ),
               ],
             ),
+            const SizedBox(height: 18),
+            Divider(color: secondary.withOpacity(0.12), height: 1),
             const SizedBox(height: 12),
-            if (!isPaid)
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF26A69A),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+            Row(
+              children: [
+                Text(
+                  _formatMoney(invoice.lineTotal),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: serviceColor,
+                  ),
+                ),
+                const Spacer(),
+                if (!isPaid)
+                  FilledButton.icon(
+                    onPressed: () => _handlePayInvoice(invoice),
+                    icon: const Icon(Icons.payment_rounded),
+                    label: const Text('Thanh toán ngay'),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.success.withOpacity(0.16),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.check_circle,
+                          color: AppColors.success,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Đã thanh toán',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.success,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  onPressed: () => _handlePayInvoice(invoice),
-                  child: const Text(
-                    'Thanh toán',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            if (isPaid)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Text(
-                  '✅ Đã thanh toán',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.green,
-                  ),
-                ),
-              ),
+              ],
+            ),
           ],
         ),
       ),
@@ -742,96 +1177,214 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final mediaPadding = MediaQuery.of(context).padding;
+    final topOffset = mediaPadding.top + kToolbarHeight + 18;
+    final bottomPadding =
+        LayoutInsets.bottomNavContentPadding(context, minimumGap: 28);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F9),
+      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Hóa đơn'),
-        backgroundColor: const Color(0xFF26A69A),
-        foregroundColor: Colors.white,
+        title: const Text('Hóa đơn & thanh toán'),
+        backgroundColor: Colors.transparent,
         elevation: 0,
-      ),
-      body: FutureBuilder<List<InvoiceCategory>>(
-        future: _futureCategories,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
-                  const SizedBox(height: 16),
-                  Text(
-                    '⚠️ Lỗi tải dữ liệu: ${snapshot.error}',
-                    style: const TextStyle(fontSize: 16, color: Colors.red),
-                    textAlign: TextAlign.center,
+        scrolledUnderElevation: 0,
+        foregroundColor: theme.brightness == Brightness.dark
+            ? Colors.white
+            : AppColors.textPrimary,
+        actions: [
+          IconButton(
+            tooltip: 'Hóa đơn đã thanh toán',
+            icon: const Icon(Icons.history_toggle_off_outlined),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => PaidInvoicesScreen(
+                    initialUnitId: _selectedUnitId,
+                    initialUnits: _units,
                   ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _futureCategories = _loadCategories();
-                      });
-                    },
-                    child: const Text('Thử lại'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          final categories = snapshot.data ?? [];
-
-          if (categories.isNotEmpty &&
-              (_selectedCategoryCode == null ||
-                  categories
-                      .every((c) => c.categoryCode != _selectedCategoryCode))) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) return;
-              setState(() {
-                _selectedCategoryCode = categories.first.categoryCode;
-              });
-            });
-          }
-
-          final selectedCategory = categories.isNotEmpty
-              ? categories.firstWhere(
-                  (c) => c.categoryCode == _selectedCategoryCode,
-                  orElse: () => categories.first,
-                )
-              : null;
-          final invoices = selectedCategory?.invoices ?? [];
-
-          return RefreshIndicator(
-            onRefresh: () async {
-              setState(() {
-                _futureCategories = _loadCategories();
-              });
+                ),
+              );
             },
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
+          ),
+        ],
+      ),
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: _backgroundGradient(context),
+        ),
+        child: SafeArea(
+          top: false,
+          child: FutureBuilder<List<InvoiceCategory>>(
+            future: _futureCategories,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (snapshot.hasError) {
+                final error = snapshot.error;
+                return SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: Padding(
+                    padding:
+                        EdgeInsets.fromLTRB(24, topOffset, 24, bottomPadding),
+                    child: _InvoicesGlassCard(
+                      padding: const EdgeInsets.fromLTRB(24, 32, 24, 28),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            height: 58,
+                            width: 58,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  AppColors.danger.withOpacity(0.88),
+                                  Colors.redAccent.withOpacity(0.82),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: AppColors.subtleShadow,
+                            ),
+                            child: const Icon(
+                              Icons.error_outline,
+                              color: Colors.white,
+                              size: 30,
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          Text(
+                            'Không thể tải dữ liệu hóa đơn',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            '$error',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 20),
+                          FilledButton(
+                            onPressed: () {
+                              setState(() {
+                                _futureCategories = _loadCategories();
+                              });
+                            },
+                            child: const Text('Thử lại'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              final categories = snapshot.data ?? [];
+
+              if (categories.isNotEmpty &&
+                  (_selectedCategoryCode == null ||
+                      categories.every(
+                          (c) => c.categoryCode != _selectedCategoryCode))) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!mounted) return;
+                  setState(() {
+                    _selectedCategoryCode = categories.first.categoryCode;
+                  });
+                });
+              }
+
+              final selectedCategory = categories.isNotEmpty
+                  ? categories.firstWhere(
+                      (c) => c.categoryCode == _selectedCategoryCode,
+                      orElse: () => categories.first,
+                    )
+                  : null;
+              final invoices = selectedCategory?.invoices ?? [];
+
+              final content = <Widget>[
                 _buildUnitSummary(),
-                const SizedBox(height: 16),
-                if (categories.isEmpty)
-                  _buildAllPaidState()
-                else ...[
-                  _buildCategorySelector(categories),
-                  const SizedBox(height: 16),
-                  _buildCategorySummary(selectedCategory!),
-                  const SizedBox(height: 16),
-                  if (invoices.isEmpty)
-                    _buildCategoryEmptyState(selectedCategory)
-                  else
-                    ...invoices.map(_buildInvoiceCard),
-                ],
-              ],
-            ),
-          );
-        },
+                const SizedBox(height: 18),
+              ];
+
+              if (categories.isEmpty) {
+                content.add(_buildAllPaidState());
+              } else {
+                content
+                  ..add(_buildOverviewHeader(categories))
+                  ..add(const SizedBox(height: 22))
+                  ..add(
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Danh mục dịch vụ',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => PaidInvoicesScreen(
+                                  initialUnitId: _selectedUnitId,
+                                  initialUnits: _units,
+                                ),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.receipt_long_outlined),
+                          label: const Text('Xem lịch sử'),
+                        ),
+                      ],
+                    ),
+                  )
+                  ..add(const SizedBox(height: 16))
+                  ..add(_buildCategorySelector(categories))
+                  ..add(const SizedBox(height: 18))
+                  ..add(_buildCategorySummary(selectedCategory!))
+                  ..add(const SizedBox(height: 18));
+
+                if (invoices.isEmpty) {
+                  content.add(_buildCategoryEmptyState(selectedCategory));
+                } else {
+                  content.addAll(invoices.map(_buildInvoiceCard));
+                }
+              }
+
+              return RefreshIndicator(
+                edgeOffset: topOffset,
+                color: theme.colorScheme.primary,
+                onRefresh: () async {
+                  setState(() {
+                    _futureCategories = _loadCategories();
+                  });
+                },
+                child: ListView(
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  padding: EdgeInsets.fromLTRB(
+                    24,
+                    topOffset,
+                    24,
+                    bottomPadding,
+                  ),
+                  children: content,
+                ),
+              );
+            },
+          ),
+        ),
       ),
     );
   }

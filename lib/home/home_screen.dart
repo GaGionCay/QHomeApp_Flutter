@@ -1276,10 +1276,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final outlineColor = isDarkMode
         ? Colors.white.withOpacity(0.18)
         : Colors.white.withOpacity(0.32);
-    final textColor =
-        isDarkMode ? Colors.white : theme.colorScheme.onSurface.withOpacity(0.86);
-    final secondaryTextColor =
-        isDarkMode ? Colors.white70 : theme.colorScheme.onSurface.withOpacity(0.6);
+    final textColor = isDarkMode
+        ? Colors.white
+        : theme.colorScheme.onSurface.withOpacity(0.86);
+    final secondaryTextColor = isDarkMode
+        ? Colors.white70
+        : theme.colorScheme.onSurface.withOpacity(0.6);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
@@ -1381,15 +1383,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          Container(
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            padding: const EdgeInsets.all(12),
-            child: ElectricityChart(
-              monthlyData: _electricityMonthlyData,
-            ),
+          ElectricityChart(
+            monthlyData: _electricityMonthlyData,
           ),
         ],
       ),
