@@ -53,10 +53,42 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   String? _selectedUnitId;
   UnitInfo? _currentUnit;
   String? _residentId;
+  
+  Dio? _servicesCardDio;
 
   String? _defaultFullName;
   String? _defaultCitizenId;
   String? _defaultPhoneNumber;
+
+  Future<Dio> _servicesCardClient() async {
+    if (_servicesCardDio == null) {
+      _servicesCardDio = Dio(BaseOptions(
+        baseUrl: ApiClient.buildServiceBase(port: 8083, path: '/api'),
+        connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+        receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+      ));
+      _servicesCardDio!.interceptors.add(LogInterceptor(
+        request: true,
+        requestHeader: true,
+        requestBody: true,
+        responseHeader: true,
+        responseBody: true,
+        error: true,
+      ));
+      final token = await api.storage.readAccessToken();
+      if (token != null && token.isNotEmpty) {
+        _servicesCardDio!.options.headers['Authorization'] = 'Bearer $token';
+      }
+    }
+    // Update token in case it changed
+    final token = await api.storage.readAccessToken();
+    if (token != null && token.isNotEmpty) {
+      _servicesCardDio!.options.headers['Authorization'] = 'Bearer $token';
+    } else {
+      _servicesCardDio!.options.headers.remove('Authorization');
+    }
+    return _servicesCardDio!;
+  }
 
   static const _selectedUnitPrefsKey = 'selected_unit_id';
   bool _isNavigatingToMain = false;
@@ -128,7 +160,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       if (pendingId == null) return;
 
       final registrationId = pendingId;
-      final res = await api.dio.get('/resident-card/$registrationId');
+      final client = await _servicesCardClient();
+      final res = await client.get('/resident-card/$registrationId');
       final data = res.data;
       if (data is! Map<String, dynamic>) return;
       final paymentStatus = data['paymentStatus']?.toString();
@@ -354,15 +387,31 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   }
 
   void _listenForPaymentResult() {
+    // Check initial link when app is opened from deep link
+    _appLinks.getInitialLink().then((Uri? uri) {
+      if (uri != null &&
+          uri.scheme == 'qhomeapp' &&
+          uri.host == 'vnpay-resident-card-result') {
+        _handleDeepLinkPayment(uri);
+      }
+    }).catchError((err) {
+      debugPrint('❌ Lỗi khi lấy initial link: $err');
+    });
+
+    // Listen for subsequent deep links
     _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
       if (uri == null) return;
       if (uri.scheme != 'qhomeapp' || uri.host != 'vnpay-resident-card-result')
         return;
       await _handleDeepLinkPayment(uri);
+    }, onError: (err) {
+      debugPrint('❌ Lỗi khi nhận deep link: $err');
     });
   }
 
   Future<void> _handleDeepLinkPayment(Uri uri) async {
+    if (!mounted) return;
+
     final registrationId = uri.queryParameters['registrationId'];
     final responseCode = uri.queryParameters['responseCode'];
     final successParam = uri.queryParameters['success'];
@@ -426,7 +475,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
 
   Future<void> _syncRegistrationStatus(String registrationId) async {
     try {
-      final res = await api.dio.get('/resident-card/$registrationId');
+      final client = await _servicesCardClient();
+      final res = await client.get('/resident-card/$registrationId');
       final data = res.data;
       if (data is! Map<String, dynamic>) return;
       final paymentStatus = data['paymentStatus']?.toString();
@@ -682,7 +732,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
 
     try {
       final payload = _collectPayload();
-      final res = await api.dio.post('/resident-card/vnpay-url', data: payload);
+      final client = await _servicesCardClient();
+      final res = await client.post('/resident-card/vnpay-url', data: payload);
 
       final data = res.data;
       if (data is! Map<String, dynamic>) {
@@ -742,7 +793,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   Future<void> _cancelRegistration(String registrationId) async {
     try {
       log('🗑️ [RegisterResidentCard] Hủy đăng ký: $registrationId');
-      await api.dio.delete('/resident-card/$registrationId/cancel');
+      final client = await _servicesCardClient();
+      await client.delete('/resident-card/$registrationId/cancel');
       log('✅ [RegisterResidentCard] Đã hủy đăng ký thành công');
     } catch (e) {
       log('❌ [RegisterResidentCard] Lỗi khi hủy đăng ký: $e');

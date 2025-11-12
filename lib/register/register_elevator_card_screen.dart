@@ -13,6 +13,7 @@ import '../auth/api_client.dart';
 import '../contracts/contract_service.dart';
 import '../core/app_router.dart';
 import '../models/unit_info.dart';
+import '../profile/profile_service.dart';
 import '../theme/app_colors.dart';
 import 'widgets/register_glass_inputs.dart';
 
@@ -51,9 +52,46 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   late final ContractService _contractService;
   String? _selectedUnitId;
   UnitInfo? _currentUnit;
+  String? _residentId;
+  
+  Dio? _servicesCardDio;
+
+  String? _defaultFullName;
+  String? _defaultCitizenId;
+  String? _defaultPhoneNumber;
 
   static const _selectedUnitPrefsKey = 'selected_unit_id';
   bool _isNavigatingToMain = false;
+
+  Future<Dio> _servicesCardClient() async {
+    if (_servicesCardDio == null) {
+      _servicesCardDio = Dio(BaseOptions(
+        baseUrl: ApiClient.buildServiceBase(port: 8083, path: '/api'),
+        connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+        receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+      ));
+      _servicesCardDio!.interceptors.add(LogInterceptor(
+        request: true,
+        requestHeader: true,
+        requestBody: true,
+        responseHeader: true,
+        responseBody: true,
+        error: true,
+      ));
+      final token = await api.storage.readAccessToken();
+      if (token != null && token.isNotEmpty) {
+        _servicesCardDio!.options.headers['Authorization'] = 'Bearer $token';
+      }
+    }
+    // Update token in case it changed
+    final token = await api.storage.readAccessToken();
+    if (token != null && token.isNotEmpty) {
+      _servicesCardDio!.options.headers['Authorization'] = 'Bearer $token';
+    } else {
+      _servicesCardDio!.options.headers.remove('Authorization');
+    }
+    return _servicesCardDio!;
+  }
 
   @override
   void initState() {
@@ -85,6 +123,7 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     Future.microtask(() async {
       await _loadSavedData();
       await _loadUnitContext();
+      await _loadResidentContext();
     });
   }
 
@@ -121,7 +160,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       if (pendingId == null) return;
 
       final registrationId = pendingId;
-      final res = await api.dio.get('/elevator-card/$registrationId');
+      final client = await _servicesCardClient();
+      final res = await client.get('/elevator-card/$registrationId');
       final data = res.data;
       if (data is! Map<String, dynamic>) return;
       final paymentStatus = data['paymentStatus']?.toString();
@@ -174,6 +214,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
         'citizenId': _citizenIdCtrl.text,
         'phoneNumber': _phoneNumberCtrl.text,
         'note': _noteCtrl.text,
+        'residentId': _residentId,
+        'unitId': _selectedUnitId,
       };
       await prefs.setString(_storageKey, jsonEncode(data));
     } catch (e) {
@@ -196,6 +238,7 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
         _citizenIdCtrl.text = data['citizenId'] ?? '';
         _phoneNumberCtrl.text = data['phoneNumber'] ?? '';
         _noteCtrl.text = data['note'] ?? '';
+        _residentId = data['residentId']?.toString() ?? _residentId;
       });
     } catch (e) {
       debugPrint('❌ Lỗi khôi phục dữ liệu nháp: $e');
@@ -250,6 +293,58 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     _hasUnsavedChanges = false;
   }
 
+  Future<void> _loadResidentContext() async {
+    try {
+      final profileService = ProfileService(api.dio);
+      final profile = await profileService.getProfile();
+
+      final candidateResidentId = profile['residentId']?.toString();
+      final profileFullName =
+          profile['fullName']?.toString() ?? profile['name']?.toString();
+      final profileCitizenId = profile['citizenId']?.toString() ??
+          profile['identityNumber']?.toString();
+      final profilePhone =
+          profile['phoneNumber']?.toString() ?? profile['phone']?.toString();
+
+      setState(() {
+        _defaultFullName = profileFullName ?? _defaultFullName;
+        _defaultCitizenId = profileCitizenId ?? _defaultCitizenId;
+        _defaultPhoneNumber = profilePhone ?? _defaultPhoneNumber;
+
+        if (_fullNameCtrl.text.isEmpty &&
+            (_defaultFullName?.isNotEmpty ?? false)) {
+          _fullNameCtrl.text = _defaultFullName!;
+        }
+        if (_citizenIdCtrl.text.isEmpty &&
+            (_defaultCitizenId?.isNotEmpty ?? false)) {
+          _citizenIdCtrl.text = _defaultCitizenId!;
+        }
+        if (_phoneNumberCtrl.text.isEmpty &&
+            (_defaultPhoneNumber?.isNotEmpty ?? false)) {
+          _phoneNumberCtrl.text = _defaultPhoneNumber!;
+        }
+        if (_residentId == null || _residentId!.isEmpty) {
+          _residentId = candidateResidentId;
+        }
+      });
+
+      if (_residentId == null || _residentId!.isEmpty) {
+        final units = await _contractService.getMyUnits();
+        for (final unit in units) {
+          final candidate = unit.primaryResidentId?.toString();
+          if (candidate != null && candidate.isNotEmpty) {
+            setState(() {
+              _residentId = candidate;
+            });
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Lỗi tải thông tin cư dân: $e');
+    }
+  }
+
   Future<void> _clearSavedData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -289,14 +384,31 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   }
 
   void _listenForPaymentResult() {
-    _paymentSub = _appLinks.uriLinkStream.listen((uri) async {
+    // Check initial link when app is opened from deep link
+    _appLinks.getInitialLink().then((Uri? uri) {
+      if (uri != null &&
+          uri.scheme == 'qhomeapp' &&
+          uri.host == 'vnpay-elevator-card-result') {
+        _handleDeepLinkPayment(uri);
+      }
+    }).catchError((err) {
+      debugPrint('❌ Lỗi khi lấy initial link: $err');
+    });
+
+    // Listen for subsequent deep links
+    _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
+      if (uri == null) return;
       if (uri.scheme != 'qhomeapp' || uri.host != 'vnpay-elevator-card-result')
         return;
       await _handleDeepLinkPayment(uri);
+    }, onError: (err) {
+      debugPrint('❌ Lỗi khi nhận deep link: $err');
     });
   }
 
   Future<void> _handleDeepLinkPayment(Uri uri) async {
+    if (!mounted) return;
+
     final registrationId = uri.queryParameters['registrationId'];
     final responseCode = uri.queryParameters['responseCode'];
     final successParam = uri.queryParameters['success'];
@@ -360,7 +472,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
 
   Future<void> _syncRegistrationStatus(String registrationId) async {
     try {
-      final res = await api.dio.get('/elevator-card/$registrationId');
+      final client = await _servicesCardClient();
+      final res = await client.get('/elevator-card/$registrationId');
       final data = res.data;
       if (data is! Map<String, dynamic>) return;
       final paymentStatus = data['paymentStatus']?.toString();
@@ -427,6 +540,7 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
         'phoneNumber': _phoneNumberCtrl.text,
         'note': _noteCtrl.text.isNotEmpty ? _noteCtrl.text : null,
         'unitId': _selectedUnitId,
+        'residentId': _residentId,
       };
 
   Future<void> _handleRegisterPressed() async {
@@ -438,6 +552,17 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
         const SnackBar(
           content: Text(
               'Không xác định được căn hộ hiện tại. Vui lòng quay lại màn hình chính.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (_residentId == null || _residentId!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Không tìm thấy thông tin cư dân. Vui lòng thử lại sau hoặc liên hệ quản trị.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -618,7 +743,8 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
 
     try {
       final payload = _collectPayload();
-      final res = await api.dio.post('/elevator-card/vnpay-url', data: payload);
+      final client = await _servicesCardClient();
+      final res = await client.post('/elevator-card/vnpay-url', data: payload);
 
       registrationId = res.data['registrationId']?.toString();
       final paymentUrl = res.data['paymentUrl'] as String;
@@ -666,7 +792,8 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
   Future<void> _cancelRegistration(String registrationId) async {
     try {
       log('🗑️ [RegisterElevatorCard] Hủy đăng ký: $registrationId');
-      await api.dio.delete('/elevator-card/$registrationId/cancel');
+      final client = await _servicesCardClient();
+      await client.delete('/elevator-card/$registrationId/cancel');
       log('✅ [RegisterElevatorCard] Đã hủy đăng ký thành công');
     } catch (e) {
       log('❌ [RegisterElevatorCard] Lỗi khi hủy đăng ký: $e');
