@@ -24,7 +24,13 @@ import 'menu_screen.dart';
 
 class MainShell extends StatefulWidget {
   final int initialIndex;
-  const MainShell({super.key, this.initialIndex = 0});
+  final String? initialSnackMessage;
+
+  const MainShell({
+    super.key,
+    this.initialIndex = 0,
+    this.initialSnackMessage,
+  });
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -45,6 +51,20 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
     super.initState();
     _selectedIndex = widget.initialIndex;
     _connectWebSocket();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final message = widget.initialSnackMessage;
+      if (message == null || message.isEmpty) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    });
     _pushSubscription =
         PushNotificationService.instance.notificationClicks.listen(
       (message) {

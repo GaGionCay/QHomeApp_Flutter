@@ -5,13 +5,13 @@ import 'dart:developer';
 import 'package:app_links/app_links.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../auth/api_client.dart';
-import '../common/main_shell.dart';
 import '../contracts/contract_service.dart';
-import '../core/event_bus.dart';
+import '../core/app_router.dart';
 import '../models/unit_info.dart';
 import '../theme/app_colors.dart';
 import 'widgets/register_glass_inputs.dart';
@@ -53,6 +53,7 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   UnitInfo? _currentUnit;
 
   static const _selectedUnitPrefsKey = 'selected_unit_id';
+  bool _isNavigatingToMain = false;
 
   @override
   void initState() {
@@ -63,6 +64,21 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     _listenForPaymentResult();
     _setupAutoSave();
     _checkPendingPayment();
+  }
+
+  void _navigateToServicesHome({String? snackMessage}) {
+    if (!mounted || _isNavigatingToMain) return;
+    _isNavigatingToMain = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.go(
+        AppRoute.main.path,
+        extra: MainShellArgs(
+          initialIndex: 1,
+          snackMessage: snackMessage,
+        ),
+      );
+    });
   }
 
   void _initialize() {
@@ -76,7 +92,6 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _paymentSub?.cancel();
-    AppEventBus().off('show_payment_success');
 
     _fullNameCtrl.dispose();
     _apartmentNumberCtrl.dispose();
@@ -115,9 +130,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       if (paymentStatus == 'PAID') {
         await prefs.remove(_pendingPaymentKey);
         if (mounted) {
-          AppEventBus().emit(
-            'show_payment_success',
-            'Đăng ký thẻ thang máy đã được thanh toán.',
+          _navigateToServicesHome(
+            snackMessage: 'Đăng ký thẻ thang máy đã được thanh toán.',
           );
         }
         return;
@@ -275,18 +289,6 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   }
 
   void _listenForPaymentResult() {
-    AppEventBus().on('show_payment_success', (message) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              '✅ Thanh toán thành công! ${message ?? "Đăng ký thẻ thang máy đã được lưu."}'),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    });
-
     _paymentSub = _appLinks.uriLinkStream.listen((uri) async {
       if (uri.scheme != 'qhomeapp' || uri.host != 'vnpay-elevator-card-result')
         return;
@@ -327,18 +329,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     await _clearSavedData();
 
     if (!mounted) return;
-
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const MainShell(initialIndex: 1),
-      ),
-      (route) => false,
-    );
-
-    AppEventBus().emit(
-      'show_payment_success',
-      'Đăng ký thẻ thang máy đã được thanh toán thành công!',
+    _navigateToServicesHome(
+      snackMessage: 'Đăng ký thẻ thang máy đã được thanh toán thành công!',
     );
   }
 

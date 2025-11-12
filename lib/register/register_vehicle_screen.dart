@@ -5,14 +5,14 @@ import 'dart:developer';
 import 'package:app_links/app_links.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../auth/api_client.dart';
-import '../common/main_shell.dart';
 import '../contracts/contract_service.dart';
-import '../core/event_bus.dart';
+import '../core/app_router.dart';
 import '../models/unit_info.dart';
 import 'register_guide_screen.dart';
 import '../theme/app_colors.dart';
@@ -57,6 +57,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   bool _hasUnsavedChanges = false;
   StreamSubscription<Uri?>? _paymentSub;
   final AppLinks _appLinks = AppLinks();
+  bool _isNavigatingToMain = false;
 
   @override
   void initState() {
@@ -70,20 +71,22 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     _checkPendingPayment();
   }
 
-  void _listenForPaymentResult() {
-    AppEventBus().on('show_payment_success', (message) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                '✅ Thanh toán thành công! ${message ?? "Đăng ký xe đã được lưu."}'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+  void _navigateToServicesHome({String? snackMessage}) {
+    if (!mounted || _isNavigatingToMain) return;
+    _isNavigatingToMain = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.go(
+        AppRoute.main.path,
+        extra: MainShellArgs(
+          initialIndex: 1,
+          snackMessage: snackMessage,
+        ),
+      );
     });
+  }
 
+  void _listenForPaymentResult() {
     _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
       if (uri == null) return;
 
@@ -103,19 +106,9 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
           }
 
           if (!mounted) return;
-
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const MainShell(initialIndex: 1),
-            ),
-            (route) => false,
-          ).then((_) {
-            Future.delayed(const Duration(milliseconds: 100), () {
-              AppEventBus()
-                  .emit('show_payment_success', 'Đăng ký xe đã được lưu');
-            });
-          });
+          _navigateToServicesHome(
+            snackMessage: 'Đăng ký xe đã được thanh toán thành công!',
+          );
         } else {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
@@ -162,7 +155,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _paymentSub?.cancel();
-    AppEventBus().off('show_payment_success');
     _licenseCtrl.dispose();
     _brandCtrl.dispose();
     _colorCtrl.dispose();
@@ -198,18 +190,9 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
       if (paymentStatus == 'PAID') {
         await prefs.remove(_pendingPaymentKey);
         if (mounted) {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const MainShell(initialIndex: 1),
-            ),
-            (route) => false,
-          ).then((_) {
-            Future.delayed(const Duration(milliseconds: 100), () {
-              AppEventBus()
-                  .emit('show_payment_success', 'Thanh toán đã hoàn tất');
-            });
-          });
+          _navigateToServicesHome(
+            snackMessage: 'Thanh toán đăng ký xe đã hoàn tất.',
+          );
         }
       } else if (paymentStatus == 'UNPAID') {
         if (mounted) {
@@ -236,7 +219,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
           );
 
           if (shouldPay == true && mounted) {
-            AppEventBus().emit('pay_registration', registrationId);
+            await _resumePendingPayment(registrationId);
           } else {
             await prefs.remove(_pendingPaymentKey);
           }
@@ -248,6 +231,60 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove(_pendingPaymentKey);
       } catch (_) {}
+    }
+  }
+
+  Future<void> _resumePendingPayment(String registrationId) async {
+    try {
+      final client = await _servicesCardClient();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_pendingPaymentKey, registrationId);
+
+      final res =
+          await client.post('/register-service/$registrationId/vnpay-url');
+
+      if (res.statusCode != 200) {
+        await prefs.remove(_pendingPaymentKey);
+        final message =
+            res.data is Map<String, dynamic> ? res.data['message'] : null;
+        throw Exception(message ?? 'Không thể tạo liên kết thanh toán');
+      }
+
+      final paymentUrl = res.data['paymentUrl']?.toString();
+      if (paymentUrl == null || paymentUrl.isEmpty) {
+        await prefs.remove(_pendingPaymentKey);
+        throw Exception('Không nhận được đường dẫn thanh toán');
+      }
+
+      final uri = Uri.parse(paymentUrl);
+      if (!await canLaunchUrl(uri)) {
+        await prefs.remove(_pendingPaymentKey);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Không thể mở trình duyệt thanh toán'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_pendingPaymentKey);
+      } catch (_) {}
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể tiếp tục thanh toán: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 

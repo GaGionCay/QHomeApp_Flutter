@@ -18,6 +18,13 @@ enum AppRoute {
   final String path;
 }
 
+class MainShellArgs {
+  const MainShellArgs({this.initialIndex = 0, this.snackMessage});
+
+  final int initialIndex;
+  final String? snackMessage;
+}
+
 class AppRouter {
   AppRouter._();
 
@@ -73,9 +80,15 @@ class AppRouter {
         path: AppRoute.main.path,
         name: AppRoute.main.name,
         pageBuilder: (context, state) {
+          final args = state.extra is MainShellArgs
+              ? state.extra as MainShellArgs
+              : const MainShellArgs();
           return _buildFadeThroughPage(
             key: state.pageKey,
-            child: const MainShell(),
+            child: MainShell(
+              initialIndex: args.initialIndex,
+              initialSnackMessage: args.snackMessage,
+            ),
           );
         },
       ),
@@ -127,4 +140,3 @@ class AppRouter {
     );
   }
 }
-

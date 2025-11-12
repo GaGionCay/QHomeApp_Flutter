@@ -13,6 +13,7 @@ class CardRegistrationSummary {
   final DateTime? updatedAt;
   final String? displayName;
   final String? reference;
+  final String? apartmentNumber;
   final String? buildingName;
   final String? note;
 
@@ -31,6 +32,7 @@ class CardRegistrationSummary {
     this.updatedAt,
     this.displayName,
     this.reference,
+    this.apartmentNumber,
     this.buildingName,
     this.note,
   });
@@ -51,6 +53,7 @@ class CardRegistrationSummary {
       updatedAt: _parseDateTime(json['updatedAt']),
       displayName: json['displayName']?.toString(),
       reference: json['reference']?.toString(),
+      apartmentNumber: json['apartmentNumber']?.toString(),
       buildingName: json['buildingName']?.toString(),
       note: json['note']?.toString(),
     );
@@ -75,5 +78,3 @@ class CardRegistrationSummary {
     return null;
   }
 }
-
-

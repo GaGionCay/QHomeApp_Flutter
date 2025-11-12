@@ -26,7 +26,8 @@ class CardRegistrationsScreen extends StatefulWidget {
   final List<UnitInfo> units;
 
   @override
-  State<CardRegistrationsScreen> createState() => _CardRegistrationsScreenState();
+  State<CardRegistrationsScreen> createState() =>
+      _CardRegistrationsScreenState();
 }
 
 class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
@@ -100,10 +101,12 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final unitLabel = widget.unitDisplayName ??
-        widget.units.firstWhere(
-          (u) => u.id == widget.unitId,
-          orElse: () => UnitInfo(id: widget.unitId, code: widget.unitId),
-        ).displayName;
+        widget.units
+            .firstWhere(
+              (u) => u.id == widget.unitId,
+              orElse: () => UnitInfo(id: widget.unitId, code: widget.unitId),
+            )
+            .displayName;
 
     return Scaffold(
       appBar: AppBar(
@@ -174,7 +177,8 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
 
   List<CardRegistrationSummary> _filteredCards() {
     final category = _selectedCategory;
-    final filtered = _cards.where((card) => _categoryOf(card) == category).toList();
+    final filtered =
+        _cards.where((card) => _categoryOf(card) == category).toList();
     filtered.sort(
       (a, b) => (b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0))
           .compareTo(a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0)),
@@ -276,7 +280,8 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
         children: [
           Text(
             'Chưa có $label',
-            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+            style: theme.textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 6),
           Text(
@@ -311,7 +316,12 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
       accent: theme.colorScheme.primary,
       title: 'Đăng ký thẻ tại $unitLabel',
       subtitle: '$summaryLine\n$viewingLine\n$pendingLine',
-      trailing: _isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : null,
+      trailing: _isLoading
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2))
+          : null,
     );
   }
 
@@ -322,7 +332,8 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
         children: [
           Text(
             'Không thể tải trạng thái thẻ',
-            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+            style: theme.textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 6),
           Text(
@@ -349,7 +360,8 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
         children: [
           Text(
             'Chưa có đăng ký thẻ',
-            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+            style: theme.textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 6),
           Text(
@@ -367,19 +379,23 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
     final icon = _cardTypeIcon(card.cardType);
     final label = _cardTypeLabel(card.cardType);
     final unit = _unitDisplayName(card.unitId);
-    final statusLabel = _statusLabel(card);
-    final statusColor = _statusColor(theme, card);
-    final payment = _paymentStatusLabel(card.paymentStatus);
+    final approvalLabel = _approvalStatusLabel(card);
+    final approvalColor = _approvalStatusColor(theme, card);
+    final paymentLabel = _paymentStatusLabel(card.paymentStatus);
+    final paymentColor = _paymentStatusColor(theme, card.paymentStatus);
     final subtitleParts = <String>[];
 
-    if (unit != null && unit.isNotEmpty) {
-      subtitleParts.add(unit);
+    if (card.apartmentNumber != null && card.apartmentNumber!.isNotEmpty) {
+      subtitleParts.add('Căn hộ ${card.apartmentNumber}');
+    }
+    if (card.buildingName != null && card.buildingName!.isNotEmpty) {
+      subtitleParts.add(card.buildingName!);
     }
     if (card.reference != null && card.reference!.isNotEmpty) {
       subtitleParts.add(card.reference!);
     }
-    if (card.buildingName != null && card.buildingName!.isNotEmpty) {
-      subtitleParts.add(card.buildingName!);
+    if (unit != null && unit.isNotEmpty) {
+      subtitleParts.add(unit);
     }
 
     return _HomeGlassSection(
@@ -391,10 +407,10 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
             height: 48,
             width: 48,
             decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.16),
+              color: approvalColor.withOpacity(0.16),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Icon(icon, color: statusColor),
+            child: Icon(icon, color: approvalColor),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -403,7 +419,8 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
               children: [
                 Text(
                   card.displayName ?? label,
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 if (subtitleParts.isNotEmpty) ...[
                   const SizedBox(height: 4),
@@ -415,12 +432,6 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
                   ),
                 ],
                 const SizedBox(height: 6),
-                Text(
-                  payment,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.6),
-                  ),
-                ),
                 if (card.note != null && card.note!.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(
@@ -430,83 +441,146 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
                     ),
                   ),
                 ],
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _StatusChip(
+                      label: approvalLabel,
+                      color: approvalColor,
+                      tone: StatusChipTone.solid,
+                    ),
+                    if (paymentLabel != null)
+                      _StatusChip(
+                        label: paymentLabel,
+                        color: paymentColor,
+                        tone: StatusChipTone.neutral,
+                      ),
+                  ],
+                ),
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          _StatusChip(label: statusLabel, color: statusColor),
         ],
       ),
     );
   }
 
   bool _isPendingCard(CardRegistrationSummary card) {
-    final payment = (card.paymentStatus ?? '').toUpperCase();
-    if (payment == 'PAID') return false;
-    if (payment == 'PAYMENT_PENDING' || payment == 'UNPAID' || payment == 'PENDING') {
+    final status = (card.status ?? '').toUpperCase();
+    if (status.isNotEmpty) {
+      if (_approvedStatuses.contains(status)) {
+        return false;
+      }
+      if (_terminalStatuses.contains(status)) {
+        return false;
+      }
       return true;
     }
-    final status = (card.status ?? '').toUpperCase();
-    return status == 'PENDING' || status == 'PAYMENT_PENDING' || status == 'READY_FOR_PAYMENT';
+
+    final payment = (card.paymentStatus ?? '').toUpperCase();
+    if (payment == 'PAID') {
+      return false;
+    }
+    return payment.isNotEmpty;
   }
 
-  String _paymentStatusLabel(String? paymentStatus) {
+  String? _paymentStatusLabel(String? paymentStatus) {
     final normalized = (paymentStatus ?? '').toUpperCase();
     return switch (normalized) {
       'PAID' => 'Đã thanh toán',
-      'PAYMENT_PENDING' => 'Đang xử lý thanh toán',
+      'PAYMENT_PENDING' => 'Thanh toán đang xử lý',
       'UNPAID' => 'Chưa thanh toán',
-      _ => 'Trạng thái thanh toán: ${paymentStatus ?? 'Không rõ'}',
+      'PENDING' => 'Thanh toán đang chờ',
+      _ => null,
     };
   }
 
-  String _statusLabel(CardRegistrationSummary card) {
-    final payment = (card.paymentStatus ?? '').toUpperCase();
-    switch (payment) {
-      case 'PAID':
-        return 'Hoàn tất';
-      case 'PAYMENT_PENDING':
-        return 'Đang xử lý';
-      case 'UNPAID':
-        return 'Chờ thanh toán';
-    }
+  String _approvalStatusLabel(CardRegistrationSummary card) {
     final status = (card.status ?? '').toUpperCase();
     switch (status) {
       case 'COMPLETED':
-        return 'Hoàn tất';
+      case 'APPROVED':
+      case 'ACTIVE':
+        return 'Đã duyệt';
+      case 'ISSUED':
+        return 'Đã phát hành';
       case 'READY_FOR_PAYMENT':
         return 'Chờ thanh toán';
       case 'PAYMENT_PENDING':
-      case 'PENDING':
+        return 'Thanh toán đang xử lý';
+      case 'PROCESSING':
+      case 'IN_PROGRESS':
         return 'Đang xử lý';
+      case 'PENDING':
+      case 'REVIEW_PENDING':
+        return 'Chờ duyệt';
+      case 'REJECTED':
+        return 'Bị từ chối';
+      case 'CANCELLED':
+      case 'VOID':
+        return 'Đã hủy';
       default:
         return status.isEmpty ? 'Không xác định' : status;
     }
   }
 
-  Color _statusColor(ThemeData theme, CardRegistrationSummary card) {
-    final payment = (card.paymentStatus ?? '').toUpperCase();
-    switch (payment) {
-      case 'PAID':
-        return AppColors.success;
-      case 'PAYMENT_PENDING':
-        return AppColors.warning;
-      case 'UNPAID':
-        return theme.colorScheme.error;
-    }
+  Color _approvalStatusColor(ThemeData theme, CardRegistrationSummary card) {
     final status = (card.status ?? '').toUpperCase();
     switch (status) {
       case 'COMPLETED':
+      case 'APPROVED':
+      case 'ACTIVE':
+      case 'ISSUED':
         return AppColors.success;
       case 'READY_FOR_PAYMENT':
         return theme.colorScheme.error;
       case 'PAYMENT_PENDING':
-      case 'PENDING':
         return AppColors.warning;
+      case 'PROCESSING':
+      case 'IN_PROGRESS':
+        return AppColors.warning;
+      case 'PENDING':
+      case 'REVIEW_PENDING':
+        return AppColors.warning;
+      case 'REJECTED':
+        return theme.colorScheme.error;
+      case 'CANCELLED':
+      case 'VOID':
+        return theme.colorScheme.outline;
       default:
         return theme.colorScheme.primary;
     }
   }
+
+  Color _paymentStatusColor(ThemeData theme, String? paymentStatus) {
+    final normalized = (paymentStatus ?? '').toUpperCase();
+    switch (normalized) {
+      case 'PAID':
+        return AppColors.success;
+      case 'PAYMENT_PENDING':
+      case 'PENDING':
+        return AppColors.warning;
+      case 'UNPAID':
+        return theme.colorScheme.error;
+      default:
+        return theme.colorScheme.primary.withOpacity(0.6);
+    }
+  }
+
+  static const Set<String> _approvedStatuses = {
+    'COMPLETED',
+    'APPROVED',
+    'ACTIVE',
+    'ISSUED',
+  };
+
+  static const Set<String> _terminalStatuses = {
+    'REJECTED',
+    'CANCELLED',
+    'VOID',
+  };
 
   IconData _cardTypeIcon(String? type) {
     switch (type?.toUpperCase()) {
@@ -546,29 +620,43 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
 }
 
 class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.label, required this.color});
+  const _StatusChip({
+    required this.label,
+    required this.color,
+    this.tone = StatusChipTone.solid,
+  });
 
   final String label;
   final Color color;
+  final StatusChipTone tone;
 
   @override
   Widget build(BuildContext context) {
+    final borderRadius = BorderRadius.circular(14);
+    final background = switch (tone) {
+      StatusChipTone.solid => color.withOpacity(0.16),
+      StatusChipTone.neutral => color.withOpacity(0.1),
+    };
+    final textStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+        );
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.16),
-        borderRadius: BorderRadius.circular(14),
+        color: background,
+        borderRadius: borderRadius,
+        border: tone == StatusChipTone.neutral
+            ? Border.all(color: color.withOpacity(0.3))
+            : null,
       ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w700,
-            ),
-      ),
+      child: Text(label, style: textStyle),
     );
   }
 }
+
+enum StatusChipTone { solid, neutral }
 
 class _HomeInfoCard extends StatelessWidget {
   const _HomeInfoCard({
@@ -609,7 +697,8 @@ class _HomeInfoCard extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -665,5 +754,3 @@ class _HomeGlassSection extends StatelessWidget {
     );
   }
 }
-
-
