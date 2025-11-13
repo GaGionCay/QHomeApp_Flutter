@@ -52,6 +52,7 @@ dependencies:
   flutter_local_notifications: ^17.2.1
   package_info_plus: ^8.0.2
   local_auth: ^2.1.7
+  mobile_scanner: ^5.2.3
   
 dev_dependencies:
   flutter_test:

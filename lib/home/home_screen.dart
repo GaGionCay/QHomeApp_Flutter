@@ -36,6 +36,8 @@ import '../theme/theme_controller.dart';
 import '../common/layout_insets.dart';
 import '../services/card_registrations_screen.dart';
 import '../settings/settings_screen.dart';
+import '../register/register_vehicle_screen.dart';
+import '../qr/qr_scanner_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final void Function(int)? onNavigateToTab;
@@ -56,6 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription? _paymentSub;
 
   Map<String, dynamic>? _profile;
+  // Removed: List<NewsItem> _notifications = []; - now using ResidentNews from admin API
   List<ElectricityMonthly> _electricityMonthlyData = [];
   List<UnitInfo> _units = [];
   String? _selectedUnitId;
@@ -65,6 +68,12 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isWeatherLoading = true;
   _WeatherSnapshot? _weatherSnapshot;
   String? _weatherError;
+  
+  // Error states
+  String? _electricityError;
+  String? _unpaidServicesError;
+  String? _unpaidInvoicesError;
+  String? _notificationsError;
   static _WeatherSnapshot? _cachedWeatherSnapshot;
   static DateTime? _cachedWeatherFetchedAt;
   static const Duration _weatherRefreshInterval = Duration(minutes: 30);
@@ -174,14 +183,15 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() {
           _electricityMonthlyData = electricityData;
+          _electricityError = null;
         });
       }
     } catch (e) {
-      debugPrint('ℹ️ Không có dữ liệu tiền điện (coi như đã thanh toán hết)');
-      // Continue with empty list
+      debugPrint('⚠️ Không thể tải dữ liệu tiền điện: $e');
       if (mounted) {
         setState(() {
           _electricityMonthlyData = [];
+          _electricityError = e.toString();
         });
       }
     }
@@ -207,6 +217,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() {
           _unpaidBookingCount = bookings.length;
+          _unpaidServicesError = null;
         });
       }
     } catch (e) {
@@ -214,6 +225,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() {
           _unpaidBookingCount = 0;
+          _unpaidServicesError = e.toString();
         });
       }
     }
@@ -227,6 +239,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (mounted) {
           setState(() {
             _unpaidInvoiceCount = 0;
+            _unpaidInvoicesError = null;
           });
         }
         return;
@@ -239,6 +252,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() {
           _unpaidInvoiceCount = total;
+          _unpaidInvoicesError = null;
         });
       }
     } catch (e) {
@@ -246,6 +260,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() {
           _unpaidInvoiceCount = 0;
+          _unpaidInvoicesError = e.toString();
         });
       }
     }
@@ -291,12 +306,18 @@ class _HomeScreenState extends State<HomeScreen> {
           .where((notification) => !readIds.contains(notification.id))
           .length;
       if (mounted) {
-        setState(() => _unreadNotificationCount = unread);
+        setState(() {
+          _unreadNotificationCount = unread;
+          _notificationsError = null;
+        });
       }
     } catch (e) {
       debugPrint('⚠️ Không thể tải thông báo chưa đọc: $e');
       if (mounted) {
-        setState(() => _unreadNotificationCount = 0);
+        setState(() {
+          _unreadNotificationCount = 0;
+          _notificationsError = e.toString();
+        });
       }
     }
   }
@@ -767,57 +788,54 @@ class _HomeScreenState extends State<HomeScreen> {
               duration: const Duration(milliseconds: 280),
               child: _loading
                   ? const _HomeLoadingState()
-                  : RefreshIndicator(
-                      color: theme.colorScheme.primary,
-                      onRefresh: _refreshAll,
-                      child: CustomScrollView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        slivers: [
-                          SliverPadding(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: media.size.width > 900
-                                  ? media.size.width * 0.18
-                                  : 24,
-                              vertical: 24,
-                            ),
-                            sliver: SliverList(
-                              delegate: SliverChildListDelegate.fixed(
-                                [
-                                  _buildGreetingSection(
-                                    context: context,
-                                    name: name,
-                                    themeController: themeController,
-                                  ),
+                  : CustomScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      slivers: [
+                        SliverPadding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: media.size.width > 900
+                                ? media.size.width * 0.18
+                                : 24,
+                            vertical: 24,
+                          ),
+                          sliver: SliverList(
+                            delegate: SliverChildListDelegate.fixed(
+                              [
+                                _buildGreetingSection(
+                                  context: context,
+                                  name: name,
+                                  themeController: themeController,
+                                ),
+                                const SizedBox(height: 24),
+                                _buildWeatherAndAlerts(context),
+                                const SizedBox(height: 24),
+                                _buildPriorityAlertsCard(context),
+                                const SizedBox(height: 24),
+                                _buildCardRegistrationCallout(context),
+                                const SizedBox(height: 24),
+                                _buildServiceDeck(context),
+                                const SizedBox(height: 24),
+                                if (_unpaidBookingCount > 0)
+                                  _buildUnpaidSummaryCard(context),
+                                if (_unpaidBookingCount > 0)
                                   const SizedBox(height: 24),
-                                  _buildWeatherAndAlerts(context),
+                                // Always show electricity chart section (handles error/empty states internally)
+                                _buildElectricityChartSection(media.size),
+                                const SizedBox(height: 24),
+                                if (_ownerUnits.isNotEmpty)
+                                  _buildHouseholdManagementCard(media.size),
+                                if (_ownerUnits.isNotEmpty)
                                   const SizedBox(height: 24),
-                                  _buildCardRegistrationCallout(context),
-                                  const SizedBox(height: 24),
-                                  _buildServiceDeck(context),
-                                  const SizedBox(height: 24),
-                                  if (_unpaidBookingCount > 0)
-                                    _buildUnpaidSummaryCard(context),
-                                  if (_unpaidBookingCount > 0)
-                                    const SizedBox(height: 24),
-                                  if (_electricityMonthlyData.isNotEmpty)
-                                    _buildElectricityChartSection(media.size),
-                                  if (_electricityMonthlyData.isNotEmpty)
-                                    const SizedBox(height: 24),
-                                  if (_ownerUnits.isNotEmpty)
-                                    _buildHouseholdManagementCard(media.size),
-                                  if (_ownerUnits.isNotEmpty)
-                                    const SizedBox(height: 24),
-                                  _buildCompactFeatureRow(media.size),
-                                  const SizedBox(height: 16),
-                                ],
-                              ),
+                                _buildCompactFeatureRow(media.size),
+                                const SizedBox(height: 16),
+                              ],
                             ),
                           ),
-                          SliverToBoxAdapter(
-                            child: SizedBox(height: bottomNavInset),
-                          ),
-                        ],
-                      ),
+                        ),
+                        SliverToBoxAdapter(
+                          child: SizedBox(height: bottomNavInset),
+                        ),
+                      ],
                     ),
             ),
           ),
@@ -929,7 +947,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
+              // QR Scanner button
+              _buildQrScannerButton(context, theme, isDark),
+              const SizedBox(width: 12),
               // Notification button
               _buildNotificationButton(context, theme, isDark),
             ],
@@ -1005,6 +1026,35 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
   
+  /// Builds QR scanner button
+  Widget _buildQrScannerButton(BuildContext context, ThemeData theme, bool isDark) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const QrScannerScreen(),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        child: Icon(
+          CupertinoIcons.qrcode_viewfinder,
+          color: Colors.white,
+          size: 22,
+        ),
+      ),
+    );
+  }
+
   /// Builds notification button with badge for unread notifications
   Widget _buildNotificationButton(BuildContext context, ThemeData theme, bool isDark) {
     return GestureDetector(
@@ -1103,300 +1153,315 @@ class _HomeScreenState extends State<HomeScreen> {
     return '${diff.inDays} ngày trước';
   }
 
-  Widget _buildWeatherAndAlerts(BuildContext context) {
+  Widget _buildPriorityAlertsCard(BuildContext context) {
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isWide = constraints.maxWidth > 520;
-
-        Widget buildWeatherCard() {
-          final snapshot = _weatherSnapshot;
-          return _HomeGlassCard(
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 320),
-                  curve: Curves.easeOutCubic,
-                  height: 58,
-                  width: 58,
+    
+    // Calculate total alerts
+    final totalAlerts = _unpaidInvoiceCount + _unreadNotificationCount + _unpaidBookingCount;
+    
+    // Don't show if no alerts and no errors
+    if (totalAlerts == 0 && 
+        _unpaidServicesError == null && 
+        _unpaidInvoicesError == null && 
+        _notificationsError == null) {
+      return const SizedBox.shrink();
+    }
+    
+    // Build alert items
+    final alertItems = <_AlertItem>[];
+    
+    if (_unpaidInvoiceCount > 0) {
+      alertItems.add(_AlertItem(
+        icon: Icons.receipt_long,
+        label: 'Hóa đơn',
+        value: '$_unpaidInvoiceCount',
+        color: AppColors.warning,
+        onTap: _openUnpaidInvoicesScreen,
+      ));
+    }
+    
+    if (_unreadNotificationCount > 0) {
+      alertItems.add(_AlertItem(
+        icon: Icons.notifications_none,
+        label: 'Thông báo',
+        value: '$_unreadNotificationCount',
+        color: AppColors.primaryBlue,
+        onTap: _openNotificationsScreen,
+      ));
+    }
+    
+    if (_unpaidBookingCount > 0) {
+      alertItems.add(_AlertItem(
+        icon: Icons.pending_actions_outlined,
+        label: 'Dịch vụ',
+        value: '$_unpaidBookingCount',
+        color: AppColors.primaryEmerald,
+        onTap: _openUnpaidBookingsScreen,
+      ));
+    }
+    
+    // Add error items
+    if (_unpaidInvoicesError != null) {
+      alertItems.add(_AlertItem(
+        icon: Icons.error_outline,
+        label: 'Lỗi hóa đơn',
+        value: '!',
+        color: AppColors.danger,
+        onTap: () async {
+          final invoiceService = InvoiceService(_apiClient);
+          await _loadUnpaidInvoices(invoiceService);
+        },
+      ));
+    }
+    
+    if (_notificationsError != null) {
+      alertItems.add(_AlertItem(
+        icon: Icons.error_outline,
+        label: 'Lỗi thông báo',
+        value: '!',
+        color: AppColors.danger,
+        onTap: () async {
+          await _loadUnreadNotifications();
+        },
+      ));
+    }
+    
+    if (_unpaidServicesError != null) {
+      alertItems.add(_AlertItem(
+        icon: Icons.error_outline,
+        label: 'Lỗi dịch vụ',
+        value: '!',
+        color: AppColors.danger,
+        onTap: () async {
+          await _loadUnpaidServices();
+        },
+      ));
+    }
+    
+    if (alertItems.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    
+    return _HomeGlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withOpacity(0.16),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.warning_amber_rounded,
+                  color: AppColors.warning,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Cảnh báo quan trọng',
+                  style: textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: alertItems.map((item) {
+              final alertItem = item;
+              return InkWell(
+                onTap: alertItem.onTap,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    gradient: AppColors.primaryGradient(),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: AppColors.subtleShadow,
-                  ),
-                  child: Icon(
-                    snapshot?.weatherIcon ?? CupertinoIcons.sparkles,
-                    color: Colors.white,
-                    size: 28,
-                  ),
-                ),
-                const SizedBox(width: 18),
-                Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 320),
-                    child: _isWeatherLoading
-                        ? Row(
-                            key: const ValueKey('weather-loading'),
-                            children: [
-                              SizedBox(
-                                height: 18,
-                                width: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    theme.colorScheme.primary,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  'Đang cập nhật khí hậu...',
-                                  style: textTheme.bodyMedium?.copyWith(
-                                    color: theme.colorScheme.onSurface
-                                        .withOpacity(0.7),
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
-                                ),
-                              ),
-                            ],
-                          )
-                        : (_weatherError != null || snapshot == null)
-                            ? Text(
-                                _weatherError ?? 'Không lấy được thời tiết',
-                                key: const ValueKey('weather-error'),
-                                style: textTheme.bodyMedium?.copyWith(
-                                  color: theme.colorScheme.onSurface
-                                      .withOpacity(0.7),
-                                ),
-                              )
-                            : Column(
-                                key: ValueKey(snapshot.city),
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    snapshot.city,
-                                    style: textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '${snapshot.temperatureCelsius.toStringAsFixed(1)}°C • ${snapshot.weatherLabel}',
-                                    style: textTheme.bodyLarge?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                      color: theme.colorScheme.primary,
-                                    ),
-                                  ),
-                                  if (snapshot.windSpeed != null ||
-                                      snapshot.humidity != null)
-                                    Text(
-                                      [
-                                        if (snapshot.windSpeed != null)
-                                          'Gió ${snapshot.windSpeed?.toStringAsFixed(0)} km/h',
-                                        if (snapshot.humidity != null)
-                                          'Độ ẩm ${snapshot.humidity?.toStringAsFixed(0)}%',
-                                      ].join(' · '),
-                                      style: textTheme.bodySmall?.copyWith(
-                                        color: theme.colorScheme.onSurface
-                                            .withOpacity(0.6),
-                                      ),
-                                    ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Cập nhật ${_formatTime(snapshot.fetchedAt)}',
-                                    style: textTheme.labelSmall?.copyWith(
-                                      color: theme.colorScheme.onSurface
-                                          .withOpacity(0.45),
-                                      letterSpacing: 0.2,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Tooltip(
-                  message: 'Làm mới',
-                  child: IconButton(
-                    onPressed: _isWeatherLoading
-                        ? null
-                        : () => _loadWeatherSnapshot(force: true),
-                    icon: Icon(
-                      CupertinoIcons.refresh_bold,
-                      color: theme.colorScheme.primary,
+                    color: alertItem.color.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: alertItem.color.withOpacity(0.3),
+                      width: 1,
                     ),
                   ),
-                ),
-              ],
-            ),
-          );
-        }
-
-        Widget buildAlertsCard() => _HomeGlassCard(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        height: 48,
-                        width: 48,
-                        decoration: BoxDecoration(
-                          color: AppColors.warning.withOpacity(0.18),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Icon(
-                          CupertinoIcons.bell_fill,
-                          color: AppColors.warning,
+                      Icon(
+                        alertItem.icon,
+                        size: 16,
+                        color: alertItem.color,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        alertItem.label,
+                        style: textTheme.labelMedium?.copyWith(
+                          color: alertItem.color,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Thông báo nhanh',
-                              style: textTheme.titleMedium,
-                            ),
-                            Builder(
-                              builder: (context) {
-                                final summaryParts = <String>[];
-                                if (_unpaidInvoiceCount > 0) {
-                                  summaryParts.add(
-                                      '$_unpaidInvoiceCount hóa đơn chưa thanh toán');
-                                }
-                                if (_unreadNotificationCount > 0) {
-                                  summaryParts.add(
-                                      '$_unreadNotificationCount thông báo mới');
-                                }
-                                if (_unpaidBookingCount > 0) {
-                                  summaryParts.add(
-                                      '$_unpaidBookingCount dịch vụ chờ xử lý');
-                                }
-                                final summaryText = summaryParts.isEmpty
-                                    ? 'Không có cảnh báo mới'
-                                    : summaryParts.join(' • ');
-                                return Text(
-                                  summaryText,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.onSurface
-                                        .withValues(alpha: 0.6),
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
+                      const SizedBox(width: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: alertItem.color,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          alertItem.value,
+                          style: textTheme.labelSmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 11,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 32,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      children: [
-                        _buildStatusChip(
-                          context,
-                          icon: Icons.receipt_long,
-                          label: 'Hóa đơn',
-                          value: _unpaidInvoiceCount.toString(),
-                          onTap: _openUnpaidInvoicesScreen,
-                        ),
-                        const SizedBox(width: 8),
-                        _buildStatusChip(
-                          context,
-                          icon: Icons.notifications_none,
-                          label: 'Thông báo',
-                          value: _unreadNotificationCount.toString(),
-                          onTap: _openNotificationsScreen,
-                        ),
-                        const SizedBox(width: 8),
-                        _buildStatusChip(
-                          context,
-                          icon: Icons.pending_actions_outlined,
-                          label: 'Dịch vụ',
-                          value: _unpaidBookingCount.toString(),
-                          onTap: _openUnpaidBookingsScreen,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
-
-        if (isWide) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(flex: 3, child: buildWeatherCard()),
-              const SizedBox(width: 16),
-              Expanded(flex: 2, child: buildAlertsCard()),
-            ],
-          );
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            buildWeatherCard(),
-            const SizedBox(height: 16),
-            buildAlertsCard(),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildStatusChip(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required String value,
-    VoidCallback? onTap,
-  }) {
-    final theme = Theme.of(context);
-    final chip = AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        color: theme.colorScheme.surface,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: theme.colorScheme.primary),
-          const SizedBox(width: 6),
-          Text(
-            '$label · $value',
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.primary,
-            ),
+                ),
+              );
+            }).toList(),
           ),
         ],
       ),
     );
+  }
 
-    if (onTap == null) {
-      return chip;
-    }
+  Widget _buildWeatherAndAlerts(BuildContext context) {
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+    final snapshot = _weatherSnapshot;
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: onTap,
-      child: chip,
+    return _HomeGlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeOutCubic,
+            height: 58,
+            width: 58,
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient(),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: AppColors.subtleShadow,
+            ),
+            child: Icon(
+              snapshot?.weatherIcon ?? CupertinoIcons.sparkles,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 18),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 320),
+              child: _isWeatherLoading
+                  ? Row(
+                      key: const ValueKey('weather-loading'),
+                      children: [
+                        SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              theme.colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Đang cập nhật khí hậu...',
+                            style: textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurface
+                                  .withOpacity(0.7),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                      ],
+                    )
+                  : (_weatherError != null || snapshot == null)
+                      ? Text(
+                          _weatherError ?? 'Không lấy được thời tiết',
+                          key: const ValueKey('weather-error'),
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurface
+                                .withOpacity(0.7),
+                          ),
+                        )
+                      : Column(
+                          key: ValueKey(snapshot.city),
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              snapshot.city,
+                              style: textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${snapshot.temperatureCelsius.toStringAsFixed(1)}°C • ${snapshot.weatherLabel}',
+                              style: textTheme.bodyLarge?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                            if (snapshot.windSpeed != null ||
+                                snapshot.humidity != null)
+                              Text(
+                                [
+                                  if (snapshot.windSpeed != null)
+                                    'Gió ${snapshot.windSpeed?.toStringAsFixed(0)} km/h',
+                                  if (snapshot.humidity != null)
+                                    'Độ ẩm ${snapshot.humidity?.toStringAsFixed(0)}%',
+                                ].join(' · '),
+                                style: textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurface
+                                      .withOpacity(0.6),
+                                ),
+                              ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Cập nhật ${_formatTime(snapshot.fetchedAt)}',
+                              style: textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.onSurface
+                                    .withOpacity(0.45),
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ],
+                        ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Tooltip(
+            message: 'Làm mới',
+            child: IconButton(
+              onPressed: _isWeatherLoading
+                  ? null
+                  : () => _loadWeatherSnapshot(force: true),
+              icon: Icon(
+                CupertinoIcons.refresh_bold,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1454,12 +1519,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
 
-    return _HomeGlassCard(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-        Row(
+    return GestureDetector(
+      onTap: _openCardRegistrationScreen,
+      child: _HomeGlassCard(
+        padding: const EdgeInsets.all(20),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
@@ -1493,22 +1557,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
+            Icon(
+              CupertinoIcons.chevron_right,
+              color: theme.colorScheme.onSurface.withOpacity(0.4),
+              size: 20,
+            ),
           ],
         ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: _openCardRegistrationScreen,
-            icon: const Icon(Icons.open_in_new_rounded, size: 18),
-            label: const Text('Mở màn hình thẻ'),
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
-          ),
-        ),
-        ],
       ),
     );
   }
@@ -1537,11 +1592,111 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          ElectricityChart(
-            monthlyData: _electricityMonthlyData,
-          ),
+          if (_electricityError != null)
+            _buildErrorState(
+              context: context,
+              error: _electricityError!,
+              onRetry: () async {
+                final invoiceService = InvoiceService(_apiClient);
+                try {
+                  final electricityData = await invoiceService.getElectricityMonthlyData(
+                    unitId: _selectedUnitId,
+                  );
+                  if (mounted) {
+                    setState(() {
+                      _electricityMonthlyData = electricityData;
+                      _electricityError = null;
+                    });
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    setState(() {
+                      _electricityError = e.toString();
+                    });
+                  }
+                }
+              },
+            )
+          else if (_electricityMonthlyData.isEmpty)
+            _buildEmptyState(
+              context: context,
+              message: 'Chưa có dữ liệu tiêu thụ điện',
+            )
+          else
+            ElectricityChart(
+              monthlyData: _electricityMonthlyData,
+            ),
         ],
       ),
+    );
+  }
+  
+  Widget _buildErrorState({
+    required BuildContext context,
+    required String error,
+    required VoidCallback onRetry,
+  }) {
+    final theme = Theme.of(context);
+    return Column(
+      children: [
+        Icon(
+          Icons.error_outline,
+          color: AppColors.danger,
+          size: 48,
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Không thể tải dữ liệu',
+          style: theme.textTheme.titleSmall?.copyWith(
+            color: AppColors.danger,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          error.length > 100 ? '${error.substring(0, 100)}...' : error,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurface.withOpacity(0.6),
+          ),
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 16),
+        OutlinedButton.icon(
+          onPressed: onRetry,
+          icon: const Icon(Icons.refresh, size: 18),
+          label: const Text('Thử lại'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.danger,
+            side: BorderSide(color: AppColors.danger),
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildEmptyState({
+    required BuildContext context,
+    required String message,
+  }) {
+    final theme = Theme.of(context);
+    return Column(
+      children: [
+        Icon(
+          Icons.insert_chart_outlined,
+          color: theme.colorScheme.onSurface.withOpacity(0.3),
+          size: 48,
+        ),
+        const SizedBox(height: 12),
+        Text(
+          message,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurface.withOpacity(0.6),
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
     );
   }
 
@@ -1795,7 +1950,14 @@ class _HomeScreenState extends State<HomeScreen> {
         subtitle: 'Đăng ký thẻ xe, quản lý bãi đỗ',
         icon: Icons.local_parking_outlined,
         accent: AppColors.primaryBlue,
-        onTap: () => widget.onNavigateToTab?.call(1),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const RegisterVehicleScreen(),
+            ),
+          );
+        },
       ),
       _ServiceCardData(
         title: 'Phản ánh',
@@ -1834,27 +1996,6 @@ class _HomeScreenState extends State<HomeScreen> {
         icon: Icons.spa_outlined,
         accent: Colors.purpleAccent,
         onTap: () => widget.onNavigateToTab?.call(1),
-      ),
-      _ServiceCardData(
-        title: 'Cộng đồng',
-        subtitle: 'Tin tức, sự kiện cho cư dân',
-        icon: Icons.supervised_user_circle_outlined,
-        accent: AppColors.primaryBlue.withValues(alpha: 0.8),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const NewsScreen(),
-            ),
-          );
-        },
-      ),
-      _ServiceCardData(
-        title: 'Trạng thái thẻ',
-        subtitle: 'Theo dõi thẻ cư dân, thang máy, thẻ xe',
-        icon: Icons.credit_card_outlined,
-        accent: AppColors.primaryAqua,
-        onTap: () => _openCardRegistrationScreen(),
       ),
     ];
   }
@@ -1899,6 +2040,22 @@ class _HomeGlassCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AlertItem {
+  const _AlertItem({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+  final VoidCallback onTap;
 }
 
 class _ServiceCardData {
@@ -2139,3 +2296,4 @@ class _WeatherRateLimitException implements Exception {
 
   final String source;
 }
+

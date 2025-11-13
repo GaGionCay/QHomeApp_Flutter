@@ -76,6 +76,7 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  // Legacy methods (for backward compatibility)
   Future<void> enableBiometricLogin(String username, String password) async {
     await storage.writeBiometricCredentials(
       username: username,
@@ -92,8 +93,13 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> isBiometricLoginEnabled() => storage.readBiometricEnabled();
 
   Future<({String username, String password})?> getBiometricCredentials() async {
-    final enabled = await storage.readBiometricEnabled();
-    if (!enabled) return null;
+    // Check if any biometric is enabled (fingerprint or face)
+    final fingerprintEnabled = await storage.readFingerprintEnabled();
+    final faceEnabled = await storage.readFaceEnabled();
+    final legacyEnabled = await storage.readBiometricEnabled();
+    
+    if (!fingerprintEnabled && !faceEnabled && !legacyEnabled) return null;
+    
     final username = await storage.readBiometricUsername();
     final password = await storage.readBiometricPassword();
     if (username == null || password == null) {
@@ -107,6 +113,48 @@ class AuthProvider extends ChangeNotifier {
     if (credentials == null) return false;
     return loginViaIam(credentials.username, credentials.password);
   }
+
+  // Fingerprint-specific methods
+  Future<void> enableFingerprintLogin(String username, String password) async {
+    // Store credentials (shared between fingerprint and face)
+    await storage.writeBiometricCredentials(
+      username: username,
+      password: password,
+    );
+    await storage.writeFingerprintEnabled(true);
+  }
+
+  Future<void> disableFingerprintLogin() async {
+    await storage.writeFingerprintEnabled(false);
+    // Only clear credentials if face is also disabled
+    final faceEnabled = await storage.readFaceEnabled();
+    if (!faceEnabled) {
+      await storage.clearBiometricCredentials();
+    }
+  }
+
+  Future<bool> isFingerprintLoginEnabled() => storage.readFingerprintEnabled();
+
+  // Face-specific methods
+  Future<void> enableFaceLogin(String username, String password) async {
+    // Store credentials (shared between fingerprint and face)
+    await storage.writeBiometricCredentials(
+      username: username,
+      password: password,
+    );
+    await storage.writeFaceEnabled(true);
+  }
+
+  Future<void> disableFaceLogin() async {
+    await storage.writeFaceEnabled(false);
+    // Only clear credentials if fingerprint is also disabled
+    final fingerprintEnabled = await storage.readFingerprintEnabled();
+    if (!fingerprintEnabled) {
+      await storage.clearBiometricCredentials();
+    }
+  }
+
+  Future<bool> isFaceLoginEnabled() => storage.readFaceEnabled();
 
   Future<String?> getStoredUsername() => storage.readUsername();
 
