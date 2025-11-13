@@ -250,9 +250,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             AppLuxeTextField(
                               controller: usernameCtrl,
                               focusNode: _usernameFocus,
-                              hint: 'Tên đăng nhập',
+                              hint: 'Tên đăng nhập hoặc Email',
                               icon: Icons.person_outline,
                               textInputAction: TextInputAction.next,
+                              keyboardType: TextInputType.text,
                               onSubmitted: (_) => _passwordFocus.requestFocus(),
                             ),
                             const SizedBox(height: 16),

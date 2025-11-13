@@ -11,13 +11,13 @@ class ApiClient {
   static const String LAN_HOST_IP = '192.168.100.33';
   static const String LAN_BACKUP_HOST_IP = '192.168.1.15'; 
   static const String OFFICE_HOST_IP = '10.33.63.155';
-  static const String OFFICE_BACKUP_HOST_IP = '10.189.244.236'; 
+  static const String OFFICE_BACKUP_HOST_IP = '10.34.38.236'; 
   static const String LOCALHOST_IP = 'localhost';
 
   static const int API_PORT = 8081;
   static const int TIMEOUT_SECONDS = 10;
 
-  static const String HOST_IP = kIsWeb ? LOCALHOST_IP : OFFICE_HOST_IP;
+  static const String HOST_IP = kIsWeb ? LOCALHOST_IP : OFFICE_BACKUP_HOST_IP;
   static const String BASE_URL = 'http://$HOST_IP:$API_PORT/api';
   static const String FILE_BASE_URL = 'http://$HOST_IP:$API_PORT';
 

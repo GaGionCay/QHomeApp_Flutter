@@ -1,35 +1,21 @@
 
 import 'package:flutter/material.dart';
-
-/// Centralised color tokens for the Resident Super App experience.
-///
-/// These values lean into a neo-realistic, soft glassmorphism palette that
-/// balances airy blues with gentle neutrals and luxe accents.
 class AppColors {
   AppColors._();
 
-  // Core brand accents
   static const Color primaryBlue = Color(0xFF007AFF);
   static const Color primaryAqua = Color(0xFF5AC8FA);
   static const Color primaryEmerald = Color(0xFF24D1C4);
   static const Color skyMist = Color(0xFF7EC8E3);
-
-  // Neutrals
   static const Color neutralBackground = Color(0xFFF4F6FA);
   static const Color neutralSurface = Color(0xFFFFFFFF);
   static const Color neutralSurfaceElevated = Color(0xFFF9FBFE);
   static const Color neutralOutline = Color(0xFFCAD1DD);
-
-  // Typography helpers
   static const Color textPrimary = Color(0xFF0F1B2B);
   static const Color textSecondary = Color(0xFF5B6B80);
-
-  // Status colors
   static const Color success = Color(0xFF3CCF91);
   static const Color warning = Color(0xFFFFC773);
   static const Color danger = Color(0xFFFF6B6B);
-
-  // Dark counterparts
   static const Color deepNight = Color(0xFF050F1F);
   static const Color navySurface = Color(0xFF0F1E33);
   static const Color navySurfaceElevated = Color(0xFF14263E);
@@ -104,7 +90,18 @@ class AppColors {
     );
   }
 
-  static LinearGradient heroBackdropGradient() {
+  static LinearGradient heroBackdropGradient({bool isDark = false}) {
+    if (isDark) {
+      return const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFF0A1D33),
+          Color(0xFF0F2542),
+          Color(0xFF14263E),
+        ],
+      );
+    }
     return const LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,

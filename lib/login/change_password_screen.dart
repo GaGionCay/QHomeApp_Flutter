@@ -1,27 +1,86 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../auth/auth_provider.dart';
-import '../theme/app_colors.dart';
 import '../widgets/app_primary_button.dart';
 import '../widgets/app_text_field.dart';
 import 'verify_otp_screen.dart';
 
-class ForgotPasswordScreen extends StatefulWidget {
-  const ForgotPasswordScreen({super.key});
+class ChangePasswordScreen extends StatefulWidget {
+  const ChangePasswordScreen({super.key});
 
   @override
-  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
+  State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
 }
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   final emailCtrl = TextEditingController();
   final FocusNode _emailFocus = FocusNode();
   bool loading = false;
 
   @override
+  void dispose() {
+    emailCtrl.dispose();
+    _emailFocus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit(AuthProvider auth) async {
+    FocusScope.of(context).unfocus();
+    
+    final email = emailCtrl.text.trim();
+    
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng nhập email'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    
+    final emailRegex = RegExp(
+      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+    );
+    
+    if (!emailRegex.hasMatch(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Email không hợp lệ. Vui lòng nhập đúng định dạng email.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    
+    setState(() => loading = true);
+    try {
+      await auth.requestReset(email);
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => VerifyOtpScreen(email: email),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Yêu cầu thất bại: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => loading = false);
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final auth = context.read<AuthProvider>();
-
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -40,14 +99,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             end: Alignment.bottomRight,
             colors: [
               Colors.white,
-              AppColors.neutralBackground,
+              Color(0xFFF4F6FA),
               Colors.white,
             ],
           );
 
     final accentGlow = isDark
         ? theme.colorScheme.primary.withOpacity(0.18)
-        : AppColors.primaryBlue.withValues(alpha: 0.18);
+        : theme.colorScheme.primary.withOpacity(0.18);
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
@@ -122,7 +181,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                             ),
                             const SizedBox(height: 32),
                             Text(
-                              'Quên mật khẩu',
+                              'Đổi mật khẩu',
                               style: theme.textTheme.displaySmall?.copyWith(
                                 fontSize: 32,
                                 fontWeight: FontWeight.w600,
@@ -131,7 +190,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Nhập email đã đăng ký. Chúng tôi sẽ gửi mã OTP để giúp bạn đặt lại mật khẩu.',
+                              'Nhập email của bạn. Chúng tôi sẽ gửi mã OTP để giúp bạn đổi mật khẩu.',
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: theme.colorScheme.onSurface
                                     .withValues(alpha: 0.65),
@@ -169,68 +228,5 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _submit(AuthProvider auth) async {
-    FocusScope.of(context).unfocus();
-    
-    final email = emailCtrl.text.trim();
-    
-    // Validate email format
-    if (email.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vui lòng nhập email'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-    
-    // Email regex pattern - supports multiple domains like @fpt.edu.vn, @gmail.com, etc.
-    final emailRegex = RegExp(
-      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
-    );
-    
-    if (!emailRegex.hasMatch(email)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Email không hợp lệ. Vui lòng nhập đúng định dạng email.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-    
-    setState(() => loading = true);
-    try {
-      await auth.requestReset(email);
-      if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => VerifyOtpScreen(email: email),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Yêu cầu thất bại: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => loading = false);
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    emailCtrl.dispose();
-    _emailFocus.dispose();
-    super.dispose();
   }
 }

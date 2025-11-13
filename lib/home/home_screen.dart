@@ -35,6 +35,7 @@ import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
 import '../common/layout_insets.dart';
 import '../services/card_registrations_screen.dart';
+import '../settings/settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final void Function(int)? onNavigateToTab;
@@ -55,7 +56,6 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription? _paymentSub;
 
   Map<String, dynamic>? _profile;
-  // Removed: List<NewsItem> _notifications = []; - now using ResidentNews from admin API
   List<ElectricityMonthly> _electricityMonthlyData = [];
   List<UnitInfo> _units = [];
   String? _selectedUnitId;
@@ -711,7 +711,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     final name = _profile?['fullName'] ?? _profile?['username'] ?? 'Cư dân';
-    final avatarUrl = _profile?['avatarUrl'] as String?;
 
     final backgroundGradient = theme.brightness == Brightness.dark
         ? const LinearGradient(
@@ -787,7 +786,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                   _buildGreetingSection(
                                     context: context,
                                     name: name,
-                                    avatarUrl: avatarUrl,
                                     themeController: themeController,
                                   ),
                                   const SizedBox(height: 24),
@@ -831,89 +829,237 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildGreetingSection({
     required BuildContext context,
     required String name,
-    String? avatarUrl,
     required ThemeController themeController,
   }) {
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
-    final greet = _greetingMessage();
     final now = DateTime.now();
     final isDark = themeController.isDark;
-
+    
+    // Get selected unit information
+    UnitInfo? selectedUnit;
+    if (_units.isNotEmpty) {
+      if (_selectedUnitId != null) {
+        try {
+          selectedUnit = _units.firstWhere(
+            (unit) => unit.id == _selectedUnitId,
+          );
+        } catch (e) {
+          // If selected unit not found, use first unit
+          selectedUnit = _units.first;
+        }
+      } else {
+        selectedUnit = _units.first;
+      }
+    }
+    
+    // Get greeting text and icon
+    final greetingPeriodText = _getGreetingPeriodText(now);
+    final timeIcon = _getTimeOfDayIcon(now);
+    
+    // Get unit information
+    final apartmentName = selectedUnit?.code ?? 'Căn hộ mặc định';
+    final buildingName = selectedUnit?.buildingName ?? '';
+    
     return AnimatedContainer(
       duration: const Duration(milliseconds: 320),
       curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(32),
-        gradient: AppColors.heroBackdropGradient(),
+        gradient: AppColors.heroBackdropGradient(isDark: isDark),
         boxShadow: AppColors.elevatedShadow,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 30),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header row: Greeting with icon on left, Notification button on right
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                height: 78,
-                width: 78,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                      color: Colors.white.withOpacity(0.35), width: 2.4),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x22102136),
-                      blurRadius: 20,
-                      offset: Offset(0, 12),
-                    ),
-                  ],
-                ),
-                child: ClipOval(
-                  child: avatarUrl != null && avatarUrl.isNotEmpty
-                      ? Image.network(
-                          avatarUrl,
-                          fit: BoxFit.cover,
-                        )
-                      : Image.asset(
-                          'assets/images/avatar_placeholder.png',
-                          fit: BoxFit.cover,
-                        ),
-                ),
-              ),
-              const SizedBox(width: 22),
+              // Greeting with icon
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      greet,
-                      style: textTheme.titleMedium?.copyWith(
-                        color: Colors.white.withOpacity(0.8),
-                        letterSpacing: 0.2,
-                      ),
+                    // Time of day icon with greeting text
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // Time of day icon
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Icon(
+                            timeIcon,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Greeting period text (smaller)
+                        Text(
+                          greetingPeriodText,
+                          style: textTheme.titleMedium?.copyWith(
+                            color: Colors.white.withOpacity(0.9),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
+                    // User name (larger and bold)
                     Text(
-                      'Chào buổi ${_localizedPeriod(now)}, $name!',
+                      name,
                       style: textTheme.displaySmall?.copyWith(
                         color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: 0.1,
+                        height: 1.2,
                       ),
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
+              const SizedBox(width: 16),
+              // Notification button
+              _buildNotificationButton(context, theme, isDark),
             ],
           ),
-          const SizedBox(height: 22),
-          _buildUnitSelectorWidget(MediaQuery.of(context).size,
-              isDarkMode: isDark),
+          const SizedBox(height: 20),
+          // Unit information (tapable) - only show if unit exists
+          if (selectedUnit != null)
+            GestureDetector(
+              onTap: () {
+                // Navigate to settings screen to view unit details
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const SettingsScreen(),
+                  ),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.2),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      CupertinoIcons.house_alt_fill,
+                      color: Colors.white.withOpacity(0.9),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            apartmentName,
+                            style: textTheme.labelLarge?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
+                          if (buildingName.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              buildingName,
+                              style: textTheme.bodySmall?.copyWith(
+                                color: Colors.white.withOpacity(0.8),
+                                fontSize: 13,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      CupertinoIcons.chevron_right,
+                      color: Colors.white.withOpacity(0.6),
+                      size: 18,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+  
+  /// Builds notification button with badge for unread notifications
+  Widget _buildNotificationButton(BuildContext context, ThemeData theme, bool isDark) {
+    return GestureDetector(
+      onTap: _openNotificationsScreen,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+            child: Icon(
+              CupertinoIcons.bell_fill,
+              color: Colors.white,
+              size: 22,
+            ),
+          ),
+          // Badge for unread notifications
+          if (_unreadNotificationCount > 0)
+            Positioned(
+              right: -4,
+              top: -4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF0A1D33) : Colors.white,
+                    width: 2,
+                  ),
+                ),
+                constraints: const BoxConstraints(
+                  minWidth: 18,
+                  minHeight: 18,
+                ),
+                child: Center(
+                  child: Text(
+                    _unreadNotificationCount > 99 ? '99+' : '${_unreadNotificationCount}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -1367,115 +1513,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildUnitSelectorWidget(Size size, {required bool isDarkMode}) {
-    if (_units.isEmpty) {
-      return Text(
-        'Bạn chưa được gán vào căn hộ nào',
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.85),
-          fontSize: size.width * 0.035,
-          fontWeight: FontWeight.w500,
-        ),
-      );
-    }
-
-    final currentUnitId = _selectedUnitId ?? _units.first.id;
-    final selectedUnit = _units.firstWhere(
-      (unit) => unit.id == currentUnitId,
-      orElse: () => _units.first,
-    );
-    final theme = Theme.of(context);
-    final backgroundGradient = isDarkMode
-        ? AppColors.darkGlassLayerGradient()
-        : AppColors.glassLayerGradient();
-    final outlineColor = isDarkMode
-        ? Colors.white.withOpacity(0.18)
-        : Colors.white.withOpacity(0.32);
-    final textColor = isDarkMode
-        ? Colors.white
-        : theme.colorScheme.onSurface.withOpacity(0.86);
-    final secondaryTextColor = isDarkMode
-        ? Colors.white70
-        : theme.colorScheme.onSurface.withOpacity(0.6);
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: size.width * 0.035,
-            vertical: size.height * 0.008,
-          ),
-          decoration: BoxDecoration(
-            gradient: backgroundGradient,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: outlineColor, width: 1.2),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x22102136),
-                blurRadius: 16,
-                offset: Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                height: 48,
-                width: 48,
-                decoration: BoxDecoration(
-                  gradient: AppColors.primaryGradient(),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: AppColors.subtleShadow,
-                ),
-                child: const Icon(
-                  CupertinoIcons.house_alt_fill,
-                  color: Colors.white,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 18),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Căn hộ mặc định',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: secondaryTextColor,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      selectedUnit.displayName,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: textColor,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Bạn có thể đổi căn hộ trong phần Cài đặt.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: secondaryTextColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildElectricityChartSection(Size size) {
     final theme = Theme.of(context);
 
@@ -1712,20 +1749,43 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  String _greetingMessage() {
-    final hour = DateTime.now().hour;
-    if (hour < 11) return 'Một buổi sáng tươi đẹp';
-    if (hour < 14) return 'Chúc buổi trưa giàu năng lượng';
-    if (hour < 18) return 'Buổi chiều an yên';
-    return 'Tối thư giãn cùng gia đình';
+  /// Returns greeting period based on time of day:
+  /// Morning (5:00 - 11:59): "sáng"
+  /// Afternoon (12:00 - 17:59): "chiều"
+  /// Evening (18:00 - 4:59): "tối"
+  String _getGreetingPeriod(DateTime now) {
+    final hour = now.hour;
+    if (hour >= 5 && hour < 12) {
+      return 'sáng';
+    } else if (hour >= 12 && hour < 18) {
+      return 'chiều';
+    } else {
+      return 'tối';
+    }
   }
 
-  String _localizedPeriod(DateTime now) {
+  /// Returns greeting period text based on time of day:
+  /// Morning (5:00 - 11:59): "sáng"
+  /// Afternoon (12:00 - 17:59): "chiều"
+  /// Evening (18:00 - 4:59): "tối"
+  String _getGreetingPeriodText(DateTime now) {
+    final period = _getGreetingPeriod(now);
+    return 'Chào buổi $period';
+  }
+
+  /// Returns icon for time of day:
+  /// Morning (5:00 - 11:59): sun_max_fill
+  /// Afternoon (12:00 - 17:59): cloud_sun_fill
+  /// Evening (18:00 - 4:59): moon_stars_fill
+  IconData _getTimeOfDayIcon(DateTime now) {
     final hour = now.hour;
-    if (hour < 11) return 'sáng';
-    if (hour < 14) return 'trưa';
-    if (hour < 18) return 'chiều';
-    return 'tối';
+    if (hour >= 5 && hour < 12) {
+      return CupertinoIcons.sun_max_fill;
+    } else if (hour >= 12 && hour < 18) {
+      return CupertinoIcons.cloud_sun_fill;
+    } else {
+      return CupertinoIcons.moon_stars_fill;
+    }
   }
 
   List<_ServiceCardData> _serviceItems(BuildContext context) {

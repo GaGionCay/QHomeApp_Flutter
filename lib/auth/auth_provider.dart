@@ -1,10 +1,11 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 
 import '../contracts/contract_service.dart';
+import '../core/app_router.dart';
 import '../core/push_notification_service.dart';
-import '../login/login_screen.dart';
 import '../models/unit_info.dart';
 import '../profile/profile_service.dart';
 import 'api_client.dart';
@@ -141,17 +142,22 @@ class AuthProvider extends ChangeNotifier {
 Future<void> logout(BuildContext context) async {
   try {
     await authService.logout();
+  } catch (e) {
+    debugPrint('⚠️ Logout API error: $e');
   } finally {
-    await PushNotificationService.instance.unregisterToken();
+    try {
+      await PushNotificationService.instance.unregisterToken();
+    } catch (e) {
+      debugPrint('⚠️ Unregister token error: $e');
+    }
+    
     await storage.deleteAll();
     _isAuthenticated = false;
     notifyListeners();
 
     if (context.mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-        (route) => false,
-      );
+      // Use go_router to navigate to login screen
+      context.go(AppRoute.login.path);
     }
   }
 }

@@ -3,12 +3,13 @@ import 'dart:ui';
 import 'package:dio/dio.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../auth/api_client.dart';
-import '../auth/auth_service.dart';
+import '../auth/auth_provider.dart';
 import '../contracts/contract_list_screen.dart';
 import '../core/event_bus.dart';
-import '../login/login_screen.dart';
+import '../login/change_password_screen.dart';
 import '../notifications/notification_screen.dart';
 import '../profile/profile_screen.dart';
 import '../profile/profile_service.dart';
@@ -26,7 +27,6 @@ class MenuScreen extends StatefulWidget {
 class _MenuScreenState extends State<MenuScreen> {
   late Dio _dio;
   late ProfileService _profileService;
-  late AuthService _authService;
 
   Map<String, dynamic>? _profile;
   bool _loading = true;
@@ -42,7 +42,6 @@ class _MenuScreenState extends State<MenuScreen> {
       final api = await ApiClient.create();
       _dio = api.dio;
       _profileService = ProfileService(_dio);
-      _authService = AuthService(_dio, api.storage);
       await _loadProfile();
     } catch (e) {
       debugPrint('❌ Lỗi khởi tạo service: $e');
@@ -97,15 +96,12 @@ class _MenuScreenState extends State<MenuScreen> {
 
     if (confirm == true && context.mounted) {
       try {
-        await _authService.logout();
+        final authProvider = context.read<AuthProvider>();
+        await authProvider.logout(context);
         AppEventBus().clear();
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Đăng xuất thành công!')),
-          );
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const LoginScreen()),
-            (route) => false,
           );
         }
       } catch (e) {
@@ -253,7 +249,7 @@ class _MenuScreenState extends State<MenuScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                            builder: (_) => const ProfileScreen()),
+                            builder: (_) => const ChangePasswordScreen()),
                       );
                     },
                   ),
@@ -275,6 +271,7 @@ class _MenuScreenState extends State<MenuScreen> {
     final avatarUrl = _profile?['avatarUrl'] as String?;
     final name = _profile?['fullName'] ?? 'Người dùng';
     final email = _profile?['email'] ?? '';
+    final isDark = theme.brightness == Brightness.dark;
 
     return _ProfileGlassCard(
       child: Row(
@@ -283,7 +280,7 @@ class _MenuScreenState extends State<MenuScreen> {
             height: 64,
             width: 64,
             decoration: BoxDecoration(
-              gradient: AppColors.heroBackdropGradient(),
+              gradient: AppColors.heroBackdropGradient(isDark: isDark),
               shape: BoxShape.circle,
               boxShadow: AppColors.elevatedShadow,
             ),

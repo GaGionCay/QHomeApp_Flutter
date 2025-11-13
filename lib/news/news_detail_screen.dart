@@ -626,6 +626,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
     required bool showImage,
   }) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -637,7 +638,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                   fit: BoxFit.cover,
                   placeholder: (context, url) => Container(
                     decoration: BoxDecoration(
-                      gradient: AppColors.heroBackdropGradient(),
+                      gradient: AppColors.heroBackdropGradient(isDark: isDark),
                     ),
                     child: const Center(
                       child: CupertinoActivityIndicator(),
@@ -645,13 +646,13 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                   ),
                   errorWidget: (context, url, error) => Container(
                     decoration: BoxDecoration(
-                      gradient: AppColors.heroBackdropGradient(),
+                      gradient: AppColors.heroBackdropGradient(isDark: isDark),
                     ),
                   ),
                 )
               : Container(
                   decoration: BoxDecoration(
-                    gradient: AppColors.heroBackdropGradient(),
+                    gradient: AppColors.heroBackdropGradient(isDark: isDark),
                   ),
                 ),
         ),
