@@ -85,6 +85,11 @@
         <package android:name="com.techcombank" />
         <package android:name="com.sacombank" />
         <package android:name="com.bidv.smartbanking" />
+        <package android:name="com.bidv" />
+        <package android:name="com.vnpay.bidv" />
+        <package android:name="com.agribank.mb" />
+        <package android:name="com.agribank" />
+        <package android:name="com.vnpay.Agribank3g" />
         <package android:name="com.vpbank.online" />
         <package android:name="com.vpbank.mobile" />
         <!-- Khai báo các package app payment (Android 11+) -->

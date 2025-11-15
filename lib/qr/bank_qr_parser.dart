@@ -123,7 +123,9 @@ class BankQRParser {
     'com.tpb.mobile',
     'com.techcombank',
     'com.sacombank',
-    'com.bidv.smartbanking',
+    'com.bidv.smartbanking',  // BIDV Smart Banking (variant)
+    'com.bidv',                // BIDV variant
+    'com.vnpay.bidv',          // BIDV package name thực tế
     'com.vpbank.online',
     
     // Các variant package name (để phát hiện đầy đủ)
@@ -131,7 +133,8 @@ class BankQRParser {
     'vn.com.mbmobile',          // MB Bank variant
     'com.tpb.mb.gprsandroid',   // TPBank variant (package name thực tế)
     'com.vietinbank.vpb',       // VietinBank
-    'com.agribank.mb',          // Agribank
+    'com.agribank.mb',          // Agribank variant
+    'com.vnpay.Agribank3g',     // Agribank package name thực tế
     'com.acb.fastbank',         // ACB
     'com.vpbank.mobile',        // VPBank variant
     'com.shb.mobilebanking',    // SHB
@@ -711,48 +714,167 @@ class BankQRParser {
     }
   }
 
+  /// Từ khóa để tự động nhận diện app ngân hàng/payment
+  static const List<String> _bankingKeywords = [
+    'bank', 'banking', 'ngân hàng', 'vietcombank', 'vietinbank', 'bidv', 
+    'techcombank', 'acb', 'agribank', 'sacombank', 'vpbank', 'tpbank', 
+    'mb bank', 'mbbank', 'vietbank', 'hsbc', 'shb', 'nam a bank', 
+    'eximbank', 'ocb', 'scb', 'dong a', 'pvcombank', 'publicbank', 'ncb',
+  ];
+  
+  static const List<String> _paymentKeywords = [
+    'momo', 'zalopay', 'zalo pay', 'shopeepay', 'shopee pay', 
+    'viettelpay', 'vnpay', 'pay', 'wallet', 'ví', 'thanh toán',
+  ];
+
   /// ============================================
   /// HÀM: Kiểm tra TẤT CẢ app payment/banking đã cài đặt
   /// ============================================
   /// 
-  /// Kiểm tra TẤT CẢ package name trong danh sách (_bankPackageNames + _paymentApps)
+  /// Quét TẤT CẢ app đã cài trên thiết bị (không cache, luôn quét mới nhất)
+  /// Có 2 cách phát hiện:
+  /// 1. Filter theo danh sách package name đã biết (_bankPackageNames + _paymentApps)
+  /// 2. Tự động nhận diện theo tên app và keywords (để phát hiện app mới)
   /// Bao gồm cả app ngân hàng và app payment (MoMo, ZaloPay, ShopeePay...)
   /// Trả về danh sách TẤT CẢ app payment/banking đã được cài đặt
   static Future<List<BankInfo>> detectInstalledPaymentApps() async {
-    _log('🔍 Starting to detect installed payment/banking apps...');
+    _log('🔍 Starting to detect installed payment/banking apps (scanning all installed apps)...');
     
     final installedApps = <BankInfo>[];
+    final allPackageNamesSet = _allPackageNames.toSet(); // Set để lookup nhanh hơn
+    final foundPackageNames = <String>{}; // Track các package đã tìm thấy
     
-    // Kiểm tra từng package name trong danh sách (bao gồm cả bank và payment)
-    for (final packageName in _allPackageNames) {
-      try {
-        final isInstalled = await _isAppInstalled(packageName);
-        if (isInstalled) {
-          // Tìm BankInfo tương ứng với package name
-          BankInfo? appInfo;
+    try {
+      if (Platform.isAndroid) {
+        // Cách 1: Quét TẤT CẢ app đã cài (hiệu quả và luôn mới nhất)
+        try {
+          _log('📱 Getting all installed applications...');
+          final allApps = await DeviceApps.getInstalledApplications(
+            includeAppIcons: false, // Không cần icon để nhanh hơn
+            includeSystemApps: false, // Chỉ app user cài
+            onlyAppsWithLaunchIntent: true, // Chỉ app có thể mở được
+          );
           
-          // Kiểm tra xem có phải payment app không
-          if (_paymentApps.containsKey(packageName)) {
-            appInfo = _paymentApps[packageName];
-          } else {
-            // Kiểm tra xem có phải bank app không
-            appInfo = _findBankByPackageName(packageName);
-          }
+          _log('📊 Found ${allApps.length} total installed apps');
           
-          if (appInfo != null) {
-            _log('✅ Found installed: ${appInfo.name} ($packageName) - ${appInfo.type.name}');
-            // Kiểm tra xem đã có trong danh sách chưa (tránh duplicate)
-            if (!installedApps.any((app) => 
-              app.packageName == appInfo!.packageName)) {
-              installedApps.add(appInfo);
+          // Filter và map sang BankInfo
+          for (final app in allApps) {
+            final packageName = app.packageName;
+            final appName = app.appName.toLowerCase();
+            
+            BankInfo? appInfo;
+            
+            // Cách 1: Kiểm tra theo package name đã biết
+            if (allPackageNamesSet.contains(packageName)) {
+              try {
+                // Kiểm tra xem có phải payment app không
+                if (_paymentApps.containsKey(packageName)) {
+                  appInfo = _paymentApps[packageName];
+                } else {
+                  // Kiểm tra xem có phải bank app không
+                  appInfo = _findBankByPackageName(packageName);
+                }
+              } catch (e) {
+                _log('⚠️ Error processing known app $packageName: $e');
+              }
             }
-          } else {
-            _log('⚠️ App installed but not in mapping: $packageName');
+            
+            // Cách 2: Tự động nhận diện theo tên app (nếu chưa tìm thấy)
+            if (appInfo == null) {
+              // Kiểm tra xem tên app có chứa keywords ngân hàng/payment không
+              final isBankingApp = _bankingKeywords.any((keyword) => 
+                appName.contains(keyword.toLowerCase()) || 
+                packageName.contains(keyword.toLowerCase()));
+              
+              final isPaymentApp = _paymentKeywords.any((keyword) => 
+                appName.contains(keyword.toLowerCase()) || 
+                packageName.contains(keyword.toLowerCase()));
+              
+              if (isBankingApp || isPaymentApp) {
+                // Tự động tạo BankInfo từ app name
+                final displayName = app.appName;
+                final appType = isPaymentApp ? PaymentAppType.payment : PaymentAppType.bank;
+                
+                // Thử tìm BIN code từ package name hoặc app name
+                String? bin;
+                if (isBankingApp) {
+                  // Tìm BIN code từ mapping
+                  for (final entry in _binToBankInfo.entries) {
+                    final bankInfo = entry.value;
+                    if (appName.contains(bankInfo.name.toLowerCase()) ||
+                        packageName.contains(bankInfo.packageName.toLowerCase())) {
+                      bin = entry.key;
+                      appInfo = bankInfo; // Dùng BankInfo đã có
+                      break;
+                    }
+                  }
+                  
+                  // Nếu không tìm thấy trong mapping, tạo mới
+                  if (appInfo == null) {
+                    appInfo = BankInfo(
+                      bin: bin,
+                      name: displayName,
+                      packageName: packageName,
+                      playStoreId: packageName,
+                      type: appType,
+                    );
+                  }
+                } else {
+                  // Payment app
+                  appInfo = BankInfo(
+                    bin: null,
+                    name: displayName,
+                    packageName: packageName,
+                    playStoreId: packageName,
+                    type: appType,
+                  );
+                }
+                
+                _log('🔍 Auto-detected ${appType.name} app: $displayName ($packageName)');
+              }
+            }
+            
+            // Thêm vào danh sách nếu tìm thấy
+            if (appInfo != null && !foundPackageNames.contains(packageName)) {
+              _log('✅ Found installed: ${appInfo.name} ($packageName) - ${appInfo.type.name}');
+              installedApps.add(appInfo);
+              foundPackageNames.add(packageName);
+            }
+          }
+        } catch (e) {
+          _log('❌ Error getting all installed apps: $e');
+          _log('   Falling back to individual package check...');
+          
+          // Cách 2: Fallback - Kiểm tra từng package name (chậm hơn nhưng đáng tin cậy)
+          for (final packageName in _allPackageNames) {
+            try {
+              final isInstalled = await _isAppInstalled(packageName);
+              if (isInstalled) {
+                BankInfo? appInfo;
+                
+                if (_paymentApps.containsKey(packageName)) {
+                  appInfo = _paymentApps[packageName];
+                } else {
+                  appInfo = _findBankByPackageName(packageName);
+                }
+                
+                if (appInfo != null && !installedApps.any((app) => 
+                  app.packageName == appInfo!.packageName)) {
+                  _log('✅ Found installed (fallback): ${appInfo.name} ($packageName)');
+                  installedApps.add(appInfo);
+                }
+              }
+            } catch (e) {
+              _log('⚠️ Error checking app $packageName: $e');
+            }
           }
         }
-      } catch (e) {
-        _log('⚠️ Error checking app $packageName: $e');
+      } else {
+        _log('⚠️ Platform not supported: Only Android is supported');
       }
+    } catch (e, stackTrace) {
+      _log('❌ CRITICAL: Error detecting installed apps: $e');
+      _log('   Stack trace: $stackTrace');
     }
     
     // Sắp xếp: Payment apps trước, sau đó bank apps (theo tên)
@@ -765,7 +887,7 @@ class BankQRParser {
       return a.name.compareTo(b.name);
     });
     
-    _log('📊 Found ${installedApps.length} installed payment/banking apps');
+    _log('📊 Final result: Found ${installedApps.length} installed payment/banking apps');
     return installedApps;
   }
 
@@ -830,6 +952,11 @@ class BankQRParser {
       'vn.com.mbmobile': '970422', // MB Bank variant
       'com.vietcombank': '970436', // Vietcombank variant
       'com.vpbank.mobile': '970432', // VPBank variant
+      'com.bidv': '970418', // BIDV variant
+      'com.bidv.smartbanking': '970418', // BIDV Smart Banking
+      'com.vnpay.bidv': '970418', // BIDV package name thực tế
+      'com.agribank.mb': '970405', // Agribank variant
+      'com.vnpay.Agribank3g': '970405', // Agribank package name thực tế
     };
     
     final bin = packageMapping[packageName];
