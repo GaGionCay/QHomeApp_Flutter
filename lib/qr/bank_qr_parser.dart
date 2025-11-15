@@ -85,22 +85,36 @@ class BankQRData {
 
 /// Thông tin ngân hàng để hiển thị trong dialog
 class BankInfo {
-  final String bin;
+  final String? bin; // BIN code (null cho payment apps như MoMo, ZaloPay...)
   final String name;
   final String packageName; // Package name trên Android
   final String? playStoreId; // ID trên Google Play Store
+  final PaymentAppType type; // Loại app: bank hoặc payment
 
   const BankInfo({
-    required this.bin,
+    this.bin,
     required this.name,
     required this.packageName,
     this.playStoreId,
+    this.type = PaymentAppType.bank,
   });
+
+  /// Kiểm tra xem đây có phải là app ngân hàng không
+  bool get isBank => type == PaymentAppType.bank && bin != null;
+
+  /// Kiểm tra xem đây có phải là app payment không
+  bool get isPaymentApp => type == PaymentAppType.payment;
+}
+
+/// Loại app payment
+enum PaymentAppType {
+  bank, // App ngân hàng
+  payment, // App payment như MoMo, ZaloPay, ShopeePay...
 }
 
 /// Parser cho QR code ngân hàng theo chuẩn EMVCo và VietQR
 class BankQRParser {
-  /// Danh sách package name các ngân hàng cần kiểm tra (theo yêu cầu)
+  /// Danh sách package name các ngân hàng cần kiểm tra
   /// Lưu ý: Một số ngân hàng có nhiều package name variant
   static const List<String> _bankPackageNames = [
     // Danh sách chính theo yêu cầu
@@ -131,6 +145,51 @@ class BankQRParser {
     'com.pvcombank.mobile',     // PVComBank
     'com.publicbank.mobile',    // PublicBank
     'com.ncb.mobile',           // NCB
+  ];
+
+  /// Danh sách package name các app payment (MoMo, ZaloPay, ShopeePay...)
+  static const Map<String, BankInfo> _paymentApps = {
+    'com.mservice.momotransfer': BankInfo(
+      bin: null,
+      name: 'MoMo',
+      packageName: 'com.mservice.momotransfer',
+      playStoreId: 'com.mservice.momotransfer',
+      type: PaymentAppType.payment,
+    ),
+    'vn.zalo.pay': BankInfo(
+      bin: null,
+      name: 'ZaloPay',
+      packageName: 'vn.zalo.pay',
+      playStoreId: 'vn.zalo.pay',
+      type: PaymentAppType.payment,
+    ),
+    'com.shopeemobile.omc': BankInfo(
+      bin: null,
+      name: 'ShopeePay',
+      packageName: 'com.shopeemobile.omc',
+      playStoreId: 'com.shopeemobile.omc',
+      type: PaymentAppType.payment,
+    ),
+    'com.viettelpay': BankInfo(
+      bin: null,
+      name: 'ViettelPay',
+      packageName: 'com.viettelpay',
+      playStoreId: 'com.viettelpay',
+      type: PaymentAppType.payment,
+    ),
+    'com.vnpay.wallet': BankInfo(
+      bin: null,
+      name: 'VNPay',
+      packageName: 'com.vnpay.wallet',
+      playStoreId: 'com.vnpay.wallet',
+      type: PaymentAppType.payment,
+    ),
+  };
+
+  /// Danh sách tất cả package name cần kiểm tra (bao gồm cả bank và payment apps)
+  static List<String> get _allPackageNames => [
+    ..._bankPackageNames,
+    ..._paymentApps.keys,
   ];
 
   /// Map BIN code sang thông tin ngân hàng
@@ -653,31 +712,42 @@ class BankQRParser {
   }
 
   /// ============================================
-  /// HÀM: Kiểm tra app ngân hàng đã cài đặt
+  /// HÀM: Kiểm tra TẤT CẢ app payment/banking đã cài đặt
   /// ============================================
   /// 
-  /// Kiểm tra các package name trong danh sách _bankPackageNames
-  /// và trả về danh sách các ngân hàng đã được cài đặt
-  static Future<List<BankInfo>> detectInstalledBanks() async {
-    _log('🔍 Starting to detect installed bank apps...');
+  /// Kiểm tra TẤT CẢ package name trong danh sách (_bankPackageNames + _paymentApps)
+  /// Bao gồm cả app ngân hàng và app payment (MoMo, ZaloPay, ShopeePay...)
+  /// Trả về danh sách TẤT CẢ app payment/banking đã được cài đặt
+  static Future<List<BankInfo>> detectInstalledPaymentApps() async {
+    _log('🔍 Starting to detect installed payment/banking apps...');
     
-    final installedBanks = <BankInfo>[];
+    final installedApps = <BankInfo>[];
     
-    // Kiểm tra từng package name trong danh sách
-    for (final packageName in _bankPackageNames) {
+    // Kiểm tra từng package name trong danh sách (bao gồm cả bank và payment)
+    for (final packageName in _allPackageNames) {
       try {
         final isInstalled = await _isAppInstalled(packageName);
         if (isInstalled) {
           // Tìm BankInfo tương ứng với package name
-          final bankInfo = _findBankByPackageName(packageName);
-          if (bankInfo != null) {
-            _log('✅ Found installed: ${bankInfo.name} ($packageName)');
+          BankInfo? appInfo;
+          
+          // Kiểm tra xem có phải payment app không
+          if (_paymentApps.containsKey(packageName)) {
+            appInfo = _paymentApps[packageName];
+          } else {
+            // Kiểm tra xem có phải bank app không
+            appInfo = _findBankByPackageName(packageName);
+          }
+          
+          if (appInfo != null) {
+            _log('✅ Found installed: ${appInfo.name} ($packageName) - ${appInfo.type.name}');
             // Kiểm tra xem đã có trong danh sách chưa (tránh duplicate)
-            if (!installedBanks.any((bank) => bank.bin == bankInfo.bin)) {
-              installedBanks.add(bankInfo);
+            if (!installedApps.any((app) => 
+              app.packageName == appInfo!.packageName)) {
+              installedApps.add(appInfo);
             }
           } else {
-            _log('⚠️ App installed but not in bank mapping: $packageName');
+            _log('⚠️ App installed but not in mapping: $packageName');
           }
         }
       } catch (e) {
@@ -685,11 +755,24 @@ class BankQRParser {
       }
     }
     
-    // Sắp xếp theo tên ngân hàng
-    installedBanks.sort((a, b) => a.name.compareTo(b.name));
+    // Sắp xếp: Payment apps trước, sau đó bank apps (theo tên)
+    installedApps.sort((a, b) {
+      // Sắp xếp theo type trước (payment trước bank)
+      if (a.type != b.type) {
+        return a.type == PaymentAppType.payment ? -1 : 1;
+      }
+      // Sau đó sắp xếp theo tên
+      return a.name.compareTo(b.name);
+    });
     
-    _log('📊 Found ${installedBanks.length} installed bank apps');
-    return installedBanks;
+    _log('📊 Found ${installedApps.length} installed payment/banking apps');
+    return installedApps;
+  }
+
+  /// [DEPRECATED] Sử dụng detectInstalledPaymentApps thay thế
+  @Deprecated('Use detectInstalledPaymentApps instead')
+  static Future<List<BankInfo>> detectInstalledBanks() async {
+    return detectInstalledPaymentApps();
   }
 
   /// Kiểm tra xem app có được cài đặt không
@@ -791,10 +874,10 @@ class BankQRParser {
     return result.bankData;
   }
 
-  /// [DEPRECATED] Sử dụng detectInstalledBanks thay thế
-  @Deprecated('Use detectInstalledBanks instead')
+  /// [DEPRECATED] Sử dụng detectInstalledPaymentApps thay thế
+  @Deprecated('Use detectInstalledPaymentApps instead')
   static Future<List<BankInfo>> getInstalledBanks() {
-    return detectInstalledBanks();
+    return detectInstalledPaymentApps();
   }
 }
 

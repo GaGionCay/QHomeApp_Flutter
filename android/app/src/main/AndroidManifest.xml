@@ -87,5 +87,11 @@
         <package android:name="com.bidv.smartbanking" />
         <package android:name="com.vpbank.online" />
         <package android:name="com.vpbank.mobile" />
+        <!-- Khai báo các package app payment (Android 11+) -->
+        <package android:name="com.mservice.momotransfer" />
+        <package android:name="vn.zalo.pay" />
+        <package android:name="com.shopeemobile.omc" />
+        <package android:name="com.viettelpay" />
+        <package android:name="com.vnpay.wallet" />
     </queries>
 </manifest>
