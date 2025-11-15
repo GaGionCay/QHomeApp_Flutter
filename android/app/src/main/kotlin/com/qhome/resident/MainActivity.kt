@@ -23,6 +23,16 @@ class MainActivity : FlutterFragmentActivity() {
                         result.error("INVALID_ARGUMENT", "Package name is null", null)
                     }
                 }
+                "openUrlWithBrowser" -> {
+                    val url = call.argument<String>("url")
+                    val packageName = call.argument<String>("packageName")
+                    if (url != null && packageName != null) {
+                        val opened = openUrlWithBrowser(url, packageName)
+                        result.success(opened)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "URL or package name is null", null)
+                    }
+                }
                 else -> {
                     result.notImplemented()
                 }
@@ -46,6 +56,43 @@ class MainActivity : FlutterFragmentActivity() {
         } catch (e: Exception) {
             Log.e("MainActivity", "Error launching app $packageName: ${e.message}", e)
             false
+        }
+    }
+    
+    private fun openUrlWithBrowser(url: String, packageName: String): Boolean {
+        return try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            intent.setPackage(packageName)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            
+            // Kiểm tra xem có app nào có thể xử lý intent này không
+            val resolveInfo = packageManager.resolveActivity(intent, 0)
+            
+            if (resolveInfo != null) {
+                startActivity(intent)
+                Log.d("MainActivity", "Successfully opened URL with browser: $packageName")
+                true
+            } else {
+                Log.w("MainActivity", "Browser $packageName cannot handle URL")
+                // Fallback: Mở URL bình thường (sẽ hỏi user chọn browser)
+                val fallbackIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(fallbackIntent)
+                Log.d("MainActivity", "Opened URL with system chooser (fallback)")
+                true
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error opening URL with browser $packageName: ${e.message}", e)
+            // Fallback: Mở URL bình thường
+            try {
+                val fallbackIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(fallbackIntent)
+                true
+            } catch (e2: Exception) {
+                Log.e("MainActivity", "Error opening URL (fallback): ${e2.message}", e2)
+                false
+            }
         }
     }
 }

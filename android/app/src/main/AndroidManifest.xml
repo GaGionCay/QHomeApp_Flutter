@@ -92,11 +92,23 @@
         <package android:name="com.vnpay.Agribank3g" />
         <package android:name="com.vpbank.online" />
         <package android:name="com.vpbank.mobile" />
+        <package android:name="com.vietinbank.vpb" />
+        <package android:name="com.vietinbank.ipay" />
         <!-- Khai báo các package app payment (Android 11+) -->
         <package android:name="com.mservice.momotransfer" />
         <package android:name="vn.zalo.pay" />
         <package android:name="com.shopeemobile.omc" />
         <package android:name="com.viettelpay" />
         <package android:name="com.vnpay.wallet" />
+        <!-- Khai báo các package trình duyệt (Android 11+) -->
+        <package android:name="com.android.chrome" />
+        <package android:name="org.mozilla.firefox" />
+        <package android:name="com.microsoft.emmx" />
+        <package android:name="com.opera.browser" />
+        <package android:name="com.brave.browser" />
+        <package android:name="com.vivaldi.browser" />
+        <package android:name="com.samsung.android.sbrowser" />
+        <package android:name="com.huawei.browser" />
+        <package android:name="com.mi.globalbrowser" />
     </queries>
 </manifest>
