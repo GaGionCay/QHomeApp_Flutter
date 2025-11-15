@@ -12,6 +12,7 @@ import 'widgets/notification_card.dart';
 import 'widgets/notification_date_filter.dart';
 import 'widgets/notification_group_header.dart';
 import 'widgets/notification_search_bar.dart';
+import 'widgets/notification_read_status_filter.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({
@@ -318,6 +319,12 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   },
                   onClear: () {
                     viewModel.clearSearch();
+                  },
+                ),
+                NotificationReadStatusFilterWidget(
+                  currentFilter: viewModel.readStatusFilter,
+                  onFilterChanged: (filter) {
+                    viewModel.setReadStatusFilter(filter);
                   },
                 ),
                 NotificationDateFilter(

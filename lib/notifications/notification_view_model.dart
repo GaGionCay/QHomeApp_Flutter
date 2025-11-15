@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../models/resident_notification.dart';
 import '../news/resident_service.dart';
+import 'widgets/notification_read_status_filter.dart';
 
 class NotificationViewModel extends ChangeNotifier {
   final ResidentService _residentService = ResidentService();
@@ -38,6 +39,9 @@ class NotificationViewModel extends ChangeNotifier {
   String _searchQuery = '';
   String get searchQuery => _searchQuery;
 
+  NotificationReadStatusFilter _readStatusFilter = NotificationReadStatusFilter.all;
+  NotificationReadStatusFilter get readStatusFilter => _readStatusFilter;
+
   void setResidentAndBuilding(String? residentId, String? buildingId) {
     _residentId = residentId;
     _buildingId = buildingId;
@@ -48,8 +52,18 @@ class NotificationViewModel extends ChangeNotifier {
 
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase().trim();
-      filteredNotifications = _notifications.where((notification) {
+      filteredNotifications = filteredNotifications.where((notification) {
         return notification.title.toLowerCase().contains(query);
+      }).toList();
+    }
+
+    if (_readStatusFilter != NotificationReadStatusFilter.all) {
+      filteredNotifications = filteredNotifications.where((notification) {
+        if (_readStatusFilter == NotificationReadStatusFilter.read) {
+          return notification.isRead;
+        } else {
+          return !notification.isRead;
+        }
       }).toList();
     }
     final Map<String, List<ResidentNotification>> grouped = {};
@@ -193,6 +207,11 @@ class NotificationViewModel extends ChangeNotifier {
 
   void clearSearch() {
     _searchQuery = '';
+    notifyListeners();
+  }
+
+  void setReadStatusFilter(NotificationReadStatusFilter filter) {
+    _readStatusFilter = filter;
     notifyListeners();
   }
 
