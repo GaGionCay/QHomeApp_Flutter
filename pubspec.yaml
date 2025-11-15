@@ -53,6 +53,7 @@ dependencies:
   package_info_plus: ^8.0.2
   local_auth: ^2.1.7
   mobile_scanner: ^5.2.3
+  device_apps: ^2.2.0
   
 dev_dependencies:
   flutter_test:

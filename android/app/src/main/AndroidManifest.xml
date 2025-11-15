@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.USE_FINGERPRINT" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Permission để query danh sách app đã cài (cho device_apps package) -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
@@ -73,5 +75,17 @@
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />
         </intent>
+        <!-- Khai báo các package ngân hàng để query (Android 11+) -->
+        <package android:name="com.vietcombank.mobile" />
+        <package android:name="com.vietcombank" />
+        <package android:name="vn.com.mbmobile" />
+        <package android:name="com.mbmobile" />
+        <package android:name="com.tpb.mb.gprsandroid" />
+        <package android:name="com.tpb.mobile" />
+        <package android:name="com.techcombank" />
+        <package android:name="com.sacombank" />
+        <package android:name="com.bidv.smartbanking" />
+        <package android:name="com.vpbank.online" />
+        <package android:name="com.vpbank.mobile" />
     </queries>
 </manifest>

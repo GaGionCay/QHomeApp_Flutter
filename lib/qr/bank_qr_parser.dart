@@ -2,6 +2,8 @@ import 'dart:developer' as dev;
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io' show Platform;
+import 'package:device_apps/device_apps.dart';
+import 'package:flutter/services.dart' show PlatformException, MethodChannel;
 
 /// Helper function để log với cả dev.log và print (để hiển thị trong logcat Android)
 void _log(String message) {
@@ -690,13 +692,42 @@ class BankQRParser {
     return installedBanks;
   }
 
-  /// Kiểm tra xem app có được cài đặt không bằng intent URL
+  /// Kiểm tra xem app có được cài đặt không
+  /// Sử dụng device_apps package để kiểm tra chính xác
   static Future<bool> _isAppInstalled(String packageName) async {
     try {
-      final intentUrl = 'intent://#Intent;package=$packageName;end';
-      final uri = Uri.parse(intentUrl);
-      return await canLaunchUrl(uri);
+      if (Platform.isAndroid) {
+        // Cách 1: Sử dụng device_apps (chính xác nhất)
+        try {
+          final app = await DeviceApps.getApp(packageName, true);
+          if (app != null) {
+            _log('✅ App found using device_apps: $packageName (${app.appName})');
+            return true;
+          } else {
+            _log('❌ App not found using device_apps: $packageName');
+          }
+        } catch (e) {
+          // App không tồn tại hoặc không thể truy cập
+          _log('⚠️ Error using device_apps for $packageName: $e');
+        }
+        
+        // Cách 2: Fallback - Sử dụng intent URL (không chính xác 100%)
+        try {
+          final intentUrl = 'intent://#Intent;package=$packageName;end';
+          final uri = Uri.parse(intentUrl);
+          final canLaunch = await canLaunchUrl(uri);
+          if (canLaunch) {
+            _log('✅ App found using intent URL: $packageName');
+            return true;
+          }
+        } catch (e) {
+          _log('⚠️ Error using intent URL for $packageName: $e');
+        }
+      }
+      
+      return false;
     } catch (e) {
+      _log('❌ Error checking app $packageName: $e');
       return false;
     }
   }
@@ -708,6 +739,19 @@ class BankQRParser {
       if (bankInfo.packageName == packageName) {
         return bankInfo;
       }
+    }
+    
+    // Mapping thủ công cho các package name variant thường gặp
+    final packageMapping = <String, String>{
+      'com.mbmobile': '970422', // MB Bank variant
+      'vn.com.mbmobile': '970422', // MB Bank variant
+      'com.vietcombank': '970436', // Vietcombank variant
+      'com.vpbank.mobile': '970432', // VPBank variant
+    };
+    
+    final bin = packageMapping[packageName];
+    if (bin != null) {
+      return _binToBankInfo[bin];
     }
     
     // Tìm theo variant (ví dụ: com.vietcombank.mobile vs com.vietcombank)
@@ -756,38 +800,59 @@ class BankQRParser {
 
 /// Helper class để mở app ngân hàng bằng package name (Android Intent URL)
 class BankAppLauncher {
+  static const MethodChannel _channel = MethodChannel('com.qhome.resident/app_launcher');
+  
   /// Mở app ngân hàng bằng package name
-  /// Sử dụng Intent URL: intent://#Intent;package={packageName};end
+  /// Sử dụng Platform Channel để gọi Android API trực tiếp (đáng tin cậy hơn intent URL)
   /// Fallback: Mở Google Play Store nếu app chưa cài
   static Future<bool> openBankApp(String packageName, {String? playStoreId}) async {
     _log('🚀 Attempting to open bank app: $packageName');
     
     try {
       if (Platform.isAndroid) {
-        // Android: Sử dụng Intent URL
-        final intentUrl = 'intent://#Intent;package=$packageName;end';
-        final uri = Uri.parse(intentUrl);
-        
-        _log('   Intent URL: $intentUrl');
-        
+        // Cách 1: Thử dùng Platform Channel (chính xác nhất)
         try {
-          final canLaunch = await canLaunchUrl(uri);
-          _log('   Can launch intent: $canLaunch');
-          
-          if (canLaunch) {
-            await launchUrl(uri, mode: LaunchMode.externalApplication);
-            _log('✅ Successfully opened bank app');
+          final result = await _channel.invokeMethod<bool>('launchApp', {'packageName': packageName});
+          if (result == true) {
+            _log('✅ Successfully opened bank app using platform channel');
             return true;
           } else {
-            _log('⚠️ Cannot launch intent, app may not be installed');
-            // Fallback: Mở Google Play Store
-            return await _openPlayStore(playStoreId ?? packageName);
+            _log('⚠️ Platform channel returned false, trying intent URL...');
           }
+        } on PlatformException catch (e) {
+          _log('⚠️ Platform channel error: ${e.code} - ${e.message}');
+          // Tiếp tục thử cách khác
         } catch (e) {
-          _log('❌ Error launching intent: $e');
-          // Fallback: Mở Google Play Store
-          return await _openPlayStore(playStoreId ?? packageName);
+          _log('⚠️ Error using platform channel: $e');
+          // Tiếp tục thử cách khác
         }
+        
+        // Cách 2: Fallback - Thử dùng Intent URL (có thể không hoạt động)
+        try {
+          final intentUrl = 'intent://#Intent;package=$packageName;end';
+          final uri = Uri.parse(intentUrl);
+          _log('   Trying intent URL: $intentUrl');
+          
+          final launched = await launchUrl(
+            uri,
+            mode: LaunchMode.externalApplication,
+          );
+          
+          if (launched) {
+            _log('✅ Successfully opened bank app using intent URL');
+            return true;
+          } else {
+            _log('⚠️ Intent URL returned false');
+          }
+        } on PlatformException catch (e) {
+          _log('⚠️ Intent URL PlatformException: ${e.code} - ${e.message}');
+        } catch (e) {
+          _log('⚠️ Intent URL error: $e');
+        }
+        
+        // Cách 3: Fallback cuối cùng - Mở Google Play Store
+        _log('   All methods failed, opening Play Store...');
+        return await _openPlayStore(playStoreId ?? packageName);
       } else if (Platform.isIOS) {
         // iOS: Thử mở bằng custom URL scheme (nếu có)
         _log('   iOS platform detected');
