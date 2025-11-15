@@ -2,6 +2,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:provider/provider.dart';
 
@@ -73,6 +74,16 @@ class MyApp extends StatelessWidget {
       darkTheme: AppTheme.dark(),
       themeMode: themeController.themeMode,
       routerConfig: AppRouter.router,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('en', 'US'),
+        Locale('vi', 'VN'),
+      ],
+      locale: const Locale('vi', 'VN'),
     );
   }
 }
