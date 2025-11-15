@@ -220,11 +220,14 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                       const SizedBox(height: 6),
                       Row(
                         children: [
-                          Text(
-                            priceText,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              color: colorScheme.primary,
-                              fontWeight: FontWeight.w700,
+                          Flexible(
+                            child: Text(
+                              priceText,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: colorScheme.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -562,14 +565,18 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         _buildPriceText(service, service['pricingType'] as String);
     return Row(
       children: [
-        Text(
-          priceText,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.w700,
-              ),
+        Flexible(
+          child: Text(
+            priceText,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          ),
         ),
-        const Spacer(),
+        const SizedBox(width: 12),
         FilledButton.icon(
           onPressed: () {
             Navigator.push(

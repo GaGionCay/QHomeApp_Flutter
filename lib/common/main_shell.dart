@@ -17,7 +17,7 @@ import '../notifications/realtime_notification_banner.dart';
 import '../notifications/notification_screen.dart';
 import '../core/push_notification_service.dart';
 import '../profile/profile_service.dart';
-import '../service_registration/service_category_screen.dart';
+import 'service_category_screen.dart';
 import '../theme/app_colors.dart';
 import 'menu_screen.dart';
 

@@ -37,6 +37,8 @@ import '../common/layout_insets.dart';
 import '../services/card_registrations_screen.dart';
 import '../settings/settings_screen.dart';
 import '../register/register_vehicle_screen.dart';
+import '../register/register_elevator_card_screen.dart';
+import '../register/register_resident_card_screen.dart';
 import '../qr/qr_scanner_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -811,7 +813,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                 const SizedBox(height: 24),
                                 _buildPriorityAlertsCard(context),
                                 const SizedBox(height: 24),
-                                _buildCardRegistrationCallout(context),
+                                _buildInvoiceFeaturesRow(media.size),
+                                const SizedBox(height: 24),
+                                _buildNewsAndCardRow(media.size),
                                 const SizedBox(height: 24),
                                 _buildServiceDeck(context),
                                 const SizedBox(height: 24),
@@ -826,7 +830,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                   _buildHouseholdManagementCard(media.size),
                                 if (_ownerUnits.isNotEmpty)
                                   const SizedBox(height: 24),
-                                _buildCompactFeatureRow(media.size),
                                 const SizedBox(height: 16),
                               ],
                             ),
@@ -1518,60 +1521,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-  Widget _buildCardRegistrationCallout(BuildContext context) {
-    final theme = Theme.of(context);
-    final textTheme = theme.textTheme;
-
-    return GestureDetector(
-      onTap: _openCardRegistrationScreen,
-      child: _HomeGlassCard(
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              height: 48,
-              width: 48,
-              decoration: BoxDecoration(
-                color: AppColors.primaryAqua.withOpacity(0.16),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Icon(
-                CupertinoIcons.creditcard_fill,
-                color: AppColors.primaryAqua,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Quản lý thẻ cư dân',
-                    style: textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Tạo, quản lý và theo dõi thẻ cư dân, thang máy, thẻ xe của hộ gia đình.',
-                    style: textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.6),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              CupertinoIcons.chevron_right,
-              color: theme.colorScheme.onSurface.withOpacity(0.4),
-              size: 20,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildElectricityChartSection(Size size) {
     final theme = Theme.of(context);
 
@@ -1804,107 +1753,127 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildCompactFeatureRow(Size size) {
-    final theme = Theme.of(context);
-    final features = [
-      _FeatureAction(
-        icon: Icons.description_outlined,
-        label: 'Hóa đơn mới',
-        accent: AppColors.primaryBlue,
-        onTap: () {
-          debugPrint(
-              '🧾 [HomeScreen] mở Hóa đơn mới với unit=$_selectedUnitId, units=${_units.length}');
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => InvoiceListScreen(
-                initialUnitId: _selectedUnitId,
-                initialUnits: _units,
-              ),
-            ),
-          );
-        },
-      ),
-      _FeatureAction(
-        icon: Icons.verified_outlined,
-        label: 'Đã thanh toán',
-        accent: AppColors.primaryEmerald,
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => PaidInvoicesScreen(
-                initialUnitId: _selectedUnitId,
-                initialUnits: _units,
-              ),
-            ),
-          );
-        },
-      ),
-      _FeatureAction(
-        icon: Icons.newspaper_outlined,
-        label: 'Tin tức',
-        accent: AppColors.warning,
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const NewsScreen(),
-            ),
-          );
-        },
-      ),
-    ];
+  Widget _buildInvoiceFeaturesRow(Size size) {
+    const spacing = 18.0;
 
-    final width = size.width;
-    double? itemWidth;
-    if (width > 820) {
-      itemWidth = (width - 120) / 3;
-    } else if (width > 560) {
-      itemWidth = (width - 96) / 2;
-    } else {
-      itemWidth = width - 48;
-    }
-
-    return Wrap(
-      spacing: 18,
-      runSpacing: 18,
-      children: features.map((feature) {
-        return _HomeGlassCard(
-          width: itemWidth,
-          padding: const EdgeInsets.all(18),
-          child: InkWell(
-            onTap: feature.onTap,
-            borderRadius: BorderRadius.circular(22),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  height: 48,
-                  width: 48,
-                  decoration: BoxDecoration(
-                    color: feature.accent.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Icon(feature.icon, color: feature.accent),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  feature.label,
-                  style: theme.textTheme.titleMedium,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Chạm để xem chi tiết',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+    return Row(
+      children: [
+        Expanded(
+          child: _buildFeatureCard(
+            icon: Icons.description_outlined,
+            label: 'Hóa đơn mới',
+            accent: AppColors.primaryBlue,
+            onTap: () {
+              debugPrint(
+                  '🧾 [HomeScreen] mở Hóa đơn mới với unit=$_selectedUnitId, units=${_units.length}');
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => InvoiceListScreen(
+                    initialUnitId: _selectedUnitId,
+                    initialUnits: _units,
                   ),
                 ),
-              ],
-            ),
+              );
+            },
           ),
-        );
-      }).toList(),
+        ),
+        SizedBox(width: spacing),
+        Expanded(
+          child: _buildFeatureCard(
+            icon: Icons.verified_outlined,
+            label: 'Đã thanh toán',
+            accent: AppColors.primaryEmerald,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PaidInvoicesScreen(
+                    initialUnitId: _selectedUnitId,
+                    initialUnits: _units,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNewsAndCardRow(Size size) {
+    const spacing = 18.0;
+
+    return Row(
+      children: [
+        Expanded(
+          child: _buildFeatureCard(
+            icon: Icons.newspaper_outlined,
+            label: 'Tin tức',
+            accent: AppColors.warning,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const NewsScreen(),
+                ),
+              );
+            },
+          ),
+        ),
+        SizedBox(width: spacing),
+        Expanded(
+          child: _buildFeatureCard(
+            icon: CupertinoIcons.creditcard_fill,
+            label: 'Quản lý thẻ cư dân',
+            accent: AppColors.primaryAqua,
+            onTap: _openCardRegistrationScreen,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFeatureCard({
+    required IconData icon,
+    required String label,
+    required Color accent,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    
+    return _HomeGlassCard(
+      padding: const EdgeInsets.all(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: 48,
+              width: 48,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(icon, color: accent),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              label,
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Chạm để xem chi tiết',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1978,28 +1947,32 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ),
       _ServiceCardData(
-        title: 'Thanh toán',
-        subtitle: 'Xem và thanh toán hóa đơn dịch vụ',
-        icon: Icons.account_balance_wallet_outlined,
-        accent: AppColors.primaryEmerald,
+        title: 'Thẻ thang máy',
+        subtitle: 'Đăng ký và quản lý thẻ thang máy',
+        icon: Icons.elevator,
+        accent: AppColors.primaryAqua,
         onTap: () {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => InvoiceListScreen(
-                initialUnitId: _selectedUnitId,
-                initialUnits: _units,
-              ),
+              builder: (_) => const RegisterElevatorCardScreen(),
             ),
           );
         },
       ),
       _ServiceCardData(
-        title: 'Tiện ích',
-        subtitle: 'Đặt lịch tiện ích cộng đồng',
-        icon: Icons.spa_outlined,
-        accent: Colors.purpleAccent,
-        onTap: () => widget.onNavigateToTab?.call(1),
+        title: 'Thẻ cư dân',
+        subtitle: 'Đăng ký và quản lý thẻ cư dân',
+        icon: CupertinoIcons.person_fill,
+        accent: AppColors.primaryEmerald,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const RegisterResidentCardScreen(),
+            ),
+          );
+        },
       ),
     ];
   }
@@ -2009,12 +1982,10 @@ class _HomeGlassCard extends StatelessWidget {
   const _HomeGlassCard({
     required this.child,
     this.padding = const EdgeInsets.all(20),
-    this.width,
   });
 
   final Widget child;
   final EdgeInsets padding;
-  final double? width;
 
   @override
   Widget build(BuildContext context) {
@@ -2029,7 +2000,6 @@ class _HomeGlassCard extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: Container(
-          width: width,
           decoration: BoxDecoration(
             gradient: gradient,
             borderRadius: borderRadius,
@@ -2230,20 +2200,6 @@ class _HomeActionTile extends StatelessWidget {
       ),
     );
   }
-}
-
-class _FeatureAction {
-  const _FeatureAction({
-    required this.icon,
-    required this.label,
-    required this.accent,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color accent;
-  final VoidCallback onTap;
 }
 
 class _HomeLoadingState extends StatelessWidget {
