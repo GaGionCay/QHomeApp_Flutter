@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:provider/provider.dart';
 
@@ -15,11 +18,99 @@ import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
 
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  await FirebaseMessaging.instance.setAutoInitEnabled(true);
+  
+  debugPrint('🔔 Background message received: ${message.messageId}');
+  debugPrint('   Title: ${message.notification?.title}');
+  debugPrint('   Body: ${message.notification?.body}');
+  debugPrint('   Data: ${message.data}');
+
+  final FlutterLocalNotificationsPlugin localNotifications =
+      FlutterLocalNotificationsPlugin();
+  
+  const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const initializationSettings = InitializationSettings(android: androidInit);
+  
+  await localNotifications.initialize(initializationSettings);
+
+  const channel = AndroidNotificationChannel(
+    'qhome_resident_channel',
+    'Thông báo QHome',
+    description: 'Kênh thông báo realtime cho cư dân.',
+    importance: Importance.high,
+    playSound: true,
+  );
+
+  await localNotifications
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
+
+  final notification = message.notification;
+  if (notification != null) {
+    final payload = jsonEncode(message.data);
+    
+    await localNotifications.show(
+      notification.hashCode,
+      notification.title ?? 'Thông báo mới',
+      notification.body ?? '',
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          channel.id,
+          channel.name,
+          channelDescription: channel.description,
+          importance: Importance.high,
+          priority: Priority.high,
+          ticker: 'Thông báo QHome',
+          icon: '@mipmap/ic_launcher',
+        ),
+      ),
+      payload: payload,
+    );
+    
+    debugPrint('✅ Background notification displayed');
+  } else if (message.data.isNotEmpty) {
+    final title = message.data['title']?.toString() ?? 'Thông báo mới';
+    final body = message.data['body']?.toString() ?? 
+                 message.data['message']?.toString() ?? 
+                 'Có thông báo mới';
+    final payload = jsonEncode(message.data);
+    
+    await localNotifications.show(
+      message.hashCode,
+      title,
+      body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          channel.id,
+          channel.name,
+          channelDescription: channel.description,
+          importance: Importance.high,
+          priority: Priority.high,
+          ticker: 'Thông báo QHome',
+          icon: '@mipmap/ic_launcher',
+        ),
+      ),
+      payload: payload,
+    );
+    
+    debugPrint('✅ Background notification displayed (data payload)');
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  
   await ApiClient.ensureInitialized();
   await _configurePreferredRefreshRate();
   final tokenStorage = TokenStorage();

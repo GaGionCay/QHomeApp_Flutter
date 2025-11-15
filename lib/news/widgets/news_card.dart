@@ -2,6 +2,7 @@ import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../auth/api_client.dart';
 import '../../models/resident_news.dart';
 import '../news_detail_screen.dart';
 
@@ -138,8 +139,13 @@ class NewsCard extends StatelessWidget {
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(8),
                           image: DecorationImage(
-                            image: NetworkImage(news.coverImageUrl!),
+                            image: NetworkImage(
+                              ApiClient.fileUrl(news.coverImageUrl!),
+                            ),
                             fit: BoxFit.cover,
+                            onError: (exception, stackTrace) {
+                              debugPrint('⚠️ Error loading news cover image: $exception');
+                            },
                           ),
                         ),
                       ),

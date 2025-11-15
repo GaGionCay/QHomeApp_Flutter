@@ -528,7 +528,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
   Widget _buildImageItem(BuildContext context, NewsImage image) {
     final theme = Theme.of(context);
     final imageUrl = image.url.startsWith('http')
-        ? image.url
+        ? ApiClient.fileUrl(image.url)
         : ApiClient.fileUrl(image.url);
 
     return Padding(

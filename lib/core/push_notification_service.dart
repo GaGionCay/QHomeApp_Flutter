@@ -2,12 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'device_token_repository.dart';
-import '../firebase_options.dart';
 
 typedef NotificationTapCallback = void Function(RemoteMessage message);
 
@@ -66,9 +64,6 @@ class PushNotificationService {
       });
     }
 
-    FirebaseMessaging.onBackgroundMessage(
-      _firebaseMessagingBackgroundHandler,
-    );
 
     await _registerTokenWithServer();
 
@@ -200,10 +195,3 @@ class PushNotificationService {
   }
 }
 
-@pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  await FirebaseMessaging.instance.setAutoInitEnabled(true);
-}

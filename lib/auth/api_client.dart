@@ -243,7 +243,30 @@ class ApiClient {
   }
 
   static String fileUrl(String path) {
-    if (path.startsWith('http')) return path;
+    if (path.startsWith('http')) {
+      // Nếu URL chứa localhost, thay thế bằng IP đúng
+      final url = path;
+      if (url.contains('localhost') || url.contains('127.0.0.1')) {
+        // Extract port và path từ URL gốc
+        final uri = Uri.tryParse(url);
+        if (uri != null) {
+          // Lấy port từ URL gốc hoặc dùng port mặc định
+          final port = uri.port != 0 ? uri.port : API_PORT;
+          final host = _activeHostIp;
+          // Giữ nguyên scheme (http/https)
+          final scheme = uri.scheme;
+          // Rebuild URL với IP đúng
+          return Uri(
+            scheme: scheme,
+            host: host,
+            port: port,
+            path: uri.path,
+            query: uri.query,
+          ).toString();
+        }
+      }
+      return path;
+    }
     return '$_activeFileBaseUrl$path';
   }
 }

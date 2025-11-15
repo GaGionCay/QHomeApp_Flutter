@@ -821,8 +821,12 @@ class BankQRParser {
                       break;
                     }
                     
-                    if (packageName.contains(bankInfo.packageName.toLowerCase()) ||
-                        _isPackageNameVariant(packageName, bankInfo.packageName)) {
+                    final bankPackageLower = bankInfo.packageName.toLowerCase();
+                    final packageNameLower = packageName.toLowerCase();
+                    
+                    if (packageNameLower == bankPackageLower ||
+                        packageNameLower.startsWith(bankPackageLower + '.') ||
+                        bankPackageLower.startsWith(packageNameLower + '.')) {
                       bin = entry.key;
                       
                       appInfo = BankInfo(
@@ -834,6 +838,25 @@ class BankQRParser {
                       );
                       
                       _log('🔄 Auto-updated package name via pattern matching for ${bankInfo.name}: ${bankInfo.packageName} → $packageName');
+                      
+                      _updatePackageNameIfChanged(bin, packageName);
+                      
+                      break;
+                    }
+                    
+                    if (_isPackageNameVariant(packageName, bankInfo.packageName) &&
+                        !_isExcludedPackage(packageName, bankInfo.name)) {
+                      bin = entry.key;
+                      
+                      appInfo = BankInfo(
+                        bin: bin,
+                        name: bankInfo.name,
+                        packageName: packageName,
+                        playStoreId: packageName,
+                        type: appType,
+                      );
+                      
+                      _log('🔄 Auto-updated package name via package variant for ${bankInfo.name}: ${bankInfo.packageName} → $packageName');
                       
                       _updatePackageNameIfChanged(bin, packageName);
                       
@@ -1123,22 +1146,47 @@ class BankQRParser {
     final packageParts = packageName.split('.');
     final baseParts = basePackageName.split('.');
     
-    if (packageParts.length < 2 || baseParts.length < 2) {
+    if (packageParts.length < 3 || baseParts.length < 3) {
       return false;
     }
     
-    final packageBase = packageParts.take(2).join('.');
-    final basePackageBase = baseParts.take(2).join('.');
+    final packageBase = packageParts.take(3).join('.');
+    final basePackageBase = baseParts.take(3).join('.');
     
     if (packageBase == basePackageBase) {
       return true;
     }
     
-    if (packageName.contains(basePackageName) || basePackageName.contains(packageName)) {
-      return true;
+    final packageDomain = packageParts.take(2).join('.');
+    final baseDomain = baseParts.take(2).join('.');
+    
+    if (packageDomain == baseDomain && 
+        packageParts.length >= 3 && baseParts.length >= 3) {
+      final packageThird = packageParts[2].toLowerCase();
+      final baseThird = baseParts[2].toLowerCase();
+      
+      if (packageThird == baseThird || 
+          packageThird.contains(baseThird) || 
+          baseThird.contains(packageThird)) {
+        return true;
+      }
     }
     
     return false;
+  }
+  
+  static bool _isExcludedPackage(String packageName, String bankName) {
+    final packageLower = packageName.toLowerCase();
+    final bankNameLower = bankName.toLowerCase();
+    
+    final exclusionRules = [
+      packageLower.contains('vpbank') && !bankNameLower.contains('vpbank'),
+      packageLower.contains('vpbankonline') && bankNameLower.contains('bidv'),
+      packageLower.contains('vietinbank') && bankNameLower.contains('vietcombank'),
+      packageLower.contains('techcombank') && bankNameLower.contains('acb'),
+    ];
+    
+    return exclusionRules.any((rule) => rule == true);
   }
 
   static String? _findBinFromPackageName(String packageName) {
@@ -1336,15 +1384,66 @@ class BankQRParser {
 class BankAppLauncher {
   static const MethodChannel _channel = MethodChannel('com.qhome.resident/app_launcher');
   
-  static Future<bool> openBankApp(String packageName, {String? playStoreId}) async {
+  
+  static Future<bool> openBankApp(
+    String packageName, {
+    String? playStoreId,
+    BankQRData? bankQRData,
+    String? qrCodeString,
+  }) async {
     _log('🚀 Attempting to open bank app: $packageName');
+    if (bankQRData != null) {
+      _log('   With QR data: BIN=${bankQRData.bin}, Account=${bankQRData.accountNumber}, Amount=${bankQRData.amount}');
+    }
     
     try {
       if (Platform.isAndroid) {
         try {
+          final Map<String, dynamic> arguments = {
+            'packageName': packageName,
+          };
+          
+          if (qrCodeString != null) {
+            arguments['qrCode'] = qrCodeString;
+          }
+          
+          if (bankQRData != null) {
+            arguments['qrData'] = {
+              'bin': bankQRData.bin,
+              'accountNumber': bankQRData.accountNumber,
+              'amount': bankQRData.amount?.toString(),
+              'addInfo': bankQRData.addInfo,
+              'bankName': bankQRData.bankName,
+            };
+          }
+          
+          final result = await _channel.invokeMethod<bool>('launchAppWithQR', arguments);
+          if (result == true) {
+            _log('✅ Successfully opened bank app with QR data using platform channel');
+            return true;
+          } else {
+            _log('⚠️ Platform channel returned false, trying without QR data...');
+          }
+        } on PlatformException catch (e) {
+          _log('⚠️ Platform channel error: ${e.code} - ${e.message}');
+        } catch (e) {
+          _log('⚠️ Error using platform channel: $e');
+        }
+        
+        try {
           final result = await _channel.invokeMethod<bool>('launchApp', {'packageName': packageName});
           if (result == true) {
             _log('✅ Successfully opened bank app using platform channel');
+            
+            if (qrCodeString != null) {
+              try {
+                await _copyQRToClipboard(qrCodeString);
+                _log('✅ Copied QR code to clipboard');
+              } catch (e) {
+                _log('⚠️ Error copying QR to clipboard: $e');
+              }
+            }
+            
             return true;
           } else {
             _log('⚠️ Platform channel returned false, trying intent URL...');
@@ -1367,6 +1466,16 @@ class BankAppLauncher {
           
           if (launched) {
             _log('✅ Successfully opened bank app using intent URL');
+            
+            if (qrCodeString != null) {
+              try {
+                await _copyQRToClipboard(qrCodeString);
+                _log('✅ Copied QR code to clipboard');
+              } catch (e) {
+                _log('⚠️ Error copying QR to clipboard: $e');
+              }
+            }
+            
             return true;
           } else {
             _log('⚠️ Intent URL returned false');
@@ -1390,6 +1499,15 @@ class BankAppLauncher {
       _log('❌ CRITICAL: Error opening bank app: $e');
       _log('   Stack trace: $stackTrace');
       return false;
+    }
+  }
+  
+  static Future<void> _copyQRToClipboard(String qrCode) async {
+    try {
+      await _channel.invokeMethod('copyToClipboard', {'text': qrCode});
+    } catch (e) {
+      _log('⚠️ Error copying to clipboard: $e');
+      rethrow;
     }
   }
 

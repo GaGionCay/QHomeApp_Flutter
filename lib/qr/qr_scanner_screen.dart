@@ -23,6 +23,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
 
   bool _isProcessing = false;
   String? _lastScannedCode;
+  String? _lastScannedQRString;
   bool _hasError = false;
   String? _errorMessage;
   bool _isScannerStarted = false;
@@ -93,6 +94,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     
     // Trim and clean the scanned code
     final cleanedCode = code.trim();
+    _lastScannedQRString = cleanedCode;
     
     if (cleanedCode.isEmpty) {
       log('⚠️ Scanned code is empty after trimming');
@@ -114,7 +116,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       if (qrResult.isBankQr) {
         // QR là mã chuyển khoản ngân hàng
         log('💰 Processing Bank QR...');
-        await _handleBankQR(qrResult.bankData!);
+        await _handleBankQR(qrResult.bankData!, qrCodeString: _lastScannedQRString);
       } else if (qrResult.isUrl) {
         // QR là URL
         log('🌐 Processing URL QR...');
@@ -138,7 +140,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
   }
 
   /// Xử lý Bank QR: Kiểm tra app đã cài → Hiển thị dialog chọn ngân hàng
-  Future<void> _handleBankQR(BankQRData bankData) async {
+  Future<void> _handleBankQR(BankQRData bankData, {String? qrCodeString}) async {
     if (!mounted) return;
     
     log('💰 Handling Bank QR: BIN=${bankData.bin}, Account=${bankData.accountNumber}');
@@ -232,7 +234,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     }
     
     // Hiển thị dialog chọn app payment/banking
-    await _showBankSelectionDialog(bankData, installedApps);
+    await _showBankSelectionDialog(bankData, installedApps, qrCodeString: qrCodeString);
   }
 
   /// Xử lý URL QR: Quét browser apps → Hiển thị dialog chọn trình duyệt
@@ -637,7 +639,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
   /// Khi user chọn → Mở app ngân hàng bằng intent URL
   /// Lưu ý: App ngân hàng chỉ chấp nhận quét QR từ camera bên trong app
   /// Không thể truyền dữ liệu QR vào app bằng deep link
-  Future<void> _showBankSelectionDialog(BankQRData qrData, List<BankInfo> availableBanks) async {
+  Future<void> _showBankSelectionDialog(BankQRData qrData, List<BankInfo> availableBanks, {String? qrCodeString}) async {
     if (!mounted) return;
     
     // Thông tin ngân hàng được phát hiện từ QR (nếu có)
@@ -721,12 +723,46 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
-                          'Lưu ý: Bạn cần quét lại mã QR này trong app đã chọn.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.orange,
-                            fontStyle: FontStyle.italic,
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Colors.blue.shade200,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    size: 16,
+                                    color: Colors.blue.shade700,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Hướng dẫn:',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '• QR code đã được sao chép vào clipboard\n'
+                                '• Sau khi đăng nhập vào app ngân hàng, dán QR code vào ô tìm kiếm',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.blue,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -850,13 +886,31 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       final success = await BankAppLauncher.openBankApp(
         bankInfo.packageName,
         playStoreId: bankInfo.playStoreId,
+        bankQRData: qrData,
+        qrCodeString: qrCodeString ?? _lastScannedQRString,
       );
       
       if (success) {
-        // Đóng QR scanner sau khi mở app thành công
         if (mounted) {
-          Navigator.of(context).pop();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                '✅ Đã mở app và sao chép QR code vào clipboard\n'
+                'Sau khi đăng nhập, dán QR code vào ô tìm kiếm',
+                style: TextStyle(fontSize: 13),
+              ),
+              duration: Duration(seconds: 4),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
         }
+        
+        // Đóng QR scanner sau khi mở app thành công
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            Navigator.of(context).pop();
+          }
+        });
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -867,7 +921,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                 label: 'Thử lại',
                 onPressed: () {
                   // Re-detect installed banks and show dialog again
-                  _handleBankQR(qrData);
+                  _handleBankQR(qrData, qrCodeString: _lastScannedQRString);
                 },
               ),
             ),
