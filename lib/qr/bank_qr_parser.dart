@@ -7,7 +7,6 @@ import 'package:device_apps/device_apps.dart';
 import 'package:flutter/services.dart' show PlatformException, MethodChannel;
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Helper function để log với cả dev.log và print (để hiển thị trong logcat Android)
 void _log(String message) {
   dev.log(message);
   if (kDebugMode) {
@@ -15,19 +14,17 @@ void _log(String message) {
   }
 }
 
-/// Enum định nghĩa loại QR code
 enum QRType {
-  url,      // QR là URL (http/https)
-  bankQr,   // QR là mã chuyển khoản ngân hàng (VietQR/Napas/EMVCo)
-  unknown,  // QR không xác định được loại
+  url,
+  bankQr,
+  unknown,
 }
 
-/// Model kết quả scan QR code
 class QRScanResult {
   final QRType type;
   final String originalCode;
-  final BankQRData? bankData;  // Chỉ có khi type == QRType.bankQr
-  final Uri? url;               // Chỉ có khi type == QRType.url
+  final BankQRData? bankData;
+  final Uri? url;
 
   QRScanResult({
     required this.type,
@@ -41,21 +38,20 @@ class QRScanResult {
   bool get isUnknown => type == QRType.unknown;
 }
 
-/// Model chứa thông tin QR ngân hàng đã parse theo chuẩn EMVCo
 class BankQRData {
-  final String? bin; // Bank Identification Number
+  final String? bin;
   final String? accountNumber;
   final String? bankName;
   final double? amount;
-  final String? addInfo; // Nội dung thanh toán
-  final String? serviceCode; // Mã dịch vụ (nếu có)
-  final String? merchantCode; // Mã merchant
-  final String? merchantName; // Tên merchant
+  final String? addInfo;
+  final String? serviceCode;
+  final String? merchantCode;
+  final String? merchantName;
   final String? transactionCurrency;
   final String? countryCode;
-  final String? qrType; // 'static' hoặc 'dynamic'
-  final String? originalCode; // Mã QR gốc
-  final Map<String, String>? additionalData; // Dữ liệu bổ sung từ EMVCo tags
+  final String? qrType;
+  final String? originalCode;
+  final Map<String, String>? additionalData;
 
   BankQRData({
     this.bin,
@@ -73,10 +69,8 @@ class BankQRData {
     this.additionalData,
   });
 
-  /// Kiểm tra xem QR có phải là QR động (có số tiền) không
   bool get isDynamic => amount != null && amount! > 0;
 
-  /// Kiểm tra xem QR có đủ thông tin để thanh toán không
   bool get isValid => bin != null && accountNumber != null;
 
   @override
@@ -85,13 +79,12 @@ class BankQRData {
   }
 }
 
-/// Thông tin ngân hàng để hiển thị trong dialog
 class BankInfo {
-  final String? bin; // BIN code (null cho payment apps như MoMo, ZaloPay...)
+  final String? bin;
   final String name;
-  final String packageName; // Package name trên Android
-  final String? playStoreId; // ID trên Google Play Store
-  final PaymentAppType type; // Loại app: bank hoặc payment
+  final String packageName;
+  final String? playStoreId;
+  final PaymentAppType type;
 
   const BankInfo({
     this.bin,
@@ -101,63 +94,53 @@ class BankInfo {
     this.type = PaymentAppType.bank,
   });
 
-  /// Kiểm tra xem đây có phải là app ngân hàng không
   bool get isBank => type == PaymentAppType.bank && bin != null;
 
-  /// Kiểm tra xem đây có phải là app payment không
   bool get isPaymentApp => type == PaymentAppType.payment;
   
-  /// Kiểm tra xem đây có phải là app trình duyệt không
   bool get isBrowser => type == PaymentAppType.browser;
 }
 
-/// Loại app payment
 enum PaymentAppType {
-  bank, // App ngân hàng
-  payment, // App payment như MoMo, ZaloPay, ShopeePay...
-  browser, // App trình duyệt như Chrome, Firefox, Edge...
+  bank,
+  payment,
+  browser,
 }
 
-/// Parser cho QR code ngân hàng theo chuẩn EMVCo và VietQR
 class BankQRParser {
-  /// Danh sách package name các ngân hàng cần kiểm tra
-  /// Lưu ý: Một số ngân hàng có nhiều package name variant
   static const List<String> _bankPackageNames = [
-    // Danh sách chính theo yêu cầu
     'com.vietcombank.mobile',
     'com.mbmobile',
     'com.tpb.mobile',
     'com.techcombank',
     'com.sacombank',
-    'com.bidv.smartbanking',  // BIDV Smart Banking (variant)
-    'com.bidv',                // BIDV variant
-    'com.vnpay.bidv',          // BIDV package name thực tế
+    'com.bidv.smartbanking',
+    'com.bidv',
+    'com.vnpay.bidv',
     'com.vpbank.online',
     
-    // Các variant package name (để phát hiện đầy đủ)
-    'com.vietcombank',          // Vietcombank variant
-    'vn.com.mbmobile',          // MB Bank variant
-    'com.tpb.mb.gprsandroid',   // TPBank variant (package name thực tế)
-    'com.vietinbank.vpb',       // VietinBank variant (cũ)
-    'com.vietinbank.ipay',      // VietinBank iPay (package name thực tế)
-    'com.agribank.mb',          // Agribank variant
-    'com.vnpay.Agribank3g',     // Agribank package name thực tế
-    'com.acb.fastbank',         // ACB
-    'com.vpbank.mobile',        // VPBank variant
-    'com.shb.mobilebanking',    // SHB
-    'com.hsbc.hsbcvietnam',     // HSBC
-    'com.vietbank.mobilebanking', // Vietbank
-    'com.namabank.mobile',      // Nam A Bank
-    'com.eximbank.mobile',      // Eximbank
-    'com.ocb.omni',             // OCB
-    'com.scb.digital',          // SCB
-    'com.dongabank.mobile',     // DongA Bank
-    'com.pvcombank.mobile',     // PVComBank
-    'com.publicbank.mobile',    // PublicBank
-    'com.ncb.mobile',           // NCB
+    'com.vietcombank',
+    'vn.com.mbmobile',
+    'com.tpb.mb.gprsandroid',
+    'com.vietinbank.vpb',
+    'com.vietinbank.ipay',
+    'com.agribank.mb',
+    'com.vnpay.Agribank3g',
+    'com.acb.fastbank',
+    'com.vpbank.mobile',
+    'com.shb.mobilebanking',
+    'com.hsbc.hsbcvietnam',
+    'com.vietbank.mobilebanking',
+    'com.namabank.mobile',
+    'com.eximbank.mobile',
+    'com.ocb.omni',
+    'com.scb.digital',
+    'com.dongabank.mobile',
+    'com.pvcombank.mobile',
+    'com.publicbank.mobile',
+    'com.ncb.mobile',
   ];
 
-  /// Danh sách package name các app payment (MoMo, ZaloPay, ShopeePay...)
   static const Map<String, BankInfo> _paymentApps = {
     'com.mservice.momotransfer': BankInfo(
       bin: null,
@@ -196,23 +179,18 @@ class BankQRParser {
     ),
   };
 
-  /// Danh sách tất cả package name cần kiểm tra (bao gồm cả bank, payment và browser apps)
   static List<String> get _allPackageNames => [
     ..._bankPackageNames,
     ..._paymentApps.keys,
     ..._browserPackageNames,
   ];
   
-  /// Danh sách tất cả package name browser để kiểm tra riêng
   static List<String> get _allBrowserPackageNames => _browserPackageNames;
 
-  /// Key để lưu dynamic package name mapping vào SharedPreferences
   static const String _dynamicPackageMappingKey = 'bank_qr_dynamic_package_mapping';
   
-  /// Cache cho dynamic package mapping (để tránh đọc SharedPreferences nhiều lần)
   static Map<String, String>? _dynamicPackageMappingCache;
 
-  /// Map BIN code sang thông tin ngân hàng
   static const Map<String, BankInfo> _binToBankInfo = {
     '970436': BankInfo(
       bin: '970436',
@@ -223,13 +201,13 @@ class BankQRParser {
     '970415': BankInfo(
       bin: '970415',
       name: 'VietinBank',
-      packageName: 'com.vietinbank.ipay', // Package name thực tế (VietinBank iPay)
+      packageName: 'com.vietinbank.ipay',
       playStoreId: 'com.vietinbank.ipay',
     ),
     '970418': BankInfo(
       bin: '970418',
       name: 'BIDV',
-      packageName: 'com.vnpay.bidv', // Package name thực tế (app đã cài)
+      packageName: 'com.vnpay.bidv',
       playStoreId: 'com.vnpay.bidv',
     ),
     '970405': BankInfo(
@@ -259,7 +237,7 @@ class BankQRParser {
     '970422': BankInfo(
       bin: '970422',
       name: 'MB Bank',
-      packageName: 'com.mbmobile', // Package name thực tế (app đã cài)
+      packageName: 'com.mbmobile',
       playStoreId: 'com.mbmobile',
     ),
     '970432': BankInfo(
@@ -342,14 +320,6 @@ class BankQRParser {
     ),
   };
 
-  /// ============================================
-  /// HÀM CHÍNH: Nhận diện và phân loại QR code
-  /// ============================================
-  /// 
-  /// Luồng xử lý:
-  /// 1. Kiểm tra nếu là URL (http/https) → trả về QRType.url
-  /// 2. Kiểm tra nếu là VietQR/Napas/EMVCo → parse và trả về QRType.bankQr
-  /// 3. Nếu không xác định được → trả về QRType.unknown
   static QRScanResult identifyAndParseQR(String qrCode) {
     if (qrCode.isEmpty) {
       _log('⚠️ QR code is empty');
@@ -363,7 +333,6 @@ class BankQRParser {
     _log('📄 QR code preview: ${qrCode.length > 100 ? qrCode.substring(0, 100) + "..." : qrCode}');
 
     try {
-      // Bước 1: Kiểm tra nếu là URL (http/https)
       _log('🔍 Step 1: Checking if QR is URL format...');
       final urlResult = _checkIfUrl(qrCode);
       if (urlResult != null) {
@@ -375,7 +344,6 @@ class BankQRParser {
         );
       }
 
-      // Bước 2: Kiểm tra nếu là VietQR/Napas/EMVCo
       _log('🔍 Step 2: Checking if QR is VietQR/Napas/EMVCo format...');
       final bankData = _parseBankQR(qrCode);
       if (bankData != null && bankData.isValid) {
@@ -387,7 +355,6 @@ class BankQRParser {
         );
       }
 
-      // Bước 3: Không xác định được loại
       _log('⚠️ QR code could not be identified, returning as UNKNOWN');
       return QRScanResult(
         type: QRType.unknown,
@@ -404,7 +371,6 @@ class BankQRParser {
     }
   }
 
-  /// Kiểm tra xem QR có phải là URL không
   static Uri? _checkIfUrl(String qrCode) {
     try {
       final uri = Uri.tryParse(qrCode);
@@ -420,24 +386,20 @@ class BankQRParser {
     }
   }
 
-  /// Parse QR code ngân hàng (VietQR/Napas/EMVCo)
   static BankQRData? _parseBankQR(String qrCode) {
     try {
-      // 1. Kiểm tra nếu là VietQR URL (https://img.vietqr.io/image/...)
       final vietQRUrlInfo = _parseVietQRUrl(qrCode);
       if (vietQRUrlInfo != null) {
         _log('   ✅ Parsed as VietQR URL');
         return vietQRUrlInfo;
       }
 
-      // 2. Kiểm tra nếu là VietQR deep link (vietqr://...)
       final vietQRDeepLinkInfo = _parseVietQRDeepLink(qrCode);
       if (vietQRDeepLinkInfo != null) {
         _log('   ✅ Parsed as VietQR deep link');
         return vietQRDeepLinkInfo;
       }
 
-      // 3. Kiểm tra nếu là EMVCo TLV (bắt đầu bằng 000201)
       if (qrCode.startsWith('000201')) {
         final emvCoInfo = _parseEMVCoTLV(qrCode);
         if (emvCoInfo != null && emvCoInfo.isValid) {
@@ -454,7 +416,6 @@ class BankQRParser {
     }
   }
 
-  /// Parse VietQR URL: https://img.vietqr.io/image/{bank}-{bin}-{acct}.png?...
   static BankQRData? _parseVietQRUrl(String qrCode) {
     try {
       final uri = Uri.tryParse(qrCode);
@@ -488,7 +449,6 @@ class BankQRParser {
     }
   }
 
-  /// Parse VietQR deep link: vietqr://{bin}/{acct}?amount=...&addInfo=...
   static BankQRData? _parseVietQRDeepLink(String qrCode) {
     try {
       final uri = Uri.tryParse(qrCode);
@@ -520,8 +480,6 @@ class BankQRParser {
     }
   }
 
-  /// Parse EMVCo TLV (Napas standard) - CHUẨN NAPAS/VietQR
-  /// Format: Tag (2 chars) + Length (2 chars) + Value (variable length)
   static BankQRData? _parseEMVCoTLV(String qrCode) {
     try {
       if (!qrCode.startsWith('000201')) {
@@ -531,10 +489,9 @@ class BankQRParser {
       _log('   Attempting to parse as EMVCo TLV...');
       
       final data = <String, String>{};
-      int i = 6; // Bỏ qua header 000201
+      int i = 6;
       int tagCount = 0;
 
-      // Parse các tags theo chuẩn TLV
       while (i < qrCode.length) {
         if (i + 2 > qrCode.length) break;
 
@@ -555,18 +512,16 @@ class BankQRParser {
         data[tag] = value;
         tagCount++;
 
-        // Nested TLV (ví dụ: tag 62, 26, 38)
         if (tag == '62' || tag == '26' || tag == '38') {
           try {
             Map<String, String> nested;
             
-            // Tag 38 có format đặc biệt: PNI (Payment Network Identifier) + nested TLV
             if (tag == '38' && value.length > 10) {
               String nestedData;
               if (value.startsWith('0010') && value.length > 14) {
-                nestedData = value.substring(14); // Bỏ qua 0010 + PNI
+                nestedData = value.substring(14);
               } else if (value.length > 10) {
-                nestedData = value.substring(10); // Bỏ qua PNI
+                nestedData = value.substring(10);
               } else {
                 nestedData = value;
               }
@@ -584,11 +539,9 @@ class BankQRParser {
 
       _log('   ✅ Finished parsing EMVCo TLV: found $tagCount top-level tags');
 
-      // Extract thông tin từ các tag chuẩn EMVCo
       String? bin;
       String? accountNumber;
       
-      // Priority 1: Thử extract từ tag 38 (nested TLV)
       if (data.containsKey('38.01')) {
         final tag38_01 = data['38.01']!;
         final binMatch = RegExp(r'970\d{3}').firstMatch(tag38_01);
@@ -605,7 +558,6 @@ class BankQRParser {
         }
       }
       
-      // Priority 2: Thử từ tag 26
       if ((bin == null || accountNumber == null || accountNumber.isEmpty) && data.containsKey('26')) {
         final tag26 = data['26']!;
         if (tag26.length >= 6) {
@@ -625,7 +577,6 @@ class BankQRParser {
         }
       }
 
-      // Priority 3: Thử từ tag 62 hoặc các nguồn khác
       if (accountNumber == null || accountNumber.isEmpty) {
         if (data.containsKey('62')) {
           accountNumber = _extractAccountFrom62(data['62']!);
@@ -635,7 +586,6 @@ class BankQRParser {
         }
       }
       
-      // Priority 4: Nếu vẫn không tìm thấy BIN, tìm trong toàn bộ QR code
       if (bin == null) {
         final binPattern = RegExp(r'970\d{3}');
         final binMatch = binPattern.firstMatch(qrCode);
@@ -644,7 +594,6 @@ class BankQRParser {
         }
       }
 
-      // Parse các thông tin khác từ EMVCo tags
       final amount = data['54'] != null ? double.tryParse(data['54']!) : null;
       final addInfo = data['08'] ?? data['62.08'] ?? data['62.01'];
       final merchantName = data['59'];
@@ -678,7 +627,6 @@ class BankQRParser {
     }
   }
 
-  /// Parse nested TLV (trong tag 62 hoặc 26)
   static Map<String, String> _parseNestedTLV(String value) {
     final data = <String, String>{};
     int i = 0;
@@ -706,7 +654,6 @@ class BankQRParser {
     return data;
   }
 
-  /// Extract số tài khoản từ data
   static String? _extractAccountNumber(Map<String, String> data) {
     final tag26 = data['26'];
     if (tag26 != null && tag26.length > 6) {
@@ -721,7 +668,6 @@ class BankQRParser {
     return null;
   }
 
-  /// Extract số tài khoản từ tag 62
   static String? _extractAccountFrom62(String tag62) {
     try {
       final nested = _parseNestedTLV(tag62);
@@ -731,16 +677,19 @@ class BankQRParser {
     }
   }
 
-  /// Từ khóa để tự động nhận diện app ngân hàng/payment
-  /// Lưu ý: Loại trừ các từ khóa có thể gây nhầm lẫn (keyboard, inputmethod, etc.)
   static const List<String> _bankingKeywords = [
     'bank', 'banking', 'ngân hàng', 'vietcombank', 'vietinbank', 'bidv', 
     'techcombank', 'acb', 'agribank', 'sacombank', 'vpbank', 'tpbank', 
     'mb bank', 'mbbank', 'vietbank', 'hsbc', 'shb', 'nam a bank', 
     'eximbank', 'ocb', 'scb', 'dong a', 'pvcombank', 'publicbank', 'ncb',
+    'vcb', 'vib', 'tcb', 'sgb', 'abb', 'abbank', 'abbank mobile',
+    'pvfc', 'pvfcbank', 'lienvietpostbank', 'lpbank', 'postbank',
+    'seabank', 'vietbank', 'baoviet', 'vietcapital', 'vietcombank',
+    'savings', 'deposit', 'credit', 'finance', 'financial', 'ebank',
+    'mobilebank', 'mobile bank', 'smartbank', 'smart bank', 'digital bank',
+    'app ngân hàng', 'ngân hàng điện tử', 'ngân hàng số', 'mobile banking',
   ];
   
-  /// Từ khóa loại trừ - không phải bank app (tránh nhầm lẫn)
   static const List<String> _excludeKeywords = [
     'keyboard', 'bàn phím', 'inputmethod', 'ime', 'gboard', 'swiftkey',
     'labankey', 'vietkey', 'unikey', 'key', 'typing', 'input',
@@ -751,82 +700,73 @@ class BankQRParser {
     'viettelpay', 'vnpay', 'pay', 'wallet', 'ví', 'thanh toán',
   ];
   
-  /// Danh sách package name các trình duyệt phổ biến
   static const List<String> _browserPackageNames = [
-    'com.android.chrome',           // Chrome
-    'com.chrome.beta',              // Chrome Beta
-    'com.chrome.dev',               // Chrome Dev
-    'com.chrome.canary',            // Chrome Canary
-    'org.mozilla.firefox',          // Firefox
-    'org.mozilla.firefox_beta',     // Firefox Beta
-    'org.mozilla.fennec_fdroid',    // Firefox Fennec
-    'com.microsoft.emmx',           // Edge
-    'com.opera.browser',            // Opera
-    'com.opera.mini.native',        // Opera Mini
-    'com.brave.browser',            // Brave
-    'com.vivaldi.browser',          // Vivaldi
-    'com.duckduckgo.mobile.android', // DuckDuckGo
-    'com.uc.browser.en',            // UC Browser
-    'com.samsung.android.sbrowser', // Samsung Internet
-    'com.mi.globalbrowser',         // Mi Browser
-    'com.huawei.browser',           // Huawei Browser
-    'com.sec.android.app.sbrowser', // Samsung Browser variant
-    'com.browser2345',              // 2345 Browser
-    'com.tencent.mtt',              // QQ Browser
+    'com.android.chrome',
+    'com.chrome.beta',
+    'com.chrome.dev',
+    'com.chrome.canary',
+    'org.mozilla.firefox',
+    'org.mozilla.firefox_beta',
+    'org.mozilla.fennec_fdroid',
+    'com.microsoft.emmx',
+    'com.opera.browser',
+    'com.opera.mini.native',
+    'com.brave.browser',
+    'com.vivaldi.browser',
+    'com.duckduckgo.mobile.android',
+    'com.uc.browser.en',
+    'com.samsung.android.sbrowser',
+    'com.mi.globalbrowser',
+    'com.huawei.browser',
+    'com.sec.android.app.sbrowser',
+    'com.browser2345',
+    'com.tencent.mtt',
   ];
   
   static const List<String> _browserKeywords = [
     'browser', 'chrome', 'firefox', 'edge', 'opera', 'safari',
-    'trình duyệt', 'webview', 'brave', 'vivaldi', 'duckduckgo',
-    'internet', 'explorer', 'navigator', 'web', 'sbrowser', 'mi browser',
-    'samsung internet', 'huawei browser', 'uc browser', 'qq browser',
+    'brave', 'vivaldi', 'duckduckgo', 'tor', 'tor browser',
+    
+    'trình duyệt', 'webview', 'internet', 'explorer', 'navigator', 'web',
+    
+    'sbrowser', 'mi browser', 'samsung internet', 'huawei browser', 
+    'uc browser', 'qq browser', 'yandex', 'baidu',
+    
+    'surf', 'navigate', 'view', 'link', 'url', 'html', 'http', 'https',
+    'www', 'domain', 'site', 'page', 'tab', 'bookmark', 'history',
+    'adblock', 'privacy', 'incognito', 'private', 'secure',
   ];
 
-  /// ============================================
-  /// HÀM: Kiểm tra TẤT CẢ app payment/banking đã cài đặt
-  /// ============================================
-  /// 
-  /// Quét TẤT CẢ app đã cài trên thiết bị (không cache, luôn quét mới nhất)
-  /// Có 2 cách phát hiện:
-  /// 1. Filter theo danh sách package name đã biết (_bankPackageNames + _paymentApps)
-  /// 2. Tự động nhận diện theo tên app và keywords (để phát hiện app mới)
-  /// Bao gồm cả app ngân hàng và app payment (MoMo, ZaloPay, ShopeePay...)
-  /// Trả về danh sách TẤT CẢ app payment/banking đã được cài đặt
   static Future<List<BankInfo>> detectInstalledPaymentApps() async {
     _log('🔍 Starting to detect installed payment/banking apps (scanning all installed apps)...');
     
     final installedApps = <BankInfo>[];
-    final allPackageNamesSet = _allPackageNames.toSet(); // Set để lookup nhanh hơn
-    final foundPackageNames = <String>{}; // Track các package đã tìm thấy
+    final allPackageNamesSet = _allPackageNames.toSet();
+    final foundPackageNames = <String>{};
     
     try {
       if (Platform.isAndroid) {
-        // Cách 1: Quét TẤT CẢ app đã cài (hiệu quả và luôn mới nhất)
         try {
           _log('📱 Getting all installed applications...');
           final allApps = await DeviceApps.getInstalledApplications(
-            includeAppIcons: false, // Không cần icon để nhanh hơn
-            includeSystemApps: false, // Chỉ app user cài
-            onlyAppsWithLaunchIntent: true, // Chỉ app có thể mở được
+            includeAppIcons: false,
+            includeSystemApps: false,
+            onlyAppsWithLaunchIntent: true,
           );
           
           _log('📊 Found ${allApps.length} total installed apps');
           
-          // Filter và map sang BankInfo
           for (final app in allApps) {
             final packageName = app.packageName;
             final appName = app.appName.toLowerCase();
             
             BankInfo? appInfo;
             
-            // Cách 1: Kiểm tra theo package name đã biết
             if (allPackageNamesSet.contains(packageName)) {
               try {
-                // Kiểm tra xem có phải payment app không
                 if (_paymentApps.containsKey(packageName)) {
                   appInfo = _paymentApps[packageName];
                 } else {
-                  // Kiểm tra xem có phải bank app không
                   appInfo = _findBankByPackageName(packageName);
                 }
               } catch (e) {
@@ -834,19 +774,15 @@ class BankQRParser {
               }
             }
             
-            // Cách 2: Tự động nhận diện theo tên app (nếu chưa tìm thấy)
             if (appInfo == null) {
-              // Kiểm tra loại trừ trước - không phải app ngân hàng/payment
               final isExcluded = _excludeKeywords.any((keyword) =>
                 appName.contains(keyword.toLowerCase()) ||
                 packageName.contains(keyword.toLowerCase()));
               
               if (isExcluded) {
-                // Đây là app không phải bank/payment (ví dụ: keyboard, inputmethod)
-                continue; // Bỏ qua app này
+                continue;
               }
               
-              // Kiểm tra xem tên app có chứa keywords ngân hàng/payment không
               final isBankingApp = _bankingKeywords.any((keyword) => 
                 appName.contains(keyword.toLowerCase()) || 
                 packageName.contains(keyword.toLowerCase()));
@@ -856,44 +792,35 @@ class BankQRParser {
                 packageName.contains(keyword.toLowerCase()));
               
               if (isBankingApp || isPaymentApp) {
-                // Tự động tạo BankInfo từ app name
                 final displayName = app.appName;
                 final appType = isPaymentApp ? PaymentAppType.payment : PaymentAppType.bank;
                 
-                // Thử tìm BIN code từ package name hoặc app name
                 String? bin;
                 if (isBankingApp) {
-                  // Tìm BIN code từ mapping - ưu tiên match theo tên ngân hàng
                   for (final entry in _binToBankInfo.entries) {
                     final bankInfo = entry.value;
                     final bankNameLower = bankInfo.name.toLowerCase();
                     
-                    // Kiểm tra match theo tên ngân hàng (ưu tiên cao nhất)
                     if (appName.contains(bankNameLower) || 
                         bankNameLower.contains(appName) ||
                         packageName.contains(bankNameLower.replaceAll(' ', '').replaceAll('bank', ''))) {
                       bin = entry.key;
                       
-                      // ✅ QUAN TRỌNG: Update package name thực tế vào BankInfo
-                      // Tạo BankInfo mới với package name thực tế (từ app đã cài)
                       appInfo = BankInfo(
                         bin: bin,
-                        name: bankInfo.name, // Giữ tên chuẩn từ mapping
-                        packageName: packageName, // ✅ Dùng package name thực tế (app đã cài)
-                        playStoreId: packageName, // ✅ Dùng package name thực tế
+                        name: bankInfo.name,
+                        packageName: packageName,
+                        playStoreId: packageName,
                         type: appType,
                       );
                       
                       _log('🔄 Auto-updated package name for ${bankInfo.name}: ${bankInfo.packageName} → $packageName');
                       
-                      // ✅ Tự động lưu package name mới vào dynamic mapping
-                      // Để persist giữa các lần chạy app và tự động update khi phát hiện thay đổi
                       _updatePackageNameIfChanged(bin, packageName);
                       
                       break;
                     }
                     
-                    // Nếu không match tên, thử match theo package name pattern
                     if (packageName.contains(bankInfo.packageName.toLowerCase()) ||
                         _isPackageNameVariant(packageName, bankInfo.packageName)) {
                       bin = entry.key;
@@ -901,44 +828,39 @@ class BankQRParser {
                       appInfo = BankInfo(
                         bin: bin,
                         name: bankInfo.name,
-                        packageName: packageName, // ✅ Dùng package name thực tế
+                        packageName: packageName,
                         playStoreId: packageName,
                         type: appType,
                       );
                       
                       _log('🔄 Auto-updated package name via pattern matching for ${bankInfo.name}: ${bankInfo.packageName} → $packageName');
                       
-                      // ✅ Tự động lưu package name mới vào dynamic mapping
                       _updatePackageNameIfChanged(bin, packageName);
                       
                       break;
                     }
                   }
                   
-                  // Nếu không tìm thấy trong mapping, thử tìm BIN từ package name variant
                   if (appInfo == null && bin == null) {
                     final foundBin = _findBinFromPackageName(packageName);
                     if (foundBin != null) {
                       bin = foundBin;
                       final baseBankInfo = _binToBankInfo[bin];
                       if (baseBankInfo != null) {
-                        // Tạo BankInfo với package name thực tế
                         appInfo = BankInfo(
                           bin: bin,
                           name: baseBankInfo.name,
-                          packageName: packageName, // ✅ Dùng package name thực tế
+                          packageName: packageName,
                           playStoreId: packageName,
                           type: appType,
                         );
                         _log('🔄 Auto-updated package name via package variant for ${baseBankInfo.name}: ${baseBankInfo.packageName} → $packageName');
                         
-                        // ✅ Tự động lưu package name mới vào dynamic mapping
                         _updatePackageNameIfChanged(bin, packageName);
                       }
                     }
                   }
                   
-                  // Nếu vẫn không tìm thấy, tạo mới (bank app không có trong mapping)
                   if (appInfo == null) {
                     appInfo = BankInfo(
                       bin: bin,
@@ -950,7 +872,6 @@ class BankQRParser {
                     _log('🆕 Auto-detected new bank app (not in mapping): $displayName ($packageName)');
                   }
                 } else {
-                  // Payment app
                   appInfo = BankInfo(
                     bin: null,
                     name: displayName,
@@ -964,7 +885,6 @@ class BankQRParser {
               }
             }
             
-            // Thêm vào danh sách nếu tìm thấy
             if (appInfo != null && !foundPackageNames.contains(packageName)) {
               _log('✅ Found installed: ${appInfo.name} ($packageName) - ${appInfo.type.name}');
               installedApps.add(appInfo);
@@ -975,7 +895,6 @@ class BankQRParser {
           _log('❌ Error getting all installed apps: $e');
           _log('   Falling back to individual package check...');
           
-          // Cách 2: Fallback - Kiểm tra từng package name (chậm hơn nhưng đáng tin cậy)
           for (final packageName in _allPackageNames) {
             try {
               final isInstalled = await _isAppInstalled(packageName);
@@ -1007,13 +926,10 @@ class BankQRParser {
       _log('   Stack trace: $stackTrace');
     }
     
-    // Sắp xếp: Payment apps trước, sau đó bank apps (theo tên)
     installedApps.sort((a, b) {
-      // Sắp xếp theo type trước (payment trước bank)
       if (a.type != b.type) {
         return a.type == PaymentAppType.payment ? -1 : 1;
       }
-      // Sau đó sắp xếp theo tên
       return a.name.compareTo(b.name);
     });
     
@@ -1021,15 +937,6 @@ class BankQRParser {
     return installedApps;
   }
 
-  /// ============================================
-  /// HÀM: Kiểm tra TẤT CẢ app trình duyệt đã cài đặt
-  /// ============================================
-  /// 
-  /// Quét TẤT CẢ app đã cài trên thiết bị (không cache, luôn quét mới nhất)
-  /// Có 2 cách phát hiện:
-  /// 1. Filter theo danh sách package name đã biết (_browserPackageNames)
-  /// 2. Tự động nhận diện theo tên app và keywords (để phát hiện browser mới)
-  /// Trả về danh sách TẤT CẢ app trình duyệt đã được cài đặt
   static Future<List<BankInfo>> detectInstalledBrowserApps() async {
     _log('🌐 Starting to detect installed browser apps (scanning all installed apps)...');
     
@@ -1039,7 +946,6 @@ class BankQRParser {
     
     try {
       if (Platform.isAndroid) {
-        // Cách 1: Quét TẤT CẢ app đã cài (hiệu quả và luôn mới nhất)
         try {
           _log('📱 Getting all installed applications...');
           final allApps = await DeviceApps.getInstalledApplications(
@@ -1050,17 +956,14 @@ class BankQRParser {
           
           _log('📊 Found ${allApps.length} total installed apps');
           
-          // Filter và map sang BankInfo
           for (final app in allApps) {
             final packageName = app.packageName;
             final appName = app.appName.toLowerCase();
             
             BankInfo? browserInfo;
             
-            // Cách 1: Kiểm tra theo package name đã biết
             if (browserPackageNamesSet.contains(packageName)) {
               try {
-                // Tạo BankInfo cho browser
                 browserInfo = BankInfo(
                   bin: null,
                   name: app.appName,
@@ -1073,21 +976,17 @@ class BankQRParser {
               }
             }
             
-            // Cách 2: Tự động nhận diện theo tên app (nếu chưa tìm thấy)
             if (browserInfo == null) {
-              // Kiểm tra xem tên app có chứa keywords browser không
               final isBrowserApp = _browserKeywords.any((keyword) => 
                 appName.contains(keyword.toLowerCase()) || 
                 packageName.contains(keyword.toLowerCase()));
               
               if (isBrowserApp) {
-                // ✅ Tự động tạo BankInfo cho browser (tự động thêm vào hệ thống)
-                // Package name sẽ tự động được thêm vào danh sách khi phát hiện
                 browserInfo = BankInfo(
                   bin: null,
                   name: app.appName,
-                  packageName: packageName, // ✅ Dùng package name thực tế (từ app đã cài)
-                  playStoreId: packageName, // ✅ Dùng package name thực tế
+                  packageName: packageName,
+                  playStoreId: packageName,
                   type: PaymentAppType.browser,
                 );
                 
@@ -1096,26 +995,34 @@ class BankQRParser {
               }
             }
             
-            // Cách 3: Kiểm tra intent filter (nếu app có thể xử lý URL http/https)
-            // Điều này giúp phát hiện các browser không có keyword trong tên
             if (browserInfo == null) {
-              // Kiểm tra xem package name có pattern giống browser không
-              // Ví dụ: *.browser.*, *.webview.*, *.chrome.*
               final browserPatterns = [
                 'browser', 'chrome', 'firefox', 'edge', 'opera', 'safari',
-                'webview', 'web', 'internet', 'explorer', 'navigator'
+                'webview', 'web', 'internet', 'explorer', 'navigator',
+                'surf', 'navigate', 'view', 'link', 'url', 'html', 'http',
+                'www', 'domain', 'site', 'page', 'tab', 'adblock', 'privacy',
               ];
               
-              final hasBrowserPattern = browserPatterns.any((pattern) =>
-                packageName.toLowerCase().contains(pattern) ||
-                appName.contains(pattern));
+              final packageNameLower = packageName.toLowerCase();
+              final hasBrowserPattern = browserPatterns.any((pattern) {
+                final patternLower = pattern.toLowerCase();
+                if (packageNameLower.contains(patternLower)) {
+                  if (patternLower == 'web') {
+                    return packageNameLower.contains('browser') ||
+                           packageNameLower.contains('webview') ||
+                           packageNameLower.contains('website') ||
+                           packageNameLower.contains('webapp');
+                  }
+                  return true;
+                }
+                return appName.contains(patternLower);
+              });
               
               if (hasBrowserPattern) {
-                // Tự động tạo BankInfo cho browser
                 browserInfo = BankInfo(
                   bin: null,
                   name: app.appName,
-                  packageName: packageName, // ✅ Dùng package name thực tế
+                  packageName: packageName,
                   playStoreId: packageName,
                   type: PaymentAppType.browser,
                 );
@@ -1125,7 +1032,6 @@ class BankQRParser {
               }
             }
             
-            // Thêm vào danh sách nếu tìm thấy
             if (browserInfo != null && !foundPackageNames.contains(packageName)) {
               _log('✅ Found installed browser: ${browserInfo.name} ($packageName)');
               installedBrowsers.add(browserInfo);
@@ -1136,14 +1042,13 @@ class BankQRParser {
           _log('❌ Error getting all installed apps: $e');
           _log('   Falling back to individual package check...');
           
-          // Cách 2: Fallback - Kiểm tra từng package name
           for (final packageName in _allBrowserPackageNames) {
             try {
               final isInstalled = await _isAppInstalled(packageName);
               if (isInstalled) {
                 final browserInfo = BankInfo(
                   bin: null,
-                  name: packageName.split('.').last, // Tạm thời dùng package name
+                  name: packageName.split('.').last,
                   packageName: packageName,
                   playStoreId: packageName,
                   type: PaymentAppType.browser,
@@ -1168,25 +1073,20 @@ class BankQRParser {
       _log('   Stack trace: $stackTrace');
     }
     
-    // Sắp xếp theo tên
     installedBrowsers.sort((a, b) => a.name.compareTo(b.name));
     
     _log('📊 Final result: Found ${installedBrowsers.length} installed browser apps');
     return installedBrowsers;
   }
 
-  /// [DEPRECATED] Sử dụng detectInstalledPaymentApps thay thế
   @Deprecated('Use detectInstalledPaymentApps instead')
   static Future<List<BankInfo>> detectInstalledBanks() async {
     return detectInstalledPaymentApps();
   }
 
-  /// Kiểm tra xem app có được cài đặt không
-  /// Sử dụng device_apps package để kiểm tra chính xác
   static Future<bool> _isAppInstalled(String packageName) async {
     try {
       if (Platform.isAndroid) {
-        // Cách 1: Sử dụng device_apps (chính xác nhất)
         try {
           final app = await DeviceApps.getApp(packageName, true);
           if (app != null) {
@@ -1196,11 +1096,9 @@ class BankQRParser {
             _log('❌ App not found using device_apps: $packageName');
           }
         } catch (e) {
-          // App không tồn tại hoặc không thể truy cập
           _log('⚠️ Error using device_apps for $packageName: $e');
         }
         
-        // Cách 2: Fallback - Sử dụng intent URL (không chính xác 100%)
         try {
           final intentUrl = 'intent://#Intent;package=$packageName;end';
           final uri = Uri.parse(intentUrl);
@@ -1221,10 +1119,7 @@ class BankQRParser {
     }
   }
 
-  /// Kiểm tra xem package name có phải là variant của base package name không
-  /// Ví dụ: com.vietinbank.ipay vs com.vietinbank.vpb
   static bool _isPackageNameVariant(String packageName, String basePackageName) {
-    // Lấy phần base (2-3 phần đầu) để so sánh
     final packageParts = packageName.split('.');
     final baseParts = basePackageName.split('.');
     
@@ -1232,7 +1127,6 @@ class BankQRParser {
       return false;
     }
     
-    // So sánh 2 phần đầu (ví dụ: com.vietinbank)
     final packageBase = packageParts.take(2).join('.');
     final basePackageBase = baseParts.take(2).join('.');
     
@@ -1240,7 +1134,6 @@ class BankQRParser {
       return true;
     }
     
-    // Kiểm tra nếu một trong hai là substring của cái kia
     if (packageName.contains(basePackageName) || basePackageName.contains(packageName)) {
       return true;
     }
@@ -1248,10 +1141,7 @@ class BankQRParser {
     return false;
   }
 
-  /// Tìm BIN code từ package name variant
-  /// Ví dụ: com.vietinbank.ipay → 970415
   static String? _findBinFromPackageName(String packageName) {
-    // Kiểm tra trong package mapping trước
     final packageMapping = <String, String>{
       'com.mbmobile': '970422',
       'vn.com.mbmobile': '970422',
@@ -1266,17 +1156,14 @@ class BankQRParser {
       'com.vnpay.Agribank3g': '970405',
     };
     
-    // Tìm trực tiếp
     if (packageMapping.containsKey(packageName)) {
       return packageMapping[packageName];
     }
     
-    // Tìm theo pattern (ví dụ: package name chứa tên ngân hàng)
     for (final entry in _binToBankInfo.entries) {
       final bankInfo = entry.value;
       final bankNameParts = bankInfo.name.toLowerCase().split(' ');
       
-      // Kiểm tra xem package name có chứa keyword của ngân hàng không
       for (final part in bankNameParts) {
         if (part.length > 3 && packageName.contains(part)) {
           return entry.key;
@@ -1284,7 +1171,6 @@ class BankQRParser {
       }
     }
     
-    // Tìm theo base package (ví dụ: com.vietinbank.*)
     final packageBase = packageName.split('.').take(2).join('.');
     for (final entry in _binToBankInfo.entries) {
       final bankInfo = entry.value;
@@ -1297,28 +1183,25 @@ class BankQRParser {
     return null;
   }
 
-  /// Tìm BankInfo theo package name
   static BankInfo? _findBankByPackageName(String packageName) {
-    // Tìm trực tiếp
     for (final bankInfo in _binToBankInfo.values) {
       if (bankInfo.packageName == packageName) {
         return bankInfo;
       }
     }
     
-    // Mapping thủ công cho các package name variant thường gặp
     final packageMapping = <String, String>{
-      'com.mbmobile': '970422', // MB Bank variant
-      'vn.com.mbmobile': '970422', // MB Bank variant
-      'com.vietcombank': '970436', // Vietcombank variant
-      'com.vpbank.mobile': '970432', // VPBank variant
-      'com.bidv': '970418', // BIDV variant
-      'com.vietinbank.vpb': '970415', // VietinBank variant (cũ)
-      'com.vietinbank.ipay': '970415', // VietinBank iPay (package name thực tế)
-      'com.bidv.smartbanking': '970418', // BIDV Smart Banking
-      'com.vnpay.bidv': '970418', // BIDV package name thực tế
-      'com.agribank.mb': '970405', // Agribank variant
-      'com.vnpay.Agribank3g': '970405', // Agribank package name thực tế
+      'com.mbmobile': '970422',
+      'vn.com.mbmobile': '970422',
+      'com.vietcombank': '970436',
+      'com.vpbank.mobile': '970432',
+      'com.bidv': '970418',
+      'com.vietinbank.vpb': '970415',
+      'com.vietinbank.ipay': '970415',
+      'com.bidv.smartbanking': '970418',
+      'com.vnpay.bidv': '970418',
+      'com.agribank.mb': '970405',
+      'com.vnpay.Agribank3g': '970405',
     };
     
     final bin = packageMapping[packageName];
@@ -1326,7 +1209,6 @@ class BankQRParser {
       return _binToBankInfo[bin];
     }
     
-    // Tìm theo variant (ví dụ: com.vietcombank.mobile vs com.vietcombank)
     final basePackage = packageName.split('.').take(2).join('.');
     for (final bankInfo in _binToBankInfo.values) {
       final bankBasePackage = bankInfo.packageName.split('.').take(2).join('.');
@@ -1338,14 +1220,7 @@ class BankQRParser {
     return null;
   }
 
-  /// ============================================
-  /// HÀM: Lấy dynamic package name mapping từ SharedPreferences
-  /// ============================================
-  /// 
-  /// Lưu mapping BIN → package name thực tế (từ app đã cài)
-  /// Để tự động update khi package name thay đổi
   static Future<Map<String, String>> _getDynamicPackageMapping() async {
-    // Nếu đã có cache, trả về cache
     if (_dynamicPackageMappingCache != null) {
       return _dynamicPackageMappingCache!;
     }
@@ -1368,29 +1243,18 @@ class BankQRParser {
     return _dynamicPackageMappingCache!;
   }
 
-  /// ============================================
-  /// HÀM: Lưu dynamic package name mapping vào SharedPreferences
-  /// ============================================
-  /// 
-  /// Lưu mapping BIN → package name thực tế để persist giữa các lần chạy app
   static Future<void> _saveDynamicPackageMapping(Map<String, String> mapping) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final mappingJson = jsonEncode(mapping);
       await prefs.setString(_dynamicPackageMappingKey, mappingJson);
-      _dynamicPackageMappingCache = mapping; // Update cache
+      _dynamicPackageMappingCache = mapping;
       _log('💾 Saved dynamic package mapping: ${mapping.length} entries');
     } catch (e) {
       _log('⚠️ Error saving dynamic package mapping: $e');
     }
   }
 
-  /// ============================================
-  /// HÀM: Update package name cho BIN nếu phát hiện thay đổi
-  /// ============================================
-  /// 
-  /// So sánh package name thực tế với package name trong code
-  /// Nếu khác nhau → tự động update và lưu vào SharedPreferences
   static Future<void> _updatePackageNameIfChanged(String bin, String actualPackageName) async {
     try {
       final baseBankInfo = _binToBankInfo[bin];
@@ -1398,13 +1262,11 @@ class BankQRParser {
       
       final codePackageName = baseBankInfo.packageName;
       
-      // Nếu package name thực tế khác với package name trong code
       if (actualPackageName != codePackageName) {
         _log('🔄 Package name changed detected for BIN $bin:');
         _log('   Code: $codePackageName');
         _log('   Actual: $actualPackageName');
         
-        // Lưu vào dynamic mapping
         final dynamicMapping = await _getDynamicPackageMapping();
         dynamicMapping[bin] = actualPackageName;
         await _saveDynamicPackageMapping(dynamicMapping);
@@ -1416,26 +1278,22 @@ class BankQRParser {
     }
   }
 
-  /// Lấy thông tin ngân hàng từ BIN
-  /// Ưu tiên package name từ dynamic mapping (nếu có) thay vì từ code
   static Future<BankInfo?> getBankInfo(String? bin) async {
     if (bin == null) return null;
     
     final baseBankInfo = _binToBankInfo[bin];
     if (baseBankInfo == null) return null;
     
-    // Kiểm tra xem có dynamic package name không (từ SharedPreferences)
     try {
       final dynamicMapping = await _getDynamicPackageMapping();
       final dynamicPackageName = dynamicMapping[bin];
       
       if (dynamicPackageName != null && dynamicPackageName != baseBankInfo.packageName) {
-        // Có package name mới từ dynamic mapping → dùng nó
         _log('📦 Using dynamic package name for BIN $bin: $dynamicPackageName (instead of ${baseBankInfo.packageName})');
         return BankInfo(
           bin: bin,
           name: baseBankInfo.name,
-          packageName: dynamicPackageName, // ✅ Dùng package name từ dynamic mapping
+          packageName: dynamicPackageName,
           playStoreId: dynamicPackageName,
           type: baseBankInfo.type,
         );
@@ -1444,56 +1302,45 @@ class BankQRParser {
       _log('⚠️ Error getting dynamic package name: $e');
     }
     
-    // Không có dynamic mapping → dùng từ code
     return baseBankInfo;
   }
   
-  /// [DEPRECATED] Sử dụng getBankInfo async thay thế
   @Deprecated('Use getBankInfo async instead')
   static BankInfo? getBankInfoSync(String? bin) {
     if (bin == null) return null;
     return _binToBankInfo[bin];
   }
 
-  /// Lấy tên ngân hàng từ BIN
   static String? getBankName(String? bin) {
     if (bin == null) return null;
     return _binToBankInfo[bin]?.name;
   }
 
-  /// Lấy danh sách tất cả ngân hàng được hỗ trợ
   static List<BankInfo> getAllSupportedBanks() {
     return _binToBankInfo.values.toList()
       ..sort((a, b) => a.name.compareTo(b.name));
   }
 
-  /// [DEPRECATED] Sử dụng identifyAndParseQR thay thế
   @Deprecated('Use identifyAndParseQR instead')
   static BankQRData? parseQR(String qrCode) {
     final result = identifyAndParseQR(qrCode);
     return result.bankData;
   }
 
-  /// [DEPRECATED] Sử dụng detectInstalledPaymentApps thay thế
   @Deprecated('Use detectInstalledPaymentApps instead')
   static Future<List<BankInfo>> getInstalledBanks() {
     return detectInstalledPaymentApps();
   }
 }
 
-/// Helper class để mở app ngân hàng bằng package name (Android Intent URL)
 class BankAppLauncher {
   static const MethodChannel _channel = MethodChannel('com.qhome.resident/app_launcher');
   
-  /// Mở app ngân hàng bằng package name
-  /// Sử dụng Platform Channel để gọi Android API trực tiếp (đáng tin cậy hơn intent URL)
-  /// Fallback: Mở Google Play Store nếu app chưa cài
   static Future<bool> openBankApp(String packageName, {String? playStoreId}) async {
     _log('🚀 Attempting to open bank app: $packageName');
     
     try {
       if (Platform.isAndroid) {
-        // Cách 1: Thử dùng Platform Channel (chính xác nhất)
         try {
           final result = await _channel.invokeMethod<bool>('launchApp', {'packageName': packageName});
           if (result == true) {
@@ -1504,13 +1351,10 @@ class BankAppLauncher {
           }
         } on PlatformException catch (e) {
           _log('⚠️ Platform channel error: ${e.code} - ${e.message}');
-          // Tiếp tục thử cách khác
         } catch (e) {
           _log('⚠️ Error using platform channel: $e');
-          // Tiếp tục thử cách khác
         }
         
-        // Cách 2: Fallback - Thử dùng Intent URL (có thể không hoạt động)
         try {
           final intentUrl = 'intent://#Intent;package=$packageName;end';
           final uri = Uri.parse(intentUrl);
@@ -1533,13 +1377,10 @@ class BankAppLauncher {
           _log('⚠️ Intent URL error: $e');
         }
         
-        // Cách 3: Fallback cuối cùng - Mở Google Play Store
         _log('   All methods failed, opening Play Store...');
         return await _openPlayStore(playStoreId ?? packageName);
       } else if (Platform.isIOS) {
-        // iOS: Thử mở bằng custom URL scheme (nếu có)
         _log('   iOS platform detected');
-        // TODO: Implement iOS app opening logic
         return false;
       } else {
         _log('   Unsupported platform');
@@ -1552,7 +1393,6 @@ class BankAppLauncher {
     }
   }
 
-  /// Mở Google Play Store để cài đặt app ngân hàng
   static Future<bool> _openPlayStore(String packageId) async {
     _log('📱 Opening Google Play Store for package: $packageId');
     
