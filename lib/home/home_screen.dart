@@ -919,13 +919,17 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(width: 12),
                         // Greeting period text (smaller)
-                        Text(
-                          greetingPeriodText,
-                          style: textTheme.titleMedium?.copyWith(
-                            color: Colors.white.withOpacity(0.9),
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.2,
+                        Flexible(
+                          child: Text(
+                            greetingPeriodText,
+                            style: textTheme.titleMedium?.copyWith(
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.2,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],

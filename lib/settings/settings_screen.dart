@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
@@ -283,18 +284,24 @@ class _FingerprintSettingsSectionState extends State<_FingerprintSettingsSection
     final auth = context.read<AuthProvider>();
     try {
       final available = await _localAuth.getAvailableBiometrics();
+      // Fingerprint is supported if:
+      // - Direct fingerprint type exists, OR
+      // - Strong/weak biometrics exist (which could be fingerprint or face)
       final supportsFingerprint = available.contains(BiometricType.fingerprint) ||
                                   available.contains(BiometricType.strong) ||
                                   available.contains(BiometricType.weak);
       final enabled = await auth.isFingerprintLoginEnabled();
       if (!mounted) return;
       
+      debugPrint('🔐 Fingerprint Check - Available: $available, Supports: $supportsFingerprint');
+      
       setState(() {
         _supportsFingerprint = supportsFingerprint;
         _fingerprintEnabled = enabled;
         _loading = false;
       });
-    } on PlatformException catch (_) {
+    } on PlatformException catch (e) {
+      debugPrint('❌ Fingerprint Check - Error: $e');
       if (!mounted) return;
       setState(() {
         _supportsFingerprint = false;
@@ -552,8 +559,37 @@ class _FaceSettingsSectionState extends State<_FaceSettingsSection> {
   Future<void> _loadState() async {
     final auth = context.read<AuthProvider>();
     try {
+      final supported = await _localAuth.isDeviceSupported();
+      final canCheck = await _localAuth.canCheckBiometrics;
       final available = await _localAuth.getAvailableBiometrics();
-      final supportsFace = available.contains(BiometricType.face);
+      
+      debugPrint('🔐 Face Auth Check - Available biometrics: $available');
+      debugPrint('🔐 Face Auth Check - Device supported: $supported, Can check: $canCheck');
+      
+      // Check for face recognition:
+      // 1. Direct face type (BiometricType.face)
+      // 2. Strong/weak biometrics when no fingerprint is available (likely face unlock)
+      final hasDirectFace = available.contains(BiometricType.face);
+      final hasFingerprint = available.contains(BiometricType.fingerprint) ||
+                            available.contains(BiometricType.strong) ||
+                            available.contains(BiometricType.weak);
+      
+      // If device supports biometrics but no fingerprint, and has strong/weak, 
+      // it's likely face unlock (especially on Android)
+      final hasStrongOrWeak = available.contains(BiometricType.strong) ||
+                              available.contains(BiometricType.weak);
+      
+      // Face is supported if:
+      // - Direct face type exists, OR
+      // - Device supports biometrics, can check, has strong/weak biometrics, but no fingerprint
+      final supportsFace = hasDirectFace || 
+                          (supported && canCheck && hasStrongOrWeak && !hasFingerprint);
+      
+      debugPrint('🔐 Face Auth Check - Has direct face: $hasDirectFace');
+      debugPrint('🔐 Face Auth Check - Has fingerprint: $hasFingerprint');
+      debugPrint('🔐 Face Auth Check - Has strong/weak: $hasStrongOrWeak');
+      debugPrint('🔐 Face Auth Check - Final supportsFace: $supportsFace');
+      
       final enabled = await auth.isFaceLoginEnabled();
       if (!mounted) return;
       
@@ -562,7 +598,8 @@ class _FaceSettingsSectionState extends State<_FaceSettingsSection> {
         _faceEnabled = enabled;
         _loading = false;
       });
-    } on PlatformException catch (_) {
+    } on PlatformException catch (e) {
+      debugPrint('❌ Face Auth Check - Error: $e');
       if (!mounted) return;
       setState(() {
         _supportsFace = false;
@@ -700,7 +737,57 @@ class _FaceSettingsSectionState extends State<_FaceSettingsSection> {
     }
 
     if (!_supportsFace) {
-      return const SizedBox.shrink();
+      // Show message when face authentication is not supported
+      return _SettingsGlassCard(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  height: 44,
+                  width: 44,
+                  decoration: BoxDecoration(
+                    gradient: AppColors.primaryGradient(),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: AppColors.subtleShadow,
+                  ),
+                  child: const Icon(
+                    Icons.face_rounded,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    'Đăng nhập bằng khuôn mặt',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Chip(
+                  label: Text(
+                    'Không hỗ trợ',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurface.withOpacity(0.8),
+                    ),
+                  ),
+                  backgroundColor: colorScheme.surfaceVariant.withOpacity(0.5),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Thiết bị của bạn không hỗ trợ đăng nhập bằng khuôn mặt. Bạn vẫn có thể đăng nhập bằng vân tay hoặc mật khẩu thông thường.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurface.withOpacity(0.7),
+              ),
+            ),
+          ],
+        ),
+      );
     }
 
     return _SettingsGlassCard(

@@ -44,11 +44,26 @@ class _LoginScreenState extends State<LoginScreen> {
       final available = await _localAuth.getAvailableBiometrics();
       final supported = await _localAuth.isDeviceSupported();
       
+      debugPrint('🔐 Login Biometric Check - Available: $available');
+      debugPrint('🔐 Login Biometric Check - Supported: $supported, Can check: $canCheck');
+      
       // Check which biometric types are available
-      final supportsFace = available.contains(BiometricType.face);
-      final supportsFingerprint = available.contains(BiometricType.fingerprint) ||
-                                  available.contains(BiometricType.strong) ||
-                                  available.contains(BiometricType.weak);
+      final hasDirectFace = available.contains(BiometricType.face);
+      final hasFingerprint = available.contains(BiometricType.fingerprint);
+      final hasStrongOrWeak = available.contains(BiometricType.strong) ||
+                              available.contains(BiometricType.weak);
+      
+      // Face is supported if:
+      // - Direct face type exists, OR
+      // - Device supports biometrics, can check, has strong/weak biometrics, but no fingerprint
+      final supportsFace = hasDirectFace || 
+                          (supported && canCheck && hasStrongOrWeak && !hasFingerprint);
+      
+      final supportsFingerprint = hasFingerprint ||
+                                  (hasStrongOrWeak && hasFingerprint) ||
+                                  (hasStrongOrWeak && !supportsFace); // Fallback: strong/weak might be fingerprint
+      
+      debugPrint('🔐 Login Biometric Check - Supports face: $supportsFace, fingerprint: $supportsFingerprint');
       
       // Check which biometric types are enabled
       final fingerprintEnabled = await auth.isFingerprintLoginEnabled();
@@ -65,7 +80,7 @@ class _LoginScreenState extends State<LoginScreen> {
         _faceEnabled = faceEnabled;
       });
     } on PlatformException catch (e) {
-      debugPrint('Biometric availability check failed: $e');
+      debugPrint('❌ Biometric availability check failed: $e');
       if (!mounted) return;
       setState(() {
         _supportsBiometrics = false;

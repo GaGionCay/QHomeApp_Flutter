@@ -8,10 +8,12 @@ import 'auth_service.dart';
 import 'token_storage.dart';
 
 class ApiClient {
-  static const String LAN_HOST_IP = '192.168.100.33';
+  //static const String LAN_HOST_IP = '192.168.100.33';
+  static const String LAN_HOST_IP = '192.168.100.28';
   static const String LAN_BACKUP_HOST_IP = '192.168.1.15'; 
   static const String OFFICE_HOST_IP = '10.33.63.155';
-  static const String OFFICE_BACKUP_HOST_IP = '10.34.38.236'; 
+  //static const String OFFICE_BACKUP_HOST_IP = '10.34.38.236'; 
+  static const String OFFICE_BACKUP_HOST_IP = '192.168.100.28'; 
   static const String LOCALHOST_IP = 'localhost';
 
   static const int API_PORT = 8081;
