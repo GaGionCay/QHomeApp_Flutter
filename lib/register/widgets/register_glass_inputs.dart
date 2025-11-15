@@ -90,7 +90,7 @@ class _RegisterGlassDropdownState<T> extends State<RegisterGlassDropdown<T>> {
         : theme.colorScheme.onSurface.withOpacity(interactive ? 0.74 : 0.45);
 
     final borderColor = _isFocused && interactive
-        ? theme.colorScheme.primary.withOpacity(0.65)
+        ? theme.colorScheme.primary
         : theme.colorScheme.outline.withOpacity(interactive ? 0.1 : 0.05);
 
     final iconColor = _isFocused && interactive
@@ -124,47 +124,65 @@ class _RegisterGlassDropdownState<T> extends State<RegisterGlassDropdown<T>> {
                   setState(() => _isFocused = focus);
                 }
               },
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 220),
-                    curve: Curves.easeOutCubic,
-                    decoration: BoxDecoration(
-                      gradient: isDark
-                          ? AppColors.darkGlassLayerGradient()
-                          : AppColors.glassLayerGradient(),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: borderColor),
-                      boxShadow: AppColors.subtleShadow,
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: DropdownButtonFormField<T>(
-                      value: widget.value,
-                      items: widget.items,
-                      validator: widget.validator,
-                      onChanged: interactive ? widget.onChanged : null,
-                      isExpanded: true,
-                      dropdownColor: isDark
-                          ? AppColors.navySurfaceElevated.withOpacity(0.96)
-                          : Colors.white,
-                      style: theme.textTheme.bodyLarge,
-                      icon: Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        color: iconColor,
-                      ),
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        hintText: widget.hint.isEmpty ? null : widget.hint,
-                        hintStyle: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurface
-                              .withOpacity(interactive ? 0.45 : 0.35),
-                        ),
-                        prefixIcon: Icon(widget.icon, color: iconColor),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 0,
-                          vertical: 18,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: isDark
+                      ? AppColors.darkGlassLayerGradient()
+                      : AppColors.glassLayerGradient(),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: borderColor,
+                    width: _isFocused && interactive ? 2.0 : 1.0,
+                  ),
+                  boxShadow: AppColors.subtleShadow,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                    child: Padding(
+                      padding: EdgeInsets.zero,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(24),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOutCubic,
+                            child: DropdownButtonFormField<T>(
+                              value: widget.value,
+                              items: widget.items,
+                              validator: widget.validator,
+                              onChanged: interactive ? widget.onChanged : null,
+                              isExpanded: true,
+                              dropdownColor: isDark
+                                  ? AppColors.navySurfaceElevated.withOpacity(0.96)
+                                  : Colors.white,
+                              style: theme.textTheme.bodyLarge,
+                              icon: Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                color: iconColor,
+                              ),
+                              decoration: InputDecoration(
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                disabledBorder: InputBorder.none,
+                                errorBorder: InputBorder.none,
+                                focusedErrorBorder: InputBorder.none,
+                                hintText: widget.hint.isEmpty ? null : widget.hint,
+                                hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurface
+                                      .withOpacity(interactive ? 0.45 : 0.35),
+                                ),
+                                prefixIcon: Icon(widget.icon, color: iconColor),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 0,
+                                  vertical: 18,
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -249,7 +267,7 @@ class _RegisterGlassTextFieldState extends State<RegisterGlassTextField> {
     final interactive = widget.enabled && !widget.readOnly;
 
     final borderColor = hasFocus && interactive
-        ? theme.colorScheme.primary.withOpacity(0.7)
+        ? theme.colorScheme.primary
         : theme.colorScheme.outline.withOpacity(interactive ? 0.1 : 0.05);
     final iconColor = hasFocus && interactive
         ? theme.colorScheme.primary
@@ -278,50 +296,68 @@ class _RegisterGlassTextFieldState extends State<RegisterGlassTextField> {
           AnimatedOpacity(
             duration: const Duration(milliseconds: 220),
             opacity: interactive ? 1 : 0.85,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOutCubic,
-                  decoration: BoxDecoration(
-                    gradient: isDark
-                        ? AppColors.darkGlassLayerGradient()
-                        : AppColors.glassLayerGradient(),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: borderColor),
-                    boxShadow: AppColors.subtleShadow,
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: TextFormField(
-                    focusNode: _focusNode,
-                    controller: widget.controller,
-                    enabled: widget.enabled,
-                    readOnly: widget.readOnly,
-                    validator: widget.validator,
-                    onChanged: widget.onChanged,
-                    onEditingComplete: widget.onEditingComplete,
-                    keyboardType: widget.keyboardType,
-                    textInputAction: widget.textInputAction,
-                    maxLines: widget.maxLines,
-                    style: theme.textTheme.bodyLarge,
-                    decoration: InputDecoration(
-                      border: InputBorder.none,
-                      hintText: widget.hint.isEmpty ? null : widget.hint,
-                      helperText: widget.helperText,
-                      helperMaxLines: 2,
-                      hintStyle: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurface
-                            .withOpacity(interactive ? 0.45 : 0.35),
-                      ),
-                      helperStyle: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.primary.withOpacity(0.8),
-                      ),
-                      prefixIcon: Icon(widget.icon, color: iconColor),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 18,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: isDark
+                    ? AppColors.darkGlassLayerGradient()
+                    : AppColors.glassLayerGradient(),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: borderColor,
+                  width: hasFocus && interactive ? 2.0 : 1.0,
+                ),
+                boxShadow: AppColors.subtleShadow,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  child: Padding(
+                    padding: EdgeInsets.zero,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          child: TextFormField(
+                            focusNode: _focusNode,
+                            controller: widget.controller,
+                            enabled: widget.enabled,
+                            readOnly: widget.readOnly,
+                            validator: widget.validator,
+                            onChanged: widget.onChanged,
+                            onEditingComplete: widget.onEditingComplete,
+                            keyboardType: widget.keyboardType,
+                            textInputAction: widget.textInputAction,
+                            maxLines: widget.maxLines,
+                            style: theme.textTheme.bodyLarge,
+                            decoration: InputDecoration(
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              disabledBorder: InputBorder.none,
+                              errorBorder: InputBorder.none,
+                              focusedErrorBorder: InputBorder.none,
+                              hintText: widget.hint.isEmpty ? null : widget.hint,
+                              helperText: widget.helperText,
+                              helperMaxLines: 2,
+                              hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurface
+                                    .withOpacity(interactive ? 0.45 : 0.35),
+                              ),
+                              helperStyle: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.primary.withOpacity(0.8),
+                              ),
+                              prefixIcon: Icon(widget.icon, color: iconColor),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 0,
+                                vertical: 18,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),

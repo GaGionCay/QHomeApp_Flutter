@@ -201,13 +201,6 @@ class _MenuScreenState extends State<MenuScreen> {
                   ),
                   const SizedBox(height: 12),
                   _MenuGlassTile(
-                    icon: CupertinoIcons.bell_solid,
-                    label: 'Thông báo hệ thống',
-                    subtitle: 'Theo dõi cập nhật từ ban quản lý',
-                    onTap: () => _openNotificationScreen(context),
-                  ),
-                  const SizedBox(height: 12),
-                  _MenuGlassTile(
                     icon: CupertinoIcons.doc_text_fill,
                     label: 'Hợp đồng của tôi',
                     subtitle: 'Quản lý hợp đồng cư trú và tiện ích',
