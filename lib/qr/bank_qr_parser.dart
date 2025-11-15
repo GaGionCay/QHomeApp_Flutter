@@ -1,9 +1,11 @@
 import 'dart:developer' as dev;
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io' show Platform;
 import 'package:device_apps/device_apps.dart';
 import 'package:flutter/services.dart' show PlatformException, MethodChannel;
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Helper function để log với cả dev.log và print (để hiển thị trong logcat Android)
 void _log(String message) {
@@ -204,6 +206,12 @@ class BankQRParser {
   /// Danh sách tất cả package name browser để kiểm tra riêng
   static List<String> get _allBrowserPackageNames => _browserPackageNames;
 
+  /// Key để lưu dynamic package name mapping vào SharedPreferences
+  static const String _dynamicPackageMappingKey = 'bank_qr_dynamic_package_mapping';
+  
+  /// Cache cho dynamic package mapping (để tránh đọc SharedPreferences nhiều lần)
+  static Map<String, String>? _dynamicPackageMappingCache;
+
   /// Map BIN code sang thông tin ngân hàng
   static const Map<String, BankInfo> _binToBankInfo = {
     '970436': BankInfo(
@@ -221,8 +229,8 @@ class BankQRParser {
     '970418': BankInfo(
       bin: '970418',
       name: 'BIDV',
-      packageName: 'com.bidv.smartbanking',
-      playStoreId: 'com.bidv.smartbanking',
+      packageName: 'com.vnpay.bidv', // Package name thực tế (app đã cài)
+      playStoreId: 'com.vnpay.bidv',
     ),
     '970405': BankInfo(
       bin: '970405',
@@ -251,8 +259,8 @@ class BankQRParser {
     '970422': BankInfo(
       bin: '970422',
       name: 'MB Bank',
-      packageName: 'vn.com.mbmobile', // Package name thực tế từ Play Store
-      playStoreId: 'vn.com.mbmobile',
+      packageName: 'com.mbmobile', // Package name thực tế (app đã cài)
+      playStoreId: 'com.mbmobile',
     ),
     '970432': BankInfo(
       bin: '970432',
@@ -724,11 +732,18 @@ class BankQRParser {
   }
 
   /// Từ khóa để tự động nhận diện app ngân hàng/payment
+  /// Lưu ý: Loại trừ các từ khóa có thể gây nhầm lẫn (keyboard, inputmethod, etc.)
   static const List<String> _bankingKeywords = [
     'bank', 'banking', 'ngân hàng', 'vietcombank', 'vietinbank', 'bidv', 
     'techcombank', 'acb', 'agribank', 'sacombank', 'vpbank', 'tpbank', 
     'mb bank', 'mbbank', 'vietbank', 'hsbc', 'shb', 'nam a bank', 
     'eximbank', 'ocb', 'scb', 'dong a', 'pvcombank', 'publicbank', 'ncb',
+  ];
+  
+  /// Từ khóa loại trừ - không phải bank app (tránh nhầm lẫn)
+  static const List<String> _excludeKeywords = [
+    'keyboard', 'bàn phím', 'inputmethod', 'ime', 'gboard', 'swiftkey',
+    'labankey', 'vietkey', 'unikey', 'key', 'typing', 'input',
   ];
   
   static const List<String> _paymentKeywords = [
@@ -763,6 +778,8 @@ class BankQRParser {
   static const List<String> _browserKeywords = [
     'browser', 'chrome', 'firefox', 'edge', 'opera', 'safari',
     'trình duyệt', 'webview', 'brave', 'vivaldi', 'duckduckgo',
+    'internet', 'explorer', 'navigator', 'web', 'sbrowser', 'mi browser',
+    'samsung internet', 'huawei browser', 'uc browser', 'qq browser',
   ];
 
   /// ============================================
@@ -819,6 +836,16 @@ class BankQRParser {
             
             // Cách 2: Tự động nhận diện theo tên app (nếu chưa tìm thấy)
             if (appInfo == null) {
+              // Kiểm tra loại trừ trước - không phải app ngân hàng/payment
+              final isExcluded = _excludeKeywords.any((keyword) =>
+                appName.contains(keyword.toLowerCase()) ||
+                packageName.contains(keyword.toLowerCase()));
+              
+              if (isExcluded) {
+                // Đây là app không phải bank/payment (ví dụ: keyboard, inputmethod)
+                continue; // Bỏ qua app này
+              }
+              
               // Kiểm tra xem tên app có chứa keywords ngân hàng/payment không
               final isBankingApp = _bankingKeywords.any((keyword) => 
                 appName.contains(keyword.toLowerCase()) || 
@@ -858,6 +885,11 @@ class BankQRParser {
                       );
                       
                       _log('🔄 Auto-updated package name for ${bankInfo.name}: ${bankInfo.packageName} → $packageName');
+                      
+                      // ✅ Tự động lưu package name mới vào dynamic mapping
+                      // Để persist giữa các lần chạy app và tự động update khi phát hiện thay đổi
+                      _updatePackageNameIfChanged(bin, packageName);
+                      
                       break;
                     }
                     
@@ -875,6 +907,10 @@ class BankQRParser {
                       );
                       
                       _log('🔄 Auto-updated package name via pattern matching for ${bankInfo.name}: ${bankInfo.packageName} → $packageName');
+                      
+                      // ✅ Tự động lưu package name mới vào dynamic mapping
+                      _updatePackageNameIfChanged(bin, packageName);
+                      
                       break;
                     }
                   }
@@ -895,6 +931,9 @@ class BankQRParser {
                           type: appType,
                         );
                         _log('🔄 Auto-updated package name via package variant for ${baseBankInfo.name}: ${baseBankInfo.packageName} → $packageName');
+                        
+                        // ✅ Tự động lưu package name mới vào dynamic mapping
+                        _updatePackageNameIfChanged(bin, packageName);
                       }
                     }
                   }
@@ -1042,16 +1081,47 @@ class BankQRParser {
                 packageName.contains(keyword.toLowerCase()));
               
               if (isBrowserApp) {
-                // Tự động tạo BankInfo cho browser
+                // ✅ Tự động tạo BankInfo cho browser (tự động thêm vào hệ thống)
+                // Package name sẽ tự động được thêm vào danh sách khi phát hiện
                 browserInfo = BankInfo(
                   bin: null,
                   name: app.appName,
-                  packageName: packageName,
-                  playStoreId: packageName,
+                  packageName: packageName, // ✅ Dùng package name thực tế (từ app đã cài)
+                  playStoreId: packageName, // ✅ Dùng package name thực tế
                   type: PaymentAppType.browser,
                 );
                 
                 _log('🔍 Auto-detected browser app: ${app.appName} ($packageName)');
+                _log('   ✅ Auto-added package name to system: $packageName');
+              }
+            }
+            
+            // Cách 3: Kiểm tra intent filter (nếu app có thể xử lý URL http/https)
+            // Điều này giúp phát hiện các browser không có keyword trong tên
+            if (browserInfo == null) {
+              // Kiểm tra xem package name có pattern giống browser không
+              // Ví dụ: *.browser.*, *.webview.*, *.chrome.*
+              final browserPatterns = [
+                'browser', 'chrome', 'firefox', 'edge', 'opera', 'safari',
+                'webview', 'web', 'internet', 'explorer', 'navigator'
+              ];
+              
+              final hasBrowserPattern = browserPatterns.any((pattern) =>
+                packageName.toLowerCase().contains(pattern) ||
+                appName.contains(pattern));
+              
+              if (hasBrowserPattern) {
+                // Tự động tạo BankInfo cho browser
+                browserInfo = BankInfo(
+                  bin: null,
+                  name: app.appName,
+                  packageName: packageName, // ✅ Dùng package name thực tế
+                  playStoreId: packageName,
+                  type: PaymentAppType.browser,
+                );
+                
+                _log('🔍 Auto-detected browser app via pattern: ${app.appName} ($packageName)');
+                _log('   ✅ Auto-added package name to system: $packageName');
               }
             }
             
@@ -1268,8 +1338,119 @@ class BankQRParser {
     return null;
   }
 
+  /// ============================================
+  /// HÀM: Lấy dynamic package name mapping từ SharedPreferences
+  /// ============================================
+  /// 
+  /// Lưu mapping BIN → package name thực tế (từ app đã cài)
+  /// Để tự động update khi package name thay đổi
+  static Future<Map<String, String>> _getDynamicPackageMapping() async {
+    // Nếu đã có cache, trả về cache
+    if (_dynamicPackageMappingCache != null) {
+      return _dynamicPackageMappingCache!;
+    }
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final mappingJson = prefs.getString(_dynamicPackageMappingKey);
+      
+      if (mappingJson != null && mappingJson.isNotEmpty) {
+        final Map<String, dynamic> decoded = jsonDecode(mappingJson);
+        _dynamicPackageMappingCache = decoded.map((key, value) => MapEntry(key, value.toString()));
+        _log('📦 Loaded dynamic package mapping: ${_dynamicPackageMappingCache!.length} entries');
+        return _dynamicPackageMappingCache!;
+      }
+    } catch (e) {
+      _log('⚠️ Error loading dynamic package mapping: $e');
+    }
+    
+    _dynamicPackageMappingCache = <String, String>{};
+    return _dynamicPackageMappingCache!;
+  }
+
+  /// ============================================
+  /// HÀM: Lưu dynamic package name mapping vào SharedPreferences
+  /// ============================================
+  /// 
+  /// Lưu mapping BIN → package name thực tế để persist giữa các lần chạy app
+  static Future<void> _saveDynamicPackageMapping(Map<String, String> mapping) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final mappingJson = jsonEncode(mapping);
+      await prefs.setString(_dynamicPackageMappingKey, mappingJson);
+      _dynamicPackageMappingCache = mapping; // Update cache
+      _log('💾 Saved dynamic package mapping: ${mapping.length} entries');
+    } catch (e) {
+      _log('⚠️ Error saving dynamic package mapping: $e');
+    }
+  }
+
+  /// ============================================
+  /// HÀM: Update package name cho BIN nếu phát hiện thay đổi
+  /// ============================================
+  /// 
+  /// So sánh package name thực tế với package name trong code
+  /// Nếu khác nhau → tự động update và lưu vào SharedPreferences
+  static Future<void> _updatePackageNameIfChanged(String bin, String actualPackageName) async {
+    try {
+      final baseBankInfo = _binToBankInfo[bin];
+      if (baseBankInfo == null) return;
+      
+      final codePackageName = baseBankInfo.packageName;
+      
+      // Nếu package name thực tế khác với package name trong code
+      if (actualPackageName != codePackageName) {
+        _log('🔄 Package name changed detected for BIN $bin:');
+        _log('   Code: $codePackageName');
+        _log('   Actual: $actualPackageName');
+        
+        // Lưu vào dynamic mapping
+        final dynamicMapping = await _getDynamicPackageMapping();
+        dynamicMapping[bin] = actualPackageName;
+        await _saveDynamicPackageMapping(dynamicMapping);
+        
+        _log('✅ Auto-updated package name mapping for BIN $bin');
+      }
+    } catch (e) {
+      _log('⚠️ Error updating package name: $e');
+    }
+  }
+
   /// Lấy thông tin ngân hàng từ BIN
-  static BankInfo? getBankInfo(String? bin) {
+  /// Ưu tiên package name từ dynamic mapping (nếu có) thay vì từ code
+  static Future<BankInfo?> getBankInfo(String? bin) async {
+    if (bin == null) return null;
+    
+    final baseBankInfo = _binToBankInfo[bin];
+    if (baseBankInfo == null) return null;
+    
+    // Kiểm tra xem có dynamic package name không (từ SharedPreferences)
+    try {
+      final dynamicMapping = await _getDynamicPackageMapping();
+      final dynamicPackageName = dynamicMapping[bin];
+      
+      if (dynamicPackageName != null && dynamicPackageName != baseBankInfo.packageName) {
+        // Có package name mới từ dynamic mapping → dùng nó
+        _log('📦 Using dynamic package name for BIN $bin: $dynamicPackageName (instead of ${baseBankInfo.packageName})');
+        return BankInfo(
+          bin: bin,
+          name: baseBankInfo.name,
+          packageName: dynamicPackageName, // ✅ Dùng package name từ dynamic mapping
+          playStoreId: dynamicPackageName,
+          type: baseBankInfo.type,
+        );
+      }
+    } catch (e) {
+      _log('⚠️ Error getting dynamic package name: $e');
+    }
+    
+    // Không có dynamic mapping → dùng từ code
+    return baseBankInfo;
+  }
+  
+  /// [DEPRECATED] Sử dụng getBankInfo async thay thế
+  @Deprecated('Use getBankInfo async instead')
+  static BankInfo? getBankInfoSync(String? bin) {
     if (bin == null) return null;
     return _binToBankInfo[bin];
   }

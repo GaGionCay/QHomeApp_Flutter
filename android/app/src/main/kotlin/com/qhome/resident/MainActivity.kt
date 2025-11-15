@@ -1,6 +1,7 @@
 package com.qhome.resident
 
 import android.content.Intent
+import android.net.Uri
 import android.util.Log
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -61,38 +62,35 @@ class MainActivity : FlutterFragmentActivity() {
     
     private fun openUrlWithBrowser(url: String, packageName: String): Boolean {
         return try {
+            // Kiểm tra xem package có được cài đặt không
+            try {
+                packageManager.getPackageInfo(packageName, 0)
+            } catch (e: Exception) {
+                Log.w("MainActivity", "Browser $packageName is not installed")
+                return false
+            }
+            
+            // Tạo intent với package cụ thể - mở trực tiếp không cần resolve
+            // Việc setPackage sẽ đảm bảo chỉ browser cụ thể được mở, không hiển thị dialog
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-            intent.setPackage(packageName)
+            intent.setPackage(packageName) // ✅ QUAN TRỌNG: Set package cụ thể để không hiển thị dialog
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             
-            // Kiểm tra xem có app nào có thể xử lý intent này không
-            val resolveInfo = packageManager.resolveActivity(intent, 0)
-            
-            if (resolveInfo != null) {
+            // Thử mở trực tiếp - không cần kiểm tra resolveActivity
+            // Vì một số browser có thể xử lý URL dù không có resolveActivity
+            try {
                 startActivity(intent)
-                Log.d("MainActivity", "Successfully opened URL with browser: $packageName")
-                true
-            } else {
-                Log.w("MainActivity", "Browser $packageName cannot handle URL")
-                // Fallback: Mở URL bình thường (sẽ hỏi user chọn browser)
-                val fallbackIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(fallbackIntent)
-                Log.d("MainActivity", "Opened URL with system chooser (fallback)")
-                true
+                Log.d("MainActivity", "✅ Successfully opened URL with browser: $packageName")
+                return true
+            } catch (e: android.content.ActivityNotFoundException) {
+                // Browser không thể xử lý URL này
+                Log.w("MainActivity", "Browser $packageName cannot handle URL: ${e.message}")
+                return false
             }
         } catch (e: Exception) {
             Log.e("MainActivity", "Error opening URL with browser $packageName: ${e.message}", e)
-            // Fallback: Mở URL bình thường
-            try {
-                val fallbackIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(fallbackIntent)
-                true
-            } catch (e2: Exception) {
-                Log.e("MainActivity", "Error opening URL (fallback): ${e2.message}", e2)
-                false
-            }
+            return false
         }
     }
 }

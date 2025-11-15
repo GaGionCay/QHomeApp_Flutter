@@ -184,19 +184,33 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     }
     
     // Lấy thông tin ngân hàng được phát hiện từ QR (nếu có)
-    final detectedBank = bankData.bin != null 
-        ? BankQRParser.getBankInfo(bankData.bin!) 
-        : null;
+    // ✅ Sử dụng async getBankInfo để lấy package name từ dynamic mapping (nếu có)
+    BankInfo? detectedBank;
+    if (bankData.bin != null) {
+      try {
+        detectedBank = await BankQRParser.getBankInfo(bankData.bin!);
+      } catch (e) {
+        log('⚠️ Error getting bank info: $e');
+        // Fallback về sync method nếu async fail
+        detectedBank = BankQRParser.getBankInfoSync(bankData.bin!);
+      }
+    }
     
     // Ưu tiên hiển thị ngân hàng được phát hiện ở đầu danh sách (nếu có và đã cài)
     if (detectedBank != null) {
       // Thêm ngân hàng được phát hiện vào danh sách nếu chưa có
-      if (!installedApps.any((app) => app.bin == detectedBank.bin && app.packageName == detectedBank.packageName)) {
+      if (!installedApps.any((app) => 
+        app.bin != null && detectedBank != null && 
+        app.bin == detectedBank.bin && 
+        app.packageName == detectedBank.packageName)) {
         installedApps.insert(0, detectedBank);
         log('✅ Added detected bank to list: ${detectedBank.name}');
       } else {
         // Di chuyển ngân hàng được phát hiện lên đầu
-        installedApps.removeWhere((app) => app.bin == detectedBank.bin && app.packageName == detectedBank.packageName);
+        installedApps.removeWhere((app) => 
+          app.bin != null && detectedBank != null && 
+          app.bin == detectedBank.bin && 
+          app.packageName == detectedBank.packageName);
         installedApps.insert(0, detectedBank);
       }
     }
@@ -465,26 +479,18 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
           // Tiếp tục thử cách khác
         }
         
-        // Fallback: Mở URL bình thường, Android sẽ hỏi user chọn browser
-        final canLaunch = await canLaunchUrl(url);
-        if (canLaunch) {
-          await launchUrl(url, mode: LaunchMode.externalApplication);
-          log('✅ Opened URL (system will show browser chooser)');
-          // Đóng QR scanner sau khi mở URL thành công
-          if (mounted) {
-            Navigator.of(context).pop();
-          }
-        } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Không thể mở URL này'),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          }
-          return;
+        // Nếu platform channel không thành công, hiển thị thông báo lỗi
+        // Không fallback về system chooser vì user đã chọn browser cụ thể
+        log('❌ Failed to open URL with ${browserInfo.name} via platform channel');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Không thể mở URL với ${browserInfo.name}'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
         }
+        return;
       } catch (e, stackTrace) {
         log('❌ Error opening URL with browser: $e');
         log('   Stack trace: $stackTrace');
@@ -637,9 +643,17 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     // Thông tin ngân hàng được phát hiện từ QR (nếu có)
     // ⚠️ LƯU Ý: detectedBank có thể có package name cũ (từ mapping hardcode)
     // Chúng ta sẽ ưu tiên package name từ availableBanks (app đã cài) sau
-    final detectedBank = qrData.bin != null 
-        ? BankQRParser.getBankInfo(qrData.bin!) 
-        : null;
+    // ✅ Sử dụng async getBankInfo để lấy package name từ dynamic mapping (nếu có)
+    BankInfo? detectedBank;
+    if (qrData.bin != null) {
+      try {
+        detectedBank = await BankQRParser.getBankInfo(qrData.bin!);
+      } catch (e) {
+        log('⚠️ Error getting bank info: $e');
+        // Fallback về sync method nếu async fail
+        detectedBank = BankQRParser.getBankInfoSync(qrData.bin!);
+      }
+    }
     final accountNumber = qrData.accountNumber ?? '';
     final amount = qrData.amount;
     final addInfo = qrData.addInfo;
@@ -730,27 +744,14 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                       // ✅ Kiểm tra match theo BIN (ưu tiên), không phải package name
                       // Vì package name có thể khác nhau (app mới cài có package name mới)
                       final isDetectedBank = qrData.bin != null && app.bin == qrData.bin;
-                      final isPaymentApp = app.isPaymentApp;
                       
                       return ListTile(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
                         leading: CircleAvatar(
-                          backgroundColor: isDetectedBank 
-                            ? Colors.blue.shade100 
-                            : isPaymentApp 
-                              ? Colors.green.shade100 
-                              : Colors.grey.shade200,
-                          child: Icon(
-                            isDetectedBank 
-                              ? Icons.check_circle 
-                              : isPaymentApp 
-                                ? Icons.account_balance_wallet 
-                                : Icons.account_balance,
-                            color: isDetectedBank 
-                              ? Colors.blue 
-                              : isPaymentApp 
-                                ? Colors.green 
-                                : Colors.grey,
+                          backgroundColor: Colors.blue.shade100,
+                          child: const Icon(
+                            Icons.account_balance,
+                            color: Colors.blue,
                             size: 20,
                           ),
                         ),
@@ -760,20 +761,10 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                             fontWeight: isDetectedBank ? FontWeight.bold : FontWeight.normal,
                           ),
                         ),
-                        subtitle: isDetectedBank 
-                          ? const Text(
-                              'Ngân hàng được phát hiện',
-                              style: TextStyle(fontSize: 11, color: Colors.blue),
-                            )
-                          : isPaymentApp
-                            ? const Text(
-                                'App thanh toán',
-                                style: TextStyle(fontSize: 11, color: Colors.green),
-                              )
-                            : const Text(
-                                'Ngân hàng',
-                                style: TextStyle(fontSize: 11, color: Colors.grey),
-                              ),
+                        subtitle: const Text(
+                          'App ngân hàng',
+                          style: TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
                         trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                         onTap: () {
                           Navigator.of(context).pop(app.packageName);
@@ -790,10 +781,10 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
           if (detectedBank != null)
             FilledButton.icon(
               onPressed: () {
-                // Tìm app VietinBank đã cài trong availableBanks (ưu tiên package name đã cài)
+                // Tìm app đã cài trong availableBanks (ưu tiên package name đã cài)
                 final installedDetectedBank = availableBanks.firstWhere(
-                  (bank) => bank.bin == detectedBank.bin,
-                  orElse: () => detectedBank, // Fallback về detectedBank nếu không tìm thấy
+                  (bank) => bank.bin != null && detectedBank != null && bank.bin == detectedBank.bin,
+                  orElse: () => detectedBank ?? availableBanks.first, // Fallback về detectedBank nếu không tìm thấy
                 );
                 Navigator.of(context).pop(installedDetectedBank.packageName);
               },
@@ -838,12 +829,20 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       // Nếu không tìm thấy trong availableBanks, có thể là detectedBank.packageName (cũ)
       // Trong trường hợp này, tìm app có cùng BIN trong availableBanks
       if (bankInfo.bin == null && detectedBank != null) {
-        final foundBank = availableBanks.firstWhere(
-          (bank) => bank.bin == detectedBank.bin,
-          orElse: () => BankInfo(name: detectedBank.name, packageName: result, bin: detectedBank.bin),
-        );
-        bankInfo = foundBank;
-        log('⚠️ Package name $result not found in installed apps, using installed app with same BIN: ${bankInfo.packageName}');
+        final detectedBin = detectedBank.bin;
+        if (detectedBin != null) {
+          final detectedName = detectedBank.name;
+          final foundBank = availableBanks.firstWhere(
+            (bank) => bank.bin != null && bank.bin == detectedBin,
+            orElse: () => BankInfo(
+              name: detectedName, 
+              packageName: result, 
+              bin: detectedBin,
+            ),
+          );
+          bankInfo = foundBank;
+          log('⚠️ Package name $result not found in installed apps, using installed app with same BIN: ${bankInfo.packageName}');
+        }
       }
       
       log('🚀 Opening bank app: ${bankInfo.name} (${bankInfo.packageName})');
