@@ -14,16 +14,27 @@ class ResidentService {
     String residentId, {
     int page = 0,
     int size = 10,
+    DateTime? dateFrom,
+    DateTime? dateTo,
   }) async {
     try {
-      print('🔍 [ResidentService] Gọi API với page=$page, size=$size');
+      final queryParams = <String, dynamic>{
+        'residentId': residentId,
+        'page': page,
+        'size': size,
+      };
+
+      if (dateFrom != null) {
+        queryParams['dateFrom'] = dateFrom.toIso8601String();
+      }
+      if (dateTo != null) {
+        queryParams['dateTo'] = dateTo.toIso8601String();
+      }
+
+      print('🔍 [ResidentService] Gọi API với page=$page, size=$size, dateFrom=$dateFrom, dateTo=$dateTo');
       final response = await _publicDio.get(
         '/news/resident',
-        queryParameters: {
-          'residentId': residentId,
-          'page': page,
-          'size': size,
-        },
+        queryParameters: queryParams,
       );
       print('🔍 [ResidentService] Response type: ${response.data.runtimeType}');
 
@@ -34,11 +45,32 @@ class ResidentService {
         print('✅ [ResidentService] Paginated response: ${items.length} items');
         return items;
       } else if (response.data is List) {
-        final allItems = (response.data as List)
+        var allItems = (response.data as List)
             .map((json) => ResidentNews.fromJson(json))
             .toList();
 
-        print('ℹ️ [ResidentService] API trả về ${allItems.length} items');
+        if (dateFrom != null || dateTo != null) {
+          allItems = allItems.where((news) {
+            final newsDate = news.publishAt ?? news.createdAt;
+            if (dateFrom != null) {
+              final startDate = DateTime(dateFrom.year, dateFrom.month, dateFrom.day);
+              final newsDateOnly = DateTime(newsDate.year, newsDate.month, newsDate.day);
+              if (newsDateOnly.isBefore(startDate)) {
+                return false;
+              }
+            }
+            if (dateTo != null) {
+              final endDate = DateTime(dateTo.year, dateTo.month, dateTo.day).add(const Duration(days: 1));
+              final newsDateOnly = DateTime(newsDate.year, newsDate.month, newsDate.day);
+              if (newsDateOnly.isAfter(endDate.subtract(const Duration(days: 1)))) {
+                return false;
+              }
+            }
+            return true;
+          }).toList();
+        }
+
+        print('ℹ️ [ResidentService] API trả về ${allItems.length} items sau filter');
         if (size >= 1000) {
           return allItems;
         }
