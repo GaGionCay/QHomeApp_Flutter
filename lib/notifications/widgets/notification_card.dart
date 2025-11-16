@@ -114,7 +114,7 @@ class NotificationCard extends StatelessWidget {
                               ],
                             ],
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 3),
                           Flexible(
                             child: Text(
                               notification.message,
@@ -123,7 +123,7 @@ class NotificationCard extends StatelessWidget {
                                   alpha: isUnread ? 0.75 : 0.6,
                                 ),
                                 fontSize: 13,
-                                height: 1.4,
+                                height: 1.3,
                               ),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
@@ -134,7 +134,7 @@ class NotificationCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
