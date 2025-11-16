@@ -35,7 +35,6 @@ class TokenStorage {
   Future<String?> readRole() async => _storage.read(key: 'role');
   Future<String?> readUsername() async => _storage.read(key: 'username');
 
-  // Legacy methods (for backward compatibility)
   Future<void> writeBiometricCredentials({
     required String username,
     required String password,
@@ -72,14 +71,7 @@ class TokenStorage {
     return value == 'true';
   }
 
-  // Face-specific methods
-  Future<void> writeFaceEnabled(bool enabled) async =>
-      _storage.write(key: 'faceEnabled', value: enabled.toString());
-
-  Future<bool> readFaceEnabled() async {
-    final value = await _storage.read(key: 'faceEnabled');
-    return value == 'true';
-  }
+  // Face-specific methods removed per requirement
 
   // Clear both fingerprint and face settings
   Future<void> clearAllBiometricSettings() async {

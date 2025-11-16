@@ -97,6 +97,9 @@ class _RegisterGlassDropdownState<T> extends State<RegisterGlassDropdown<T>> {
         ? theme.colorScheme.primary
         : theme.colorScheme.onSurface.withOpacity(interactive ? 0.7 : 0.4);
 
+    // Kích thước BorderRadius thống nhất
+    const double borderRadius = 24;
+
     return GestureDetector(
       onDoubleTap: widget.onDoubleTap,
       child: Column(
@@ -121,6 +124,10 @@ class _RegisterGlassDropdownState<T> extends State<RegisterGlassDropdown<T>> {
               skipTraversal: !interactive,
               onFocusChange: (focus) {
                 if (interactive) {
+                  if (!focus) {
+                    // Validate the entire form when dropdown loses focus
+                    Form.of(context).validate();
+                  }
                   setState(() => _isFocused = focus);
                 }
               },
@@ -129,7 +136,7 @@ class _RegisterGlassDropdownState<T> extends State<RegisterGlassDropdown<T>> {
                   gradient: isDark
                       ? AppColors.darkGlassLayerGradient()
                       : AppColors.glassLayerGradient(),
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(borderRadius),
                   border: Border.all(
                     color: borderColor,
                     width: _isFocused && interactive ? 2.0 : 1.0,
@@ -137,52 +144,45 @@ class _RegisterGlassDropdownState<T> extends State<RegisterGlassDropdown<T>> {
                   boxShadow: AppColors.subtleShadow,
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(borderRadius),
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                    // Xóa các ClipRRect và Padding không cần thiết bên trong
                     child: Padding(
-                      padding: EdgeInsets.zero,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(24),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 220),
-                            curve: Curves.easeOutCubic,
-                            child: DropdownButtonFormField<T>(
-                              value: widget.value,
-                              items: widget.items,
-                              validator: widget.validator,
-                              onChanged: interactive ? widget.onChanged : null,
-                              isExpanded: true,
-                              dropdownColor: isDark
-                                  ? AppColors.navySurfaceElevated.withOpacity(0.96)
-                                  : Colors.white,
-                              style: theme.textTheme.bodyLarge,
-                              icon: Icon(
-                                Icons.keyboard_arrow_down_rounded,
-                                color: iconColor,
-                              ),
-                              decoration: InputDecoration(
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                disabledBorder: InputBorder.none,
-                                errorBorder: InputBorder.none,
-                                focusedErrorBorder: InputBorder.none,
-                                hintText: widget.hint.isEmpty ? null : widget.hint,
-                                hintStyle: theme.textTheme.bodyMedium?.copyWith(
-                                  color: theme.colorScheme.onSurface
-                                      .withOpacity(interactive ? 0.45 : 0.35),
-                                ),
-                                prefixIcon: Icon(widget.icon, color: iconColor),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 0,
-                                  vertical: 18,
-                                ),
-                              ),
-                            ),
+                      padding: EdgeInsets.zero, // Giữ nguyên Padding.zero ở đây
+                      child: DropdownButtonFormField<T>(
+                        value: widget.value,
+                        items: widget.items,
+                        autovalidateMode: AutovalidateMode.onUserInteraction,
+                        validator: widget.validator,
+                        onChanged: interactive ? widget.onChanged : null,
+                        isExpanded: true,
+                        dropdownColor: isDark
+                            ? AppColors.navySurfaceElevated.withOpacity(0.96)
+                            : Colors.white,
+                        style: theme.textTheme.bodyLarge,
+                        icon: Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          color: iconColor,
+                        ),
+                        decoration: InputDecoration(
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          focusedErrorBorder: InputBorder.none,
+                          hintText: widget.hint.isEmpty ? null : widget.hint,
+                          hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurface
+                                .withOpacity(interactive ? 0.45 : 0.35),
                           ),
+                          prefixIcon: Icon(widget.icon, color: iconColor),
+                          // **QUAN TRỌNG:** Điều chỉnh contentPadding để kiểm soát không gian bên trong
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, // Tăng padding ngang để tạo không gian
+                            vertical: 18,
+                          ).copyWith(left: 0), // PrefixIcon đã xử lý phần lề trái
                         ),
                       ),
                     ),
@@ -247,6 +247,10 @@ class _RegisterGlassTextFieldState extends State<RegisterGlassTextField> {
 
   void _handleFocusChanged() {
     if (mounted) {
+      // Validate the entire form when this field loses focus
+      if (!_focusNode.hasFocus) {
+        Form.of(context).validate();
+      }
       setState(() {});
     }
   }
@@ -276,6 +280,9 @@ class _RegisterGlassTextFieldState extends State<RegisterGlassTextField> {
     final labelColor = hasFocus && interactive
         ? theme.colorScheme.primary
         : theme.colorScheme.onSurface.withOpacity(interactive ? 0.74 : 0.45);
+    
+    // Kích thước BorderRadius thống nhất
+    const double borderRadius = 24;
 
     return GestureDetector(
       onDoubleTap: widget.onDoubleTap,
@@ -301,7 +308,7 @@ class _RegisterGlassTextFieldState extends State<RegisterGlassTextField> {
                 gradient: isDark
                     ? AppColors.darkGlassLayerGradient()
                     : AppColors.glassLayerGradient(),
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(borderRadius),
                 border: Border.all(
                   color: borderColor,
                   width: hasFocus && interactive ? 2.0 : 1.0,
@@ -309,55 +316,48 @@ class _RegisterGlassTextFieldState extends State<RegisterGlassTextField> {
                 boxShadow: AppColors.subtleShadow,
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(borderRadius),
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  // Xóa các ClipRRect và Padding không cần thiết bên trong
                   child: Padding(
-                    padding: EdgeInsets.zero,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(24),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          curve: Curves.easeOutCubic,
-                          child: TextFormField(
-                            focusNode: _focusNode,
-                            controller: widget.controller,
-                            enabled: widget.enabled,
-                            readOnly: widget.readOnly,
-                            validator: widget.validator,
-                            onChanged: widget.onChanged,
-                            onEditingComplete: widget.onEditingComplete,
-                            keyboardType: widget.keyboardType,
-                            textInputAction: widget.textInputAction,
-                            maxLines: widget.maxLines,
-                            style: theme.textTheme.bodyLarge,
-                            decoration: InputDecoration(
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              disabledBorder: InputBorder.none,
-                              errorBorder: InputBorder.none,
-                              focusedErrorBorder: InputBorder.none,
-                              hintText: widget.hint.isEmpty ? null : widget.hint,
-                              helperText: widget.helperText,
-                              helperMaxLines: 2,
-                              hintStyle: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurface
-                                    .withOpacity(interactive ? 0.45 : 0.35),
-                              ),
-                              helperStyle: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.primary.withOpacity(0.8),
-                              ),
-                              prefixIcon: Icon(widget.icon, color: iconColor),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 0,
-                                vertical: 18,
-                              ),
-                            ),
-                          ),
+                    padding: EdgeInsets.zero, // Giữ nguyên Padding.zero ở đây
+                    child: TextFormField(
+                      focusNode: _focusNode,
+                      controller: widget.controller,
+                      enabled: widget.enabled,
+                      readOnly: widget.readOnly,
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
+                      validator: widget.validator,
+                      onChanged: widget.onChanged,
+                      onEditingComplete: widget.onEditingComplete,
+                      keyboardType: widget.keyboardType,
+                      textInputAction: widget.textInputAction,
+                      maxLines: widget.maxLines,
+                      style: theme.textTheme.bodyLarge,
+                      decoration: InputDecoration(
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
+                        hintText: widget.hint.isEmpty ? null : widget.hint,
+                        helperText: widget.helperText,
+                        helperMaxLines: 2,
+                        hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurface
+                              .withOpacity(interactive ? 0.45 : 0.35),
                         ),
+                        helperStyle: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.primary.withOpacity(0.8),
+                        ),
+                        prefixIcon: Icon(widget.icon, color: iconColor),
+                        // **QUAN TRỌNG:** Điều chỉnh contentPadding để kiểm soát không gian bên trong
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, // Tăng padding ngang để tạo không gian
+                          vertical: 18,
+                        ).copyWith(left: 0), // PrefixIcon đã xử lý phần lề trái
                       ),
                     ),
                   ),

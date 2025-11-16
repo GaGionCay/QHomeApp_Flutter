@@ -5,6 +5,9 @@ import 'dart:developer';
 import 'package:app_links/app_links.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io' show Platform;
+import 'package:android_intent_plus/android_intent.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -755,9 +758,24 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
         _clearForm();
 
         final uri = Uri.parse(paymentUrl);
-        if (await canLaunchUrl(uri)) {
+        bool launched = false;
+        if (!kIsWeb && Platform.isAndroid) {
+          try {
+            final intent = AndroidIntent(
+              action: 'action_view',
+              data: paymentUrl,
+            );
+            await intent.launchChooser('Chọn trình duyệt để thanh toán');
+            launched = true;
+          } catch (e) {
+            debugPrint('⚠️ Không thể mở chooser, fallback url_launcher: $e');
+          }
+        }
+        if (!launched && await canLaunchUrl(uri)) {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
-        } else {
+          launched = true;
+        }
+        if (!launched) {
           await prefs.remove(_pendingPaymentKey);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -899,9 +917,19 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
                       hint: 'Nhập họ và tên',
                       fieldKey: 'fullName',
                       icon: Icons.person_outline,
-                      validator: (v) => v == null || v.isEmpty
-                          ? 'Vui lòng nhập họ và tên'
-                          : null,
+                      validator: (v) {
+                        if (v == null || v.isEmpty) {
+                          return 'Vui lòng nhập họ và tên';
+                        }
+                        final trimmed = v.trim();
+                        if (trimmed.isEmpty) {
+                          return 'Họ và tên không được chỉ chứa khoảng trắng';
+                        }
+                        if (trimmed.length > 100) {
+                          return 'Họ và tên không được vượt quá 100 ký tự';
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 18),
                     _buildTextField(
@@ -931,12 +959,29 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
                     _buildTextField(
                       controller: _citizenIdCtrl,
                       label: 'Căn cước công dân',
-                      hint: 'Nhập số căn cước công dân',
+                      hint: 'Nhập số căn cước công dân (12 số)',
                       fieldKey: 'citizenId',
                       icon: Icons.badge_outlined,
-                      validator: (v) => v == null || v.isEmpty
-                          ? 'Vui lòng nhập căn cước công dân'
-                          : null,
+                      keyboardType: TextInputType.number,
+                      validator: (v) {
+                        if (v == null || v.isEmpty) {
+                          return 'Vui lòng nhập căn cước công dân';
+                        }
+                        final trimmed = v.trim().replaceAll(RegExp(r'[\s-]'), '');
+                        if (trimmed.isEmpty) {
+                          return 'Căn cước công dân không được chỉ chứa khoảng trắng hoặc dấu gạch ngang';
+                        }
+                        if (!RegExp(r'^[0-9]+$').hasMatch(trimmed)) {
+                          return 'Căn cước công dân chỉ được chứa số';
+                        }
+                        if (trimmed.length != 9 && trimmed.length != 12) {
+                          return 'Căn cước công dân phải có 9 số (CMND) hoặc 12 số (CCCD)';
+                        }
+                        if (trimmed.length > 20) {
+                          return 'Căn cước công dân không được vượt quá 20 ký tự';
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 18),
                     _buildTextField(
@@ -950,8 +995,24 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
                         if (v == null || v.isEmpty) {
                           return 'Vui lòng nhập số điện thoại';
                         }
-                        if (!RegExp(r'^[0-9]{10,11}$').hasMatch(v)) {
+                        final trimmed = v.trim().replaceAll(RegExp(r'[\s()-]'), '');
+                        if (trimmed.isEmpty) {
+                          return 'Số điện thoại không được chỉ chứa khoảng trắng hoặc ký tự đặc biệt';
+                        }
+                        // Allow digits, +, -, spaces, parentheses (backend pattern: ^[0-9+\-\\s()]+$)
+                        if (!RegExp(r'^[0-9+\-()\s]+$').hasMatch(v)) {
                           return 'Số điện thoại không hợp lệ';
+                        }
+                        // Check if it's a valid Vietnamese phone number (10-11 digits when cleaned)
+                        if (!RegExp(r'^[0-9]{10,11}$').hasMatch(trimmed)) {
+                          return 'Số điện thoại phải có 10 hoặc 11 số';
+                        }
+                        // Check if starts with 0 for Vietnamese numbers
+                        if (!trimmed.startsWith('0') && !trimmed.startsWith('+84')) {
+                          return 'Số điện thoại Việt Nam phải bắt đầu bằng 0 hoặc +84';
+                        }
+                        if (v.length > 20) {
+                          return 'Số điện thoại không được vượt quá 20 ký tự';
                         }
                         return null;
                       },

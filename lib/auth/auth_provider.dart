@@ -93,12 +93,11 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> isBiometricLoginEnabled() => storage.readBiometricEnabled();
 
   Future<({String username, String password})?> getBiometricCredentials() async {
-    // Check if any biometric is enabled (fingerprint or face)
+    // Check if any biometric is enabled (fingerprint or legacy)
     final fingerprintEnabled = await storage.readFingerprintEnabled();
-    final faceEnabled = await storage.readFaceEnabled();
     final legacyEnabled = await storage.readBiometricEnabled();
-    
-    if (!fingerprintEnabled && !faceEnabled && !legacyEnabled) return null;
+
+    if (!fingerprintEnabled && !legacyEnabled) return null;
     
     final username = await storage.readBiometricUsername();
     final password = await storage.readBiometricPassword();
@@ -126,35 +125,12 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> disableFingerprintLogin() async {
     await storage.writeFingerprintEnabled(false);
-    // Only clear credentials if face is also disabled
-    final faceEnabled = await storage.readFaceEnabled();
-    if (!faceEnabled) {
-      await storage.clearBiometricCredentials();
-    }
+    await storage.clearBiometricCredentials();
   }
 
   Future<bool> isFingerprintLoginEnabled() => storage.readFingerprintEnabled();
 
-  // Face-specific methods
-  Future<void> enableFaceLogin(String username, String password) async {
-    // Store credentials (shared between fingerprint and face)
-    await storage.writeBiometricCredentials(
-      username: username,
-      password: password,
-    );
-    await storage.writeFaceEnabled(true);
-  }
-
-  Future<void> disableFaceLogin() async {
-    await storage.writeFaceEnabled(false);
-    // Only clear credentials if fingerprint is also disabled
-    final fingerprintEnabled = await storage.readFingerprintEnabled();
-    if (!fingerprintEnabled) {
-      await storage.clearBiometricCredentials();
-    }
-  }
-
-  Future<bool> isFaceLoginEnabled() => storage.readFaceEnabled();
+  // Face-specific methods removed per requirement
 
   Future<String?> getStoredUsername() => storage.readUsername();
 

@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../auth/api_client.dart';
 import '../theme/app_colors.dart';
@@ -62,6 +63,12 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
   bool _isLoading = true;
   String? _error;
   _CardCategory _selectedCategory = _CardCategory.vehicle;
+
+  DateTime? _fromDate;
+  DateTime? _toDate;
+
+  final DateFormat _dateFmt = DateFormat('dd/MM/yyyy');
+  final DateFormat _dateTimeFmt = DateFormat('dd/MM/yyyy HH:mm');
 
   @override
   void initState() {
@@ -140,6 +147,8 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(24),
         children: [
+          _buildDateFilter(context),
+          const SizedBox(height: 12),
           _buildEmptyCard(theme, unitLabel),
         ],
       );
@@ -151,19 +160,15 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
       children: [
+        _buildDateFilter(context),
+        const SizedBox(height: 12),
         _buildSummaryCard(theme, unitLabel),
         const SizedBox(height: 16),
         _buildCategorySelector(theme),
         const SizedBox(height: 16),
         if (filteredCards.isEmpty)
           _buildEmptyCategoryCard(theme, _selectedCategory)
-        else
-          ...filteredCards.map((card) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _buildCardItem(theme, card),
-            );
-          }),
+        else ..._buildGroupedByDay(theme, filteredCards),
         if (_isLoading && filteredCards.isNotEmpty)
           const Padding(
             padding: EdgeInsets.only(top: 12),
@@ -177,13 +182,111 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
 
   List<CardRegistrationSummary> _filteredCards() {
     final category = _selectedCategory;
-    final filtered =
-        _cards.where((card) => _categoryOf(card) == category).toList();
+    final filtered = _cards.where((card) {
+      if (_categoryOf(card) != category) return false;
+      if (_fromDate == null && _toDate == null) return true;
+
+      // Ưu tiên lọc theo paymentDate nếu có, ngược lại theo createdAt
+      final DateTime? pivot =
+          card.paymentDate ?? card.createdAt ?? card.updatedAt;
+      if (pivot == null) return false;
+
+      bool ok = true;
+      if (_fromDate != null) {
+        final start = DateTime(_fromDate!.year, _fromDate!.month, _fromDate!.day);
+        ok = ok && !pivot.isBefore(start);
+      }
+      if (_toDate != null) {
+        final end = DateTime(_toDate!.year, _toDate!.month, _toDate!.day, 23, 59, 59, 999);
+        ok = ok && !pivot.isAfter(end);
+      }
+      return ok;
+    }).toList();
     filtered.sort(
       (a, b) => (b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0))
           .compareTo(a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0)),
     );
     return filtered;
+  }
+
+  List<Widget> _buildGroupedByDay(ThemeData theme, List<CardRegistrationSummary> items) {
+    // Group theo ngày dựa trên paymentDate nếu có, ngược lại theo createdAt (hoặc updatedAt)
+    final Map<DateTime, List<CardRegistrationSummary>> byDay = {};
+    for (final item in items) {
+      final pivot = item.paymentDate ?? item.createdAt ?? item.updatedAt;
+      if (pivot == null) continue;
+      final key = DateTime(pivot.year, pivot.month, pivot.day);
+      byDay.putIfAbsent(key, () => []).add(item);
+    }
+
+    // Sắp xếp ngày giảm dần
+    final dayKeys = byDay.keys.toList()
+      ..sort((a, b) => b.compareTo(a));
+
+    final List<Widget> widgets = [];
+    for (final day in dayKeys) {
+      final list = byDay[day]!;
+      // Section header
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(left: 2, right: 2, bottom: 8),
+          child: Text(
+            _humanDayLabel(day),
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: theme.colorScheme.onSurface.withOpacity(0.85),
+            ),
+          ),
+        ),
+      );
+      // Items của ngày
+      for (final card in list) {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _buildCardItem(theme, card),
+          ),
+        );
+      }
+      widgets.add(const SizedBox(height: 8));
+    }
+
+    // Các item không có ngày (hiếm) gom vào cuối
+    final noDate = items.where((e) => (e.paymentDate ?? e.createdAt ?? e.updatedAt) == null).toList();
+    if (noDate.isNotEmpty) {
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(left: 2, right: 2, bottom: 8),
+          child: Text(
+            'Khác',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: theme.colorScheme.onSurface.withOpacity(0.85),
+            ),
+          ),
+        ),
+      );
+      for (final card in noDate) {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _buildCardItem(theme, card),
+          ),
+        );
+      }
+    }
+
+    return widgets;
+  }
+
+  String _humanDayLabel(DateTime day) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final labelDate = _dateFmt.format(day);
+    if (day == today) return 'Hôm nay ($labelDate)';
+    if (day == yesterday) return 'Hôm qua ($labelDate)';
+    return labelDate;
   }
 
   int _countFor(_CardCategory category) {
@@ -432,6 +535,41 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
                   ),
                 ],
                 const SizedBox(height: 6),
+                if (card.paymentStatus != null &&
+                    card.paymentStatus!.toUpperCase() == 'PAID' &&
+                    card.paymentDate != null) ...[
+                  Row(
+                    children: [
+                      const Icon(Icons.access_time, size: 14),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Thanh toán: ${_dateTimeFmt.format(card.paymentDate!.toLocal())}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                ],
+                // Hiển thị thời gian admin duyệt khi có approvedAt
+                if (card.approvedAt != null) ...[
+                  Row(
+                    children: [
+                      const Icon(Icons.verified, size: 14),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Duyệt: ${_dateTimeFmt.format(card.approvedAt!.toLocal())}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withOpacity(0.62),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                ],
                 if (card.note != null && card.note!.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(
@@ -462,6 +600,83 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDateFilter(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasFilter = _fromDate != null || _toDate != null;
+    return _HomeGlassSection(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                final initial = _fromDate ?? DateTime.now();
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: initial,
+                  firstDate: DateTime(2020, 1, 1),
+                  lastDate: DateTime(2100, 12, 31),
+                );
+                if (picked != null) {
+                  setState(() {
+                    _fromDate = picked;
+                    if (_toDate != null && _toDate!.isBefore(_fromDate!)) {
+                      _toDate = _fromDate;
+                    }
+                  });
+                }
+              },
+              icon: const Icon(Icons.calendar_month_outlined, size: 18),
+              label: Text(
+                _fromDate == null ? 'Từ ngày' : _dateFmt.format(_fromDate!),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                final initial = _toDate ?? _fromDate ?? DateTime.now();
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: initial,
+                  firstDate: DateTime(2020, 1, 1),
+                  lastDate: DateTime(2100, 12, 31),
+                );
+                if (picked != null) {
+                  setState(() {
+                    _toDate = picked;
+                    if (_fromDate != null && _toDate!.isBefore(_fromDate!)) {
+                      _fromDate = _toDate;
+                    }
+                  });
+                }
+              },
+              icon: const Icon(Icons.event_outlined, size: 18),
+              label: Text(
+                _toDate == null ? 'Đến ngày' : _dateFmt.format(_toDate!),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (hasFilter)
+            IconButton(
+              tooltip: 'Xóa lọc',
+              onPressed: () {
+                setState(() {
+                  _fromDate = null;
+                  _toDate = null;
+                });
+              },
+              icon: Icon(Icons.clear, color: theme.colorScheme.error),
+            ),
         ],
       ),
     );
@@ -525,6 +740,8 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
         return status.isEmpty ? 'Không xác định' : status;
     }
   }
+
+  // _isApproved removed: now we rely solely on approvedAt presence for display
 
   Color _approvalStatusColor(ThemeData theme, CardRegistrationSummary card) {
     final status = (card.status ?? '').toUpperCase();
