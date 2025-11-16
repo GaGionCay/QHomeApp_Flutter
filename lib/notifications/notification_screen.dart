@@ -52,6 +52,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
       if (!mounted) return;
       if (_residentId != null && _buildingId != null) {
         await _viewModel.loadNotifications(refresh: true);
+        await _updateReadStatus();
       }
     });
     _bus.on('notifications_incoming', (payload) {
@@ -89,7 +90,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
         _readIds = await NotificationReadStore.load(_residentId!);
         _viewModel.setResidentAndBuilding(_residentId!, _buildingId!);
         await _viewModel.loadNotifications(refresh: true);
-        _updateReadStatus();
+        await _updateReadStatus();
         return;
       }
 
@@ -106,7 +107,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
         _readIds = await NotificationReadStore.load(_residentId!);
         _viewModel.setResidentAndBuilding(_residentId!, _buildingId!);
         await _viewModel.loadNotifications(refresh: true);
-        _updateReadStatus();
+        await _updateReadStatus();
         return;
       }
 
@@ -143,7 +144,15 @@ class _NotificationScreenState extends State<NotificationScreen> {
     }
   }
 
-  void _updateReadStatus() {
+  Future<void> _updateReadStatus() async {
+    if (_residentId == null || _residentId!.isEmpty) {
+      debugPrint('⚠️ [NotificationScreen] Cannot update read status: residentId is null');
+      return;
+    }
+    
+    // Reload read IDs from local storage to ensure we have the latest data
+    _readIds = await NotificationReadStore.load(_residentId!);
+    
     final notifications = List<ResidentNotification>.from(_viewModel.notifications);
     bool updated = false;
     for (var i = 0; i < notifications.length; i++) {
@@ -154,6 +163,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     }
     if (updated) {
       _viewModel.updateNotifications(notifications);
+      debugPrint('✅ [NotificationScreen] Updated read status for ${notifications.where((n) => _readIds.contains(n.id)).length} notifications');
     }
   }
 
@@ -331,19 +341,24 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   dateFrom: viewModel.filterDateFrom,
                   dateTo: viewModel.filterDateTo,
                   hasActiveFilters: viewModel.hasActiveFilters,
-                  onDateFilterChanged: (from, to) {
+                  onDateFilterChanged: (from, to) async {
                     viewModel.setDateFilter(from, to);
-                    viewModel.loadNotifications(refresh: true);
+                    await viewModel.loadNotifications(refresh: true);
+                    await _updateReadStatus();
                   },
-                  onClearFilters: () {
+                  onClearFilters: () async {
                     viewModel.clearFilters();
-                    viewModel.loadNotifications(refresh: true);
+                    await viewModel.loadNotifications(refresh: true);
+                    await _updateReadStatus();
                   },
                 ),
                 Expanded(
                   child: RefreshIndicator(
                     color: Theme.of(context).colorScheme.primary,
-                    onRefresh: () => viewModel.loadNotifications(refresh: true),
+                    onRefresh: () async {
+                      await viewModel.loadNotifications(refresh: true);
+                      await _updateReadStatus();
+                    },
                     child: _buildBody(context, viewModel),
                   ),
                 ),
@@ -378,7 +393,10 @@ class _NotificationScreenState extends State<NotificationScreen> {
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () => viewModel.loadNotifications(refresh: true),
+              onPressed: () async {
+                await viewModel.loadNotifications(refresh: true);
+                await _updateReadStatus();
+              },
               child: const Text('Thử lại'),
             ),
           ],

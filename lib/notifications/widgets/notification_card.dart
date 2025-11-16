@@ -66,6 +66,7 @@ class NotificationCard extends StatelessWidget {
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -83,6 +84,7 @@ class NotificationCard extends StatelessWidget {
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Row(
                             children: [
@@ -112,25 +114,27 @@ class NotificationCard extends StatelessWidget {
                               ],
                             ],
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            notification.message,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurface.withValues(
-                                alpha: isUnread ? 0.75 : 0.6,
+                          const SizedBox(height: 4),
+                          Flexible(
+                            child: Text(
+                              notification.message,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurface.withValues(
+                                  alpha: isUnread ? 0.75 : 0.6,
+                                ),
+                                fontSize: 13,
+                                height: 1.4,
                               ),
-                              fontSize: 13,
-                              height: 1.4,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -150,6 +154,7 @@ class NotificationCard extends StatelessWidget {
                       ),
                     ),
                     Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           Icons.access_time,

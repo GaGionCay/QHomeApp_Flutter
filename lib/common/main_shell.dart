@@ -157,18 +157,30 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   }
 
   void _subscribeToNotificationTopics() {
+    // Subscribe to global notification topic
     _stompClient?.subscribe(
       destination: '/topic/notifications',
       headers: const {'id': 'notifications-global'},
       callback: _handleNotificationFrame,
     );
+    debugPrint('✅ Subscribed to /topic/notifications');
 
+    // Subscribe to external notifications (for notifications without buildingId)
+    _stompClient?.subscribe(
+      destination: '/topic/notifications/external',
+      headers: const {'id': 'notifications-external'},
+      callback: _handleNotificationFrame,
+    );
+    debugPrint('✅ Subscribed to /topic/notifications/external');
+
+    // Subscribe to building-specific notifications
     for (final buildingId in _userBuildingIds) {
       _stompClient?.subscribe(
         destination: '/topic/notifications/building/$buildingId',
         headers: {'id': 'notifications-building-$buildingId'},
         callback: _handleNotificationFrame,
       );
+      debugPrint('✅ Subscribed to /topic/notifications/building/$buildingId');
     }
   }
 
@@ -198,22 +210,42 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   }
 
   void _handleNotificationFrame(StompFrame frame) {
-    if (frame.body == null) return;
+    debugPrint('🔔 [WebSocket] Received frame, body length: ${frame.body?.length ?? 0}');
+    if (frame.body == null) {
+      debugPrint('⚠️ [WebSocket] Frame body is null');
+      return;
+    }
+    
+    debugPrint('🔔 [WebSocket] Raw frame body: ${frame.body}');
+    
     try {
       final decoded = json.decode(frame.body!);
+      debugPrint('🔔 [WebSocket] Decoded data type: ${decoded.runtimeType}');
+      debugPrint('🔔 [WebSocket] Decoded data: $decoded');
+      
       if (decoded is Map<String, dynamic>) {
         final data = Map<String, dynamic>.from(decoded);
         final dedupeKeySource = _asString(data['notificationId']) ??
             _asString(data['id']) ??
             frame.headers['message-id']?.toString() ??
             frame.body.hashCode.toString();
-        final eventType = _asString(data['eventType']) ?? '';
+        final eventType = _asString(data['eventType']) ?? _asString(data['action']) ?? 'NOTIFICATION_CREATED';
         final dedupeKey = 'notification:$eventType:$dedupeKeySource';
+        
+        debugPrint('🔔 [WebSocket] Parsed: eventType=$eventType, id=$dedupeKeySource');
+        debugPrint('🔔 [WebSocket] Full data keys: ${data.keys.toList()}');
+        
         if (!_markRealtimeKey(dedupeKey)) {
+          debugPrint('ℹ️ Notification đã nhận trước đó, bỏ qua: $dedupeKey');
           return;
         }
 
-        if (!_shouldDisplayNotification(data)) {
+        debugPrint('🔔 Received notification via WebSocket: eventType=$eventType, id=$dedupeKeySource');
+
+        final shouldDisplay = _shouldDisplayNotification(data);
+        debugPrint('🔔 [WebSocket] Should display: $shouldDisplay, scope: ${data['scope']}, targetBuildingId: ${data['targetBuildingId']}');
+        
+        if (!shouldDisplay) {
           debugPrint(
               'ℹ️ Bỏ qua thông báo không liên quan tới căn hộ của user.');
           return;
@@ -231,24 +263,37 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
           return;
         }
 
-        _showNotificationBanner(data);
-        AppEventBus().emit('notifications_update', data);
-        AppEventBus().emit('notifications_incoming', data);
+        // Handle NOTIFICATION_CREATED or any other event type
+        // Default to handling if eventType is empty or is NOTIFICATION_CREATED
+        if (eventType.isEmpty || eventType == 'NOTIFICATION_CREATED') {
+          _showNotificationBanner(data);
+          AppEventBus().emit('notifications_update', data);
+          AppEventBus().emit('notifications_incoming', data);
+          debugPrint('✅ Emitted notifications_incoming event');
+        }
       }
     } catch (e) {
       debugPrint('⚠️ Lỗi parse notification realtime: $e');
+      debugPrint('⚠️ Frame body: ${frame.body}');
     }
   }
 
   bool _shouldDisplayNotification(Map<String, dynamic> data) {
     final scope = _asString(data['scope'])?.toUpperCase();
+    debugPrint('🔔 [WebSocket] Checking display: scope=$scope, userBuildingIds=${_userBuildingIds.toList()}');
+    
     if (scope == 'EXTERNAL') {
       final target = _asString(data['targetBuildingId']);
+      debugPrint('🔔 [WebSocket] EXTERNAL notification, targetBuildingId=$target');
       if (target == null || target.isEmpty) {
+        debugPrint('🔔 [WebSocket] No targetBuildingId, should display: true');
         return true;
       }
-      return _userBuildingIds.contains(target.toLowerCase());
+      final shouldDisplay = _userBuildingIds.contains(target.toLowerCase());
+      debugPrint('🔔 [WebSocket] Target building match: $shouldDisplay (target: $target, userBuildings: ${_userBuildingIds.toList()})');
+      return shouldDisplay;
     }
+    debugPrint('🔔 [WebSocket] Scope is not EXTERNAL, should display: true');
     return true;
   }
 
