@@ -16,20 +16,29 @@ import 'theme/theme_controller.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+
+  bool isFirebaseReady = false;
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    print('✅ Firebase đã khởi tạo thành công.');
+    isFirebaseReady = true;
+
+    final tokenStorage = TokenStorage();
+    await PushNotificationService.instance.initialize(
+      onNotificationTap: _handleNotificationTap,
+      residentIdProvider: tokenStorage.readResidentId,
+      buildingIdProvider: tokenStorage.readBuildingId,
+      roleProvider: tokenStorage.readRole,
+    );
+    await PushNotificationService.instance.requestPermissions();
+  } catch (e) {
+    print('⚠️ Lỗi cấu hình Firebase (tạm bỏ qua): $e');
+  }
+
   await ApiClient.ensureInitialized();
   await _configurePreferredRefreshRate();
-  final tokenStorage = TokenStorage();
-
-  await PushNotificationService.instance.initialize(
-    onNotificationTap: _handleNotificationTap,
-    residentIdProvider: tokenStorage.readResidentId,
-    buildingIdProvider: tokenStorage.readBuildingId,
-    roleProvider: tokenStorage.readRole,
-  );
-  await PushNotificationService.instance.requestPermissions();
 
   runApp(
     MultiProvider(
@@ -37,7 +46,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => ThemeController()),
       ],
-      child: const MyApp(),
+      child: MyApp(isFirebaseReady: isFirebaseReady),
     ),
   );
 }
@@ -60,7 +69,8 @@ Future<void> _configurePreferredRefreshRate() async {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final bool isFirebaseReady;
+  const MyApp({super.key, required this.isFirebaseReady});
 
   @override
   Widget build(BuildContext context) {

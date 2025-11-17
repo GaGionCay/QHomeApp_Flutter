@@ -9,15 +9,17 @@ import 'token_storage.dart';
 
 class ApiClient {
   static const String LAN_HOST_IP = '192.168.100.33';
-  static const String LAN_BACKUP_HOST_IP = '192.168.1.15'; 
+  static const String LAN_BACKUP_HOST_IP = '192.168.1.15';
+  static const String LAN_HOST_IP_NEW = '192.168.1.10';
+  static const String TroThanh_HOST_IP = '192.168.1.7';
   static const String OFFICE_HOST_IP = '10.33.63.155';
-  static const String OFFICE_BACKUP_HOST_IP = '10.189.244.236'; 
+  static const String OFFICE_BACKUP_HOST_IP = '10.189.244.236';
   static const String LOCALHOST_IP = 'localhost';
 
   static const int API_PORT = 8081;
   static const int TIMEOUT_SECONDS = 10;
 
-  static const String HOST_IP = kIsWeb ? LOCALHOST_IP : OFFICE_HOST_IP;
+  static const String HOST_IP = kIsWeb ? LAN_HOST_IP_NEW : TroThanh_HOST_IP;
   static const String BASE_URL = 'http://$HOST_IP:$API_PORT/api';
   static const String FILE_BASE_URL = 'http://$HOST_IP:$API_PORT';
 
@@ -30,7 +32,7 @@ class ApiClient {
 
   static const Map<String, String> _localIpPrefixOverrides = {
     '192.168.100.': LAN_HOST_IP,
-    '192.168.1.': LAN_BACKUP_HOST_IP,
+    '192.168.1.': LAN_HOST_IP_NEW,
     '10.33.': OFFICE_HOST_IP,
     '10.189.': OFFICE_BACKUP_HOST_IP,
   };
@@ -101,13 +103,12 @@ class ApiClient {
         );
       } catch (e) {
         print('⚠️ Network detect failed: $e');
-        _setActiveHost(OFFICE_HOST_IP);
+        _setActiveHost(LAN_HOST_IP_NEW); 
       }
     }
 
     _isInitialized = true;
   }
-
   static void _setActiveHost(String hostIp) {
     _activeHostIp = hostIp;
     _activeBaseUrl = 'http://$hostIp:$API_PORT/api';

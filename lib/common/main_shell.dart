@@ -24,7 +24,9 @@ import 'menu_screen.dart';
 
 class MainShell extends StatefulWidget {
   final int initialIndex;
-  const MainShell({super.key, this.initialIndex = 0});
+  final bool isFirebaseReady;
+  const MainShell(
+      {super.key, this.initialIndex = 0, this.isFirebaseReady = false});
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -44,16 +46,19 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _selectedIndex = widget.initialIndex;
-    _connectWebSocket();
-    _pushSubscription =
-        PushNotificationService.instance.notificationClicks.listen(
-      (message) {
-        if (!mounted) return;
-        final data = Map<String, dynamic>.from(message.data);
-        _handleNotificationTap(data);
-      },
-    );
 
+    // if (widget.isFirebaseReady) {
+    //   _pushSubscription =
+    //       PushNotificationService.instance.notificationClicks.listen((message) {
+    //     if (!mounted) return;
+    //     final data = Map<String, dynamic>.from(message.data);
+    //     _handleNotificationTap(data);
+    //   });
+    // } else {
+    //   debugPrint('⚠️ Firebase chưa sẵn sàng, bỏ qua PushNotificationService.');
+    // }
+
+    _connectWebSocket();
     _pages = [
       HomeScreen(onNavigateToTab: _onItemTapped),
       const ServiceCategoryScreen(),
