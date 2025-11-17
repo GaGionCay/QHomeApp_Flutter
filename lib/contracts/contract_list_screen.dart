@@ -10,6 +10,7 @@ import '../auth/api_client.dart';
 import '../models/contract.dart';
 import '../models/unit_info.dart';
 import '../theme/app_colors.dart';
+import 'contract_detail_screen.dart';
 import 'contract_service.dart';
 
 class ContractListScreen extends StatefulWidget {
@@ -444,102 +445,112 @@ class _ContractListScreenState extends State<ContractListScreen> {
         statusIcon = CupertinoIcons.info_circle_fill;
     }
 
-    return _ServiceGlassCard(
-      child: Padding(
-        padding: const EdgeInsets.all(22),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        contract.contractNumber,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
+    return InkWell(
+      borderRadius: BorderRadius.circular(26),
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ContractDetailScreen(contractId: contract.id),
+          ),
+        );
+      },
+      child: _ServiceGlassCard(
+        child: Padding(
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          contract.contractNumber,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Loại: ${contract.contractType}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withOpacity(0.65),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Loại: ${contract.contractType}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withOpacity(0.65),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.16),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(statusIcon, size: 16, color: statusColor),
-                      const SizedBox(width: 6),
-                      Text(
-                        contract.status.toUpperCase(),
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: statusColor,
-                          fontWeight: FontWeight.w700,
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.16),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(statusIcon, size: 16, color: statusColor),
+                        const SizedBox(width: 6),
+                        Text(
+                          contract.status.toUpperCase(),
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: statusColor,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            _buildInfoRow(
-              icon: CupertinoIcons.calendar,
-              label: 'Bắt đầu',
-              value: formatDate(contract.startDate),
-            ),
-            const SizedBox(height: 6),
-            _buildInfoRow(
-              icon: CupertinoIcons.calendar_badge_minus,
-              label: 'Kết thúc',
-              value: formatDate(contract.endDate),
-            ),
-            if (contract.monthlyRent != null) ...[
+                ],
+              ),
+              const SizedBox(height: 16),
+              _buildInfoRow(
+                icon: CupertinoIcons.calendar,
+                label: 'Bắt đầu',
+                value: formatDate(contract.startDate),
+              ),
               const SizedBox(height: 6),
               _buildInfoRow(
-                icon: CupertinoIcons.creditcard,
-                label: 'Tiền thuê',
-                value: formatCurrency(contract.monthlyRent),
+                icon: CupertinoIcons.calendar_badge_minus,
+                label: 'Kết thúc',
+                value: formatDate(contract.endDate),
               ),
-            ],
-            if (contract.notes != null && contract.notes!.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                contract.notes!,
-                style: theme.textTheme.bodySmall,
-              ),
-            ],
-            if (contract.files.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              Text(
-                'Tài liệu đính kèm',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
+              if (contract.monthlyRent != null) ...[
+                const SizedBox(height: 6),
+                _buildInfoRow(
+                  icon: CupertinoIcons.creditcard,
+                  label: 'Tiền thuê',
+                  value: formatCurrency(contract.monthlyRent),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: contract.files.map(_buildFileChip).toList(),
-              ),
+              ],
+              if (contract.notes != null && contract.notes!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  contract.notes!,
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+              if (contract.files.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Text(
+                  'Tài liệu đính kèm',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: contract.files.map(_buildFileChip).toList(),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

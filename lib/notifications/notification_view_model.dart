@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/resident_notification.dart';
 import '../news/resident_service.dart';
 import 'widgets/notification_read_status_filter.dart';
+import 'widgets/notification_type_filter.dart';
 
 class NotificationViewModel extends ChangeNotifier {
   final ResidentService _residentService = ResidentService();
@@ -42,6 +43,9 @@ class NotificationViewModel extends ChangeNotifier {
   NotificationReadStatusFilter _readStatusFilter = NotificationReadStatusFilter.all;
   NotificationReadStatusFilter get readStatusFilter => _readStatusFilter;
 
+  NotificationTypeFilter _typeFilter = NotificationTypeFilter.all;
+  NotificationTypeFilter get typeFilter => _typeFilter;
+
   void setResidentAndBuilding(String? residentId, String? buildingId) {
     _residentId = residentId;
     _buildingId = buildingId;
@@ -66,16 +70,28 @@ class NotificationViewModel extends ChangeNotifier {
         }
       }).toList();
     }
+
+    // Filter by type (CARD_APPROVED)
+    if (_typeFilter != NotificationTypeFilter.all) {
+      filteredNotifications = filteredNotifications.where((notification) {
+        if (_typeFilter == NotificationTypeFilter.cardApproved) {
+          return notification.type.toUpperCase() == 'CARD_APPROVED';
+        }
+        return true;
+      }).toList();
+    }
     final Map<String, List<ResidentNotification>> grouped = {};
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final yesterday = today.subtract(const Duration(days: 1));
 
     for (final notification in filteredNotifications) {
+      // Convert to local time before grouping by date
+      final localCreatedAt = notification.createdAt.toLocal();
       final notificationDate = DateTime(
-        notification.createdAt.year,
-        notification.createdAt.month,
-        notification.createdAt.day,
+        localCreatedAt.year,
+        localCreatedAt.month,
+        localCreatedAt.day,
       );
 
       String groupKey;
@@ -195,6 +211,7 @@ class NotificationViewModel extends ChangeNotifier {
   void clearFilters() {
     _filterDateFrom = null;
     _filterDateTo = null;
+    _typeFilter = NotificationTypeFilter.all;
     _currentPage = 0;
     _hasMore = true;
     notifyListeners();
@@ -215,7 +232,12 @@ class NotificationViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool get hasActiveFilters => _filterDateFrom != null || _filterDateTo != null;
+  void setTypeFilter(NotificationTypeFilter filter) {
+    _typeFilter = filter;
+    notifyListeners();
+  }
+
+  bool get hasActiveFilters => _filterDateFrom != null || _filterDateTo != null || _typeFilter != NotificationTypeFilter.all;
 
   void updateNotifications(List<ResidentNotification> notifications) {
     _notifications = notifications;

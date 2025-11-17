@@ -67,17 +67,6 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
       return null;
     }
   }
-  bool _isValidImageUrl(String? url) {
-    if (url == null || url.isEmpty) return false;
-    final String lower = url.toLowerCase();
-    if (!lower.startsWith('http')) return false;
-    return lower.endsWith('.png') ||
-        lower.endsWith('.jpg') ||
-        lower.endsWith('.jpeg') ||
-        lower.endsWith('.gif') ||
-        lower.endsWith('.webp');
-  }
-
   Future<void> _fetchById(String id) async {
     if (mounted) {
       setState(() => _loading = true);
@@ -226,13 +215,6 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
 
     final String summary = news.summary;
     final String status = news.status;
-    final String? rawCoverImageUrl = news.coverImageUrl;
-    final String? finalCoverImageUrl = rawCoverImageUrl != null
-        ? (rawCoverImageUrl.startsWith('http')
-            ? rawCoverImageUrl
-            : ApiClient.fileUrl(rawCoverImageUrl))
-        : null;
-    final bool showImage = _isValidImageUrl(finalCoverImageUrl);
     final DateTime? publishAt = news.publishAt;
     final List<NewsImage> images = List.from(news.images)
       ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
@@ -242,16 +224,18 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(0xFF040D1F),
-              Color(0xFF0D1E33),
+              Color(0xFF04101F),
+              Color(0xFF0A1D34),
+              Color(0xFF071225),
             ],
           )
         : const LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(0xFFF4F7FE),
-              Color(0xFFFFFFFF),
+              Color(0xFFEFF6FF),
+              Color(0xFFF8FBFF),
+              Colors.white,
             ],
           );
 
@@ -269,15 +253,15 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
               backgroundColor: Colors.transparent,
               foregroundColor: theme.colorScheme.onSurface,
               elevation: 0,
+              scrolledUnderElevation: 0,
               pinned: true,
               stretch: true,
               leadingWidth: 66,
-              expandedHeight: showImage ? 320 : 220,
-              title: Text(
+              expandedHeight: 160,
+              systemOverlayStyle: theme.appBarTheme.systemOverlayStyle,
+              title: const Text(
                 'Chi tiết thông tin',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w600),
               ),
               centerTitle: true,
               leading: Padding(
@@ -289,11 +273,28 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
               ),
               flexibleSpace: FlexibleSpaceBar(
                 collapseMode: CollapseMode.parallax,
-                background: _buildHeroHeader(
-                  context: context,
-                  news: news,
-                  imageUrl: finalCoverImageUrl,
-                  showImage: showImage,
+                background: Container(
+                  decoration: BoxDecoration(gradient: backgroundGradient),
+                  padding: const EdgeInsets.fromLTRB(24, 100, 24, 36),
+                  child: Align(
+                    alignment: Alignment.bottomLeft,
+                    child: Text(
+                      news.title,
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                            color: theme.colorScheme.onSurface,
+                            fontWeight: FontWeight.w700,
+                            height: 1.2,
+                            letterSpacing: -0.3,
+                          ) ??
+                          TextStyle(
+                            color: theme.colorScheme.onSurface,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                            height: 1.2,
+                            letterSpacing: -0.3,
+                          ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -619,78 +620,4 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
     );
   }
 
-  Widget _buildHeroHeader({
-    required BuildContext context,
-    required ResidentNews news,
-    required String? imageUrl,
-    required bool showImage,
-  }) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Hero(
-          tag: 'news_${news.id}',
-          child: showImage && imageUrl != null
-              ? CachedNetworkImage(
-                  imageUrl: imageUrl,
-                  fit: BoxFit.cover,
-                  placeholder: (context, url) => Container(
-                    decoration: BoxDecoration(
-                      gradient: AppColors.heroBackdropGradient(isDark: isDark),
-                    ),
-                    child: const Center(
-                      child: CupertinoActivityIndicator(),
-                    ),
-                  ),
-                  errorWidget: (context, url, error) => Container(
-                    decoration: BoxDecoration(
-                      gradient: AppColors.heroBackdropGradient(isDark: isDark),
-                    ),
-                  ),
-                )
-              : Container(
-                  decoration: BoxDecoration(
-                    gradient: AppColors.heroBackdropGradient(isDark: isDark),
-                  ),
-                ),
-        ),
-        Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Color(0x66000000),
-                Color(0x22000000),
-                Color(0xAA000000),
-              ],
-            ),
-          ),
-        ),
-        Positioned(
-          left: 24,
-          right: 24,
-          bottom: 36,
-          child: Text(
-            news.title,
-            style: theme.textTheme.headlineSmall?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  height: 1.2,
-                  letterSpacing: -0.3,
-                ) ??
-                const TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  height: 1.2,
-                  letterSpacing: -0.3,
-                ),
-          ),
-        ),
-      ],
-    );
-  }
 }

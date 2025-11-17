@@ -23,7 +23,8 @@ class NotificationCard extends StatelessWidget {
     final theme = Theme.of(context);
     final color = _getTypeColor(notification.type);
     final icon = _getTypeIcon(notification.type);
-    final dateText = DateFormat('HH:mm').format(notification.createdAt);
+    // Convert UTC to local time before formatting
+    final dateText = DateFormat('HH:mm').format(notification.createdAt.toLocal());
     final isUnread = !notification.isRead;
 
     return OpenContainer<bool>(
@@ -46,7 +47,7 @@ class NotificationCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           child: Container(
             margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(15),
             decoration: BoxDecoration(
               color: theme.colorScheme.surface,
               borderRadius: BorderRadius.circular(20),
@@ -114,7 +115,7 @@ class NotificationCard extends StatelessWidget {
                               ],
                             ],
                           ),
-                          const SizedBox(height: 3),
+                          const SizedBox(height: 2),
                           Flexible(
                             child: Text(
                               notification.message,
@@ -134,7 +135,8 @@ class NotificationCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                // ĐÃ SỬA: Giảm kích thước SizedBox để giải quyết lỗi overflow 1.0 pixel
+                const SizedBox(height: 6), 
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -208,4 +210,3 @@ class NotificationCard extends StatelessWidget {
     }
   }
 }
-

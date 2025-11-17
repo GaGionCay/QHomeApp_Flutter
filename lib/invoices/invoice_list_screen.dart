@@ -1123,19 +1123,28 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
             const SizedBox(height: 12),
             Row(
               children: [
-                Text(
-                  _formatMoney(invoice.lineTotal),
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: serviceColor,
+                Flexible(
+                  child: Text(
+                    _formatMoney(invoice.lineTotal),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: serviceColor,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 12),
                 if (!isPaid)
-                  FilledButton.icon(
-                    onPressed: () => _handlePayInvoice(invoice),
-                    icon: const Icon(Icons.payment_rounded),
-                    label: const Text('Thanh toán ngay'),
+                  Flexible(
+                    child: FilledButton.icon(
+                      onPressed: () => _handlePayInvoice(invoice),
+                      icon: const Icon(Icons.payment_rounded, size: 18),
+                      label: const Text('Thanh toán ngay'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                    ),
                   )
                 else
                   Container(

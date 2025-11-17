@@ -8,7 +8,6 @@ import '../models/resident_news.dart';
 import '../profile/profile_service.dart';
 import '../notifications/widgets/notification_date_filter.dart';
 import '../notifications/widgets/notification_read_status_filter.dart';
-import 'news_detail_screen.dart';
 import 'news_read_store.dart';
 import 'news_view_model.dart';
 import 'widgets/news_card.dart';
@@ -159,12 +158,15 @@ class _NewsScreenState extends State<NewsScreen> {
     }
   }
 
-  void _handleNewsMarkedRead(String newsId) async {
+  void _handleNewsMarkedRead(String newsId) {
     if (_residentId == null || _residentId!.isEmpty) return;
-    _readIds = {..._readIds, newsId};
-    _viewModel.markAsRead(newsId);
-    await NewsReadStore.markRead(_residentId!, newsId);
-    _bus.emit('news_read_status_updated', newsId);
+    // Defer markAsRead to avoid calling setState/notifyListeners during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _readIds = {..._readIds, newsId};
+      _viewModel.markAsRead(newsId);
+      NewsReadStore.markRead(_residentId!, newsId);
+      _bus.emit('news_read_status_updated', newsId);
+    });
   }
 
   @override

@@ -105,6 +105,16 @@ class _HomeScreenState extends State<HomeScreen> {
           '🔔 HomeScreen nhận event notifications_update -> cập nhật quick alerts...');
       await _loadUnreadNotifications();
     });
+    // Listen for new incoming notifications via WebSocket - update count immediately without API call
+    _eventBus.on('notifications_incoming', (_) {
+      debugPrint('🔔 HomeScreen nhận event notifications_incoming -> tăng unread count...');
+      if (mounted) {
+        setState(() {
+          _unreadNotificationCount = _unreadNotificationCount + 1;
+        });
+        debugPrint('✅ Đã tăng unread notification count: $_unreadNotificationCount');
+      }
+    });
     _eventBus.on('unit_context_changed', (data) {
       if (!mounted) return;
       final unitId = (data is String && data.isNotEmpty) ? data : null;
