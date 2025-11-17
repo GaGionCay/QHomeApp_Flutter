@@ -138,9 +138,7 @@ class _AccountRequestStatusScreenState
 
   Uint8List? _decodeBase64Image(String data) {
     try {
-      final content = data.contains(',')
-          ? data.split(',').last
-          : data;
+      final content = data.contains(',') ? data.split(',').last : data;
       return base64Decode(content);
     } catch (_) {
       return null;
@@ -149,6 +147,10 @@ class _AccountRequestStatusScreenState
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primaryText = theme.colorScheme.onSurface;
+    final secondaryText = theme.colorScheme.onSurfaceVariant;
+
     final filtered = _filteredRequests;
 
     return Scaffold(
@@ -164,12 +166,15 @@ class _AccountRequestStatusScreenState
                 alignment: Alignment.centerLeft,
                 child: Text(
                   'Căn hộ: ${widget.units.firstWhere(
-                    (unit) => unit.id == (_selectedUnitFilter ?? widget.units.first.id),
-                    orElse: () => widget.units.first,
-                  ).displayName}',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                        (unit) =>
+                            unit.id ==
+                            (_selectedUnitFilter ?? widget.units.first.id),
+                        orElse: () => widget.units.first,
+                      ).displayName}',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: primaryText,
+                  ),
                 ),
               ),
             ),
@@ -193,10 +198,13 @@ class _AccountRequestStatusScreenState
                       : filtered.isEmpty
                           ? ListView(
                               padding: const EdgeInsets.all(24),
-                              children: const [
+                              children: [
                                 Text(
                                   'Bạn chưa gửi yêu cầu tạo tài khoản nào.',
-                                  style: TextStyle(color: Colors.black54),
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: secondaryText,
+                                  ),
+                                  textAlign: TextAlign.center,
                                 ),
                               ],
                             )
@@ -217,159 +225,203 @@ class _AccountRequestStatusScreenState
                                 final unitLabel = request.unitCode ??
                                     matchedUnit?.displayName ??
                                     'Căn hộ';
-                                return Card(
-                                  elevation: 2,
+                                final cardBackground =
+                                    theme.brightness == Brightness.dark
+                                        ? Colors.white.withOpacity(0.05)
+                                        : Colors.white;
+                                final cardBorderColor =
+                                    theme.brightness == Brightness.dark
+                                        ? Colors.white.withOpacity(0.08)
+                                        : Colors.black.withOpacity(0.05);
+
+                                return Container(
+                                  decoration: BoxDecoration(
+                                    color: cardBackground,
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: cardBorderColor),
+                                    boxShadow: [
+                                      if (theme.brightness == Brightness.light)
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.04),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 6),
+                                        ),
+                                    ],
+                                  ),
                                   margin:
                                       const EdgeInsets.symmetric(vertical: 8),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            CircleAvatar(
-                                              backgroundColor:
-                                                  _statusColor(request)
-                                                      .withOpacity(0.1),
-                                              child: Icon(
-                                                _statusIcon(request),
-                                                color: _statusColor(request),
-                                              ),
+                                  padding: const EdgeInsets.all(18),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 22,
+                                            backgroundColor:
+                                                _statusColor(request)
+                                                    .withOpacity(0.18),
+                                            child: Icon(
+                                              _statusIcon(request),
+                                              color: _statusColor(request),
                                             ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    request.residentName ??
-                                                        'Thành viên',
-                                                    style: const TextStyle(
-                                                      fontSize: 16,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  request.residentName ??
+                                                      'Thành viên',
+                                                  style: theme
+                                                      .textTheme.titleMedium
+                                                      ?.copyWith(
+                                                    fontWeight: FontWeight.w700,
+                                                    color: primaryText,
                                                   ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    unitLabel,
-                                                    style: const TextStyle(
-                                                        color: Colors.black54),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  unitLabel,
+                                                  style: theme
+                                                      .textTheme.bodySmall
+                                                      ?.copyWith(
+                                                    color: secondaryText,
                                                   ),
-                                                ],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          Chip(
+                                            label: Text(
+                                              request.statusLabel,
+                                              style: theme.textTheme.labelSmall
+                                                  ?.copyWith(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w600,
                                               ),
                                             ),
-                                            Chip(
-                                              label: Text(
-                                                request.statusLabel,
-                                                style: const TextStyle(
-                                                    color: Colors.white),
-                                              ),
-                                              backgroundColor:
-                                                  _statusColor(request),
-                                            ),
-                                          ],
+                                            backgroundColor:
+                                                _statusColor(request),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      if ((request.relation ?? '').isNotEmpty)
+                                        Text(
+                                          'Quan hệ: ${request.relation}',
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                            color: secondaryText,
+                                          ),
                                         ),
+                                      if ((request.residentPhone ?? '')
+                                          .isNotEmpty)
+                                        Text(
+                                          'Điện thoại: ${request.residentPhone}',
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                            color: secondaryText,
+                                          ),
+                                        ),
+                                      if ((request.residentEmail ?? '')
+                                          .isNotEmpty)
+                                        Text(
+                                          'Email: ${request.residentEmail}',
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                            color: secondaryText,
+                                          ),
+                                        ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Gửi lúc: ${request.formattedCreatedAt}',
+                                        style:
+                                            theme.textTheme.bodySmall?.copyWith(
+                                          color: secondaryText,
+                                        ),
+                                      ),
+                                      if (request.isApproved)
+                                        Text(
+                                          'Duyệt lúc: ${request.formattedApprovedAt}',
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                            color: secondaryText,
+                                          ),
+                                        ),
+                                      if (request.isRejected) ...[
+                                        Text(
+                                          'Từ chối lúc: ${request.formattedRejectedAt}',
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                            color: secondaryText,
+                                          ),
+                                        ),
+                                        if ((request.rejectionReason ?? '')
+                                            .isNotEmpty)
+                                          Text(
+                                            'Lý do: ${request.rejectionReason}',
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                              color: theme.colorScheme.error,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                      ],
+                                      if (request.hasProofImages) ...[
                                         const SizedBox(height: 12),
-                                        if ((request.relation ?? '')
-                                            .isNotEmpty)
-                                          Text(
-                                            'Quan hệ: ${request.relation}',
-                                            style: const TextStyle(
-                                                color: Colors.black54),
+                                        Text(
+                                          'Ảnh minh chứng:',
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            color: secondaryText,
                                           ),
-                                        if ((request.residentPhone ?? '')
-                                            .isNotEmpty)
-                                          Text(
-                                            'Điện thoại: ${request.residentPhone}',
-                                            style: const TextStyle(
-                                                color: Colors.black54),
-                                          ),
-                                        if ((request.residentEmail ?? '')
-                                            .isNotEmpty)
-                                          Text(
-                                            'Email: ${request.residentEmail}',
-                                            style: const TextStyle(
-                                                color: Colors.black54),
-                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 8,
+                                          children: request
+                                              .proofOfRelationImageUrls
+                                              .map(_buildProofImage)
+                                              .toList(),
+                                        ),
+                                      ],
+                                      if (request.isApproved &&
+                                          (request.username ?? '')
+                                              .isNotEmpty) ...[
+                                        const SizedBox(height: 12),
+                                        const Divider(),
                                         const SizedBox(height: 8),
                                         Text(
-                                          'Gửi lúc: ${request.formattedCreatedAt}',
-                                          style: const TextStyle(
-                                              color: Colors.black54),
+                                          'Tài khoản:',
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            color: secondaryText,
+                                          ),
                                         ),
-                                        if (request.isApproved)
-                                          Text(
-                                            'Duyệt lúc: ${request.formattedApprovedAt}',
-                                            style: const TextStyle(
-                                                color: Colors.black54),
+                                        Text(
+                                          'Username: ${request.username}',
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                            color: primaryText,
                                           ),
-                                        if (request.isRejected) ...[
+                                        ),
+                                        if ((request.email ?? '').isNotEmpty)
                                           Text(
-                                            'Từ chối lúc: ${request.formattedRejectedAt}',
-                                            style: const TextStyle(
-                                                color: Colors.black54),
-                                          ),
-                                          if ((request.rejectionReason ?? '')
-                                              .isNotEmpty)
-                                            Text(
-                                              'Lý do: ${request.rejectionReason}',
-                                              style: const TextStyle(
-                                                  color: Colors.redAccent),
-                                            ),
-                                        ],
-                                        if (request.hasProofImages) ...[
-                                          const SizedBox(height: 12),
-                                          Text(
-                                            'Ảnh minh chứng:',
-                                            style: TextStyle(
-                                              color: Colors.grey.shade700,
-                                              fontWeight: FontWeight.w600,
+                                            'Email: ${request.email}',
+                                            style: theme.textTheme.bodyMedium
+                                                ?.copyWith(
+                                              color: primaryText,
                                             ),
                                           ),
-                                          const SizedBox(height: 8),
-                                          Wrap(
-                                            spacing: 8,
-                                            runSpacing: 8,
-                                            children: request
-                                                .proofOfRelationImageUrls
-                                                .map(_buildProofImage)
-                                                .toList(),
-                                          ),
-                                        ],
-                                        if (request.isApproved &&
-                                            (request.username ?? '')
-                                                .isNotEmpty) ...[
-                                          const SizedBox(height: 8),
-                                          const Divider(),
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            'Tài khoản:',
-                                            style: TextStyle(
-                                              color: Colors.grey.shade700,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                          Text(
-                                            'Username: ${request.username}',
-                                            style: const TextStyle(
-                                                color: Colors.black87),
-                                          ),
-                                          if ((request.email ?? '').isNotEmpty)
-                                            Text(
-                                              'Email: ${request.email}',
-                                              style: const TextStyle(
-                                                  color: Colors.black87),
-                                            ),
-                                        ],
                                       ],
-                                    ),
+                                    ],
                                   ),
                                 );
                               },
@@ -381,4 +433,3 @@ class _AccountRequestStatusScreenState
     );
   }
 }
-

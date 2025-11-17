@@ -5,14 +5,17 @@ import 'dart:developer';
 import 'package:app_links/app_links.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io' show Platform;
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../auth/api_client.dart';
-import '../common/main_shell.dart';
 import '../contracts/contract_service.dart';
-import '../core/event_bus.dart';
+import '../core/app_router.dart';
 import '../models/unit_info.dart';
 import 'register_guide_screen.dart';
 import '../theme/app_colors.dart';
@@ -46,6 +49,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   bool _confirmed = false;
   String? _editingField;
   bool _hasEditedAfterConfirm = false;
+  double? _uploadProgress;
   final ImagePicker _picker = ImagePicker();
   List<String> _uploadedImageUrls = [];
   static const int maxImages = 6;
@@ -57,6 +61,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   bool _hasUnsavedChanges = false;
   StreamSubscription<Uri?>? _paymentSub;
   final AppLinks _appLinks = AppLinks();
+  bool _isNavigatingToMain = false;
 
   @override
   void initState() {
@@ -70,20 +75,22 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     _checkPendingPayment();
   }
 
-  void _listenForPaymentResult() {
-    AppEventBus().on('show_payment_success', (message) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                '✅ Thanh toán thành công! ${message ?? "Đăng ký xe đã được lưu."}'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+  void _navigateToServicesHome({String? snackMessage}) {
+    if (!mounted || _isNavigatingToMain) return;
+    _isNavigatingToMain = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.go(
+        AppRoute.main.path,
+        extra: MainShellArgs(
+          initialIndex: 1,
+          snackMessage: snackMessage,
+        ),
+      );
     });
+  }
 
+  void _listenForPaymentResult() {
     _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
       if (uri == null) return;
 
@@ -103,19 +110,9 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
           }
 
           if (!mounted) return;
-
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const MainShell(initialIndex: 1),
-            ),
-            (route) => false,
-          ).then((_) {
-            Future.delayed(const Duration(milliseconds: 100), () {
-              AppEventBus()
-                  .emit('show_payment_success', 'Đăng ký xe đã được lưu');
-            });
-          });
+          _navigateToServicesHome(
+            snackMessage: 'Đăng ký xe đã được thanh toán thành công!',
+          );
         } else {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
@@ -162,7 +159,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _paymentSub?.cancel();
-    AppEventBus().off('show_payment_success');
     _licenseCtrl.dispose();
     _brandCtrl.dispose();
     _colorCtrl.dispose();
@@ -198,18 +194,9 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
       if (paymentStatus == 'PAID') {
         await prefs.remove(_pendingPaymentKey);
         if (mounted) {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const MainShell(initialIndex: 1),
-            ),
-            (route) => false,
-          ).then((_) {
-            Future.delayed(const Duration(milliseconds: 100), () {
-              AppEventBus()
-                  .emit('show_payment_success', 'Thanh toán đã hoàn tất');
-            });
-          });
+          _navigateToServicesHome(
+            snackMessage: 'Thanh toán đăng ký xe đã hoàn tất.',
+          );
         }
       } else if (paymentStatus == 'UNPAID') {
         if (mounted) {
@@ -236,7 +223,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
           );
 
           if (shouldPay == true && mounted) {
-            AppEventBus().emit('pay_registration', registrationId);
+            await _resumePendingPayment(registrationId);
           } else {
             await prefs.remove(_pendingPaymentKey);
           }
@@ -248,6 +235,77 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove(_pendingPaymentKey);
       } catch (_) {}
+    }
+  }
+
+  Future<void> _resumePendingPayment(String registrationId) async {
+    try {
+      final client = await _servicesCardClient();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_pendingPaymentKey, registrationId);
+
+      final res =
+          await client.post('/register-service/$registrationId/vnpay-url');
+
+      if (res.statusCode != 200) {
+        await prefs.remove(_pendingPaymentKey);
+        final message =
+            res.data is Map<String, dynamic> ? res.data['message'] : null;
+        throw Exception(message ?? 'Không thể tạo liên kết thanh toán');
+      }
+
+      final paymentUrl = res.data['paymentUrl']?.toString();
+      if (paymentUrl == null || paymentUrl.isEmpty) {
+        await prefs.remove(_pendingPaymentKey);
+        throw Exception('Không nhận được đường dẫn thanh toán');
+      }
+
+      final uri = Uri.parse(paymentUrl);
+      bool launched = false;
+      if (!kIsWeb && Platform.isAndroid) {
+        try {
+          final intent = AndroidIntent(
+            action: 'action_view',
+            data: paymentUrl,
+          );
+          await intent.launchChooser('Chọn trình duyệt để thanh toán');
+          launched = true;
+        } catch (e) {
+          debugPrint('⚠️ Không thể mở chooser, fallback url_launcher: $e');
+        }
+      }
+      if (!launched) {
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          launched = true;
+        }
+      }
+      if (!launched) {
+        await prefs.remove(_pendingPaymentKey);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Không thể mở trình duyệt thanh toán'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+    } catch (e) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_pendingPaymentKey);
+      } catch (_) {}
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể tiếp tục thanh toán: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -403,6 +461,8 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   }
 
   Future<void> _pickMultipleImages() async {
+    if (_submitting) return;
+    
     final remainingSlots = maxImages - _uploadedImageUrls.length;
     if (remainingSlots <= 0) {
       if (mounted) {
@@ -416,25 +476,47 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
       return;
     }
 
-    final picked = await _picker.pickMultiImage(imageQuality: 75);
-    if (picked.isEmpty) return;
+    try {
+      final picked = await _picker.pickMultiImage(imageQuality: 75);
+      if (picked.isEmpty || !mounted) return;
 
-    final imagesToUpload = picked.take(remainingSlots).toList();
-    if (picked.length > remainingSlots && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              '⚠️ Chỉ có thể tải thêm $remainingSlots ảnh (tối đa $maxImages ảnh). Đã chọn $remainingSlots ảnh đầu tiên.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+      final imagesToUpload = picked.take(remainingSlots).toList();
+      if (picked.length > remainingSlots && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                '⚠️ Chỉ có thể tải thêm $remainingSlots ảnh (tối đa $maxImages ảnh). Đã chọn $remainingSlots ảnh đầu tiên.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+
+      await _uploadImages(imagesToUpload);
+      await _autoSave();
+    } catch (e) {
+      if (mounted) {
+        String errorMessage = 'Không thể chọn ảnh';
+        if (e.toString().contains('Permission')) {
+          errorMessage = 'Vui lòng cấp quyền truy cập ảnh trong cài đặt';
+        } else if (e.toString().contains('cancel')) {
+          // User cancelled, no need to show error
+          return;
+        } else {
+          errorMessage = 'Lỗi khi chọn ảnh: ${e.toString()}';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
-
-    await _uploadImages(imagesToUpload);
-    await _autoSave();
   }
 
   Future<void> _takePhoto() async {
+    if (_submitting) return;
+    
     if (_uploadedImageUrls.length >= maxImages) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -447,47 +529,251 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
       return;
     }
 
-    final photo =
-        await _picker.pickImage(source: ImageSource.camera, imageQuality: 80);
-    if (photo != null) {
-      await _uploadImages([photo]);
-      await _autoSave();
+    try {
+      final photo =
+          await _picker.pickImage(source: ImageSource.camera, imageQuality: 80);
+      if (photo != null && mounted) {
+        await _uploadImages([photo]);
+        await _autoSave();
+      }
+    } catch (e) {
+      if (mounted) {
+        String errorMessage = 'Không thể chụp ảnh';
+        if (e.toString().contains('Permission') || e.toString().contains('permission')) {
+          errorMessage = 'Vui lòng cấp quyền truy cập camera trong cài đặt';
+        } else if (e.toString().contains('cancel')) {
+          // User cancelled, no need to show error
+          return;
+        } else {
+          errorMessage = 'Lỗi khi chụp ảnh: ${e.toString()}';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
   Future<void> _uploadImages(List<XFile> files) async {
+    if (files.isEmpty || !mounted) return;
+    
     setState(() => _submitting = true);
     try {
-      final formData = FormData.fromMap({
-        'files': await Future.wait(
-          files.map(
-              (f) async => MultipartFile.fromFile(f.path, filename: f.name)),
-        ),
-      });
-      final client = await _servicesCardClient();
-      final res =
-          await client.post('/register-service/upload-images', data: formData);
+      // Validate file sizes (max 10MB per file)
+      const maxFileSize = 10 * 1024 * 1024; // 10MB
+      for (final file in files) {
+        final fileSize = await file.length();
+        if (fileSize > maxFileSize) {
+          throw Exception(
+              'File "${file.name}" quá lớn (${(fileSize / 1024 / 1024).toStringAsFixed(2)}MB). Kích thước tối đa là 10MB');
+        }
+        if (fileSize == 0) {
+          throw Exception('File "${file.name}" không hợp lệ hoặc đã bị hỏng');
+        }
+      }
+      
+      // Create a Dio instance with longer timeouts for image upload
+      // Uploading images can take longer, especially with slow networks or large files
+      final uploadClient = Dio(BaseOptions(
+        baseUrl: ApiClient.buildServiceBase(port: 8083, path: '/api'),
+        connectTimeout: const Duration(seconds: 120), // 120 seconds to connect (increased from 60)
+        receiveTimeout: const Duration(seconds: 180), // 180 seconds to receive response (increased from 120)
+        sendTimeout: const Duration(seconds: 180), // 180 seconds to send request (increased from 120)
+      ));
+      
+      // Add log interceptor for debugging
+      uploadClient.interceptors.add(LogInterceptor(
+        request: true,
+        requestHeader: true,
+        requestBody: false, // Disable to avoid logging large image data
+        responseHeader: true,
+        responseBody: true,
+        error: true,
+        logPrint: (obj) => debugPrint('📤 UPLOAD LOG: $obj'),
+      ));
+      
+      // Add auth token
+      final token = await api.storage.readAccessToken();
+      if (token != null) {
+        uploadClient.options.headers['Authorization'] = 'Bearer $token';
+      }
+      
+      // Reset progress
+      setState(() => _uploadProgress = 0.0);
+      
+      // Retry logic with exponential backoff
+      // IMPORTANT: Create new FormData for each retry attempt (FormData can only be used once)
+      int maxRetries = 2;
+      int retryCount = 0;
+      Response? res;
+      
+      while (retryCount <= maxRetries) {
+        try {
+          // Create fresh FormData for each attempt
+          final formData = FormData.fromMap({
+            'files': await Future.wait(
+              files.map(
+                  (f) async => MultipartFile.fromFile(f.path, filename: f.name)),
+            ),
+          });
+          
+          res = await uploadClient.post(
+            '/register-service/upload-images',
+            data: formData,
+            onSendProgress: (sent, total) {
+              if (mounted && total > 0) {
+                setState(() {
+                  _uploadProgress = sent / total;
+                });
+              }
+            },
+          );
+          // Success, break out of retry loop
+          break;
+        } on DioException catch (e) {
+          if (e.type == DioExceptionType.connectionTimeout ||
+              e.type == DioExceptionType.receiveTimeout ||
+              e.type == DioExceptionType.connectionError) {
+            retryCount++;
+            if (retryCount <= maxRetries) {
+              // Exponential backoff: 2s, 4s
+              final delaySeconds = 2 * retryCount;
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                        '⚠️ Upload timeout. Đang thử lại lần $retryCount/$maxRetries sau ${delaySeconds} giây...'),
+                    backgroundColor: Colors.orange,
+                    duration: Duration(seconds: delaySeconds),
+                  ),
+                );
+              }
+              await Future.delayed(Duration(seconds: delaySeconds));
+              // Reset progress for retry
+              if (mounted) {
+                setState(() => _uploadProgress = 0.0);
+              }
+              continue;
+            }
+          }
+          // Re-throw if not a retryable error or max retries reached
+          rethrow;
+        } catch (e) {
+          // Handle other exceptions (like "FormData has already been finalized")
+          if (e.toString().contains('FormData has already been finalized')) {
+            // This shouldn't happen now, but if it does, just retry
+            retryCount++;
+            if (retryCount <= maxRetries) {
+              final delaySeconds = 2 * retryCount;
+              if (mounted) {
+                setState(() => _uploadProgress = 0.0);
+              }
+              await Future.delayed(Duration(seconds: delaySeconds));
+              continue;
+            }
+          }
+          rethrow;
+        }
+      }
+      
+      if (res == null) {
+        throw Exception('Không thể upload ảnh sau $maxRetries lần thử');
+      }
+      
+      if (res.statusCode != 200 && res.statusCode != 201) {
+        throw Exception('Server trả về mã lỗi: ${res.statusCode}');
+      }
+      
       final urls =
           (res.data['imageUrls'] as List?)?.map((e) => e.toString()).toList() ??
               [];
 
-      setState(() => _uploadedImageUrls.addAll(urls));
+      if (urls.isEmpty) {
+        throw Exception('Không nhận được URL ảnh từ server');
+      }
+
+      setState(() {
+        _uploadedImageUrls.addAll(urls);
+        _uploadProgress = null; // Reset progress
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(
-                  'Đã tải lên ${urls.length} ảnh thành công! (${_uploadedImageUrls.length}/$maxImages)')),
+            content: Text(
+                '✅ Đã tải lên ${urls.length} ảnh thành công! (${_uploadedImageUrls.length}/$maxImages)'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } on DioException catch (e) {
+      if (mounted) {
+        setState(() => _uploadProgress = null); // Reset progress on error
+        
+        String errorMessage = 'Lỗi khi tải ảnh lên server';
+        if (e.type == DioExceptionType.connectionTimeout) {
+          errorMessage = 'Kết nối timeout sau 120 giây. Vui lòng:\n'
+              '1. Kiểm tra kết nối mạng\n'
+              '2. Đảm bảo server đang chạy tại ${ApiClient.buildServiceBase(port: 8083)}\n'
+              '3. Thử lại sau';
+        } else if (e.type == DioExceptionType.receiveTimeout) {
+          errorMessage = 'Server không phản hồi sau 180 giây. Vui lòng kiểm tra server và thử lại';
+        } else if (e.type == DioExceptionType.connectionError || 
+                   e.message?.contains('SocketException') == true ||
+                   e.message?.contains('Connection timed out') == true) {
+          errorMessage = 'Không thể kết nối tới server tại ${ApiClient.buildServiceBase(port: 8083)}.\n'
+              'Vui lòng kiểm tra:\n'
+              '1. Server có đang chạy không\n'
+              '2. Kết nối mạng có ổn định không\n'
+              '3. Firewall có chặn kết nối không';
+        } else if (e.response != null) {
+          final statusCode = e.response!.statusCode;
+          if (statusCode == 413) {
+            errorMessage = 'File ảnh quá lớn. Vui lòng chọn ảnh nhỏ hơn';
+          } else if (statusCode == 400) {
+            errorMessage = 'Định dạng ảnh không hợp lệ. Vui lòng chọn ảnh JPG/PNG';
+          } else if (statusCode == 500) {
+            errorMessage = 'Lỗi server. Vui lòng thử lại sau';
+          } else {
+            final errorData = e.response?.data;
+            if (errorData is Map<String, dynamic> && errorData['message'] != null) {
+              errorMessage = errorData['message'].toString();
+            } else {
+              errorMessage = 'Lỗi khi tải ảnh (Mã: $statusCode)';
+            }
+          }
+        } else {
+          errorMessage = e.message ?? 'Lỗi không xác định khi tải ảnh';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _uploadProgress = null); // Reset progress on error
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Upload lỗi: $e')),
+          SnackBar(
+            content: Text(e.toString().replaceFirst('Exception: ', '')),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
         );
       }
     } finally {
-      setState(() => _submitting = false);
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+          _uploadProgress = null;
+        });
+      }
     }
   }
 
@@ -912,9 +1198,46 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
                 ? Icons.directions_car
                 : Icons.two_wheeler,
             fieldKey: 'license',
-            validator: (v) =>
-                v == null || v.isEmpty ? 'Vui lòng nhập biển số xe' : null,
-            hint: 'Nhập đúng biển số để kiểm soát ra vào',
+            validator: (v) {
+              if (v == null || v.isEmpty) {
+                return 'Vui lòng nhập biển số xe';
+              }
+              final trimmed = v.trim().toUpperCase();
+              if (trimmed.isEmpty) {
+                return 'Biển số xe không được chỉ chứa khoảng trắng';
+              }
+              
+              // Remove all spaces for validation
+              final noSpaces = trimmed.replaceAll(RegExp(r'\s+'), '');
+              if (noSpaces != trimmed) {
+                return 'Biển số xe không được chứa dấu cách';
+              }
+              
+              if (_vehicleType == 'Car') {
+                // Format cho ô tô: 30A74374 (7-8 ký tự, 2 số đầu + 1 chữ cái + số)
+                // Pattern: ^\d{2}[A-Z]\d{4,5}$
+                if (!RegExp(r'^\d{2}[A-Z]\d{4,5}$').hasMatch(noSpaces)) {
+                  return 'Biển số ô tô không hợp lệ. Ví dụ: 30A74374 (2 số + 1 chữ cái + 4-5 số)';
+                }
+                if (noSpaces.length < 7 || noSpaces.length > 8) {
+                  return 'Biển số ô tô phải có 7-8 ký tự';
+                }
+              } else {
+                // Format cho xe máy: 29BN05944 (8-9 ký tự, 2 số đầu + 2 chữ cái + số)
+                // Pattern: ^\d{2}[A-Z]{2}\d{4,5}$
+                if (!RegExp(r'^\d{2}[A-Z]{2}\d{4,5}$').hasMatch(noSpaces)) {
+                  return 'Biển số xe máy không hợp lệ. Ví dụ: 29BN05944 (2 số + 2 chữ cái + 4-5 số)';
+                }
+                if (noSpaces.length < 8 || noSpaces.length > 9) {
+                  return 'Biển số xe máy phải có 8-9 ký tự';
+                }
+              }
+              
+              return null;
+            },
+            hint: _vehicleType == 'Car'
+                ? 'Ví dụ: 30A74374 (2 số + 1 chữ + 4-5 số)'
+                : 'Ví dụ: 29BN05944 (2 số + 2 chữ + 4-5 số)',
           ),
           const SizedBox(height: 16),
           _buildEditableField(
@@ -922,8 +1245,30 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
             controller: _brandCtrl,
             icon: Icons.factory_outlined,
             fieldKey: 'brand',
-            validator: (v) =>
-                v == null || v.isEmpty ? 'Vui lòng nhập hãng xe' : null,
+            validator: (v) {
+              if (v == null || v.isEmpty) {
+                return 'Vui lòng nhập hãng xe';
+              }
+              final trimmed = v.trim();
+              if (trimmed.isEmpty) {
+                return 'Hãng xe không được chỉ chứa khoảng trắng';
+              }
+              
+              // Kiểm tra nhiều dấu cách liền kề (chỉ cho phép 1 dấu cách)
+              if (RegExp(r'\s{2,}').hasMatch(v)) {
+                return 'Hãng xe không được chứa nhiều dấu cách liền kề';
+              }
+              
+              // Kiểm tra ký tự đặc biệt và số (chỉ cho phép chữ cái, dấu cách đơn, dấu gạch ngang)
+              if (!RegExp(r'^[a-zA-ZÀ-ỹ\s\-]+$').hasMatch(v)) {
+                return 'Hãng xe không được chứa ký tự đặc biệt hoặc số';
+              }
+              
+              if (trimmed.length > 100) {
+                return 'Hãng xe không được vượt quá 100 ký tự';
+              }
+              return null;
+            },
             hint: 'Ví dụ: VinFast, Toyota, Honda...',
           ),
           const SizedBox(height: 16),
@@ -932,8 +1277,31 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
             controller: _colorCtrl,
             icon: Icons.palette_outlined,
             fieldKey: 'color',
-            validator: (v) =>
-                v == null || v.isEmpty ? 'Vui lòng nhập màu xe' : null,
+            validator: (v) {
+              if (v == null || v.isEmpty) {
+                return 'Vui lòng nhập màu xe';
+              }
+              final trimmed = v.trim();
+              if (trimmed.isEmpty) {
+                return 'Màu xe không được chỉ chứa khoảng trắng';
+              }
+              
+              // Kiểm tra nhiều dấu cách liền kề (chỉ cho phép 1 dấu cách)
+              if (RegExp(r'\s{2,}').hasMatch(v)) {
+                return 'Màu xe không được chứa nhiều dấu cách liền kề';
+              }
+              
+              // Kiểm tra ký tự đặc biệt và số (chỉ cho phép chữ cái, dấu cách đơn, dấu gạch ngang)
+              if (!RegExp(r'^[a-zA-ZÀ-ỹ\s\-]+$').hasMatch(v)) {
+                return 'Màu xe không được chứa ký tự đặc biệt hoặc số';
+              }
+              
+              if (trimmed.length > 50) {
+                return 'Màu xe không được vượt quá 50 ký tự';
+              }
+              return null;
+            },
+            hint: 'Ví dụ: Đỏ, Xanh dương, Trắng...',
           ),
           const SizedBox(height: 16),
           _buildEditableField(
@@ -1010,6 +1378,44 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
                 (index) => _buildImagePreview(index),
               ),
             ),
+          if (_submitting && _uploadProgress != null) ...[
+            const SizedBox(height: 16),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Đang tải ảnh lên...',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      '${(_uploadProgress! * 100).toStringAsFixed(0)}%',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: _uploadProgress,
+                    backgroundColor: colorScheme.surfaceContainerHighest,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      colorScheme.primary,
+                    ),
+                    minHeight: 6,
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 18),
           Row(
             children: [
@@ -1020,9 +1426,24 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
                           _uploadedImageUrls.length >= maxImages
                       ? null
                       : _pickMultipleImages,
-                  icon: const Icon(Icons.photo_library),
+                  icon: _submitting && _uploadProgress == null
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        )
+                      : const Icon(Icons.photo_library),
                   label: Text(
-                    reachedLimit ? 'Đã đủ ($maxImages ảnh)' : 'Chọn ảnh',
+                    reachedLimit
+                        ? 'Đã đủ ($maxImages ảnh)'
+                        : _submitting && _uploadProgress == null
+                            ? 'Đang xử lý...'
+                            : 'Chọn ảnh',
                   ),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1040,9 +1461,24 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
                           _uploadedImageUrls.length >= maxImages
                       ? null
                       : _takePhoto,
-                  icon: const Icon(Icons.camera_alt),
+                  icon: _submitting && _uploadProgress == null
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        )
+                      : const Icon(Icons.camera_alt),
                   label: Text(
-                    reachedLimit ? 'Đã đủ ($maxImages ảnh)' : 'Chụp ảnh',
+                    reachedLimit
+                        ? 'Đã đủ ($maxImages ảnh)'
+                        : _submitting && _uploadProgress == null
+                            ? 'Đang xử lý...'
+                            : 'Chụp ảnh',
                   ),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),

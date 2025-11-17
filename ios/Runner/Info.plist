@@ -49,5 +49,9 @@
 	<string>Ứng dụng cần quyền truy cập vị trí để hiển thị thời tiết ở nơi bạn đang ở.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Ứng dụng cần quyền truy cập vị trí để hiển thị thời tiết ở nơi bạn đang ở.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Ứng dụng cần quyền truy cập camera để quét mã QR code.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Ứng dụng cần sử dụng Face ID để xác thực đăng nhập bằng khuôn mặt.</string>
 </dict>
 </plist>

@@ -26,6 +26,8 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   bool _supportsBiometrics = false;
   bool _hasStoredBiometrics = false;
+  bool _supportsFingerprint = false;
+  bool _fingerprintEnabled = false;
 
   @override
   void initState() {
@@ -39,19 +41,39 @@ class _LoginScreenState extends State<LoginScreen> {
       final canCheck = await _localAuth.canCheckBiometrics;
       final available = await _localAuth.getAvailableBiometrics();
       final supported = await _localAuth.isDeviceSupported();
-      final credentials = await auth.getBiometricCredentials();
+      
+      debugPrint('🔐 Login Biometric Check - Available: $available');
+      debugPrint('🔐 Login Biometric Check - Supported: $supported, Can check: $canCheck');
+      
+      // Check which biometric types are available (only fingerprint kept)
+      final hasFingerprint = available.contains(BiometricType.fingerprint);
+      final hasStrongOrWeak = available.contains(BiometricType.strong) ||
+                              available.contains(BiometricType.weak);
+      
+      final supportsFingerprint = hasFingerprint ||
+                                  hasStrongOrWeak; // strong/weak treated as fingerprint fallback
+      
+      debugPrint('🔐 Login Biometric Check - fingerprint supported: $supportsFingerprint');
+      
+      // Check which biometric types are enabled
+      final fingerprintEnabled = await auth.isFingerprintLoginEnabled();
+      
       if (!mounted) return;
+      
       setState(() {
-        _supportsBiometrics =
-            supported && (canCheck || available.isNotEmpty);
-        _hasStoredBiometrics = credentials != null;
+        _supportsBiometrics = supported && (canCheck || available.isNotEmpty);
+        _hasStoredBiometrics = fingerprintEnabled;
+        _supportsFingerprint = supportsFingerprint;
+        _fingerprintEnabled = fingerprintEnabled;
       });
     } on PlatformException catch (e) {
-      debugPrint('Biometric availability check failed: $e');
+      debugPrint('❌ Biometric availability check failed: $e');
       if (!mounted) return;
       setState(() {
         _supportsBiometrics = false;
         _hasStoredBiometrics = false;
+        _supportsFingerprint = false;
+        _fingerprintEnabled = false;
       });
     }
   }
@@ -61,12 +83,22 @@ class _LoginScreenState extends State<LoginScreen> {
     final credentials = await auth.getBiometricCredentials();
     if (credentials == null) {
       if (!mounted) return;
-      _showSnack('Vui lòng bật đăng nhập bằng vân tay trước');
+      _showSnack('Vui lòng bật đăng nhập bằng sinh trắc học trước');
       return;
     }
+    
+    // Only fingerprint flow remains
+    if (!_fingerprintEnabled) {
+      if (!mounted) return;
+      _showSnack('Đăng nhập bằng vân tay chưa được bật');
+      return;
+    }
+    
     try {
+      const localizedReason = 'Xác thực vân tay để đăng nhập';
+      
       final didAuthenticate = await _localAuth.authenticate(
-        localizedReason: 'Xác thực vân tay để đăng nhập',
+        localizedReason: localizedReason,
         options: const AuthenticationOptions(
           biometricOnly: true,
           stickyAuth: true,
@@ -93,6 +125,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _showSnack('Có lỗi khi xác thực vân tay');
     }
   }
+
 
   void _showSnack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -250,9 +283,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             AppLuxeTextField(
                               controller: usernameCtrl,
                               focusNode: _usernameFocus,
-                              hint: 'Tên đăng nhập',
+                              hint: 'Tên đăng nhập hoặc Email',
                               icon: Icons.person_outline,
                               textInputAction: TextInputAction.next,
+                              keyboardType: TextInputType.text,
                               onSubmitted: (_) => _passwordFocus.requestFocus(),
                             ),
                             const SizedBox(height: 16),
@@ -309,13 +343,19 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             if (_supportsBiometrics && _hasStoredBiometrics) ...[
                               const SizedBox(height: 12),
-                              OutlinedButton.icon(
-                                onPressed: loading
-                                    ? null
-                                    : () => _authenticateWithBiometrics(auth),
-                                icon: const Icon(Icons.fingerprint),
-                                label: const Text('Đăng nhập bằng vân tay'),
-                              ),
+                              if (_supportsFingerprint && _fingerprintEnabled) ...[
+                                OutlinedButton.icon(
+                                  onPressed: loading ? null : () => _authenticateWithBiometrics(auth),
+                                  icon: const Icon(Icons.fingerprint),
+                                  label: const Text('Đăng nhập bằng vân tay'),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                      vertical: 14,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
                             const SizedBox(height: 40),
                             _SecurityFooter(textTheme: textTheme),

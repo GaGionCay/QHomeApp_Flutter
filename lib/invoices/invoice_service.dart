@@ -45,14 +45,22 @@ class InvoiceService {
     return client;
   }
 
-  Future<List<InvoiceLineResponseDto>> getMyInvoices({String? unitId}) async {
+  Future<List<InvoiceLineResponseDto>> getMyInvoices({
+    required String unitId,
+    String? cycleId,
+  }) async {
     try {
-      debugPrint('🔍 [InvoiceService] Lấy invoices của user hiện tại');
+      debugPrint(
+          '🔍 [InvoiceService] Lấy invoices của user hiện tại (unit=$unitId, cycle=$cycleId)');
       
       final client = await _prepareFinanceClient();
+      final queryParameters = <String, dynamic>{'unitId': unitId};
+      if (cycleId != null && cycleId.isNotEmpty) {
+        queryParameters['cycleId'] = cycleId;
+      }
       final res = await client.get(
         '/api/invoices/me',
-        queryParameters: unitId != null ? {'unitId': unitId} : null,
+        queryParameters: queryParameters,
       );
       
       if (res.statusCode != 200) {
@@ -80,14 +88,22 @@ class InvoiceService {
     }
   }
 
-  Future<List<InvoiceCategory>> getUnpaidInvoicesByCategory({String? unitId}) async {
+  Future<List<InvoiceCategory>> getUnpaidInvoicesByCategory({
+    required String unitId,
+    String? cycleId,
+  }) async {
     try {
-      debugPrint('🔍 [InvoiceService] Lấy hóa đơn chưa thanh toán theo nhóm dịch vụ');
+      debugPrint(
+          '🔍 [InvoiceService] Lấy hóa đơn chưa thanh toán theo nhóm dịch vụ (unit=$unitId, cycle=$cycleId)');
 
       final client = await _prepareFinanceClient();
+      final queryParameters = <String, dynamic>{'unitId': unitId};
+      if (cycleId != null && cycleId.isNotEmpty) {
+        queryParameters['cycleId'] = cycleId;
+      }
       final res = await client.get(
         '/api/invoices/me/unpaid-by-category',
-        queryParameters: unitId != null ? {'unitId': unitId} : null,
+        queryParameters: queryParameters,
       );
 
       if (res.statusCode != 200) {
@@ -116,14 +132,22 @@ class InvoiceService {
     }
   }
 
-  Future<List<InvoiceCategory>> getPaidInvoicesByCategory({String? unitId}) async {
+  Future<List<InvoiceCategory>> getPaidInvoicesByCategory({
+    required String unitId,
+    String? cycleId,
+  }) async {
     try {
-      debugPrint('🔍 [InvoiceService] Lấy hóa đơn đã thanh toán theo nhóm dịch vụ');
+      debugPrint(
+          '🔍 [InvoiceService] Lấy hóa đơn đã thanh toán theo nhóm dịch vụ (unit=$unitId, cycle=$cycleId)');
 
       final client = await _prepareFinanceClient();
+      final queryParameters = <String, dynamic>{'unitId': unitId};
+      if (cycleId != null && cycleId.isNotEmpty) {
+        queryParameters['cycleId'] = cycleId;
+      }
       final res = await client.get(
         '/api/invoices/me/paid-by-category',
-        queryParameters: unitId != null ? {'unitId': unitId} : null,
+        queryParameters: queryParameters,
       );
 
       if (res.statusCode != 200) {

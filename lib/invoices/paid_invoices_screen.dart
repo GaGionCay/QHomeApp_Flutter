@@ -1,12 +1,16 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../auth/api_client.dart';
 import '../auth/asset_maintenance_api_client.dart';
+import '../common/layout_insets.dart';
 import '../models/invoice_category.dart';
 import '../models/invoice_line.dart';
 import '../models/unit_info.dart';
 import '../service_registration/service_booking_service.dart';
+import '../theme/app_colors.dart';
 import 'invoice_service.dart';
 
 class PaidInvoicesScreen extends StatefulWidget {
@@ -37,8 +41,27 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
   String _selectedMonthKey = _allMonthsKey;
 
   Future<_PaidData> _loadData() async {
-    final String? unitFilter = _selectedUnitId == _allUnitsKey ? null : _selectedUnitId;
-    final categoriesFuture = _invoiceService.getPaidInvoicesByCategory(unitId: unitFilter);
+    String? unitFilter =
+        _selectedUnitId == _allUnitsKey ? null : _selectedUnitId;
+    if (unitFilter == null || unitFilter.isEmpty) {
+      if (_units.isNotEmpty) {
+        unitFilter = _units.first.id;
+      } else if (widget.initialUnitId != null &&
+          widget.initialUnitId!.isNotEmpty) {
+        unitFilter = widget.initialUnitId;
+      }
+    }
+
+    if (unitFilter == null || unitFilter.isEmpty) {
+      debugPrint(
+          '⚠️ [PaidInvoicesScreen] Không có căn hộ hợp lệ để tải hóa đơn');
+      final bookings = await _bookingService.getPaidBookings();
+      return _PaidData(categories: const [], paidBookings: bookings);
+    }
+
+    final String unitIdForRequest = unitFilter;
+    final categoriesFuture =
+        _invoiceService.getPaidInvoicesByCategory(unitId: unitIdForRequest);
     final bookingsFuture = _bookingService.getPaidBookings();
 
     final categories = await categoriesFuture;
@@ -68,294 +91,480 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
     });
   }
 
+  LinearGradient _backgroundGradient(BuildContext context) {
+    final theme = Theme.of(context);
+    if (theme.brightness == Brightness.dark) {
+      return const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Color(0xFF050F1F),
+          Color(0xFF0F1E33),
+          Color(0xFF152B47),
+        ],
+      );
+    }
+
+    return const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        Color(0xFFE8F4FF),
+        Color(0xFFF2F6FF),
+        Color(0xFFF9FBFF),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final mediaPadding = MediaQuery.of(context).padding;
+    final topOffset = mediaPadding.top + kToolbarHeight + 18;
+    final bottomPadding =
+        LayoutInsets.bottomNavContentPadding(context, minimumGap: 28);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F9),
+      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Hóa đơn đã thanh toán'),
-        backgroundColor: const Color(0xFF26A69A),
-        foregroundColor: Colors.white,
+        title: const Text('Lịch sử thanh toán'),
+        backgroundColor: Colors.transparent,
+        foregroundColor: theme.brightness == Brightness.dark
+            ? Colors.white
+            : AppColors.textPrimary,
         elevation: 0,
+        scrolledUnderElevation: 0,
       ),
-      body: FutureBuilder<_PaidData>(
-        future: _futureData,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: _backgroundGradient(context),
+        ),
+        child: SafeArea(
+          top: false,
+          child: FutureBuilder<_PaidData>(
+            future: _futureData,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
-                  const SizedBox(height: 16),
-                  Text(
-                    '⚠️ Lỗi tải dữ liệu: ${snapshot.error}',
-                    style: const TextStyle(fontSize: 16, color: Colors.red),
-                    textAlign: TextAlign.center,
+              if (snapshot.hasError) {
+                final error = snapshot.error;
+                return SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      24,
+                      topOffset,
+                      24,
+                      bottomPadding,
+                    ),
+                    child: _PaidGlassCard(
+                      padding: const EdgeInsets.fromLTRB(24, 32, 24, 28),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            height: 58,
+                            width: 58,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  AppColors.danger.withOpacity(0.88),
+                                  Colors.redAccent.withOpacity(0.82),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: AppColors.subtleShadow,
+                            ),
+                            child: const Icon(
+                              Icons.error_outline,
+                              color: Colors.white,
+                              size: 30,
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          Text(
+                            'Không thể tải lịch sử thanh toán',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            '$error',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 20),
+                          FilledButton(
+                            onPressed: _refresh,
+                            child: const Text('Thử lại'),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: _refresh,
-                    child: const Text('Thử lại'),
-                  ),
-                ],
-              ),
-            );
-          }
+                );
+              }
 
-          final rawCategories = snapshot.data?.categories ?? [];
-          final paidBookings = snapshot.data?.paidBookings ?? [];
-          final monthOptions = _buildMonthOptions(rawCategories);
+              final rawCategories = snapshot.data?.categories ?? [];
+              final paidBookings = snapshot.data?.paidBookings ?? [];
+              final monthOptions = _buildMonthOptions(rawCategories);
 
-          if (_selectedMonthKey != _allMonthsKey &&
-              !monthOptions.any((opt) => opt.key == _selectedMonthKey)) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) return;
-              setState(() {
-                _selectedMonthKey = _allMonthsKey;
-                _selectedCategoryCode = null;
-              });
-            });
-          }
-
-          final categories = _filterCategoriesByMonth(rawCategories, _selectedMonthKey);
-
-          InvoiceCategory? selectedCategory;
-          if (categories.isNotEmpty) {
-            selectedCategory = categories.firstWhere(
-              (c) => c.categoryCode == _selectedCategoryCode,
-              orElse: () => categories.first,
-            );
-            if (_selectedCategoryCode != selectedCategory.categoryCode) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (!mounted) return;
-                setState(() {
-                  _selectedCategoryCode = selectedCategory?.categoryCode;
+              if (_selectedMonthKey != _allMonthsKey &&
+                  !monthOptions.any((opt) => opt.key == _selectedMonthKey)) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!mounted) return;
+                  setState(() {
+                    _selectedMonthKey = _allMonthsKey;
+                    _selectedCategoryCode = null;
+                  });
                 });
-              });
-            }
-          }
+              }
 
-          return RefreshIndicator(
-            onRefresh: _refresh,
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                _buildUnitFilter(),
-                const SizedBox(height: 16),
-                _buildMonthFilter(monthOptions),
-                const SizedBox(height: 16),
-                if (categories.isEmpty)
-                  _buildAllPaidState()
-                else ...[
-                  _buildCategorySelector(categories),
-                  const SizedBox(height: 16),
-                  if (selectedCategory != null) ...[
-                    _buildCategorySummary(selectedCategory),
-                    const SizedBox(height: 16),
-                    if (selectedCategory.invoices.isEmpty)
-                      _buildCategoryEmptyState(selectedCategory)
-                    else
-                      ...selectedCategory.invoices.map(_buildInvoiceCard),
-                  ],
-                ],
-                const SizedBox(height: 32),
-                _buildPaidBookingsSection(paidBookings),
-              ],
-            ),
-          );
-        },
+              final categories =
+                  _filterCategoriesByMonth(rawCategories, _selectedMonthKey);
+
+              InvoiceCategory? selectedCategory;
+              if (categories.isNotEmpty) {
+                selectedCategory = categories.firstWhere(
+                  (c) => c.categoryCode == _selectedCategoryCode,
+                  orElse: () => categories.first,
+                );
+                if (_selectedCategoryCode != selectedCategory.categoryCode) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!mounted) return;
+                    setState(() {
+                      _selectedCategoryCode = selectedCategory?.categoryCode;
+                    });
+                  });
+                }
+              }
+
+              final content = <Widget>[
+                _buildUnitFilterCard(),
+                const SizedBox(height: 18),
+                _buildMonthFilterCard(monthOptions),
+                const SizedBox(height: 18),
+              ];
+
+              if (categories.isEmpty) {
+                content.add(_buildAllPaidState());
+              } else {
+                content
+                  ..add(_buildOverviewHeader(categories))
+                  ..add(const SizedBox(height: 20))
+                  ..add(_buildCategorySelector(categories))
+                  ..add(const SizedBox(height: 18));
+
+                if (selectedCategory != null) {
+                  content
+                    ..add(_buildCategorySummary(selectedCategory))
+                    ..add(const SizedBox(height: 18));
+
+                  if (selectedCategory.invoices.isEmpty) {
+                    content.add(_buildCategoryEmptyState(selectedCategory));
+                  } else {
+                    content.addAll(
+                      selectedCategory.invoices.map(_buildInvoiceCard),
+                    );
+                  }
+                }
+              }
+
+              content
+                ..add(const SizedBox(height: 26))
+                ..add(_buildPaidBookingsSection(paidBookings));
+
+              return RefreshIndicator(
+                edgeOffset: topOffset,
+                color: theme.colorScheme.primary,
+                onRefresh: _refresh,
+                child: ListView(
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  padding: EdgeInsets.fromLTRB(
+                    24,
+                    topOffset,
+                    24,
+                    bottomPadding,
+                  ),
+                  children: content,
+                ),
+              );
+            },
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildMonthFilter(List<_MonthOption> options) {
+  Widget _buildMonthFilterCard(List<_MonthOption> options) {
+    final theme = Theme.of(context);
     if (options.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        child: const Text(
-          'Chưa có hóa đơn đã thanh toán',
-          style: TextStyle(fontSize: 14, color: Colors.black54),
+      return _PaidGlassCard(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              height: 52,
+              width: 52,
+              decoration: BoxDecoration(
+                gradient: AppColors.primaryGradient(),
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: AppColors.subtleShadow,
+              ),
+              child: const Icon(
+                Icons.inbox_outlined,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Chưa có hóa đơn đã thanh toán',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Lịch sử thanh toán sẽ hiển thị ở đây khi bạn hoàn tất hóa đơn đầu tiên.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       );
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: _selectedMonthKey,
-          isExpanded: true,
-          icon: const Icon(Icons.keyboard_arrow_down),
-          items: options
-              .map((option) => DropdownMenuItem<String>(
-                    value: option.key,
-                    child: Text(option.label),
-                  ))
-              .toList(),
-          onChanged: (value) {
-            if (value == null) return;
-            setState(() {
-              _selectedMonthKey = value;
-              _selectedCategoryCode = null;
-            });
-          },
-        ),
+    return _PaidGlassCard(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Chọn tháng hiển thị',
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: theme.brightness == Brightness.dark
+                  ? theme.colorScheme.surface.withOpacity(0.16)
+                  : Colors.white.withOpacity(0.82),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: theme.colorScheme.outline.withOpacity(0.08),
+              ),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _selectedMonthKey,
+                isExpanded: true,
+                icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                borderRadius: BorderRadius.circular(18),
+                items: options
+                    .map(
+                      (option) => DropdownMenuItem<String>(
+                        value: option.key,
+                        child: Text(
+                          option.label,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: option.key == _selectedMonthKey
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() {
+                    _selectedMonthKey = value;
+                    _selectedCategoryCode = null;
+                  });
+                },
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildCategorySelector(List<InvoiceCategory> categories) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: categories.map((category) {
-          final bool selected = category.categoryCode == _selectedCategoryCode;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ChoiceChip(
-              label: Text('${category.categoryName} (${category.invoiceCount})'),
-              selected: selected,
-              onSelected: (value) {
-                if (!value) return;
-                setState(() {
-                  _selectedCategoryCode = category.categoryCode;
-                });
-              },
-              selectedColor: const Color(0xFF26A69A),
-              labelStyle: TextStyle(
-                color: selected ? Colors.white : Colors.black87,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-              ),
-              backgroundColor: Colors.white,
-              side: BorderSide(
-                color: selected ? const Color(0xFF26A69A) : Colors.grey.shade300,
-              ),
-              elevation: selected ? 2 : 0,
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Widget _buildUnitFilter() {
-    final options = <_UnitOption>[
-      const _UnitOption(_allUnitsKey, 'Tất cả căn hộ'),
-      ..._units.map((unit) => _UnitOption(unit.id, unit.displayName)),
-    ];
-
-    final current = _selectedUnitId;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Lọc theo căn hộ',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: options.map((option) {
-              final selected = current == option.id;
-              return ChoiceChip(
-                label: Text(option.label),
-                selected: selected,
-                onSelected: (value) {
-                  if (!value) return;
-                  if (_selectedUnitId == option.id) return;
-                  setState(() {
-                    _selectedUnitId = option.id;
-                    _selectedCategoryCode = null;
-                    _selectedMonthKey = _allMonthsKey;
-                    _futureData = _loadData();
-                  });
-                },
-              );
-            }).toList(),
-          ),
-          if (_units.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
-              child: Text(
-                'Bạn chưa được gán vào căn hộ nào, hiển thị tất cả hóa đơn.',
-                style: TextStyle(fontSize: 12, color: Colors.black54),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCategorySummary(InvoiceCategory category) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+    final theme = Theme.of(context);
+    return _PaidGlassCard(
+      padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            category.categoryName,
-            style: const TextStyle(
-              fontSize: 18,
+            'Nhóm dịch vụ đã thanh toán',
+            style: theme.textTheme.labelLarge?.copyWith(
               fontWeight: FontWeight.w700,
-              color: Colors.black87,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 12,
+            runSpacing: 10,
+            children: categories.map((category) {
+              final selected = category.categoryCode == _selectedCategoryCode;
+              final accent = _colorForServiceCode(category.categoryCode);
+              final icon = _iconForServiceCode(category.categoryCode);
+
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _selectedCategoryCode = category.categoryCode;
+                  });
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    color: selected
+                        ? accent.withOpacity(0.16)
+                        : theme.brightness == Brightness.dark
+                            ? theme.colorScheme.surface.withOpacity(0.12)
+                            : Colors.white.withOpacity(0.72),
+                    border: Border.all(
+                      color: selected
+                          ? accent.withOpacity(0.65)
+                          : theme.colorScheme.outline.withOpacity(0.12),
+                    ),
+                    boxShadow: selected ? AppColors.subtleShadow : const [],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        icon,
+                        size: 18,
+                        color: selected
+                            ? accent
+                            : theme.colorScheme.onSurfaceVariant
+                                .withOpacity(0.8),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        '${category.categoryName} (${category.invoiceCount})',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          fontWeight:
+                              selected ? FontWeight.w700 : FontWeight.w500,
+                          color: selected
+                              ? accent
+                              : theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOverviewHeader(List<InvoiceCategory> categories) {
+    final theme = Theme.of(context);
+    double totalAmount = 0;
+    int totalInvoices = 0;
+    final Set<String> servicedMonths = <String>{};
+
+    for (final category in categories) {
+      totalAmount += category.totalAmount;
+      totalInvoices += category.invoiceCount;
+      for (final invoice in category.invoices) {
+        final key = _monthKeyFromServiceDate(invoice.serviceDate);
+        if (key != null) servicedMonths.add(key);
+      }
+    }
+
+    final average =
+        totalInvoices == 0 ? 0.0 : totalAmount / totalInvoices.toDouble();
+    final monthsCount = servicedMonths.length;
+
+    String latestMonthLabel = 'Không xác định';
+    if (servicedMonths.isNotEmpty) {
+      final latestKey =
+          servicedMonths.reduce((a, b) => a.compareTo(b) >= 0 ? a : b);
+      latestMonthLabel = _formatMonthLabel(latestKey);
+    }
+
+    return _PaidGlassCard(
+      padding: const EdgeInsets.fromLTRB(24, 26, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Tổng quan lịch sử',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 20),
           Row(
             children: [
-              const Icon(Icons.payments, color: Color(0xFF26A69A)),
-              const SizedBox(width: 8),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Tổng đã thanh toán: ${_formatMoney(category.totalAmount)}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                      ),
-                    ),
-                    Text(
-                      '${category.invoiceCount} hóa đơn đã thanh toán',
-                      style: const TextStyle(fontSize: 13, color: Colors.black54),
-                    ),
-                  ],
+                child: _buildSummaryStatTile(
+                  label: 'Tổng đã thanh toán',
+                  value: _formatMoney(totalAmount),
+                  icon: Icons.payments_rounded,
+                  accent: AppColors.primaryEmerald,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: _buildSummaryStatTile(
+                  label: 'Số hóa đơn',
+                  value: '$totalInvoices khoản',
+                  icon: Icons.receipt_long_outlined,
+                  accent: AppColors.primaryBlue,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _buildSummaryStatTile(
+                  label: 'Bình quân mỗi hóa đơn',
+                  value: _formatMoney(average),
+                  icon: Icons.bar_chart_rounded,
+                  accent: AppColors.skyMist,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: _buildSummaryStatTile(
+                  label: monthsCount > 0
+                      ? '$monthsCount tháng đã thanh toán'
+                      : 'Chưa ghi nhận tháng',
+                  value: latestMonthLabel,
+                  icon: Icons.event_available_outlined,
+                  accent: AppColors.warning,
                 ),
               ),
             ],
@@ -365,28 +574,344 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
     );
   }
 
-  Widget _buildAllPaidState() {
-    return Container(
-      padding: const EdgeInsets.all(24),
+  Widget _buildSummaryStatTile({
+    required String label,
+    required String value,
+    required IconData icon,
+    required Color accent,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
+        color: isDark
+            ? theme.colorScheme.surface.withOpacity(0.14)
+            : Colors.white.withOpacity(0.78),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: theme.colorScheme.outline.withOpacity(0.08),
+        ),
+        boxShadow: AppColors.subtleShadow,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: 36,
+              width: 36,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomLeft,
+                  end: Alignment.topRight,
+                  colors: [
+                    accent.withOpacity(0.9),
+                    accent.withOpacity(0.55),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: AppColors.subtleShadow,
+              ),
+              child: Icon(
+                icon,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              value,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetaChip({
+    required IconData icon,
+    required String label,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return IntrinsicWidth(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: isDark
+              ? theme.colorScheme.surface.withOpacity(0.16)
+              : Colors.white.withOpacity(0.78),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: theme.colorScheme.outline.withOpacity(0.08),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUnitFilterCard() {
+    final theme = Theme.of(context);
+    final options = <_UnitOption>[
+      const _UnitOption(_allUnitsKey, 'Tất cả căn hộ'),
+      ..._units.map((unit) => _UnitOption(unit.id, unit.displayName)),
+    ];
+
+    final current = _selectedUnitId;
+
+    return _PaidGlassCard(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Lọc theo căn hộ',
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 12,
+            runSpacing: 10,
+            children: options.map((option) {
+              final selected = current == option.id;
+              final accent = theme.colorScheme.primary;
+
+              return GestureDetector(
+                onTap: () {
+                  if (_selectedUnitId == option.id) return;
+                  setState(() {
+                    _selectedUnitId = option.id;
+                    _selectedCategoryCode = null;
+                    _selectedMonthKey = _allMonthsKey;
+                    _futureData = _loadData();
+                  });
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    color: selected
+                        ? accent.withOpacity(0.18)
+                        : theme.brightness == Brightness.dark
+                            ? theme.colorScheme.surface.withOpacity(0.12)
+                            : Colors.white.withOpacity(0.78),
+                    border: Border.all(
+                      color: selected
+                          ? accent.withOpacity(0.7)
+                          : theme.colorScheme.outline.withOpacity(0.12),
+                    ),
+                    boxShadow: selected ? AppColors.subtleShadow : const [],
+                  ),
+                  child: Text(
+                    option.label,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: selected
+                          ? accent
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          if (_units.isEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Bạn chưa được gán vào căn hộ nào, hiển thị tất cả hóa đơn.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategorySummary(InvoiceCategory category) {
+    final theme = Theme.of(context);
+    final accent = _colorForServiceCode(category.categoryCode);
+    final icon = _iconForServiceCode(category.categoryCode);
+
+    return _PaidGlassCard(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                height: 54,
+                width: 54,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      accent.withOpacity(0.92),
+                      accent.withOpacity(0.55),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: AppColors.subtleShadow,
+                ),
+                child: Icon(icon, color: Colors.white, size: 26),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      category.categoryName,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${category.invoiceCount} hóa đơn đã thanh toán',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: theme.brightness == Brightness.dark
+                  ? theme.colorScheme.surface.withOpacity(0.14)
+                  : Colors.white.withOpacity(0.78),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: theme.colorScheme.outline.withOpacity(0.08),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.payments_rounded,
+                    color: accent,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _formatMoney(category.totalAmount),
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: accent,
+                          ),
+                        ),
+                        Text(
+                          'Tổng số tiền đã thanh toán cho nhóm dịch vụ này',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildAllPaidState() {
+    final theme = Theme.of(context);
+    return _PaidGlassCard(
+      padding: const EdgeInsets.fromLTRB(24, 30, 24, 28),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        children: const [
-          Icon(Icons.celebration, color: Colors.green, size: 48),
-          SizedBox(height: 12),
+        children: [
+          Container(
+            height: 58,
+            width: 58,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.success.withOpacity(0.9),
+                  AppColors.primaryEmerald.withOpacity(0.85),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: AppColors.subtleShadow,
+            ),
+            child: const Icon(
+              Icons.celebration,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+          const SizedBox(height: 18),
           Text(
-            '🎉 Bạn đã thanh toán hết các hóa đơn',
-            style: TextStyle(fontSize: 15, color: Colors.black54),
+            '🎉 Bạn đã hoàn tất mọi hóa đơn',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Hãy tiếp tục theo dõi lịch sử thanh toán tại đây để quản lý tài chính minh bạch và thuận tiện.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
             textAlign: TextAlign.center,
           ),
         ],
@@ -395,27 +920,45 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
   }
 
   Widget _buildCategoryEmptyState(InvoiceCategory category) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+    final theme = Theme.of(context);
+    final accent = _colorForServiceCode(category.categoryCode);
+    return _PaidGlassCard(
+      padding: const EdgeInsets.fromLTRB(24, 28, 24, 26),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.celebration, color: Colors.green, size: 48),
-          const SizedBox(height: 12),
+          Container(
+            height: 52,
+            width: 52,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  accent.withOpacity(0.9),
+                  accent.withOpacity(0.55),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: AppColors.subtleShadow,
+            ),
+            child: const Icon(
+              Icons.auto_awesome,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 16),
           Text(
-            'Bạn đã thanh toán hết hóa đơn ${category.categoryName.toLowerCase()}',
-            style: const TextStyle(fontSize: 15, color: Colors.black54),
+            'Không còn hóa đơn ${category.categoryName.toLowerCase()} trong tháng này',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Chúng tôi sẽ gửi thông báo ngay khi có hóa đơn mới trong nhóm dịch vụ này.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
             textAlign: TextAlign.center,
           ),
         ],
@@ -434,8 +977,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
       }
     }
 
-    final sortedKeys = monthMap.keys.toList()
-      ..sort((a, b) => b.compareTo(a));
+    final sortedKeys = monthMap.keys.toList()..sort((a, b) => b.compareTo(a));
 
     final options = <_MonthOption>[
       _MonthOption(_allMonthsKey, 'Tất cả tháng'),
@@ -445,7 +987,8 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
     return options;
   }
 
-  List<InvoiceCategory> _filterCategoriesByMonth(List<InvoiceCategory> categories, String selectedMonth) {
+  List<InvoiceCategory> _filterCategoriesByMonth(
+      List<InvoiceCategory> categories, String selectedMonth) {
     if (selectedMonth == _allMonthsKey) {
       return categories;
     }
@@ -454,12 +997,14 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
 
     for (final category in categories) {
       final invoices = category.invoices
-          .where((invoice) => _monthKeyFromServiceDate(invoice.serviceDate) == selectedMonth)
+          .where((invoice) =>
+              _monthKeyFromServiceDate(invoice.serviceDate) == selectedMonth)
           .toList();
 
       if (invoices.isEmpty) continue;
 
-      final total = invoices.fold<double>(0, (sum, item) => sum + item.lineTotal);
+      final total =
+          invoices.fold<double>(0, (sum, item) => sum + item.lineTotal);
 
       filtered.add(InvoiceCategory(
         categoryCode: category.categoryCode,
@@ -504,25 +1049,16 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
   }
 
   Widget _buildInvoiceCard(InvoiceLineResponseDto invoice) {
+    final theme = Theme.of(context);
     final serviceColor = _colorForServiceCode(invoice.serviceCode);
     final serviceIcon = _iconForServiceCode(invoice.serviceCode);
     final monthLabel = _formatServiceMonth(invoice.serviceDate);
+    final secondary = theme.colorScheme.onSurfaceVariant;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: _PaidGlassCard(
+        padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -530,105 +1066,119 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  height: 52,
+                  width: 52,
                   decoration: BoxDecoration(
-                    color: serviceColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    gradient: LinearGradient(
+                      colors: [
+                        serviceColor.withOpacity(0.92),
+                        serviceColor.withOpacity(0.55),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: AppColors.subtleShadow,
                   ),
-                  child: Icon(serviceIcon, color: serviceColor, size: 28),
+                  child: Icon(serviceIcon, color: Colors.white, size: 26),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 18),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        invoice.serviceCodeDisplay,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 16,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        invoice.description,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Colors.black54,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (monthLabel != null) ...[
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            const Icon(Icons.calendar_month, size: 14, color: Colors.black54),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Tháng: $monthLabel',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.black54,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      const SizedBox(height: 6),
                       Row(
                         children: [
-                          const Icon(Icons.calendar_today, size: 14, color: Colors.black54),
-                          const SizedBox(width: 4),
-                          Text(
-                            _formatDate(invoice.serviceDate),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.black54,
+                          Expanded(
+                            child: Text(
+                              invoice.serviceCodeDisplay,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
-                          const SizedBox(width: 16),
-                          Text(
-                            '${invoice.quantity.toStringAsFixed(2)} ${invoice.unit}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.black54,
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.success.withOpacity(0.16),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              'ĐÃ THANH TOÁN',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                letterSpacing: 0.6,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.success,
+                              ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
                       Text(
-                        _formatMoney(invoice.lineTotal),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF26A69A),
+                        invoice.description,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: secondary,
+                          height: 1.4,
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 14,
+                        runSpacing: 8,
+                        children: [
+                          if (monthLabel != null)
+                            _buildMetaChip(
+                              icon: Icons.calendar_month_outlined,
+                              label: 'Tháng $monthLabel',
+                            ),
+                          _buildMetaChip(
+                            icon: Icons.calendar_today_outlined,
+                            label: _formatDate(invoice.serviceDate),
+                          ),
+                          if (invoice.quantity > 0 && invoice.unit.isNotEmpty)
+                            _buildMetaChip(
+                              icon: Icons.align_horizontal_left_rounded,
+                              label:
+                                  '${invoice.quantity.toStringAsFixed(2)} ${invoice.unit}',
+                            ),
+                        ],
                       ),
                     ],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Text(
-                '✅ Đã thanh toán',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.green,
+            const SizedBox(height: 16),
+            Divider(color: secondary.withOpacity(0.12), height: 1),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _formatMoney(invoice.lineTotal),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: serviceColor,
+                    ),
+                    softWrap: true,
+                  ),
                 ),
-              ),
+                const SizedBox(width: 12),
+                Flexible(
+                  fit: FlexFit.loose,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: _buildMetaChip(
+                      icon: Icons.receipt_long_outlined,
+                      label: invoice.invoiceId,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -696,43 +1246,92 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
   }
 
   Widget _buildPaidBookingsSection(List<Map<String, dynamic>> bookings) {
+    final theme = Theme.of(context);
+    if (bookings.isEmpty) {
+      return _PaidGlassCard(
+        padding: const EdgeInsets.fromLTRB(24, 28, 24, 26),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              height: 52,
+              width: 52,
+              decoration: BoxDecoration(
+                gradient: AppColors.primaryGradient(),
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: AppColors.subtleShadow,
+              ),
+              child: const Icon(
+                Icons.event_available_outlined,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Chưa có dịch vụ tiện ích nào đã thanh toán',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Khi bạn sử dụng tiện ích và hoàn tất thanh toán, thông tin sẽ được lưu tại đây.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Dịch vụ đã thanh toán',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+        _PaidGlassCard(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
+          child: Row(
+            children: [
+              Container(
+                height: 50,
+                width: 50,
+                decoration: BoxDecoration(
+                  gradient: AppColors.primaryGradient(),
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: AppColors.subtleShadow,
+                ),
+                child: const Icon(
+                  Icons.event_available_rounded,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Dịch vụ tiện ích đã thanh toán',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      '${bookings.length} lượt đặt tiện ích đã được ghi nhận',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 12),
-        if (bookings.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 6,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: const [
-                Icon(Icons.event_available, color: Colors.green, size: 48),
-                SizedBox(height: 12),
-                Text(
-                  'Chưa có dịch vụ nào đã thanh toán',
-                  style: TextStyle(fontSize: 15, color: Colors.black54),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          )
-        else
-          ...bookings.map(_buildPaidBookingCard),
+        const SizedBox(height: 18),
+        ...bookings.map(_buildPaidBookingCard),
       ],
     );
   }
@@ -755,36 +1354,29 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
     final amountLabel = _formatMoney(totalAmount);
     final paymentStatusLabel = _translatePaymentStatus(paymentStatus);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+    final theme = Theme.of(context);
+    final secondary = theme.colorScheme.onSurfaceVariant;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: _PaidGlassCard(
+        padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Container(
-                  height: 48,
-                  width: 48,
+                  height: 52,
+                  width: 52,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF26A69A).withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(16),
+                    gradient: AppColors.primaryGradient(),
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: AppColors.subtleShadow,
                   ),
                   child: const Icon(
                     Icons.event_available_outlined,
-                    color: Color(0xFF26A69A),
+                    color: Colors.white,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -794,31 +1386,35 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
                     children: [
                       Text(
                         serviceName,
-                        style: const TextStyle(
-                          fontSize: 16,
+                        style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                       if (categoryCode.isNotEmpty)
                         Text(
                           categoryCode,
-                          style: const TextStyle(fontSize: 12, color: Colors.black54),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: secondary,
+                          ),
                         ),
                     ],
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.12),
+                    color: AppColors.success.withOpacity(0.16),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     paymentStatusLabel,
-                    style: const TextStyle(
-                      color: Colors.green,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: AppColors.success,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.3,
                     ),
                   ),
                 ),
@@ -828,16 +1424,35 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.calendar_today_outlined, size: 18, color: Colors.black45),
+                Icon(
+                  Icons.calendar_today_outlined,
+                  size: 18,
+                  color: secondary,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Ngày sử dụng: $bookingDateLabel'),
+                      Text(
+                        'Ngày sử dụng: $bookingDateLabel',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: secondary,
+                        ),
+                      ),
                       if (timeRangeLabel != null)
-                        Text('Khung giờ: $timeRangeLabel'),
-                      Text('Thanh toán lúc: $paymentDateLabel'),
+                        Text(
+                          'Khung giờ: $timeRangeLabel',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: secondary,
+                          ),
+                        ),
+                      Text(
+                        'Thanh toán lúc: $paymentDateLabel',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: secondary,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -850,16 +1465,17 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Tổng tiền',
-                      style: TextStyle(fontSize: 13, color: Colors.black54),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: secondary,
+                      ),
                     ),
                     Text(
                       amountLabel,
-                      style: const TextStyle(
-                        fontSize: 16,
+                      style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF26A69A),
+                        color: AppColors.primaryEmerald,
                       ),
                     ),
                   ],
@@ -867,16 +1483,17 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    const Text(
+                    Text(
                       'Trạng thái',
-                      style: TextStyle(fontSize: 13, color: Colors.black54),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: secondary,
+                      ),
                     ),
                     Text(
                       paymentStatusLabel,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.green,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.success,
                       ),
                     ),
                   ],
@@ -887,7 +1504,9 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
               const SizedBox(height: 12),
               Text(
                 'Ghi chú: $purpose',
-                style: const TextStyle(fontSize: 13, color: Colors.black54),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: secondary,
+                ),
               ),
             ],
           ],
@@ -962,3 +1581,42 @@ class _UnitOption {
   const _UnitOption(this.id, this.label);
 }
 
+class _PaidGlassCard extends StatelessWidget {
+  const _PaidGlassCard({
+    required this.child,
+    this.padding,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final borderRadius = BorderRadius.circular(28);
+    final gradient = theme.brightness == Brightness.dark
+        ? AppColors.darkGlassLayerGradient()
+        : AppColors.glassLayerGradient();
+
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: gradient,
+            borderRadius: borderRadius,
+            border: Border.all(
+              color: theme.colorScheme.outline.withOpacity(0.08),
+            ),
+            boxShadow: AppColors.subtleShadow,
+          ),
+          child: Padding(
+            padding: padding ?? const EdgeInsets.all(24),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}

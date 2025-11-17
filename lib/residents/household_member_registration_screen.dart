@@ -43,13 +43,12 @@ class _HouseholdMemberRegistrationScreenState
       _error = null;
     });
     try {
-      final members =
-          await _service.getResidentsWithoutAccount(widget.unit.id);
-          if (mounted) {
-            setState(() {
-              _members = members;
-            });
-          }
+      final members = await _service.getResidentsWithoutAccount(widget.unit.id);
+      if (mounted) {
+        setState(() {
+          _members = members;
+        });
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -89,8 +88,7 @@ class _HouseholdMemberRegistrationScreenState
               }
               return;
             }
-            final pickedFiles =
-                await _picker.pickMultiImage(imageQuality: 80);
+            final pickedFiles = await _picker.pickMultiImage(imageQuality: 80);
             if (pickedFiles.isEmpty) return;
             for (final file in pickedFiles.take(remaining)) {
               final bytes = await file.readAsBytes();
@@ -213,7 +211,8 @@ class _HouseholdMemberRegistrationScreenState
                       controller: usernameCtrl,
                       decoration: const InputDecoration(
                         labelText: 'Username',
-                        hintText: 'Nhập username (a-z, 0-9, gạch dưới, gạch ngang)',
+                        hintText:
+                            'Nhập username (a-z, 0-9, gạch dưới, gạch ngang)',
                       ),
                       enabled: !submitting,
                     ),
@@ -228,78 +227,76 @@ class _HouseholdMemberRegistrationScreenState
                     ),
                     const SizedBox(height: 12),
                   ],
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: submitting ? null : pickImages,
-                            icon: const Icon(Icons.photo_library_outlined),
-                            label: Text(
-                                'Chọn ảnh (${proofImages.length}/6)'),
-                          ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: submitting ? null : pickImages,
+                          icon: const Icon(Icons.photo_library_outlined),
+                          label: Text('Chọn ảnh (${proofImages.length}/6)'),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: submitting ? null : takePhoto,
-                            icon: const Icon(Icons.camera_alt_outlined),
-                            label: const Text('Chụp ảnh'),
-                          ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: submitting ? null : takePhoto,
+                          icon: const Icon(Icons.camera_alt_outlined),
+                          label: const Text('Chụp ảnh'),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    if (proofImages.isNotEmpty)
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: proofImages
-                            .asMap()
-                            .entries
-                            .map(
-                              (entry) => Stack(
-                                alignment: Alignment.topRight,
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Image.memory(
-                                      entry.value.bytes,
-                                      width: 80,
-                                      height: 80,
-                                      fit: BoxFit.cover,
-                                    ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (proofImages.isNotEmpty)
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: proofImages
+                          .asMap()
+                          .entries
+                          .map(
+                            (entry) => Stack(
+                              alignment: Alignment.topRight,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.memory(
+                                    entry.value.bytes,
+                                    width: 80,
+                                    height: 80,
+                                    fit: BoxFit.cover,
                                   ),
-                                  Positioned(
-                                    right: 4,
-                                    top: 4,
-                                    child: GestureDetector(
-                                      onTap: submitting
-                                          ? null
-                                          : () {
-                                              setStateDialog(() {
-                                                proofImages.removeAt(
-                                                    entry.key);
-                                              });
-                                            },
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          color: Colors.black.withOpacity(0.6),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        padding: const EdgeInsets.all(4),
-                                        child: const Icon(
-                                          Icons.close,
-                                          size: 14,
-                                          color: Colors.white,
-                                        ),
+                                ),
+                                Positioned(
+                                  right: 4,
+                                  top: 4,
+                                  child: GestureDetector(
+                                    onTap: submitting
+                                        ? null
+                                        : () {
+                                            setStateDialog(() {
+                                              proofImages.removeAt(entry.key);
+                                            });
+                                          },
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.6),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      padding: const EdgeInsets.all(4),
+                                      child: const Icon(
+                                        Icons.close,
+                                        size: 14,
+                                        color: Colors.white,
                                       ),
                                     ),
                                   ),
-                                ],
-                              ),
-                            )
-                            .toList(),
-                      ),
+                                ),
+                              ],
+                            ),
+                          )
+                          .toList(),
+                    ),
                   if (errorText != null) ...[
                     const SizedBox(height: 12),
                     Text(
@@ -312,7 +309,8 @@ class _HouseholdMemberRegistrationScreenState
             ),
             actions: [
               TextButton(
-                onPressed: submitting ? null : () => Navigator.of(context).pop(),
+                onPressed:
+                    submitting ? null : () => Navigator.of(context).pop(),
                 child: const Text('Đóng'),
               ),
               ElevatedButton(
@@ -334,6 +332,7 @@ class _HouseholdMemberRegistrationScreenState
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Đăng ký tài khoản thành viên'),
@@ -387,92 +386,146 @@ class _HouseholdMemberRegistrationScreenState
                               itemCount: _members.length,
                               itemBuilder: (context, index) {
                                 final member = _members[index];
-                                return Card(
-                                  elevation: 2,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16),
+                                final isDark =
+                                    theme.brightness == Brightness.dark;
+                                final cardColor = isDark
+                                    ? Colors.white.withOpacity(0.05)
+                                    : Colors.white;
+                                final borderColor = isDark
+                                    ? Colors.white.withOpacity(0.08)
+                                    : Colors.black.withOpacity(0.05);
+                                final primaryText = theme.colorScheme.onSurface;
+                                final secondaryText =
+                                    theme.colorScheme.onSurfaceVariant;
+
+                                return Container(
+                                  decoration: BoxDecoration(
+                                    color: cardColor,
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: borderColor),
+                                    boxShadow: [
+                                      if (!isDark)
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.04),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 6),
+                                        ),
+                                    ],
                                   ),
                                   margin:
                                       const EdgeInsets.symmetric(vertical: 8),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            const Icon(Icons.person_outline,
-                                                color: Colors.teal),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(
-                                                member.fullName ??
-                                                    'Thành viên chưa có tên',
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .titleMedium
-                                                    ?.copyWith(
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                              ),
+                                  padding: const EdgeInsets.all(18),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 22,
+                                            backgroundColor: theme
+                                                .colorScheme.primary
+                                                .withOpacity(0.16),
+                                            child: Icon(
+                                              Icons.person_outline,
+                                              color: theme.colorScheme.primary,
                                             ),
-                                            if (member.isPrimary)
-                                              const Chip(
-                                                label: Text('Chủ hộ'),
-                                                backgroundColor:
-                                                    Color(0xFFE8F5E9),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  member.fullName ??
+                                                      'Thành viên chưa có tên',
+                                                  style: theme
+                                                      .textTheme.titleMedium
+                                                      ?.copyWith(
+                                                    fontWeight: FontWeight.w700,
+                                                    color: primaryText,
+                                                  ),
+                                                ),
+                                                if ((member.relation ?? '')
+                                                    .isNotEmpty)
+                                                  Text(
+                                                    member.relation!,
+                                                    style: theme
+                                                        .textTheme.bodySmall
+                                                        ?.copyWith(
+                                                      color: secondaryText,
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                          if (member.isPrimary)
+                                            Chip(
+                                              label: Text(
+                                                'Chủ hộ',
+                                                style: theme
+                                                    .textTheme.labelSmall
+                                                    ?.copyWith(
+                                                  color: isDark
+                                                      ? Colors.white
+                                                      : theme
+                                                          .colorScheme.primary,
+                                                ),
                                               ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 8),
-                                        if ((member.relation ?? '').isNotEmpty)
-                                          Text(
-                                            'Quan hệ: ${member.relation}',
-                                            style: const TextStyle(
-                                                color: Colors.black54),
-                                          ),
-                                        if ((member.phone ?? '').isNotEmpty)
-                                          Text(
-                                            'Điện thoại: ${member.phone}',
-                                            style: const TextStyle(
-                                                color: Colors.black54),
-                                          ),
-                                        if ((member.email ?? '').isNotEmpty)
-                                          Text(
-                                            'Email: ${member.email}',
-                                            style: const TextStyle(
-                                                color: Colors.black54),
-                                          ),
-                                        if ((member.nationalId ?? '')
-                                            .isNotEmpty)
-                                          Text(
-                                            'CCCD: ${member.nationalId}',
-                                            style: const TextStyle(
-                                                color: Colors.black54),
-                                          ),
-                                        if (member.dob != null)
-                                          Text(
-                                            'Ngày sinh: ${member.formattedDob}',
-                                            style: const TextStyle(
-                                                color: Colors.black54),
-                                          ),
-                                        const SizedBox(height: 12),
-                                        SizedBox(
-                                          width: double.infinity,
-                                          child: ElevatedButton.icon(
-                                            onPressed: () =>
-                                                _showCreateRequestDialog(
-                                                    member),
-                                            icon: const Icon(
-                                                Icons.person_add_alt_1),
-                                            label: const Text(
-                                                'Tạo yêu cầu tài khoản'),
+                                              backgroundColor: theme
+                                                  .colorScheme.primary
+                                                  .withOpacity(
+                                                      isDark ? 0.25 : 0.12),
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      if ((member.phone ?? '').isNotEmpty)
+                                        Text(
+                                          'Điện thoại: ${member.phone}',
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                            color: secondaryText,
                                           ),
                                         ),
-                                      ],
-                                    ),
+                                      if ((member.email ?? '').isNotEmpty)
+                                        Text(
+                                          'Email: ${member.email}',
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                            color: secondaryText,
+                                          ),
+                                        ),
+                                      if ((member.nationalId ?? '').isNotEmpty)
+                                        Text(
+                                          'CCCD: ${member.nationalId}',
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                            color: secondaryText,
+                                          ),
+                                        ),
+                                      if (member.dob != null)
+                                        Text(
+                                          'Ngày sinh: ${member.formattedDob}',
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                            color: secondaryText,
+                                          ),
+                                        ),
+                                      const SizedBox(height: 16),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton.icon(
+                                          onPressed: () =>
+                                              _showCreateRequestDialog(member),
+                                          icon: const Icon(
+                                              Icons.person_add_alt_1),
+                                          label: const Text(
+                                              'Tạo yêu cầu tài khoản'),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 );
                               },
@@ -504,4 +557,3 @@ class _ProofImage {
 
   String get dataUri => 'data:$mimeType;base64,${base64Encode(bytes)}';
 }
-

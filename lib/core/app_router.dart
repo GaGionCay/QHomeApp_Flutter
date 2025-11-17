@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../common/main_shell.dart';
 import '../login/forgot_password_screen.dart';
+import '../login/change_password_screen.dart';
 import '../login/login_screen.dart';
 import '../register/register_guide_screen.dart';
 import '../splash_screen.dart';
@@ -11,11 +12,19 @@ enum AppRoute {
   splash('/'),
   login('/auth/login'),
   forgotPassword('/auth/forgot-password'),
+  changePassword('/auth/change-password'),
   registerGuide('/auth/register'),
   main('/main');
 
   const AppRoute(this.path);
   final String path;
+}
+
+class MainShellArgs {
+  const MainShellArgs({this.initialIndex = 0, this.snackMessage});
+
+  final int initialIndex;
+  final String? snackMessage;
 }
 
 class AppRouter {
@@ -59,6 +68,17 @@ class AppRouter {
         },
       ),
       GoRoute(
+        path: AppRoute.changePassword.path,
+        name: AppRoute.changePassword.name,
+        pageBuilder: (context, state) {
+          return _buildSharedAxisPage(
+            key: state.pageKey,
+            child: const ChangePasswordScreen(),
+            transitionType: SharedAxisTransitionType.scaled,
+          );
+        },
+      ),
+      GoRoute(
         path: AppRoute.registerGuide.path,
         name: AppRoute.registerGuide.name,
         pageBuilder: (context, state) {
@@ -73,9 +93,15 @@ class AppRouter {
         path: AppRoute.main.path,
         name: AppRoute.main.name,
         pageBuilder: (context, state) {
+          final args = state.extra is MainShellArgs
+              ? state.extra as MainShellArgs
+              : const MainShellArgs();
           return _buildFadeThroughPage(
             key: state.pageKey,
-            child: const MainShell(),
+            child: MainShell(
+              initialIndex: args.initialIndex,
+              initialSnackMessage: args.snackMessage,
+            ),
           );
         },
       ),
@@ -127,4 +153,3 @@ class AppRouter {
     );
   }
 }
-

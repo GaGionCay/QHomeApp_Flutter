@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
@@ -64,7 +65,7 @@ class SettingsScreen extends StatelessWidget {
           children: const [
             _ThemeModeSection(),
             SizedBox(height: 24),
-            _BiometricSettingsSection(),
+            _FingerprintSettingsSection(),
             SizedBox(height: 24),
             _UnitSwitcherSection(),
           ],
@@ -255,19 +256,20 @@ class _UnitSwitcherSection extends StatefulWidget {
   State<_UnitSwitcherSection> createState() => _UnitSwitcherSectionState();
 }
 
-class _BiometricSettingsSection extends StatefulWidget {
-  const _BiometricSettingsSection();
+// Fingerprint Settings Section
+class _FingerprintSettingsSection extends StatefulWidget {
+  const _FingerprintSettingsSection();
 
   @override
-  State<_BiometricSettingsSection> createState() =>
-      _BiometricSettingsSectionState();
+  State<_FingerprintSettingsSection> createState() =>
+      _FingerprintSettingsSectionState();
 }
 
-class _BiometricSettingsSectionState extends State<_BiometricSettingsSection> {
+class _FingerprintSettingsSectionState extends State<_FingerprintSettingsSection> {
   final LocalAuthentication _localAuth = LocalAuthentication();
   bool _loading = true;
-  bool _supportsBiometrics = false;
-  bool _biometricEnabled = false;
+  bool _supportsFingerprint = false;
+  bool _fingerprintEnabled = false;
   bool _processing = false;
 
   @override
@@ -279,27 +281,35 @@ class _BiometricSettingsSectionState extends State<_BiometricSettingsSection> {
   Future<void> _loadState() async {
     final auth = context.read<AuthProvider>();
     try {
-      final supported = await _localAuth.isDeviceSupported();
-      final canCheck = await _localAuth.canCheckBiometrics;
       final available = await _localAuth.getAvailableBiometrics();
-      final enabled = await auth.isBiometricLoginEnabled();
+      // Fingerprint is supported if:
+      // - Direct fingerprint type exists, OR
+      // - Strong/weak biometrics exist (which could be fingerprint or face)
+      final supportsFingerprint = available.contains(BiometricType.fingerprint) ||
+                                  available.contains(BiometricType.strong) ||
+                                  available.contains(BiometricType.weak);
+      final enabled = await auth.isFingerprintLoginEnabled();
       if (!mounted) return;
+      
+      debugPrint('🔐 Fingerprint Check - Available: $available, Supports: $supportsFingerprint');
+      
       setState(() {
-        _supportsBiometrics = supported && (canCheck || available.isNotEmpty);
-        _biometricEnabled = enabled;
+        _supportsFingerprint = supportsFingerprint;
+        _fingerprintEnabled = enabled;
         _loading = false;
       });
-    } on PlatformException catch (_) {
+    } on PlatformException catch (e) {
+      debugPrint('❌ Fingerprint Check - Error: $e');
       if (!mounted) return;
       setState(() {
-        _supportsBiometrics = false;
-        _biometricEnabled = false;
+        _supportsFingerprint = false;
+        _fingerprintEnabled = false;
         _loading = false;
       });
     }
   }
 
-  Future<void> _registerBiometric() async {
+  Future<void> _registerFingerprint() async {
     if (_processing) return;
     final auth = context.read<AuthProvider>();
     final username = await auth.getStoredUsername();
@@ -314,10 +324,11 @@ class _BiometricSettingsSectionState extends State<_BiometricSettingsSection> {
 
     setState(() => _processing = true);
 
-    final supported = await _localAuth.isDeviceSupported();
-    final canCheck = await _localAuth.canCheckBiometrics;
     final available = await _localAuth.getAvailableBiometrics();
-    if (!(supported && (canCheck || available.isNotEmpty))) {
+    final supportsFingerprint = available.contains(BiometricType.fingerprint) ||
+                                available.contains(BiometricType.strong) ||
+                                available.contains(BiometricType.weak);
+    if (!supportsFingerprint) {
       setState(() => _processing = false);
       _showSnack('Thiết bị của bạn không hỗ trợ đăng nhập bằng vân tay.');
       return;
@@ -349,23 +360,23 @@ class _BiometricSettingsSectionState extends State<_BiometricSettingsSection> {
       return;
     }
 
-    await auth.enableBiometricLogin(username, password);
+    await auth.enableFingerprintLogin(username, password);
     if (!mounted) return;
     setState(() {
-      _biometricEnabled = true;
+      _fingerprintEnabled = true;
       _processing = false;
     });
     _showSnack('Đã bật đăng nhập bằng vân tay.');
   }
 
-  Future<void> _disableBiometric() async {
+  Future<void> _disableFingerprint() async {
     if (_processing) return;
     final auth = context.read<AuthProvider>();
     setState(() => _processing = true);
-    await auth.disableBiometricLogin();
+    await auth.disableFingerprintLogin();
     if (!mounted) return;
     setState(() {
-      _biometricEnabled = false;
+      _fingerprintEnabled = false;
       _processing = false;
     });
     _showSnack('Đã tắt đăng nhập bằng vân tay.');
@@ -415,60 +426,11 @@ class _BiometricSettingsSectionState extends State<_BiometricSettingsSection> {
     final colorScheme = theme.colorScheme;
 
     if (_loading) {
-      return const _SettingsGlassCard(
-        padding: EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-        child: Center(
-          child: SizedBox(
-            height: 36,
-            width: 36,
-            child: CircularProgressIndicator(strokeWidth: 3),
-          ),
-        ),
-      );
+      return const SizedBox.shrink();
     }
 
-    if (!_supportsBiometrics) {
-      return _SettingsGlassCard(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  height: 44,
-                  width: 44,
-                  decoration: BoxDecoration(
-                    gradient: AppColors.primaryGradient(),
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: AppColors.subtleShadow,
-                  ),
-                  child: const Icon(
-                    Icons.block,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Text(
-                    'Thiết bị không hỗ trợ vân tay',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Thiết bị của bạn không có cảm biến sinh trắc học được hỗ trợ. Bạn vẫn có thể đăng nhập bằng mật khẩu thông thường.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurface.withOpacity(0.7),
-              ),
-            ),
-          ],
-        ),
-      );
+    if (!_supportsFingerprint) {
+      return const SizedBox.shrink();
     }
 
     return _SettingsGlassCard(
@@ -506,7 +468,7 @@ class _BiometricSettingsSectionState extends State<_BiometricSettingsSection> {
                   opacity: animation,
                   child: child,
                 ),
-                child: _biometricEnabled
+                child: _fingerprintEnabled
                     ? Chip(
                         key: const ValueKey('enabled'),
                         avatar: const Icon(
@@ -536,7 +498,7 @@ class _BiometricSettingsSectionState extends State<_BiometricSettingsSection> {
           ),
           const SizedBox(height: 16),
           Text(
-            _biometricEnabled
+            _fingerprintEnabled
                 ? 'Bạn đã kích hoạt đăng nhập bằng vân tay. Lần sau có thể dùng vân tay ngay tại màn hình đăng nhập.'
                 : 'Đăng ký vân tay để lần sau có thể đăng nhập nhanh mà không cần nhập mật khẩu.',
             style: theme.textTheme.bodyMedium?.copyWith(
@@ -552,15 +514,15 @@ class _BiometricSettingsSectionState extends State<_BiometricSettingsSection> {
                 child: CircularProgressIndicator(strokeWidth: 3),
               ),
             )
-          else if (_biometricEnabled)
+          else if (_fingerprintEnabled)
             OutlinedButton.icon(
-              onPressed: _disableBiometric,
-              icon: const Icon(Icons.block),
+              onPressed: _disableFingerprint,
+              icon: const Icon(Icons.fingerprint),
               label: const Text('Tắt đăng nhập vân tay'),
             )
           else
             FilledButton.icon(
-              onPressed: _registerBiometric,
+              onPressed: _registerFingerprint,
               icon: const Icon(Icons.fingerprint),
               label: const Text('Đăng ký vân tay'),
             ),
@@ -568,6 +530,13 @@ class _BiometricSettingsSectionState extends State<_BiometricSettingsSection> {
       ),
     );
   }
+}
+
+// Face Settings Section
+class _FaceSettingsSection extends StatelessWidget {
+  const _FaceSettingsSection();
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
 class _UnitSwitcherSectionState extends State<_UnitSwitcherSection> {

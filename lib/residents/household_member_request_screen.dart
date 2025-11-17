@@ -29,6 +29,11 @@ class _HouseholdMemberRequestScreenState
     extends State<HouseholdMemberRequestScreen> {
   late final HouseholdMemberRequestService _service;
   final _formKey = GlobalKey<FormState>();
+  final _fullNameFieldKey = GlobalKey<FormFieldState<String>>();
+  final _relationFieldKey = GlobalKey<FormFieldState<String>>();
+  final _phoneFieldKey = GlobalKey<FormFieldState<String>>();
+  final _emailFieldKey = GlobalKey<FormFieldState<String>>();
+  final _nationalIdFieldKey = GlobalKey<FormFieldState<String>>();
 
   final _fullNameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
@@ -37,13 +42,20 @@ class _HouseholdMemberRequestScreenState
   final _relationCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
 
+  final _fullNameFocus = FocusNode();
+  final _relationFocus = FocusNode();
+  final _phoneFocus = FocusNode();
+  final _emailFocus = FocusNode();
+  final _nationalIdFocus = FocusNode();
+
   DateTime? _dob;
   Household? _currentHousehold;
   bool _loadingHousehold = false;
   String? _householdError;
 
-  Uint8List? _proofImageBytes;
-  String? _proofImageMimeType;
+  // Tối đa 2 ảnh minh chứng
+  final List<Uint8List> _proofImages = [];
+  final List<String> _proofImageMimeTypes = [];
 
   String? _selectedUnitId;
   bool _submitting = false;
@@ -79,6 +91,11 @@ class _HouseholdMemberRequestScreenState
     _nationalIdCtrl.dispose();
     _relationCtrl.dispose();
     _noteCtrl.dispose();
+    _fullNameFocus.dispose();
+    _relationFocus.dispose();
+    _phoneFocus.dispose();
+    _emailFocus.dispose();
+    _nationalIdFocus.dispose();
     super.dispose();
   }
 
@@ -118,9 +135,15 @@ class _HouseholdMemberRequestScreenState
     if (picked == null) return;
     final bytes = await picked.readAsBytes();
     if (!mounted) return;
+    if (_proofImages.length >= 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chỉ được chọn tối đa 2 ảnh minh chứng.')),
+      );
+      return;
+    }
     setState(() {
-      _proofImageBytes = bytes;
-      _proofImageMimeType = _inferMimeType(picked.path);
+      _proofImages.add(bytes);
+      _proofImageMimeTypes.add(_inferMimeType(picked.path));
     });
   }
 
@@ -130,9 +153,15 @@ class _HouseholdMemberRequestScreenState
     if (picked == null) return;
     final bytes = await picked.readAsBytes();
     if (!mounted) return;
+    if (_proofImages.length >= 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chỉ được chụp tối đa 2 ảnh minh chứng.')),
+      );
+      return;
+    }
     setState(() {
-      _proofImageBytes = bytes;
-      _proofImageMimeType = _inferMimeType(picked.path);
+      _proofImages.add(bytes);
+      _proofImageMimeTypes.add(_inferMimeType(picked.path));
     });
   }
 
@@ -146,6 +175,14 @@ class _HouseholdMemberRequestScreenState
       lastDate: now,
     );
     if (result == null) return;
+    // Không quá 100 tuổi
+    final hundredYearsAgo = DateTime(now.year - 100, now.month, now.day);
+    if (result.isBefore(hundredYearsAgo)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ngày sinh không được quá 100 tuổi.')),
+      );
+      return;
+    }
     setState(() {
       _dob = result;
     });
@@ -172,9 +209,9 @@ class _HouseholdMemberRequestScreenState
     });
 
     try {
-      final proofImageDataUri = _proofImageBytes != null &&
-              (_proofImageMimeType ?? '').isNotEmpty
-          ? 'data:${_proofImageMimeType!};base64,${base64Encode(_proofImageBytes!)}'
+      // Backend hiện nhận một ảnh: gửi ảnh đầu tiên nếu có
+      final proofImageDataUri = _proofImages.isNotEmpty
+          ? 'data:${_proofImageMimeTypes.first};base64,${base64Encode(_proofImages.first)}'
           : null;
 
       await _service.createRequest(
@@ -271,8 +308,16 @@ class _HouseholdMemberRequestScreenState
                       const SizedBox(height: 16),
                       _buildHouseholdInfo(),
                       const SizedBox(height: 24),
-                      TextFormField(
-                        controller: _fullNameCtrl,
+                      Focus(
+                        onFocusChange: (hasFocus) {
+                          if (!hasFocus) {
+                            _fullNameFieldKey.currentState?.validate();
+                          }
+                        },
+                        child: TextFormField(
+                          key: _fullNameFieldKey,
+                          focusNode: _fullNameFocus,
+                          controller: _fullNameCtrl,
                         textCapitalization: TextCapitalization.words,
                         decoration: const InputDecoration(
                           labelText: 'Họ và tên thành viên',
@@ -282,18 +327,58 @@ class _HouseholdMemberRequestScreenState
                           if (value == null || value.trim().isEmpty) {
                             return 'Vui lòng nhập họ tên thành viên.';
                           }
-                          if (value.trim().length < 3) {
-                            return 'Họ tên phải từ 3 ký tự trở lên.';
+                          final v = value.trim();
+                          if (v.length > 100) {
+                            return 'Họ và tên không được quá 100 ký tự.';
+                          }
+                          // Cho phép chữ cái tiếng Việt, khoảng trắng đơn, dấu gạch nối
+                          final nameRegex = RegExp(r"^[A-Za-zÀ-ỹà-ỹĐđ\s\-]+$");
+                          if (!nameRegex.hasMatch(v)) {
+                            return 'Họ và tên không được chứa ký tự đặc biệt hoặc số.';
+                          }
+                          // Không được sử dụng khoảng trắng quá 2 lần trong chuỗi
+                          final spaceCount = ' '.allMatches(v).length;
+                          if (spaceCount > 2) {
+                            return 'Họ và tên không được dùng quá 2 khoảng trắng.';
+                          }
+                          // Không cho phép khoảng trắng lặp (nhiều dấu cách liền nhau)
+                          if (RegExp(r'\s{2,}').hasMatch(v)) {
+                            return 'Không dùng nhiều dấu cách liên tiếp.';
                           }
                           return null;
                         },
+                        ),
                       ),
                       const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _relationCtrl,
+                      Focus(
+                        onFocusChange: (hasFocus) {
+                          if (!hasFocus) {
+                            _relationFieldKey.currentState?.validate();
+                          }
+                        },
+                        child: TextFormField(
+                          key: _relationFieldKey,
+                          focusNode: _relationFocus,
+                          controller: _relationCtrl,
+                        readOnly: true,
                         decoration: const InputDecoration(
                           labelText: 'Quan hệ với chủ hộ',
                           hintText: 'Ví dụ: Con, Vợ/Chồng, Anh/Chị/Em',
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Vui lòng cho biết quan hệ với chủ hộ.';
+                          }
+                          return null;
+                        },
+                        onTap: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Chọn quan hệ bằng các tùy chọn phía dưới.'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        },
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -314,38 +399,97 @@ class _HouseholdMemberRequestScreenState
                             .toList(),
                       ),
                       const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _phoneCtrl,
+                      Focus(
+                        onFocusChange: (hasFocus) {
+                          if (!hasFocus) {
+                            _phoneFieldKey.currentState?.validate();
+                          }
+                        },
+                        child: TextFormField(
+                          key: _phoneFieldKey,
+                          focusNode: _phoneFocus,
+                          controller: _phoneCtrl,
                         keyboardType: TextInputType.phone,
                         decoration: const InputDecoration(
                           labelText: 'Số điện thoại',
                           hintText: 'Nhập số điện thoại liên hệ',
                         ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Vui lòng nhập số điện thoại.';
+                          }
+                          final v = value.trim();
+                          // Chỉ cho phép số, không khoảng trắng, không ký tự đặc biệt
+                          if (!RegExp(r'^[0-9]+$').hasMatch(v)) {
+                            return 'Số điện thoại chỉ gồm chữ số, không có khoảng trắng/ký tự đặc biệt.';
+                          }
+                          if (v.length > 10) {
+                            return 'Số điện thoại không được quá 10 số.';
+                          }
+                          if (v.length < 9) {
+                            return 'Số điện thoại tối thiểu 9 số.';
+                          }
+                          return null;
+                        },
+                        ),
                       ),
                       const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _emailCtrl,
+                      Focus(
+                        onFocusChange: (hasFocus) {
+                          if (!hasFocus) {
+                            _emailFieldKey.currentState?.validate();
+                          }
+                        },
+                        child: TextFormField(
+                          key: _emailFieldKey,
+                          focusNode: _emailFocus,
+                          controller: _emailCtrl,
                         keyboardType: TextInputType.emailAddress,
                         decoration: const InputDecoration(
-                          labelText: 'Email (nếu có)',
+                          labelText: 'Email',
+                          hintText: 'Nhập email liên hệ',
                         ),
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
-                            return null;
+                            return 'Vui lòng nhập email.';
                           }
-                          final emailRegex =
-                              RegExp(r'^[\w\.\-+]+@[\w\.\-]+\.[A-Za-z]{2,}$');
-                          if (!emailRegex.hasMatch(value.trim())) {
+                          final v = value.trim();
+                          if (v.length > 100) {
+                            return 'Email không được quá 100 ký tự.';
+                          }
+                          final emailRegex = RegExp(r'^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$');
+                          if (!emailRegex.hasMatch(v)) {
                             return 'Email không hợp lệ.';
                           }
                           return null;
                         },
+                        ),
                       ),
                       const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _nationalIdCtrl,
+                      Focus(
+                        onFocusChange: (hasFocus) {
+                          if (!hasFocus) {
+                            _nationalIdFieldKey.currentState?.validate();
+                          }
+                        },
+                        child: TextFormField(
+                          key: _nationalIdFieldKey,
+                          focusNode: _nationalIdFocus,
+                          controller: _nationalIdCtrl,
                         decoration: const InputDecoration(
                           labelText: 'CMND/CCCD (nếu có)',
+                        ),
+                        validator: (value) {
+                          final v = (value ?? '').trim();
+                          if (v.isEmpty) return null;
+                          if (!RegExp(r'^[0-9]+$').hasMatch(v)) {
+                            return 'CMND/CCCD chỉ gồm chữ số, không có khoảng trắng/ký tự đặc biệt.';
+                          }
+                          if (!(v.length == 9 || v.length == 12)) {
+                            return 'CMND 9 số hoặc CCCD 12 số.';
+                          }
+                          return null;
+                        },
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -373,7 +517,7 @@ class _HouseholdMemberRequestScreenState
                         children: [
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: _pickFromGallery,
+                              onPressed: _proofImages.length >= 2 ? null : _pickFromGallery,
                               icon: const Icon(Icons.photo_library_outlined),
                               label: const Text('Chọn ảnh'),
                             ),
@@ -381,7 +525,7 @@ class _HouseholdMemberRequestScreenState
                           const SizedBox(width: 12),
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: _capturePhoto,
+                              onPressed: _proofImages.length >= 2 ? null : _capturePhoto,
                               icon: const Icon(Icons.camera_alt_outlined),
                               label: const Text('Chụp ảnh'),
                             ),
@@ -389,34 +533,42 @@ class _HouseholdMemberRequestScreenState
                         ],
                       ),
                       const SizedBox(height: 12),
-                      if (_proofImageBytes != null)
-                        Stack(
-                          alignment: Alignment.topRight,
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
-                              child: Image.memory(
-                                _proofImageBytes!,
-                                height: 160,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
+                      if (_proofImages.isNotEmpty)
+                        Column(
+                          children: List.generate(_proofImages.length, (index) {
+                            final bytes = _proofImages[index];
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Stack(
+                                alignment: Alignment.topRight,
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: Image.memory(
+                                      bytes,
+                                      height: 160,
+                                      width: double.infinity,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Xóa ảnh',
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: Colors.black.withOpacity(0.6),
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    icon: const Icon(Icons.close),
+                                    onPressed: () {
+                                      setState(() {
+                                        _proofImages.removeAt(index);
+                                        _proofImageMimeTypes.removeAt(index);
+                                      });
+                                    },
+                                  ),
+                                ],
                               ),
-                            ),
-                            IconButton(
-                              tooltip: 'Xóa ảnh',
-                              style: IconButton.styleFrom(
-                                backgroundColor: Colors.black.withOpacity(0.6),
-                                foregroundColor: Colors.white,
-                              ),
-                              icon: const Icon(Icons.close),
-                              onPressed: () {
-                                setState(() {
-                                  _proofImageBytes = null;
-                                  _proofImageMimeType = null;
-                                });
-                              },
-                            ),
-                          ],
+                            );
+                          }),
                         ),
                       const SizedBox(height: 32),
                       SizedBox(

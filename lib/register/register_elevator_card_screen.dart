@@ -5,14 +5,18 @@ import 'dart:developer';
 import 'package:app_links/app_links.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io' show Platform;
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../auth/api_client.dart';
-import '../common/main_shell.dart';
 import '../contracts/contract_service.dart';
-import '../core/event_bus.dart';
+import '../core/app_router.dart';
 import '../models/unit_info.dart';
+import '../profile/profile_service.dart';
 import '../theme/app_colors.dart';
 import 'widgets/register_glass_inputs.dart';
 
@@ -51,8 +55,46 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   late final ContractService _contractService;
   String? _selectedUnitId;
   UnitInfo? _currentUnit;
+  String? _residentId;
+  
+  Dio? _servicesCardDio;
+
+  String? _defaultFullName;
+  String? _defaultCitizenId;
+  String? _defaultPhoneNumber;
 
   static const _selectedUnitPrefsKey = 'selected_unit_id';
+  bool _isNavigatingToMain = false;
+
+  Future<Dio> _servicesCardClient() async {
+    if (_servicesCardDio == null) {
+      _servicesCardDio = Dio(BaseOptions(
+        baseUrl: ApiClient.buildServiceBase(port: 8083, path: '/api'),
+        connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+        receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+      ));
+      _servicesCardDio!.interceptors.add(LogInterceptor(
+        request: true,
+        requestHeader: true,
+        requestBody: true,
+        responseHeader: true,
+        responseBody: true,
+        error: true,
+      ));
+      final token = await api.storage.readAccessToken();
+      if (token != null && token.isNotEmpty) {
+        _servicesCardDio!.options.headers['Authorization'] = 'Bearer $token';
+      }
+    }
+    // Update token in case it changed
+    final token = await api.storage.readAccessToken();
+    if (token != null && token.isNotEmpty) {
+      _servicesCardDio!.options.headers['Authorization'] = 'Bearer $token';
+    } else {
+      _servicesCardDio!.options.headers.remove('Authorization');
+    }
+    return _servicesCardDio!;
+  }
 
   @override
   void initState() {
@@ -65,10 +107,26 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     _checkPendingPayment();
   }
 
+  void _navigateToServicesHome({String? snackMessage}) {
+    if (!mounted || _isNavigatingToMain) return;
+    _isNavigatingToMain = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.go(
+        AppRoute.main.path,
+        extra: MainShellArgs(
+          initialIndex: 1,
+          snackMessage: snackMessage,
+        ),
+      );
+    });
+  }
+
   void _initialize() {
     Future.microtask(() async {
       await _loadSavedData();
       await _loadUnitContext();
+      await _loadResidentContext();
     });
   }
 
@@ -76,7 +134,6 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _paymentSub?.cancel();
-    AppEventBus().off('show_payment_success');
 
     _fullNameCtrl.dispose();
     _apartmentNumberCtrl.dispose();
@@ -106,7 +163,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       if (pendingId == null) return;
 
       final registrationId = pendingId;
-      final res = await api.dio.get('/elevator-card/$registrationId');
+      final client = await _servicesCardClient();
+      final res = await client.get('/elevator-card/$registrationId');
       final data = res.data;
       if (data is! Map<String, dynamic>) return;
       final paymentStatus = data['paymentStatus']?.toString();
@@ -115,9 +173,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       if (paymentStatus == 'PAID') {
         await prefs.remove(_pendingPaymentKey);
         if (mounted) {
-          AppEventBus().emit(
-            'show_payment_success',
-            'Đăng ký thẻ thang máy đã được thanh toán.',
+          _navigateToServicesHome(
+            snackMessage: 'Đăng ký thẻ thang máy đã được thanh toán.',
           );
         }
         return;
@@ -160,6 +217,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
         'citizenId': _citizenIdCtrl.text,
         'phoneNumber': _phoneNumberCtrl.text,
         'note': _noteCtrl.text,
+        'residentId': _residentId,
+        'unitId': _selectedUnitId,
       };
       await prefs.setString(_storageKey, jsonEncode(data));
     } catch (e) {
@@ -182,6 +241,7 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
         _citizenIdCtrl.text = data['citizenId'] ?? '';
         _phoneNumberCtrl.text = data['phoneNumber'] ?? '';
         _noteCtrl.text = data['note'] ?? '';
+        _residentId = data['residentId']?.toString() ?? _residentId;
       });
     } catch (e) {
       debugPrint('❌ Lỗi khôi phục dữ liệu nháp: $e');
@@ -236,6 +296,58 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     _hasUnsavedChanges = false;
   }
 
+  Future<void> _loadResidentContext() async {
+    try {
+      final profileService = ProfileService(api.dio);
+      final profile = await profileService.getProfile();
+
+      final candidateResidentId = profile['residentId']?.toString();
+      final profileFullName =
+          profile['fullName']?.toString() ?? profile['name']?.toString();
+      final profileCitizenId = profile['citizenId']?.toString() ??
+          profile['identityNumber']?.toString();
+      final profilePhone =
+          profile['phoneNumber']?.toString() ?? profile['phone']?.toString();
+
+      setState(() {
+        _defaultFullName = profileFullName ?? _defaultFullName;
+        _defaultCitizenId = profileCitizenId ?? _defaultCitizenId;
+        _defaultPhoneNumber = profilePhone ?? _defaultPhoneNumber;
+
+        if (_fullNameCtrl.text.isEmpty &&
+            (_defaultFullName?.isNotEmpty ?? false)) {
+          _fullNameCtrl.text = _defaultFullName!;
+        }
+        if (_citizenIdCtrl.text.isEmpty &&
+            (_defaultCitizenId?.isNotEmpty ?? false)) {
+          _citizenIdCtrl.text = _defaultCitizenId!;
+        }
+        if (_phoneNumberCtrl.text.isEmpty &&
+            (_defaultPhoneNumber?.isNotEmpty ?? false)) {
+          _phoneNumberCtrl.text = _defaultPhoneNumber!;
+        }
+        if (_residentId == null || _residentId!.isEmpty) {
+          _residentId = candidateResidentId;
+        }
+      });
+
+      if (_residentId == null || _residentId!.isEmpty) {
+        final units = await _contractService.getMyUnits();
+        for (final unit in units) {
+          final candidate = unit.primaryResidentId?.toString();
+          if (candidate != null && candidate.isNotEmpty) {
+            setState(() {
+              _residentId = candidate;
+            });
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Lỗi tải thông tin cư dân: $e');
+    }
+  }
+
   Future<void> _clearSavedData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -275,26 +387,31 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   }
 
   void _listenForPaymentResult() {
-    AppEventBus().on('show_payment_success', (message) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              '✅ Thanh toán thành công! ${message ?? "Đăng ký thẻ thang máy đã được lưu."}'),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+    // Check initial link when app is opened from deep link
+    _appLinks.getInitialLink().then((Uri? uri) {
+      if (uri != null &&
+          uri.scheme == 'qhomeapp' &&
+          uri.host == 'vnpay-elevator-card-result') {
+        _handleDeepLinkPayment(uri);
+      }
+    }).catchError((err) {
+      debugPrint('❌ Lỗi khi lấy initial link: $err');
     });
 
-    _paymentSub = _appLinks.uriLinkStream.listen((uri) async {
+    // Listen for subsequent deep links
+    _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
+      if (uri == null) return;
       if (uri.scheme != 'qhomeapp' || uri.host != 'vnpay-elevator-card-result')
         return;
       await _handleDeepLinkPayment(uri);
+    }, onError: (err) {
+      debugPrint('❌ Lỗi khi nhận deep link: $err');
     });
   }
 
   Future<void> _handleDeepLinkPayment(Uri uri) async {
+    if (!mounted) return;
+
     final registrationId = uri.queryParameters['registrationId'];
     final responseCode = uri.queryParameters['responseCode'];
     final successParam = uri.queryParameters['success'];
@@ -327,18 +444,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     await _clearSavedData();
 
     if (!mounted) return;
-
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const MainShell(initialIndex: 1),
-      ),
-      (route) => false,
-    );
-
-    AppEventBus().emit(
-      'show_payment_success',
-      'Đăng ký thẻ thang máy đã được thanh toán thành công!',
+    _navigateToServicesHome(
+      snackMessage: 'Đăng ký thẻ thang máy đã được thanh toán thành công!',
     );
   }
 
@@ -368,7 +475,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
 
   Future<void> _syncRegistrationStatus(String registrationId) async {
     try {
-      final res = await api.dio.get('/elevator-card/$registrationId');
+      final client = await _servicesCardClient();
+      final res = await client.get('/elevator-card/$registrationId');
       final data = res.data;
       if (data is! Map<String, dynamic>) return;
       final paymentStatus = data['paymentStatus']?.toString();
@@ -435,6 +543,7 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
         'phoneNumber': _phoneNumberCtrl.text,
         'note': _noteCtrl.text.isNotEmpty ? _noteCtrl.text : null,
         'unitId': _selectedUnitId,
+        'residentId': _residentId,
       };
 
   Future<void> _handleRegisterPressed() async {
@@ -446,6 +555,17 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
         const SnackBar(
           content: Text(
               'Không xác định được căn hộ hiện tại. Vui lòng quay lại màn hình chính.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (_residentId == null || _residentId!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Không tìm thấy thông tin cư dân. Vui lòng thử lại sau hoặc liên hệ quản trị.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -626,7 +746,8 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
 
     try {
       final payload = _collectPayload();
-      final res = await api.dio.post('/elevator-card/vnpay-url', data: payload);
+      final client = await _servicesCardClient();
+      final res = await client.post('/elevator-card/vnpay-url', data: payload);
 
       registrationId = res.data['registrationId']?.toString();
       final paymentUrl = res.data['paymentUrl'] as String;
@@ -637,9 +758,24 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
         _clearForm();
 
         final uri = Uri.parse(paymentUrl);
-        if (await canLaunchUrl(uri)) {
+        bool launched = false;
+        if (!kIsWeb && Platform.isAndroid) {
+          try {
+            final intent = AndroidIntent(
+              action: 'action_view',
+              data: paymentUrl,
+            );
+            await intent.launchChooser('Chọn trình duyệt để thanh toán');
+            launched = true;
+          } catch (e) {
+            debugPrint('⚠️ Không thể mở chooser, fallback url_launcher: $e');
+          }
+        }
+        if (!launched && await canLaunchUrl(uri)) {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
-        } else {
+          launched = true;
+        }
+        if (!launched) {
           await prefs.remove(_pendingPaymentKey);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -674,7 +810,8 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
   Future<void> _cancelRegistration(String registrationId) async {
     try {
       log('🗑️ [RegisterElevatorCard] Hủy đăng ký: $registrationId');
-      await api.dio.delete('/elevator-card/$registrationId/cancel');
+      final client = await _servicesCardClient();
+      await client.delete('/elevator-card/$registrationId/cancel');
       log('✅ [RegisterElevatorCard] Đã hủy đăng ký thành công');
     } catch (e) {
       log('❌ [RegisterElevatorCard] Lỗi khi hủy đăng ký: $e');
@@ -780,9 +917,19 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
                       hint: 'Nhập họ và tên',
                       fieldKey: 'fullName',
                       icon: Icons.person_outline,
-                      validator: (v) => v == null || v.isEmpty
-                          ? 'Vui lòng nhập họ và tên'
-                          : null,
+                      validator: (v) {
+                        if (v == null || v.isEmpty) {
+                          return 'Vui lòng nhập họ và tên';
+                        }
+                        final trimmed = v.trim();
+                        if (trimmed.isEmpty) {
+                          return 'Họ và tên không được chỉ chứa khoảng trắng';
+                        }
+                        if (trimmed.length > 100) {
+                          return 'Họ và tên không được vượt quá 100 ký tự';
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 18),
                     _buildTextField(
@@ -812,12 +959,29 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
                     _buildTextField(
                       controller: _citizenIdCtrl,
                       label: 'Căn cước công dân',
-                      hint: 'Nhập số căn cước công dân',
+                      hint: 'Nhập số căn cước công dân (12 số)',
                       fieldKey: 'citizenId',
                       icon: Icons.badge_outlined,
-                      validator: (v) => v == null || v.isEmpty
-                          ? 'Vui lòng nhập căn cước công dân'
-                          : null,
+                      keyboardType: TextInputType.number,
+                      validator: (v) {
+                        if (v == null || v.isEmpty) {
+                          return 'Vui lòng nhập căn cước công dân';
+                        }
+                        final trimmed = v.trim().replaceAll(RegExp(r'[\s-]'), '');
+                        if (trimmed.isEmpty) {
+                          return 'Căn cước công dân không được chỉ chứa khoảng trắng hoặc dấu gạch ngang';
+                        }
+                        if (!RegExp(r'^[0-9]+$').hasMatch(trimmed)) {
+                          return 'Căn cước công dân chỉ được chứa số';
+                        }
+                        if (trimmed.length != 9 && trimmed.length != 12) {
+                          return 'Căn cước công dân phải có 9 số (CMND) hoặc 12 số (CCCD)';
+                        }
+                        if (trimmed.length > 20) {
+                          return 'Căn cước công dân không được vượt quá 20 ký tự';
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 18),
                     _buildTextField(
@@ -831,8 +995,24 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
                         if (v == null || v.isEmpty) {
                           return 'Vui lòng nhập số điện thoại';
                         }
-                        if (!RegExp(r'^[0-9]{10,11}$').hasMatch(v)) {
+                        final trimmed = v.trim().replaceAll(RegExp(r'[\s()-]'), '');
+                        if (trimmed.isEmpty) {
+                          return 'Số điện thoại không được chỉ chứa khoảng trắng hoặc ký tự đặc biệt';
+                        }
+                        // Allow digits, +, -, spaces, parentheses (backend pattern: ^[0-9+\-\\s()]+$)
+                        if (!RegExp(r'^[0-9+\-()\s]+$').hasMatch(v)) {
                           return 'Số điện thoại không hợp lệ';
+                        }
+                        // Check if it's a valid Vietnamese phone number (10-11 digits when cleaned)
+                        if (!RegExp(r'^[0-9]{10,11}$').hasMatch(trimmed)) {
+                          return 'Số điện thoại phải có 10 hoặc 11 số';
+                        }
+                        // Check if starts with 0 for Vietnamese numbers
+                        if (!trimmed.startsWith('0') && !trimmed.startsWith('+84')) {
+                          return 'Số điện thoại Việt Nam phải bắt đầu bằng 0 hoặc +84';
+                        }
+                        if (v.length > 20) {
+                          return 'Số điện thoại không được vượt quá 20 ký tự';
                         }
                         return null;
                       },

@@ -62,5 +62,25 @@ class TokenStorage {
     await _storage.delete(key: 'biometricPassword');
   }
 
+  // Fingerprint-specific methods
+  Future<void> writeFingerprintEnabled(bool enabled) async =>
+      _storage.write(key: 'fingerprintEnabled', value: enabled.toString());
+
+  Future<bool> readFingerprintEnabled() async {
+    final value = await _storage.read(key: 'fingerprintEnabled');
+    return value == 'true';
+  }
+
+  // Face-specific methods removed per requirement
+
+  // Clear both fingerprint and face settings
+  Future<void> clearAllBiometricSettings() async {
+    await _storage.delete(key: 'biometricUsername');
+    await _storage.delete(key: 'biometricPassword');
+    await _storage.delete(key: 'biometricEnabled');
+    await _storage.delete(key: 'fingerprintEnabled');
+    await _storage.delete(key: 'faceEnabled');
+  }
+
   Future<void> deleteAll() async => _storage.deleteAll();
 }

@@ -1,10 +1,11 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 
 import '../contracts/contract_service.dart';
+import '../core/app_router.dart';
 import '../core/push_notification_service.dart';
-import '../login/login_screen.dart';
 import '../models/unit_info.dart';
 import '../profile/profile_service.dart';
 import 'api_client.dart';
@@ -75,6 +76,7 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  // Legacy methods (for backward compatibility)
   Future<void> enableBiometricLogin(String username, String password) async {
     await storage.writeBiometricCredentials(
       username: username,
@@ -91,8 +93,12 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> isBiometricLoginEnabled() => storage.readBiometricEnabled();
 
   Future<({String username, String password})?> getBiometricCredentials() async {
-    final enabled = await storage.readBiometricEnabled();
-    if (!enabled) return null;
+    // Check if any biometric is enabled (fingerprint or legacy)
+    final fingerprintEnabled = await storage.readFingerprintEnabled();
+    final legacyEnabled = await storage.readBiometricEnabled();
+
+    if (!fingerprintEnabled && !legacyEnabled) return null;
+    
     final username = await storage.readBiometricUsername();
     final password = await storage.readBiometricPassword();
     if (username == null || password == null) {
@@ -106,6 +112,25 @@ class AuthProvider extends ChangeNotifier {
     if (credentials == null) return false;
     return loginViaIam(credentials.username, credentials.password);
   }
+
+  // Fingerprint-specific methods
+  Future<void> enableFingerprintLogin(String username, String password) async {
+    // Store credentials (shared between fingerprint and face)
+    await storage.writeBiometricCredentials(
+      username: username,
+      password: password,
+    );
+    await storage.writeFingerprintEnabled(true);
+  }
+
+  Future<void> disableFingerprintLogin() async {
+    await storage.writeFingerprintEnabled(false);
+    await storage.clearBiometricCredentials();
+  }
+
+  Future<bool> isFingerprintLoginEnabled() => storage.readFingerprintEnabled();
+
+  // Face-specific methods removed per requirement
 
   Future<String?> getStoredUsername() => storage.readUsername();
 
@@ -141,17 +166,22 @@ class AuthProvider extends ChangeNotifier {
 Future<void> logout(BuildContext context) async {
   try {
     await authService.logout();
+  } catch (e) {
+    debugPrint('⚠️ Logout API error: $e');
   } finally {
-    await PushNotificationService.instance.unregisterToken();
+    try {
+      await PushNotificationService.instance.unregisterToken();
+    } catch (e) {
+      debugPrint('⚠️ Unregister token error: $e');
+    }
+    
     await storage.deleteAll();
     _isAuthenticated = false;
     notifyListeners();
 
     if (context.mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-        (route) => false,
-      );
+      // Use go_router to navigate to login screen
+      context.go(AppRoute.login.path);
     }
   }
 }

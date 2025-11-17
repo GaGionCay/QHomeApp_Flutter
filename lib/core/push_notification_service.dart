@@ -2,20 +2,17 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'device_token_repository.dart';
-import '../firebase_options.dart';
 
 typedef NotificationTapCallback = void Function(RemoteMessage message);
 
 class PushNotificationService {
   PushNotificationService._();
 
-  static final PushNotificationService instance =
-      PushNotificationService._();
+  static final PushNotificationService instance = PushNotificationService._();
 
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications =
@@ -25,8 +22,7 @@ class PushNotificationService {
   final StreamController<RemoteMessage> _notificationClicks =
       StreamController.broadcast();
 
-  Stream<RemoteMessage> get notificationClicks =>
-      _notificationClicks.stream;
+  Stream<RemoteMessage> get notificationClicks => _notificationClicks.stream;
 
   bool _initialized = false;
   AndroidNotificationChannel? _channel;
@@ -68,9 +64,6 @@ class PushNotificationService {
       });
     }
 
-    FirebaseMessaging.onBackgroundMessage(
-      _firebaseMessagingBackgroundHandler,
-    );
 
     await _registerTokenWithServer();
 
@@ -117,8 +110,7 @@ class PushNotificationService {
 
   Future<void> _setupLocalNotifications() async {
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const initializationSettings =
-        InitializationSettings(android: androidInit);
+    const initializationSettings = InitializationSettings(android: androidInit);
 
     await _localNotifications.initialize(
       initializationSettings,
@@ -173,35 +165,33 @@ class PushNotificationService {
   }
 
   Future<void> _registerTokenWithServer({String? tokenOverride}) async {
-    if (_deviceTokenRepository == null) return;
-    final token = tokenOverride ?? await _messaging.getToken();
-    if (token == null) return;
-    _cachedToken = token;
-    final residentId =
-        _residentIdProvider != null ? await _residentIdProvider!() : null;
-    final buildingId =
-        _buildingIdProvider != null ? await _buildingIdProvider!() : null;
-    final role = _roleProvider != null ? await _roleProvider!() : null;
     try {
+      if (_deviceTokenRepository == null) return;
+      final token = tokenOverride ?? await _messaging.getToken();
+      if (token == null) {
+        debugPrint('⚠️ Không nhận được FCM token (null).');
+        return;
+      }
+      _cachedToken = token;
+      final residentId =
+          _residentIdProvider != null ? await _residentIdProvider!() : null;
+      final buildingId =
+          _buildingIdProvider != null ? await _buildingIdProvider!() : null;
+      final role = _roleProvider != null ? await _roleProvider!() : null;
+
       await _deviceTokenRepository!.registerToken(
         token: token,
         residentId: residentId,
         buildingId: buildingId,
         role: role,
-        platform: defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android',
+        platform:
+            defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android',
       );
       debugPrint('✅ FCM token registered with backend');
-    } catch (e) {
-      debugPrint('⚠️ Failed to register FCM token: $e');
+    } catch (e, stack) {
+      debugPrint('⚠️ Không thể đăng ký FCM token: $e');
+      debugPrint('$stack');
     }
   }
-}
-
-@pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  await FirebaseMessaging.instance.setAutoInitEnabled(true);
 }
 
