@@ -1009,12 +1009,14 @@ class _CardDetailSheet extends StatefulWidget {
 class _CardDetailSheetState extends State<_CardDetailSheet> {
   final ApiClient _apiClient = ApiClient();
   bool _isProcessingPayment = false;
+  bool _isCancelling = false;
+  bool _isRequestingReplacement = false;
   final DateFormat _dateTimeFmt = DateFormat('dd/MM/yyyy HH:mm');
 
   bool _canResumePayment() {
-    final paymentStatus = widget.card.paymentStatus?.toUpperCase() ?? '';
-    final status = widget.card.status?.toUpperCase() ?? '';
-    final cardType = widget.card.cardType.toUpperCase();
+    final paymentStatus = widget.card.paymentStatus?.trim().toUpperCase() ?? '';
+    final status = widget.card.status?.trim().toUpperCase() ?? '';
+    final cardType = widget.card.cardType.trim().toUpperCase();
     
     // Chỉ cho phép tiếp tục thanh toán nếu:
     // 1. payment_status là UNPAID, PAYMENT_PENDING, hoặc PAYMENT_APPROVAL (cho vehicle)
@@ -1073,46 +1075,12 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
         throw Exception('Không nhận được đường dẫn thanh toán');
       }
       
-      // Đóng bottom sheet
+      // Refresh danh sách sau khi tạo link thanh toán
+      widget.onRefresh();
       if (mounted) {
         Navigator.of(context).pop();
       }
-      
-      // Mở trình duyệt thanh toán
-      final uri = Uri.parse(paymentUrl);
-      bool launched = false;
-      
-      if (!kIsWeb && Platform.isAndroid) {
-        try {
-          final intent = AndroidIntent(
-            action: 'action_view',
-            data: paymentUrl,
-          );
-          await intent.launchChooser('Chọn trình duyệt để thanh toán');
-          launched = true;
-        } catch (e) {
-          debugPrint('⚠️ Không thể mở chooser: $e');
-        }
-      }
-      
-      if (!launched) {
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-          launched = true;
-        }
-      }
-      
-      if (!launched && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Không thể mở trình duyệt thanh toán'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      
-      // Refresh danh sách sau khi thanh toán
-      widget.onRefresh();
+      await _launchPaymentUrl(paymentUrl);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1143,6 +1111,407 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
     }
     
     return dio;
+  }
+
+  bool _canRequestReplacement() {
+    final cardType = widget.card.cardType.trim().toUpperCase();
+    final status = widget.card.status?.trim().toUpperCase() ?? '';
+    final paymentStatus =
+        widget.card.paymentStatus?.trim().toUpperCase() ?? '';
+
+    if (status != 'CANCELLED') return false;
+    if (paymentStatus != 'PAID') return false;
+
+    return cardType.contains('RESIDENT') ||
+        cardType.contains('ELEVATOR') ||
+        cardType.contains('VEHICLE');
+  }
+
+  Future<void> _requestReplacement() async {
+    if (_isRequestingReplacement) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Yêu cầu cấp lại thẻ'),
+        content: const Text(
+          'Hệ thống sẽ sử dụng lại toàn bộ thông tin của thẻ này để tạo yêu cầu cấp lại mới. Bạn chỉ cần thanh toán để hoàn tất.\n\nBạn có muốn tiếp tục?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Tiếp tục', style: TextStyle(color: Colors.teal)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isRequestingReplacement = true);
+
+    try {
+      final cardType = widget.card.cardType.trim().toUpperCase();
+      if (cardType.contains('RESIDENT')) {
+        await _requestReplacementResident();
+      } else if (cardType.contains('ELEVATOR')) {
+        await _requestReplacementElevator();
+      } else if (cardType.contains('VEHICLE')) {
+        await _requestReplacementVehicle();
+      } else {
+        throw Exception('Loại thẻ không hỗ trợ cấp lại');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể cấp lại thẻ: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRequestingReplacement = false);
+      }
+    }
+  }
+
+  bool _canCancelCard() {
+    final status = widget.card.status?.trim().toUpperCase() ?? '';
+    if (status == 'CANCELLED' || status == 'REJECTED' || status == 'VOID') {
+      return false;
+    }
+    final paymentStatus =
+        widget.card.paymentStatus?.trim().toUpperCase() ?? '';
+    return paymentStatus == 'PAID';
+  }
+
+  Future<void> _cancelCard() async {
+    if (_isCancelling) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Hủy thẻ hiện tại'),
+        content: const Text(
+          'Sau khi hủy, thẻ này sẽ bị vô hiệu hóa hoàn toàn và không thể sử dụng nữa. Bạn có chắc chắn muốn tiếp tục?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Giữ lại'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Hủy thẻ', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isCancelling = true);
+
+    try {
+      final client = await _getServicesCardClient();
+      final cardType = widget.card.cardType.trim().toUpperCase();
+      String endpoint;
+      if (cardType.contains('ELEVATOR')) {
+        endpoint = '/elevator-card/${widget.card.id}/cancel';
+      } else if (cardType.contains('RESIDENT')) {
+        endpoint = '/resident-card/${widget.card.id}/cancel';
+      } else if (cardType.contains('VEHICLE')) {
+        endpoint = '/register-service/${widget.card.id}/cancel';
+      } else {
+        throw Exception('Loại thẻ không hỗ trợ hủy');
+      }
+
+      final res = await client.delete(endpoint);
+      if (res.statusCode != null &&
+          res.statusCode! >= 200 &&
+          res.statusCode! < 300) {
+        widget.onRefresh();
+        if (mounted) {
+          Navigator.of(context).pop();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Đã hủy thẻ. Bạn có thể đăng ký thẻ mới.'),
+            ),
+          );
+        }
+      } else {
+        throw Exception('Không thể hủy thẻ (mã lỗi ${res.statusCode})');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể hủy thẻ: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isCancelling = false);
+      }
+    }
+  }
+
+  Future<void> _requestReplacementResident() async {
+    final client = await _getServicesCardClient();
+    final detailRes = await client.get('/resident-card/${widget.card.id}');
+
+    if (detailRes.statusCode != 200 || detailRes.data is! Map) {
+      throw Exception('Không thể lấy thông tin thẻ gốc');
+    }
+
+    final detail = Map<String, dynamic>.from(detailRes.data as Map);
+    final unitId = detail['unitId'] ?? widget.card.unitId;
+    final residentId = detail['residentId'] ?? widget.card.residentId;
+    final fullName =
+        detail['fullName'] ?? detail['displayName'] ?? widget.card.displayName;
+    final apartmentNumber =
+        detail['apartmentNumber'] ?? widget.card.apartmentNumber;
+    final buildingName = detail['buildingName'] ?? widget.card.buildingName;
+    final citizenId = detail['citizenId'];
+    final phoneNumber = detail['phoneNumber'];
+
+    final missing = <String>[];
+    if (unitId == null || unitId.toString().isEmpty) missing.add('căn hộ');
+    if (residentId == null || residentId.toString().isEmpty) missing.add('cư dân');
+    if (fullName == null || fullName.toString().isEmpty) missing.add('họ tên');
+    if (apartmentNumber == null || apartmentNumber.toString().isEmpty) {
+      missing.add('số căn hộ');
+    }
+    if (buildingName == null || buildingName.toString().isEmpty) {
+      missing.add('tòa nhà');
+    }
+    if (citizenId == null || citizenId.toString().isEmpty) missing.add('CCCD/CMND');
+    if (phoneNumber == null || phoneNumber.toString().isEmpty) {
+      missing.add('số điện thoại');
+    }
+
+    if (missing.isNotEmpty) {
+      throw Exception('Thiếu thông tin bắt buộc: ${missing.join(', ')}');
+    }
+
+    final payload = {
+      'unitId': unitId,
+      'residentId': residentId,
+      'requestType': 'REPLACE_CARD',
+      'fullName': fullName,
+      'apartmentNumber': apartmentNumber,
+      'buildingName': buildingName,
+      'citizenId': citizenId,
+      'phoneNumber': phoneNumber,
+      'note': _buildReplacementNote(detail['note']),
+    };
+
+    final response =
+        await client.post('/resident-card/vnpay-url', data: payload);
+    if (response.statusCode != 200 || response.data is! Map) {
+      throw Exception('Không thể khởi tạo yêu cầu cấp lại');
+    }
+
+    final data = response.data as Map;
+    final paymentUrl = data['paymentUrl']?.toString();
+
+    if (paymentUrl == null || paymentUrl.isEmpty) {
+      throw Exception('Thiếu thông tin thanh toán cho yêu cầu cấp lại');
+    }
+
+    widget.onRefresh();
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+    await _launchPaymentUrl(paymentUrl);
+  }
+
+  Future<void> _requestReplacementElevator() async {
+    final client = await _getServicesCardClient();
+    final detailRes = await client.get('/elevator-card/${widget.card.id}');
+
+    if (detailRes.statusCode != 200 || detailRes.data is! Map) {
+      throw Exception('Không thể lấy thông tin thẻ gốc');
+    }
+
+    final detail = Map<String, dynamic>.from(detailRes.data as Map);
+    final unitId = detail['unitId'] ?? widget.card.unitId;
+    final residentId = detail['residentId'] ?? widget.card.residentId;
+    final apartmentNumber =
+        detail['apartmentNumber'] ?? widget.card.apartmentNumber;
+    final buildingName = detail['buildingName'] ?? widget.card.buildingName;
+    final phoneNumber = detail['phoneNumber'];
+
+    final missing = <String>[];
+    if (unitId == null || unitId.toString().isEmpty) missing.add('căn hộ');
+    if (residentId == null || residentId.toString().isEmpty) missing.add('cư dân');
+    if (apartmentNumber == null || apartmentNumber.toString().isEmpty) {
+      missing.add('số căn hộ');
+    }
+    if (buildingName == null || buildingName.toString().isEmpty) {
+      missing.add('tòa nhà');
+    }
+    if (phoneNumber == null || phoneNumber.toString().isEmpty) {
+      missing.add('số điện thoại');
+    }
+
+    if (missing.isNotEmpty) {
+      throw Exception('Thiếu thông tin bắt buộc: ${missing.join(', ')}');
+    }
+
+    final payload = {
+      'unitId': unitId,
+      'residentId': residentId,
+      'requestType': 'REPLACE_CARD',
+      'apartmentNumber': apartmentNumber,
+      'buildingName': buildingName,
+      'phoneNumber': phoneNumber,
+      'note': _buildReplacementNote(detail['note']),
+    };
+
+    final response =
+        await client.post('/elevator-card/vnpay-url', data: payload);
+    if (response.statusCode != 200 || response.data is! Map) {
+      throw Exception('Không thể khởi tạo yêu cầu cấp lại');
+    }
+
+    final data = response.data as Map;
+    final paymentUrl = data['paymentUrl']?.toString();
+
+    if (paymentUrl == null || paymentUrl.isEmpty) {
+      throw Exception('Thiếu thông tin thanh toán cho yêu cầu cấp lại');
+    }
+
+    widget.onRefresh();
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+    await _launchPaymentUrl(paymentUrl);
+  }
+
+  Future<void> _requestReplacementVehicle() async {
+    final client = await _getServicesCardClient();
+    final detailRes = await client.get('/register-service/${widget.card.id}');
+
+    if (detailRes.statusCode != 200 || detailRes.data is! Map) {
+      throw Exception('Không thể lấy thông tin thẻ gốc');
+    }
+
+    final detail = Map<String, dynamic>.from(detailRes.data as Map);
+    final unitId = detail['unitId'] ?? widget.card.unitId;
+    final serviceType =
+        detail['serviceType'] ?? 'VEHICLE_REGISTRATION';
+    final vehicleType = detail['vehicleType'];
+    final licensePlate = detail['licensePlate'];
+    final vehicleBrand = detail['vehicleBrand'];
+    final vehicleColor = detail['vehicleColor'];
+    final apartmentNumber =
+        detail['apartmentNumber'] ?? widget.card.apartmentNumber;
+    final buildingName = detail['buildingName'] ?? widget.card.buildingName;
+    final images = (detail['images'] as List?)
+        ?.map((img) => (img as Map?)?['imageUrl']?.toString())
+        .whereType<String>()
+        .where((url) => url.isNotEmpty)
+        .toList();
+
+    final missing = <String>[];
+    if (unitId == null || unitId.toString().isEmpty) missing.add('căn hộ');
+    if (licensePlate == null || licensePlate.toString().isEmpty) {
+      missing.add('biển số xe');
+    }
+    if (vehicleType == null || vehicleType.toString().isEmpty) {
+      missing.add('loại phương tiện');
+    }
+
+    if (missing.isNotEmpty) {
+      throw Exception('Thiếu thông tin bắt buộc: ${missing.join(', ')}');
+    }
+
+    final payload = {
+      'serviceType': serviceType,
+      'requestType': 'REPLACE_CARD',
+      'note': _buildReplacementNote(detail['note']),
+      'unitId': unitId,
+      'vehicleType': vehicleType,
+      'licensePlate': licensePlate,
+      'vehicleBrand': vehicleBrand,
+      'vehicleColor': vehicleColor,
+      'apartmentNumber': apartmentNumber,
+      'buildingName': buildingName,
+      if (images != null && images.isNotEmpty) 'imageUrls': images,
+    };
+
+    final response =
+        await client.post('/register-service/vnpay-url', data: payload);
+    if (response.statusCode != 200 || response.data is! Map) {
+      throw Exception('Không thể khởi tạo yêu cầu cấp lại');
+    }
+
+    final data = response.data as Map;
+    final paymentUrl = data['paymentUrl']?.toString();
+
+    if (paymentUrl == null || paymentUrl.isEmpty) {
+      throw Exception('Thiếu thông tin thanh toán cho yêu cầu cấp lại');
+    }
+
+    widget.onRefresh();
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+    await _launchPaymentUrl(paymentUrl);
+  }
+
+  String _buildReplacementNote(dynamic originalNote) {
+    final base = StringBuffer('Yêu cầu cấp lại từ thẻ ${widget.card.id}');
+    if (originalNote != null) {
+      final note = originalNote.toString();
+      if (note.isNotEmpty) {
+        base.write(' | Ghi chú cũ: $note');
+      }
+    } else if (widget.card.note != null && widget.card.note!.isNotEmpty) {
+      base.write(' | Ghi chú cũ: ${widget.card.note}');
+    }
+    return base.toString();
+  }
+
+  Future<void> _launchPaymentUrl(String paymentUrl) async {
+    final uri = Uri.parse(paymentUrl);
+    bool launched = false;
+
+    if (!kIsWeb && Platform.isAndroid) {
+      try {
+        final intent = AndroidIntent(
+          action: 'action_view',
+          data: paymentUrl,
+        );
+        await intent.launchChooser('Chọn trình duyệt để thanh toán');
+        launched = true;
+      } catch (e) {
+        debugPrint('⚠️ Không thể mở chooser: $e');
+      }
+    }
+
+    if (!launched && await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      launched = true;
+    }
+
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không thể mở trình duyệt thanh toán'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   String _cardTypeLabel(String? type) {
@@ -1274,6 +1643,8 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final canResume = _canResumePayment();
+    final canRequestReplacement = _canRequestReplacement();
+    final canCancel = _canCancelCard();
     
     return DraggableScrollableSheet(
       initialChildSize: 0.7,
@@ -1393,6 +1764,98 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
                         ],
                       ),
                     ),
+
+                  if (canCancel) ...[
+                    const SizedBox(height: 18),
+                    OutlinedButton.icon(
+                      onPressed: _isCancelling ? null : _cancelCard,
+                      icon: _isCancelling
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.cancel_outlined, color: Colors.red),
+                      label: Text(
+                        _isCancelling ? 'Đang hủy...' : 'Hủy thẻ hiện tại',
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        side: const BorderSide(color: Colors.red),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.errorContainer.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.warning_amber_rounded,
+                              size: 20, color: theme.colorScheme.error),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Sau khi hủy, thẻ này sẽ bị vô hiệu hóa hoàn toàn. Bạn cần hủy thẻ cũ trước khi đăng ký thẻ thay thế.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface.withOpacity(0.75),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  if (canRequestReplacement) ...[
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: _isRequestingReplacement ? null : _requestReplacement,
+                      icon: _isRequestingReplacement
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.credit_card),
+                      label: Text(
+                        _isRequestingReplacement
+                            ? 'Đang khởi tạo...'
+                            : 'Yêu cầu cấp lại thẻ',
+                      ),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.secondaryContainer.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.info_outline,
+                              size: 20, color: theme.colorScheme.secondary),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Chức năng này dùng lại toàn bộ thông tin của thẻ đã duyệt để tạo đăng ký cấp lại. Bạn chỉ cần thanh toán để hoàn tất.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface.withOpacity(0.75),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
