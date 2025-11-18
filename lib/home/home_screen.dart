@@ -40,6 +40,7 @@ import '../register/register_vehicle_screen.dart';
 import '../register/register_elevator_card_screen.dart';
 import '../register/register_resident_card_screen.dart';
 import '../qr/qr_scanner_screen.dart';
+import '../service_registration/service_requests_overview_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final void Function(int)? onNavigateToTab;
@@ -1980,6 +1981,20 @@ class _HomeScreenState extends State<HomeScreen> {
             context,
             MaterialPageRoute(
               builder: (_) => const RegisterResidentCardScreen(),
+            ),
+          );
+        },
+      ),
+      _ServiceCardData(
+        title: 'Yêu cầu dịch vụ',
+        subtitle: 'Theo dõi dọn dẹp & sửa chữa',
+        icon: Icons.cleaning_services_outlined,
+        accent: AppColors.skyMist,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const ServiceRequestsOverviewScreen(),
             ),
           );
         },
