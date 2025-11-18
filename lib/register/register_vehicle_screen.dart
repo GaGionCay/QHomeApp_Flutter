@@ -44,7 +44,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   final TextEditingController _buildingNameCtrl = TextEditingController();
 
   String _vehicleType = 'Car';
-  String _requestType = 'NEW_CARD'; // Default to 'Làm thẻ mới'
   bool _submitting = false;
   bool _confirmed = false;
   String? _editingField;
@@ -56,7 +55,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   String? _selectedUnitId;
   static const _selectedUnitPrefsKey = 'selected_unit_id';
   late final ContractService _contractService;
-  UnitInfo? _currentUnit;
 
   bool _hasUnsavedChanges = false;
   StreamSubscription<Uri?>? _paymentSub;
@@ -328,7 +326,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
       final prefs = await SharedPreferences.getInstance();
       final data = {
         'vehicleType': _vehicleType,
-        'requestType': _requestType,
         'licensePlate': _licenseCtrl.text,
         'vehicleBrand': _brandCtrl.text,
         'vehicleColor': _colorCtrl.text,
@@ -353,7 +350,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
 
         setState(() {
           _vehicleType = data['vehicleType'] ?? 'Car';
-          _requestType = data['requestType'] ?? 'NEW_CARD';
           _licenseCtrl.text = data['licensePlate'] ?? '';
           _brandCtrl.text = data['vehicleBrand'] ?? '';
           _colorCtrl.text = data['vehicleColor'] ?? '';
@@ -391,7 +387,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
 
       if (!mounted) {
         _selectedUnitId = selectedUnit?.id;
-        _currentUnit = selectedUnit;
         if (selectedUnit != null) {
           _applyUnitContext(selectedUnit);
         }
@@ -400,7 +395,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
 
       setState(() {
         _selectedUnitId = selectedUnit?.id;
-        _currentUnit = selectedUnit;
       });
 
       if (selectedUnit != null) {
@@ -413,64 +407,20 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   }
 
   void _applyUnitContext(UnitInfo unit) {
-    // Không tự động fill nữa, chỉ lưu thông tin unit
-    _hasUnsavedChanges = false;
+    _fillUnitContext(unit, markUnsaved: false);
   }
   
-  void _fillUnitContext(UnitInfo unit) {
+  void _fillUnitContext(UnitInfo unit, {bool markUnsaved = true}) {
     _apartmentNumberCtrl.text = unit.code;
     final building = (unit.buildingName?.isNotEmpty ?? false)
         ? unit.buildingName!
         : (unit.buildingCode ?? '');
     _buildingNameCtrl.text = building;
-    _hasUnsavedChanges = true;
-  }
-  
-  // Fill thông tin khi user click button
-  Future<void> _fillPersonalInfo() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Điền thông tin cá nhân'),
-        content: const Text(
-          'Bạn có muốn tự động điền thông tin căn hộ của tài khoản đang đăng nhập vào các trường không?\n\n'
-          'Các thông tin sẽ được điền vào:\n'
-          '- Số căn hộ\n'
-          '- Tòa nhà',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Hủy'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Điền thông tin', style: TextStyle(color: Colors.teal)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      setState(() {
-        if (_currentUnit != null) {
-          _fillUnitContext(_currentUnit!);
-        }
-        _hasUnsavedChanges = true;
-      });
-      _autoSave();
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Đã điền thông tin căn hộ'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
+    if (markUnsaved) {
+      _hasUnsavedChanges = true;
     }
   }
-
+  
   Future<void> _clearSavedData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -836,7 +786,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
 
   Map<String, dynamic> _collectPayload() => {
         'serviceType': 'VEHICLE_REGISTRATION',
-        'requestType': _requestType,
         'note': _noteCtrl.text.isNotEmpty ? _noteCtrl.text : null,
         'unitId': _selectedUnitId,
         'apartmentNumber': _apartmentNumberCtrl.text,
@@ -1028,8 +977,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
 
   String _getFieldLabel(String fieldKey) {
     switch (fieldKey) {
-      case 'requestType':
-        return 'loại yêu cầu';
       case 'apartmentNumber':
         return 'số căn hộ';
       case 'buildingName':
@@ -1091,29 +1038,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
 
   bool _isEditable(String field) =>
       !_confirmed || _editingField == field;
-
-  Widget _buildAutoFillButton() {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return OutlinedButton.icon(
-      onPressed: _fillPersonalInfo,
-      icon: Icon(Icons.auto_fix_high, color: colorScheme.primary),
-      label: Text(
-        'Điền thông tin căn hộ',
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: colorScheme.primary,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-        side: BorderSide(color: colorScheme.primary.withOpacity(0.5)),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-      ),
-    );
-  }
 
   Widget _buildFeeNoticeCard() {
     final theme = Theme.of(context);
@@ -1237,8 +1161,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
             ],
           ),
           const SizedBox(height: 16),
-          _buildRequestTypeDropdown(),
-          const SizedBox(height: 16),
           _buildEditableField(
             label: 'Số căn hộ',
             controller: _apartmentNumberCtrl,
@@ -1248,6 +1170,8 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
                 ? 'Vui lòng kiểm tra lại số căn hộ'
                 : null,
             hint: 'Hệ thống tự điền từ căn hộ đã chọn',
+            locked: true,
+            lockedHint: 'Hệ thống tự điền từ căn hộ đang chọn',
           ),
           const SizedBox(height: 16),
           _buildEditableField(
@@ -1258,6 +1182,8 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
             validator: (v) =>
                 v == null || v.isEmpty ? 'Vui lòng kiểm tra lại tòa nhà' : null,
             hint: 'Hệ thống tự điền theo căn hộ tương ứng',
+            locked: true,
+            lockedHint: 'Hệ thống tự điền, không thể chỉnh sửa',
           ),
           const SizedBox(height: 16),
           _buildEditableField(
@@ -1656,41 +1582,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     );
   }
 
-  Widget _buildRequestTypeDropdown() {
-    final isEditable = _isEditable('requestType');
-    return RegisterGlassDropdown<String>(
-      value: _requestType,
-      label: 'Loại yêu cầu',
-      hint: 'Chọn loại yêu cầu',
-      icon: Icons.category_outlined,
-      enabled: isEditable,
-      onDoubleTap: isEditable ? null : () => _requestEditField('requestType'),
-      onChanged: isEditable
-          ? (value) {
-              setState(() {
-                _requestType = value ?? 'NEW_CARD';
-                if (_confirmed) {
-                  _editingField = 'requestType';
-                  _hasEditedAfterConfirm = true;
-                }
-              });
-              _autoSave();
-            }
-          : null,
-      validator: (v) => v == null ? 'Vui lòng chọn loại yêu cầu' : null,
-      items: const [
-        DropdownMenuItem(
-          value: 'NEW_CARD',
-          child: Text('Làm thẻ mới'),
-        ),
-        DropdownMenuItem(
-          value: 'REPLACE_CARD',
-          child: Text('Cấp lại thẻ bị mất'),
-        ),
-      ],
-    );
-  }
-
   Future<void> _saveAndPay() async {
     setState(() => _submitting = true);
     String? registrationId;
@@ -1763,7 +1654,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
       _apartmentNumberCtrl.clear();
       _buildingNameCtrl.clear();
       _vehicleType = 'Car';
-      _requestType = 'NEW_CARD';
       _uploadedImageUrls.clear();
       _confirmed = false;
       _editingField = null;
@@ -1883,8 +1773,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
                   children: [
                     _buildFeeNoticeCard(),
                     const SizedBox(height: 20),
-                    _buildAutoFillButton(),
-                    const SizedBox(height: 20),
                     _buildVehicleFormCard(),
                     const SizedBox(height: 24),
                     _buildImageSection(),
@@ -1939,13 +1827,18 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     int maxLines = 1,
     TextInputType? keyboardType,
     String? hint,
+    bool locked = false,
+    String? lockedHint,
   }) {
-    final editable = _isEditable(fieldKey);
-    final isEditing = _editingField == fieldKey;
+    final baseEditable = _isEditable(fieldKey);
+    final effectiveEditable = !locked && baseEditable;
+    final isEditing = effectiveEditable && _editingField == fieldKey;
 
-    final displayHint = _confirmed && !editable
-        ? 'Nhấn đúp để yêu cầu chỉnh sửa'
-        : (hint ?? 'Nhập $label');
+    final displayHint = locked
+        ? (lockedHint ?? 'Hệ thống tự động điền, không thể chỉnh sửa')
+        : (_confirmed && !effectiveEditable
+            ? 'Nhấn đúp để yêu cầu chỉnh sửa'
+            : (hint ?? 'Nhập $label'));
 
     return RegisterGlassTextField(
       controller: controller,
@@ -1956,24 +1849,28 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
       keyboardType: keyboardType,
       maxLines: maxLines,
       enabled: true,
-      readOnly: !editable,
+      readOnly: !effectiveEditable,
       helperText:
           isEditing ? 'Đang chỉnh sửa... (Nhấn Done để hoàn tất)' : null,
-      onDoubleTap: () => _requestEditField(fieldKey),
-      onChanged: (value) {
-        if (isEditing) {
-          _autoSave();
-        }
-      },
-      onEditingComplete: () {
-        if (isEditing && mounted) {
-          FocusScope.of(context).unfocus();
-          setState(() {
-            _editingField = null;
-          });
-          _autoSave();
-        }
-      },
+      onDoubleTap: locked ? null : () => _requestEditField(fieldKey),
+      onChanged: effectiveEditable
+          ? (value) {
+              if (isEditing) {
+                _autoSave();
+              }
+            }
+          : null,
+      onEditingComplete: effectiveEditable
+          ? () {
+              if (isEditing && mounted) {
+                FocusScope.of(context).unfocus();
+                setState(() {
+                  _editingField = null;
+                });
+                _autoSave();
+              }
+            }
+          : null,
     );
   }
 }

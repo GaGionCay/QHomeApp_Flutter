@@ -16,7 +16,7 @@ import '../models/unit_info.dart';
 import '../services/card_registration_service.dart';
 
 enum _CardCategory { vehicle, resident, elevator }
-enum _StatusFilter { all, approved, paid }
+enum _StatusFilter { all, approved, paid, pending }
 
 class CardRegistrationsScreen extends StatefulWidget {
   const CardRegistrationsScreen({
@@ -70,6 +70,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
     _StatusFilter.all: 'Tất cả',
     _StatusFilter.approved: 'Đã duyệt',
     _StatusFilter.paid: 'Đã thanh toán',
+    _StatusFilter.pending: 'Chờ xử lý',
   };
 
   late final ApiClient _apiClient;
@@ -78,7 +79,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
   List<CardRegistrationSummary> _cards = const [];
   bool _isLoading = true;
   String? _error;
-  _CardCategory _selectedCategory = _CardCategory.vehicle;
+  _CardCategory _selectedCategory = _CardCategory.resident;
   _StatusFilter _statusFilter = _StatusFilter.all;
 
   DateTime? _fromDate;
@@ -187,7 +188,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
         _buildStatusFilter(theme),
         const SizedBox(height: 16),
         if (filteredCards.isEmpty)
-          _buildEmptyCategoryCard(theme, _selectedCategory)
+          _buildEmptyFilteredState(theme)
         else ..._buildGroupedByDay(theme, filteredCards),
         if (_isLoading && filteredCards.isNotEmpty)
           const Padding(
@@ -353,26 +354,29 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
         return _isApprovedCard(card);
       case _StatusFilter.paid:
         return _isPaidCard(card);
+      case _StatusFilter.pending:
+        return _isPendingCard(card);
     }
   }
 
   bool _isApprovedCard(CardRegistrationSummary card) {
     final status = card.status?.trim().toUpperCase();
-    if (status == null || status.isEmpty) {
-      return card.approvedAt != null;
-    }
-    if (status == 'APPROVED' ||
-        status == 'ISSUED' ||
-        status == 'ACTIVE' ||
-        status == 'COMPLETED') {
-      return true;
-    }
-    return card.approvedAt != null;
+    if (status == null || status.isEmpty) return false;
+    return _approvedStatuses.contains(status);
   }
 
   bool _isPaidCard(CardRegistrationSummary card) {
     final paymentStatus = card.paymentStatus?.trim().toUpperCase();
-    return paymentStatus == 'PAID';
+    if (paymentStatus == 'PAID') {
+      return true;
+    }
+    // Paid filter should include "chờ duyệt" items that have been paid
+    final status = card.status?.trim().toUpperCase();
+    if ((status == 'PENDING' || status == 'REVIEW_PENDING') &&
+        paymentStatus == 'PAID') {
+      return true;
+    }
+    return false;
   }
 
   _CardCategory _categoryOf(CardRegistrationSummary card) {
@@ -515,6 +519,73 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
             'Bạn chưa có đăng ký $label trong danh sách hiện tại. Vui lòng chọn loại thẻ khác hoặc tạo mới từ trang dịch vụ.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurface.withOpacity(0.65),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyFilteredState(ThemeData theme) {
+    if (_statusFilter == _StatusFilter.all) {
+      return _buildEmptyCategoryCard(theme, _selectedCategory);
+    }
+    return _buildEmptyFilterCard(theme, _selectedCategory, _statusFilter);
+  }
+
+  Widget _buildEmptyFilterCard(
+      ThemeData theme, _CardCategory category, _StatusFilter filter) {
+    final categoryLabel = _categoryLabels[category]!;
+    final filterLabel = _statusFilterLabels[filter]!;
+
+    String title;
+    String description;
+
+    switch (filter) {
+      case _StatusFilter.approved:
+        title = 'Chưa có thẻ đã duyệt';
+        description =
+            'Hiện chưa có $categoryLabel nào đã được duyệt. Khi thẻ được admin phê duyệt, chúng sẽ hiển thị ở đây.';
+        break;
+      case _StatusFilter.paid:
+        title = 'Chưa có thẻ đã thanh toán';
+        description =
+            'Bạn chưa có $categoryLabel nào đã thanh toán trong bộ lọc hiện tại. Vui lòng kiểm tra lại sau khi hoàn tất thanh toán.';
+        break;
+      case _StatusFilter.pending:
+        title = 'Không có thẻ chờ xử lý';
+        description =
+            'Tất cả $categoryLabel của bạn đều đã được cập nhật trạng thái. Các thẻ đang chờ duyệt hoặc chờ thanh toán sẽ xuất hiện tại đây.';
+        break;
+      case _StatusFilter.all:
+        title = 'Không có dữ liệu';
+        description =
+            'Không có $categoryLabel nào trong danh sách theo điều kiện lọc hiện tại.';
+        break;
+    }
+
+    return _HomeGlassSection(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style:
+                theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            description,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.7),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Bộ lọc: $filterLabel',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.5),
+              fontStyle: FontStyle.italic,
             ),
           ),
         ],
@@ -824,21 +895,21 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
 
   bool _isPendingCard(CardRegistrationSummary card) {
     final status = (card.status ?? '').toUpperCase();
-    if (status.isNotEmpty) {
-      if (_approvedStatuses.contains(status)) {
-        return false;
-      }
-      if (_terminalStatuses.contains(status)) {
-        return false;
-      }
+    // Pending filter: statuses explicitly waiting for approval/review/payment
+    if (status == 'PENDING' ||
+        status == 'REVIEW_PENDING' ||
+        status == 'READY_FOR_PAYMENT' ||
+        status == 'PAYMENT_PENDING' ||
+        status == 'PROCESSING' ||
+        status == 'IN_PROGRESS') {
       return true;
     }
-
+    // fallback: if status is empty but payment indicates still not done
     final payment = (card.paymentStatus ?? '').toUpperCase();
-    if (payment == 'PAID') {
-      return false;
+    if (status.isEmpty && payment.isNotEmpty && payment != 'PAID') {
+      return true;
     }
-    return payment.isNotEmpty;
+    return false;
   }
 
   String? _paymentStatusLabel(String? paymentStatus) {
@@ -931,12 +1002,6 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
     'APPROVED',
     'ACTIVE',
     'ISSUED',
-  };
-
-  static const Set<String> _terminalStatuses = {
-    'REJECTED',
-    'CANCELLED',
-    'VOID',
   };
 
   IconData _cardTypeIcon(String? type) {

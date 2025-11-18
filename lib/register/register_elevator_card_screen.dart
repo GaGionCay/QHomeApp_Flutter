@@ -6,6 +6,7 @@ import 'package:app_links/app_links.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart';
 import 'dart:io' show Platform;
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:go_router/go_router.dart';
@@ -50,7 +51,6 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   final AppLinks _appLinks = AppLinks();
   late final ContractService _contractService;
   String? _selectedUnitId;
-  UnitInfo? _currentUnit;
   String? _residentId;
   
   Dio? _servicesCardDio;
@@ -258,7 +258,6 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
 
       if (!mounted) {
         _selectedUnitId = selectedUnit?.id;
-        _currentUnit = selectedUnit;
         if (selectedUnit != null) {
           _applyUnitContext(selectedUnit);
         }
@@ -267,7 +266,6 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
 
       setState(() {
         _selectedUnitId = selectedUnit?.id;
-        _currentUnit = selectedUnit;
       });
 
       if (selectedUnit != null) {
@@ -282,17 +280,18 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   }
 
   void _applyUnitContext(UnitInfo unit) {
-    // Không tự động fill nữa, chỉ lưu thông tin unit
-    _hasUnsavedChanges = false;
+    _fillUnitContext(unit, markUnsaved: false);
   }
   
-  void _fillUnitContext(UnitInfo unit) {
+  void _fillUnitContext(UnitInfo unit, {bool markUnsaved = true}) {
     _apartmentNumberCtrl.text = unit.code;
     final building = (unit.buildingName?.isNotEmpty ?? false)
         ? unit.buildingName!
         : (unit.buildingCode ?? '');
     _buildingNameCtrl.text = building;
-    _hasUnsavedChanges = true;
+    if (markUnsaved) {
+      _hasUnsavedChanges = true;
+    }
   }
 
   Future<void> _loadMaxCardsInfo() async {
@@ -379,6 +378,10 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
 
       setState(() {
         _defaultPhoneNumber = profilePhone;
+        if ((_phoneNumberCtrl.text.isEmpty) &&
+            (_defaultPhoneNumber?.isNotEmpty ?? false)) {
+          _phoneNumberCtrl.text = _defaultPhoneNumber!;
+        }
         if (_residentId == null || _residentId!.isEmpty) {
           _residentId = candidateResidentId;
         }
@@ -401,55 +404,6 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     }
   }
   
-  // Fill thông tin khi user click button
-  Future<void> _fillPersonalInfo() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Điền thông tin cá nhân'),
-        content: const Text(
-          'Bạn có muốn tự động điền thông tin cá nhân của tài khoản đang đăng nhập vào các trường không?\n\n'
-          'Các thông tin sẽ được điền vào:\n'
-          '- Số căn hộ\n'
-          '- Tòa nhà\n'
-          '- Số điện thoại',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Hủy'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Điền thông tin', style: TextStyle(color: Colors.teal)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      setState(() {
-        if (_defaultPhoneNumber?.isNotEmpty ?? false) {
-          _phoneNumberCtrl.text = _defaultPhoneNumber!;
-        }
-        if (_currentUnit != null) {
-          _fillUnitContext(_currentUnit!);
-        }
-        _hasUnsavedChanges = true;
-      });
-      _autoSave();
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Đã điền thông tin cá nhân'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    }
-  }
-
   Future<void> _clearSavedData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -632,14 +586,18 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     // Không tự động apply unit context nữa
   }
 
-  Map<String, dynamic> _collectPayload() => {
-        'apartmentNumber': _apartmentNumberCtrl.text,
-        'buildingName': _buildingNameCtrl.text,
-        'phoneNumber': _phoneNumberCtrl.text,
-        'note': _noteCtrl.text.isNotEmpty ? _noteCtrl.text : null,
-        'unitId': _selectedUnitId,
-        'residentId': _residentId,
-      };
+  Map<String, dynamic> _collectPayload() {
+    final sanitizedPhone =
+        _phoneNumberCtrl.text.replaceAll(RegExp(r'\s+'), '');
+    return {
+      'apartmentNumber': _apartmentNumberCtrl.text,
+      'buildingName': _buildingNameCtrl.text,
+      'phoneNumber': sanitizedPhone,
+      'note': _noteCtrl.text.isNotEmpty ? _noteCtrl.text : null,
+      'unitId': _selectedUnitId,
+      'residentId': _residentId,
+    };
+  }
 
   Future<void> _handleRegisterPressed() async {
     FocusScope.of(context).unfocus();
@@ -819,6 +777,9 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
   }
 
   bool _isEditable(String field) {
+    if (field == 'apartmentNumber' || field == 'buildingName') {
+      return false;
+    }
     return !_confirmed || _editingField == field;
   }
 
@@ -1012,8 +973,6 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
                   children: [
                     _buildFeeInfoCard(),
                     const SizedBox(height: 20),
-                    _buildAutoFillButton(),
-                    const SizedBox(height: 20),
                     _buildTextField(
                       controller: _apartmentNumberCtrl,
                       label: 'Số căn hộ',
@@ -1044,28 +1003,25 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
                       fieldKey: 'phoneNumber',
                       icon: Icons.phone_iphone,
                       keyboardType: TextInputType.phone,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(10),
+                      ],
                       validator: (v) {
                         if (v == null || v.isEmpty) {
                           return 'Vui lòng nhập số điện thoại';
                         }
-                        final trimmed = v.trim().replaceAll(RegExp(r'[\s()-]'), '');
-                        if (trimmed.isEmpty) {
-                          return 'Số điện thoại không được chỉ chứa khoảng trắng hoặc ký tự đặc biệt';
+                        if (RegExp(r'\s').hasMatch(v)) {
+                          return 'Số điện thoại không được chứa dấu cách';
                         }
-                        // Allow digits, +, -, spaces, parentheses (backend pattern: ^[0-9+\-\\s()]+$)
-                        if (!RegExp(r'^[0-9+\-()\s]+$').hasMatch(v)) {
-                          return 'Số điện thoại không hợp lệ';
+                        if (!RegExp(r'^[0-9]+$').hasMatch(v)) {
+                          return 'Số điện thoại chỉ được chứa chữ số';
                         }
-                        // Check if it's a valid Vietnamese phone number (10-11 digits when cleaned)
-                        if (!RegExp(r'^[0-9]{10,11}$').hasMatch(trimmed)) {
-                          return 'Số điện thoại phải có 10 hoặc 11 số';
+                        if (v.length != 10) {
+                          return 'Số điện thoại phải có đúng 10 số';
                         }
-                        // Check if starts with 0 for Vietnamese numbers
-                        if (!trimmed.startsWith('0') && !trimmed.startsWith('+84')) {
-                          return 'Số điện thoại Việt Nam phải bắt đầu bằng 0 hoặc +84';
-                        }
-                        if (v.length > 20) {
-                          return 'Số điện thoại không được vượt quá 20 ký tự';
+                        if (!v.startsWith('0')) {
+                          return 'Số điện thoại phải bắt đầu bằng 0';
                         }
                         return null;
                       },
@@ -1112,29 +1068,6 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAutoFillButton() {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return OutlinedButton.icon(
-      onPressed: _fillPersonalInfo,
-      icon: Icon(Icons.auto_fix_high, color: colorScheme.primary),
-      label: Text(
-        'Điền thông tin cá nhân',
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: colorScheme.primary,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-        side: BorderSide(color: colorScheme.primary.withOpacity(0.5)),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
         ),
       ),
     );
@@ -1338,12 +1271,15 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
     String? Function(String?)? validator,
     TextInputType? keyboardType,
     int maxLines = 1,
+    List<TextInputFormatter>? inputFormatters,
   }) {
+    final bool systemLocked =
+        fieldKey == 'apartmentNumber' || fieldKey == 'buildingName';
     final isEditable = _isEditable(fieldKey);
     final isEditing = _editingField == fieldKey;
-    final displayHint = _confirmed && !isEditable
-        ? 'Nhấn đúp để yêu cầu chỉnh sửa'
-        : hint;
+    final displayHint = systemLocked
+        ? 'Hệ thống tự động điền, không thể chỉnh sửa'
+        : (_confirmed && !isEditable ? 'Nhấn đúp để yêu cầu chỉnh sửa' : hint);
 
     return RegisterGlassTextField(
       controller: controller,
@@ -1354,10 +1290,12 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
       keyboardType: keyboardType,
       maxLines: maxLines,
       enabled: true,
-      readOnly: !isEditable,
-      helperText:
-          isEditing ? 'Đang chỉnh sửa... (Nhấn Done để hoàn tất)' : null,
-      onDoubleTap: () => _requestEditField(fieldKey),
+      readOnly: systemLocked || !isEditable,
+      inputFormatters: inputFormatters,
+      helperText: !systemLocked && isEditing
+          ? 'Đang chỉnh sửa... (Nhấn Done để hoàn tất)'
+          : null,
+      onDoubleTap: systemLocked ? null : () => _requestEditField(fieldKey),
     );
   }
 

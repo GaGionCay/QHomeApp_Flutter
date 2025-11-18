@@ -43,7 +43,6 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   final TextEditingController _phoneNumberCtrl = TextEditingController();
   final TextEditingController _noteCtrl = TextEditingController();
 
-  String _requestType = 'NEW_CARD';
   bool _submitting = false;
   bool _confirmed = false;
   String? _editingField;
@@ -217,7 +216,6 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         'fullName': _fullNameCtrl.text,
         'apartmentNumber': _apartmentNumberCtrl.text,
         'buildingName': _buildingNameCtrl.text,
-        'requestType': _requestType,
         'citizenId': _citizenIdCtrl.text,
         'phoneNumber': _phoneNumberCtrl.text,
         'note': _noteCtrl.text,
@@ -240,7 +238,6 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       setState(() {
         // Chỉ load các field không phải thông tin cá nhân
         // Không tự động điền: fullName, apartmentNumber, buildingName, citizenId, phoneNumber
-        _requestType = data['requestType'] ?? _requestType;
         _noteCtrl.text = data['note'] ?? _noteCtrl.text;
         _residentId = data['residentId']?.toString() ?? _residentId;
         _selectedUnitId = data['unitId']?.toString() ?? _selectedUnitId;
@@ -443,6 +440,9 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
                         final name = member['fullName']?.toString() ?? 'Không có tên';
                         final citizenId = member['citizenId']?.toString() ?? '';
                         final hasApprovedCard = member['hasApprovedCard'] == true;
+                        final waitingApproval =
+                            member['waitingForApproval'] == true;
+                        final disabled = hasApprovedCard || waitingApproval;
                         return ListTile(
                           title: Text(name),
                           subtitle: Column(
@@ -457,10 +457,18 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
+                              if (!hasApprovedCard && waitingApproval)
+                                const Text(
+                                  'Đợi ban quản lý duyệt',
+                                  style: TextStyle(
+                                    color: Colors.blueGrey,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                             ],
                           ),
-                          enabled: !hasApprovedCard,
-                          onTap: hasApprovedCard ? null : () => Navigator.pop(context, member),
+                          enabled: !disabled,
+                          onTap: disabled ? null : () => Navigator.pop(context, member),
                         );
                       },
                     ),
@@ -745,7 +753,6 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         'fullName': _fullNameCtrl.text,
         'apartmentNumber': _apartmentNumberCtrl.text,
         'buildingName': _buildingNameCtrl.text,
-        'requestType': _requestType,
         'citizenId': _citizenIdCtrl.text,
         'phoneNumber': _phoneNumberCtrl.text,
         'note': _noteCtrl.text.isNotEmpty ? _noteCtrl.text : null,
@@ -926,8 +933,6 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         return 'số căn hộ';
       case 'buildingName':
         return 'tòa nhà';
-      case 'requestType':
-        return 'loại yêu cầu';
       case 'citizenId':
         return 'căn cước công dân';
       case 'phoneNumber':
@@ -940,7 +945,10 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   }
 
   bool _isEditable(String field) {
-    return !_confirmed || _editingField == field;
+    if (field == 'note') {
+      return !_confirmed || _editingField == field;
+    }
+    return false;
   }
 
   Future<void> _saveAndPay() async {
@@ -1040,7 +1048,6 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   void _clearForm() {
     setState(() {
       _fullNameCtrl.clear();
-      _requestType = 'NEW_CARD';
       _citizenIdCtrl.clear();
       _phoneNumberCtrl.clear();
       _noteCtrl.clear();
@@ -1188,8 +1195,6 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
                           ? 'Vui lòng kiểm tra lại tòa nhà'
                           : null,
                     ),
-                    const SizedBox(height: 18),
-                    _buildRequestTypeDropdown(),
                     const SizedBox(height: 18),
                     _buildTextField(
                       controller: _citizenIdCtrl,
@@ -1392,41 +1397,6 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     );
   }
 
-  Widget _buildRequestTypeDropdown() {
-    final isEditable = _isEditable('requestType');
-    return RegisterGlassDropdown<String>(
-      value: _requestType,
-      label: 'Loại yêu cầu',
-      hint: 'Chọn loại yêu cầu',
-      icon: Icons.category_outlined,
-      enabled: isEditable,
-      onDoubleTap: isEditable ? null : () => _requestEditField('requestType'),
-      onChanged: isEditable
-          ? (value) {
-              setState(() {
-                _requestType = value ?? 'NEW_CARD';
-                if (_confirmed) {
-                  _editingField = 'requestType';
-                  _hasEditedAfterConfirm = true;
-                }
-              });
-              _autoSave();
-            }
-          : null,
-      validator: (v) => v == null ? 'Vui lòng chọn loại yêu cầu' : null,
-      items: const [
-        DropdownMenuItem(
-          value: 'NEW_CARD',
-          child: Text('Làm thẻ mới'),
-        ),
-        DropdownMenuItem(
-          value: 'REPLACE_CARD',
-          child: Text('Cấp lại thẻ bị mất'),
-        ),
-      ],
-    );
-  }
-
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
@@ -1437,12 +1407,13 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     TextInputType? keyboardType,
     int maxLines = 1,
   }) {
+    final bool systemLocked = fieldKey != 'note';
     final editable = _isEditable(fieldKey);
     final isEditing = _editingField == fieldKey;
 
-    final displayHint = _confirmed && !editable
-        ? 'Nhấn đúp để yêu cầu chỉnh sửa'
-        : hint;
+    final displayHint = systemLocked
+        ? 'Hệ thống tự động điền, không thể chỉnh sửa'
+        : (_confirmed && !editable ? 'Nhấn đúp để yêu cầu chỉnh sửa' : hint);
 
     return RegisterGlassTextField(
       controller: controller,
@@ -1453,10 +1424,11 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       keyboardType: keyboardType,
       maxLines: maxLines,
       enabled: true,
-      readOnly: !editable,
-      helperText:
-          isEditing ? 'Đang chỉnh sửa... (Nhấn Done để hoàn tất)' : null,
-      onDoubleTap: () => _requestEditField(fieldKey),
+      readOnly: systemLocked || !editable,
+      helperText: !systemLocked && isEditing
+          ? 'Đang chỉnh sửa... (Nhấn Done để hoàn tất)'
+          : null,
+      onDoubleTap: systemLocked ? null : () => _requestEditField(fieldKey),
     );
   }
 

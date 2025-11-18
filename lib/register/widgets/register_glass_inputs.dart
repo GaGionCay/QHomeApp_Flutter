@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../theme/app_colors.dart';
 
@@ -214,6 +215,7 @@ class RegisterGlassTextField extends StatefulWidget {
     this.onDoubleTap,
     this.onChanged,
     this.onEditingComplete,
+    this.inputFormatters,
   });
 
   final TextEditingController controller;
@@ -230,6 +232,7 @@ class RegisterGlassTextField extends StatefulWidget {
   final VoidCallback? onDoubleTap;
   final ValueChanged<String>? onChanged;
   final VoidCallback? onEditingComplete;
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   State<RegisterGlassTextField> createState() => _RegisterGlassTextFieldState();
@@ -327,6 +330,7 @@ class _RegisterGlassTextFieldState extends State<RegisterGlassTextField> {
                       controller: widget.controller,
                       enabled: widget.enabled,
                       readOnly: widget.readOnly,
+                      inputFormatters: widget.inputFormatters,
                       autovalidateMode: AutovalidateMode.onUserInteraction,
                       validator: widget.validator,
                       onChanged: widget.onChanged,
