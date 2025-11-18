@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show Platform;
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../auth/api_client.dart';
 import '../theme/app_colors.dart';
@@ -14,6 +16,7 @@ import '../models/unit_info.dart';
 import '../services/card_registration_service.dart';
 
 enum _CardCategory { vehicle, resident, elevator }
+enum _StatusFilter { all, approved, paid }
 
 class CardRegistrationsScreen extends StatefulWidget {
   const CardRegistrationsScreen({
@@ -61,6 +64,14 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
     _CardCategory.elevator: 'ELEVATOR_CARD',
   };
 
+  static const String _statusFilterPrefKey = 'card_registrations_status_filter';
+
+  static const Map<_StatusFilter, String> _statusFilterLabels = {
+    _StatusFilter.all: 'Tất cả',
+    _StatusFilter.approved: 'Đã duyệt',
+    _StatusFilter.paid: 'Đã thanh toán',
+  };
+
   late final ApiClient _apiClient;
   late final CardRegistrationService _service;
 
@@ -68,6 +79,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
   bool _isLoading = true;
   String? _error;
   _CardCategory _selectedCategory = _CardCategory.vehicle;
+  _StatusFilter _statusFilter = _StatusFilter.all;
 
   DateTime? _fromDate;
   DateTime? _toDate;
@@ -82,6 +94,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
     _service = CardRegistrationService(_apiClient);
     _cards = widget.initialCards;
     _isLoading = _cards.isEmpty;
+    _loadStatusFilterPreference();
     WidgetsBinding.instance.addPostFrameCallback((_) => _fetchData());
   }
 
@@ -170,6 +183,8 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
         _buildSummaryCard(theme, unitLabel),
         const SizedBox(height: 16),
         _buildCategorySelector(theme),
+        const SizedBox(height: 12),
+        _buildStatusFilter(theme),
         const SizedBox(height: 16),
         if (filteredCards.isEmpty)
           _buildEmptyCategoryCard(theme, _selectedCategory)
@@ -189,6 +204,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
     final category = _selectedCategory;
     final filtered = _cards.where((card) {
       if (_categoryOf(card) != category) return false;
+      if (!_matchesStatusFilter(card)) return false;
       if (_fromDate == null && _toDate == null) return true;
 
       // Ưu tiên lọc theo paymentDate nếu có, ngược lại theo createdAt
@@ -212,6 +228,37 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
           .compareTo(a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0)),
     );
     return filtered;
+  }
+
+  Future<void> _loadStatusFilterPreference() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getString(_statusFilterPrefKey);
+      final filter = _statusFilterFromStorage(stored);
+      if (!mounted || filter == _statusFilter) return;
+      setState(() => _statusFilter = filter);
+    } catch (e) {
+      debugPrint('⚠️ [CardRegistrations] Không thể tải bộ lọc trạng thái: $e');
+    }
+  }
+
+  Future<void> _saveStatusFilterPreference(_StatusFilter filter) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_statusFilterPrefKey, filter.name);
+    } catch (e) {
+      debugPrint('⚠️ [CardRegistrations] Không thể lưu bộ lọc trạng thái: $e');
+    }
+  }
+
+  _StatusFilter _statusFilterFromStorage(String? value) {
+    if (value == null || value.isEmpty) {
+      return _StatusFilter.all;
+    }
+    return _StatusFilter.values.firstWhere(
+      (element) => element.name == value,
+      orElse: () => _StatusFilter.all,
+    );
   }
 
   List<Widget> _buildGroupedByDay(ThemeData theme, List<CardRegistrationSummary> items) {
@@ -298,6 +345,36 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
     return _cards.where((card) => _categoryOf(card) == category).length;
   }
 
+  bool _matchesStatusFilter(CardRegistrationSummary card) {
+    switch (_statusFilter) {
+      case _StatusFilter.all:
+        return true;
+      case _StatusFilter.approved:
+        return _isApprovedCard(card);
+      case _StatusFilter.paid:
+        return _isPaidCard(card);
+    }
+  }
+
+  bool _isApprovedCard(CardRegistrationSummary card) {
+    final status = card.status?.trim().toUpperCase();
+    if (status == null || status.isEmpty) {
+      return card.approvedAt != null;
+    }
+    if (status == 'APPROVED' ||
+        status == 'ISSUED' ||
+        status == 'ACTIVE' ||
+        status == 'COMPLETED') {
+      return true;
+    }
+    return card.approvedAt != null;
+  }
+
+  bool _isPaidCard(CardRegistrationSummary card) {
+    final paymentStatus = card.paymentStatus?.trim().toUpperCase();
+    return paymentStatus == 'PAID';
+  }
+
   _CardCategory _categoryOf(CardRegistrationSummary card) {
     final type = card.cardType.toUpperCase();
     if (type.contains('VEHICLE')) {
@@ -378,6 +455,48 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
         );
       }).toList(),
     );
+  }
+
+  Widget _buildStatusFilter(ThemeData theme) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: _StatusFilter.values.map((filter) {
+        final selected = _statusFilter == filter;
+        final label = _statusFilterLabels[filter]!;
+        return ChoiceChip(
+          label: Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            ),
+          ),
+          selected: selected,
+          onSelected: (_) => _onStatusFilterChanged(filter),
+          selectedColor: theme.colorScheme.primary.withOpacity(0.15),
+          labelStyle: theme.textTheme.labelMedium?.copyWith(
+            color: selected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurface.withOpacity(0.8),
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(
+              color: selected
+                  ? theme.colorScheme.primary.withOpacity(0.4)
+                  : theme.colorScheme.outline.withOpacity(0.15),
+            ),
+          ),
+          backgroundColor: theme.colorScheme.surface,
+        );
+      }).toList(),
+    );
+  }
+
+  void _onStatusFilterChanged(_StatusFilter filter) {
+    if (_statusFilter == filter) return;
+    setState(() => _statusFilter = filter);
+    unawaited(_saveStatusFilterPreference(filter));
   }
 
   Widget _buildEmptyCategoryCard(ThemeData theme, _CardCategory category) {
