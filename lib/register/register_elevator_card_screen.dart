@@ -36,13 +36,10 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   final _pendingPaymentKey = 'pending_elevator_card_payment';
   static const int _registrationFee = 30000;
 
-  final TextEditingController _fullNameCtrl = TextEditingController();
   final TextEditingController _apartmentNumberCtrl = TextEditingController();
   final TextEditingController _buildingNameCtrl = TextEditingController();
   final TextEditingController _phoneNumberCtrl = TextEditingController();
   final TextEditingController _noteCtrl = TextEditingController();
-
-  String _requestType = 'NEW_CARD';
   bool _submitting = false;
   bool _confirmed = false;
   String? _editingField;
@@ -58,7 +55,6 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   
   Dio? _servicesCardDio;
 
-  String? _defaultFullName;
   String? _defaultPhoneNumber;
   
   // Số lượng thẻ có thể đăng ký
@@ -140,7 +136,6 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     WidgetsBinding.instance.removeObserver(this);
     _paymentSub?.cancel();
 
-    _fullNameCtrl.dispose();
     _apartmentNumberCtrl.dispose();
     _buildingNameCtrl.dispose();
     _phoneNumberCtrl.dispose();
@@ -193,7 +188,6 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   }
 
   void _setupAutoSave() {
-    _fullNameCtrl.addListener(_markUnsaved);
     _phoneNumberCtrl.addListener(_markUnsaved);
     _noteCtrl.addListener(_markUnsaved);
   }
@@ -213,10 +207,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     try {
       final prefs = await SharedPreferences.getInstance();
       final data = {
-        'fullName': _fullNameCtrl.text,
         'apartmentNumber': _apartmentNumberCtrl.text,
         'buildingName': _buildingNameCtrl.text,
-        'requestType': _requestType,
         'phoneNumber': _phoneNumberCtrl.text,
         'note': _noteCtrl.text,
         'residentId': _residentId,
@@ -238,8 +230,7 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       final data = jsonDecode(saved) as Map<String, dynamic>;
       setState(() {
         // Chỉ load các field không phải thông tin cá nhân
-        // Không tự động điền: fullName, apartmentNumber, buildingName, phoneNumber
-        _requestType = data['requestType'] ?? 'NEW_CARD';
+        // Không tự động điền: apartmentNumber, buildingName, phoneNumber
         _noteCtrl.text = data['note'] ?? '';
         _residentId = data['residentId']?.toString() ?? _residentId;
         _cardQuantity = data['cardQuantity'] ?? 1;
@@ -383,13 +374,10 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       final profile = await profileService.getProfile();
 
       final candidateResidentId = profile['residentId']?.toString();
-      final profileFullName =
-          profile['fullName']?.toString() ?? profile['name']?.toString();
       final profilePhone =
           profile['phoneNumber']?.toString() ?? profile['phone']?.toString();
 
       setState(() {
-        _defaultFullName = profileFullName;
         _defaultPhoneNumber = profilePhone;
         if (_residentId == null || _residentId!.isEmpty) {
           _residentId = candidateResidentId;
@@ -422,7 +410,6 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
         content: const Text(
           'Bạn có muốn tự động điền thông tin cá nhân của tài khoản đang đăng nhập vào các trường không?\n\n'
           'Các thông tin sẽ được điền vào:\n'
-          '- Họ và tên\n'
           '- Số căn hộ\n'
           '- Tòa nhà\n'
           '- Số điện thoại',
@@ -442,9 +429,6 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
 
     if (confirm == true) {
       setState(() {
-        if (_defaultFullName?.isNotEmpty ?? false) {
-          _fullNameCtrl.text = _defaultFullName!;
-        }
         if (_defaultPhoneNumber?.isNotEmpty ?? false) {
           _phoneNumberCtrl.text = _defaultPhoneNumber!;
         }
@@ -637,8 +621,6 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
 
   void _clearForm() {
     setState(() {
-      _fullNameCtrl.clear();
-      _requestType = 'NEW_CARD';
       _phoneNumberCtrl.clear();
       _noteCtrl.clear();
       _confirmed = false;
@@ -651,10 +633,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   }
 
   Map<String, dynamic> _collectPayload() => {
-        'fullName': _fullNameCtrl.text,
         'apartmentNumber': _apartmentNumberCtrl.text,
         'buildingName': _buildingNameCtrl.text,
-        'requestType': _requestType,
         'phoneNumber': _phoneNumberCtrl.text,
         'note': _noteCtrl.text.isNotEmpty ? _noteCtrl.text : null,
         'unitId': _selectedUnitId,
@@ -825,14 +805,10 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
 
   String _getFieldLabel(String fieldKey) {
     switch (fieldKey) {
-      case 'fullName':
-        return 'họ và tên';
       case 'apartmentNumber':
         return 'số căn hộ';
       case 'buildingName':
         return 'tòa nhà';
-      case 'requestType':
-        return 'loại yêu cầu';
       case 'phoneNumber':
         return 'số điện thoại';
       case 'note':
@@ -1039,27 +1015,6 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
                     _buildAutoFillButton(),
                     const SizedBox(height: 20),
                     _buildTextField(
-                      controller: _fullNameCtrl,
-                      label: 'Họ và tên',
-                      hint: 'Nhập họ và tên',
-                      fieldKey: 'fullName',
-                      icon: Icons.person_outline,
-                      validator: (v) {
-                        if (v == null || v.isEmpty) {
-                          return 'Vui lòng nhập họ và tên';
-                        }
-                        final trimmed = v.trim();
-                        if (trimmed.isEmpty) {
-                          return 'Họ và tên không được chỉ chứa khoảng trắng';
-                        }
-                        if (trimmed.length > 100) {
-                          return 'Họ và tên không được vượt quá 100 ký tự';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 18),
-                    _buildTextField(
                       controller: _apartmentNumberCtrl,
                       label: 'Số căn hộ',
                       hint: 'Hệ thống tự điền theo căn hộ đang chọn',
@@ -1080,9 +1035,6 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
                           ? 'Vui lòng kiểm tra lại tòa nhà'
                           : null,
                     ),
-                    const SizedBox(height: 18),
-                    _buildRequestTypeDropdown(),
-                    const SizedBox(height: 18),
                     _buildCardQuantitySelector(),
                     const SizedBox(height: 18),
                     _buildTextField(
@@ -1261,40 +1213,6 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
     );
   }
 
-  Widget _buildRequestTypeDropdown() {
-    final isEditable = _isEditable('requestType');
-    return RegisterGlassDropdown<String>(
-      value: _requestType,
-      label: 'Loại yêu cầu',
-      hint: 'Chọn loại thẻ',
-      icon: Icons.category_outlined,
-      enabled: isEditable,
-      validator: (v) => v == null ? 'Vui lòng chọn loại yêu cầu' : null,
-      items: const [
-        DropdownMenuItem(
-          value: 'NEW_CARD',
-          child: Text('Làm thẻ mới'),
-        ),
-        DropdownMenuItem(
-          value: 'REPLACE_CARD',
-          child: Text('Cấp lại thẻ bị mất'),
-        ),
-      ],
-      onChanged: isEditable
-          ? (value) {
-              setState(() {
-                _requestType = value ?? 'NEW_CARD';
-                if (_confirmed) {
-                  _editingField = 'requestType';
-                  _hasEditedAfterConfirm = true;
-                }
-              });
-              _autoSave();
-            }
-          : null,
-      onDoubleTap: isEditable ? null : () => _requestEditField('requestType'),
-    );
-  }
 
   Widget _buildCardQuantitySelector() {
     final theme = Theme.of(context);

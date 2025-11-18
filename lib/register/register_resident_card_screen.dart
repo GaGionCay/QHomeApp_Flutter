@@ -442,10 +442,25 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
                         final member = _householdMembers[index];
                         final name = member['fullName']?.toString() ?? 'Không có tên';
                         final citizenId = member['citizenId']?.toString() ?? '';
+                        final hasApprovedCard = member['hasApprovedCard'] == true;
                         return ListTile(
                           title: Text(name),
-                          subtitle: citizenId.isNotEmpty ? Text('CCCD: $citizenId') : null,
-                          onTap: () => Navigator.pop(context, member),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (citizenId.isNotEmpty) Text('CCCD: $citizenId'),
+                              if (hasApprovedCard)
+                                const Text(
+                                  'Đã có thẻ được duyệt',
+                                  style: TextStyle(
+                                    color: Colors.orange,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          enabled: !hasApprovedCard,
+                          onTap: hasApprovedCard ? null : () => Navigator.pop(context, member),
                         );
                       },
                     ),
