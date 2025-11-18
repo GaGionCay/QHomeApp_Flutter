@@ -39,7 +39,6 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   final TextEditingController _fullNameCtrl = TextEditingController();
   final TextEditingController _apartmentNumberCtrl = TextEditingController();
   final TextEditingController _buildingNameCtrl = TextEditingController();
-  final TextEditingController _citizenIdCtrl = TextEditingController();
   final TextEditingController _phoneNumberCtrl = TextEditingController();
   final TextEditingController _noteCtrl = TextEditingController();
 
@@ -60,8 +59,13 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   Dio? _servicesCardDio;
 
   String? _defaultFullName;
-  String? _defaultCitizenId;
   String? _defaultPhoneNumber;
+  
+  // Số lượng thẻ có thể đăng ký
+  int _cardQuantity = 1;
+  int _maxCards = 0;
+  int _registeredCards = 0;
+  bool _loadingMaxCards = false;
 
   static const _selectedUnitPrefsKey = 'selected_unit_id';
   bool _isNavigatingToMain = false;
@@ -126,7 +130,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     Future.microtask(() async {
       await _loadSavedData();
       await _loadUnitContext();
-      await _loadResidentContext();
+      // Không tự động load resident context nữa, chỉ load khi user click button
+      await _loadResidentContextDataOnly(); // Chỉ load data, không auto-fill
     });
   }
 
@@ -138,7 +143,6 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     _fullNameCtrl.dispose();
     _apartmentNumberCtrl.dispose();
     _buildingNameCtrl.dispose();
-    _citizenIdCtrl.dispose();
     _phoneNumberCtrl.dispose();
     _noteCtrl.dispose();
     super.dispose();
@@ -190,7 +194,6 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
 
   void _setupAutoSave() {
     _fullNameCtrl.addListener(_markUnsaved);
-    _citizenIdCtrl.addListener(_markUnsaved);
     _phoneNumberCtrl.addListener(_markUnsaved);
     _noteCtrl.addListener(_markUnsaved);
   }
@@ -214,11 +217,11 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
         'apartmentNumber': _apartmentNumberCtrl.text,
         'buildingName': _buildingNameCtrl.text,
         'requestType': _requestType,
-        'citizenId': _citizenIdCtrl.text,
         'phoneNumber': _phoneNumberCtrl.text,
         'note': _noteCtrl.text,
         'residentId': _residentId,
         'unitId': _selectedUnitId,
+        'cardQuantity': _cardQuantity,
       };
       await prefs.setString(_storageKey, jsonEncode(data));
     } catch (e) {
@@ -234,14 +237,12 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
 
       final data = jsonDecode(saved) as Map<String, dynamic>;
       setState(() {
-        _fullNameCtrl.text = data['fullName'] ?? '';
-        _apartmentNumberCtrl.text = data['apartmentNumber'] ?? '';
-        _buildingNameCtrl.text = data['buildingName'] ?? '';
+        // Chỉ load các field không phải thông tin cá nhân
+        // Không tự động điền: fullName, apartmentNumber, buildingName, phoneNumber
         _requestType = data['requestType'] ?? 'NEW_CARD';
-        _citizenIdCtrl.text = data['citizenId'] ?? '';
-        _phoneNumberCtrl.text = data['phoneNumber'] ?? '';
         _noteCtrl.text = data['note'] ?? '';
         _residentId = data['residentId']?.toString() ?? _residentId;
+        _cardQuantity = data['cardQuantity'] ?? 1;
       });
     } catch (e) {
       debugPrint('❌ Lỗi khôi phục dữ liệu nháp: $e');
@@ -281,6 +282,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       if (selectedUnit != null) {
         _applyUnitContext(selectedUnit);
         await prefs.setString(_selectedUnitPrefsKey, selectedUnit.id);
+        // Load max cards info when unit changes
+        await _loadMaxCardsInfo();
       }
     } catch (e) {
       debugPrint('❌ Lỗi tải thông tin căn hộ: $e');
@@ -288,15 +291,93 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   }
 
   void _applyUnitContext(UnitInfo unit) {
+    // Không tự động fill nữa, chỉ lưu thông tin unit
+    _hasUnsavedChanges = false;
+  }
+  
+  void _fillUnitContext(UnitInfo unit) {
     _apartmentNumberCtrl.text = unit.code;
     final building = (unit.buildingName?.isNotEmpty ?? false)
         ? unit.buildingName!
         : (unit.buildingCode ?? '');
     _buildingNameCtrl.text = building;
-    _hasUnsavedChanges = false;
+    _hasUnsavedChanges = true;
   }
 
-  Future<void> _loadResidentContext() async {
+  Future<void> _loadMaxCardsInfo() async {
+    if (_selectedUnitId == null) {
+      debugPrint('⚠️ [ElevatorCard] Không có unitId để load max cards info');
+      return;
+    }
+    
+    setState(() => _loadingMaxCards = true);
+    try {
+      final client = await _servicesCardClient();
+      debugPrint('🔍 [ElevatorCard] Đang gọi API max-cards với unitId: $_selectedUnitId');
+      
+      final res = await client.get('/elevator-card/max-cards', queryParameters: {
+        'unitId': _selectedUnitId,
+      });
+      
+      debugPrint('✅ [ElevatorCard] Response từ API max-cards: ${res.data}');
+      
+      if (res.data is Map<String, dynamic>) {
+        final data = res.data as Map<String, dynamic>;
+        final maxCards = (data['maxCards'] as num?)?.toInt();
+        final registeredCards = (data['registeredCards'] as num?)?.toInt() ?? 0;
+        final remainingSlots = (data['remainingSlots'] as num?)?.toInt() ?? 0;
+        
+        debugPrint('📊 [ElevatorCard] maxCards: $maxCards, registeredCards: $registeredCards, remainingSlots: $remainingSlots');
+        
+        if (maxCards == null || maxCards <= 0) {
+          debugPrint('⚠️ [ElevatorCard] maxCards không hợp lệ ($maxCards), không cập nhật');
+          // Không cập nhật nếu giá trị không hợp lệ
+          return;
+        }
+        
+        setState(() {
+          _maxCards = maxCards;
+          _registeredCards = registeredCards;
+          // Set card quantity to remaining slots if available, otherwise 1
+          if (_cardQuantity > remainingSlots && remainingSlots > 0) {
+            _cardQuantity = remainingSlots;
+          } else if (_cardQuantity < 1) {
+            _cardQuantity = 1;
+          }
+          // Đảm bảo không vượt quá remaining slots
+          if (_cardQuantity > remainingSlots && remainingSlots > 0) {
+            _cardQuantity = remainingSlots;
+          }
+        });
+        
+        debugPrint('✅ [ElevatorCard] Đã cập nhật: maxCards=$_maxCards, registeredCards=$_registeredCards, cardQuantity=$_cardQuantity');
+      } else {
+        debugPrint('⚠️ [ElevatorCard] Response không phải Map: ${res.data.runtimeType}');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ [ElevatorCard] Lỗi tải thông tin số lượng thẻ tối đa: $e');
+      debugPrint('❌ [ElevatorCard] Stack trace: $stackTrace');
+      
+      // Không set fallback 999 nữa, để user biết có lỗi
+      // Chỉ reset về giá trị mặc định hợp lý (0 hoặc giữ nguyên giá trị cũ)
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Không thể tải thông tin số lượng thẻ tối đa. Vui lòng thử lại.'),
+            duration: Duration(seconds: 3),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loadingMaxCards = false);
+      }
+    }
+  }
+
+  // Chỉ load data, không auto-fill
+  Future<void> _loadResidentContextDataOnly() async {
     try {
       final profileService = ProfileService(api.dio);
       final profile = await profileService.getProfile();
@@ -304,28 +385,12 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       final candidateResidentId = profile['residentId']?.toString();
       final profileFullName =
           profile['fullName']?.toString() ?? profile['name']?.toString();
-      final profileCitizenId = profile['citizenId']?.toString() ??
-          profile['identityNumber']?.toString();
       final profilePhone =
           profile['phoneNumber']?.toString() ?? profile['phone']?.toString();
 
       setState(() {
-        _defaultFullName = profileFullName ?? _defaultFullName;
-        _defaultCitizenId = profileCitizenId ?? _defaultCitizenId;
-        _defaultPhoneNumber = profilePhone ?? _defaultPhoneNumber;
-
-        if (_fullNameCtrl.text.isEmpty &&
-            (_defaultFullName?.isNotEmpty ?? false)) {
-          _fullNameCtrl.text = _defaultFullName!;
-        }
-        if (_citizenIdCtrl.text.isEmpty &&
-            (_defaultCitizenId?.isNotEmpty ?? false)) {
-          _citizenIdCtrl.text = _defaultCitizenId!;
-        }
-        if (_phoneNumberCtrl.text.isEmpty &&
-            (_defaultPhoneNumber?.isNotEmpty ?? false)) {
-          _phoneNumberCtrl.text = _defaultPhoneNumber!;
-        }
+        _defaultFullName = profileFullName;
+        _defaultPhoneNumber = profilePhone;
         if (_residentId == null || _residentId!.isEmpty) {
           _residentId = candidateResidentId;
         }
@@ -345,6 +410,59 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       }
     } catch (e) {
       debugPrint('❌ Lỗi tải thông tin cư dân: $e');
+    }
+  }
+  
+  // Fill thông tin khi user click button
+  Future<void> _fillPersonalInfo() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Điền thông tin cá nhân'),
+        content: const Text(
+          'Bạn có muốn tự động điền thông tin cá nhân của tài khoản đang đăng nhập vào các trường không?\n\n'
+          'Các thông tin sẽ được điền vào:\n'
+          '- Họ và tên\n'
+          '- Số căn hộ\n'
+          '- Tòa nhà\n'
+          '- Số điện thoại',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Điền thông tin', style: TextStyle(color: Colors.teal)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      setState(() {
+        if (_defaultFullName?.isNotEmpty ?? false) {
+          _fullNameCtrl.text = _defaultFullName!;
+        }
+        if (_defaultPhoneNumber?.isNotEmpty ?? false) {
+          _phoneNumberCtrl.text = _defaultPhoneNumber!;
+        }
+        if (_currentUnit != null) {
+          _fillUnitContext(_currentUnit!);
+        }
+        _hasUnsavedChanges = true;
+      });
+      _autoSave();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Đã điền thông tin cá nhân'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
@@ -521,17 +639,15 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     setState(() {
       _fullNameCtrl.clear();
       _requestType = 'NEW_CARD';
-      _citizenIdCtrl.clear();
       _phoneNumberCtrl.clear();
       _noteCtrl.clear();
       _confirmed = false;
       _editingField = null;
       _hasEditedAfterConfirm = false;
+      _cardQuantity = 1;
     });
     _clearSavedData();
-    if (_currentUnit != null) {
-      _applyUnitContext(_currentUnit!);
-    }
+    // Không tự động apply unit context nữa
   }
 
   Map<String, dynamic> _collectPayload() => {
@@ -539,7 +655,6 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
         'apartmentNumber': _apartmentNumberCtrl.text,
         'buildingName': _buildingNameCtrl.text,
         'requestType': _requestType,
-        'citizenId': _citizenIdCtrl.text,
         'phoneNumber': _phoneNumberCtrl.text,
         'note': _noteCtrl.text.isNotEmpty ? _noteCtrl.text : null,
         'unitId': _selectedUnitId,
@@ -658,7 +773,6 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
   }
 
   Future<void> _requestEditField(String field) async {
-    if (_isAutoFilledField(field)) return;
     if (!_confirmed) return;
 
     if (_editingField != null && _editingField != field) {
@@ -719,8 +833,6 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
         return 'tòa nhà';
       case 'requestType':
         return 'loại yêu cầu';
-      case 'citizenId':
-        return 'căn cước công dân';
       case 'phoneNumber':
         return 'số điện thoại';
       case 'note':
@@ -730,29 +842,41 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
     }
   }
 
-  bool _isAutoFilledField(String field) =>
-      field == 'apartmentNumber' || field == 'buildingName';
-
   bool _isEditable(String field) {
-    if (_isAutoFilledField(field)) {
-      return false;
-    }
     return !_confirmed || _editingField == field;
   }
 
   Future<void> _saveAndPay() async {
     setState(() => _submitting = true);
     String? registrationId;
+    List<String> registrationIds = [];
+    String? paymentUrl;
 
     try {
       final payload = _collectPayload();
       final client = await _servicesCardClient();
-      final res = await client.post('/elevator-card/vnpay-url', data: payload);
+      
+      // Tạo nhiều registration nếu quantity > 1
+      // Lưu ý: Backend chỉ hỗ trợ tạo 1 registration mỗi lần, nên cần gọi nhiều lần
+      for (int i = 0; i < _cardQuantity; i++) {
+        final res = await client.post('/elevator-card/vnpay-url', data: payload);
+        final regId = res.data['registrationId']?.toString();
+        final payUrl = res.data['paymentUrl']?.toString();
+        if (regId != null) {
+          registrationIds.add(regId);
+          // Chỉ lấy paymentUrl và registrationId từ registration đầu tiên
+          if (i == 0) {
+            registrationId = regId;
+            paymentUrl = payUrl;
+          }
+        }
+      }
 
-      registrationId = res.data['registrationId']?.toString();
-      final paymentUrl = res.data['paymentUrl'] as String;
+      if (registrationId == null || registrationIds.isEmpty || paymentUrl == null) {
+        throw Exception('Không thể tạo đăng ký thẻ');
+      }
 
-      if (mounted && registrationId != null) {
+      if (mounted) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_pendingPaymentKey, registrationId);
         _clearForm();
@@ -787,14 +911,15 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
       }
     } catch (e) {
       final message = _resolveErrorMessage(e);
-      if (registrationId != null) {
-        await _cancelRegistration(registrationId);
-        try {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.remove(_pendingPaymentKey);
-        } catch (err) {
-          debugPrint('❌ Lỗi xoá pending payment: $err');
-        }
+      // Cancel all created registrations if error occurs
+      for (final regId in registrationIds) {
+        await _cancelRegistration(regId);
+      }
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_pendingPaymentKey);
+      } catch (err) {
+        debugPrint('❌ Lỗi xoá pending payment: $err');
       }
 
       if (mounted) {
@@ -911,6 +1036,8 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
                   children: [
                     _buildFeeInfoCard(),
                     const SizedBox(height: 20),
+                    _buildAutoFillButton(),
+                    const SizedBox(height: 20),
                     _buildTextField(
                       controller: _fullNameCtrl,
                       label: 'Họ và tên',
@@ -956,33 +1083,7 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
                     const SizedBox(height: 18),
                     _buildRequestTypeDropdown(),
                     const SizedBox(height: 18),
-                    _buildTextField(
-                      controller: _citizenIdCtrl,
-                      label: 'Căn cước công dân',
-                      hint: 'Nhập số căn cước công dân (12 số)',
-                      fieldKey: 'citizenId',
-                      icon: Icons.badge_outlined,
-                      keyboardType: TextInputType.number,
-                      validator: (v) {
-                        if (v == null || v.isEmpty) {
-                          return 'Vui lòng nhập căn cước công dân';
-                        }
-                        final trimmed = v.trim().replaceAll(RegExp(r'[\s-]'), '');
-                        if (trimmed.isEmpty) {
-                          return 'Căn cước công dân không được chỉ chứa khoảng trắng hoặc dấu gạch ngang';
-                        }
-                        if (!RegExp(r'^[0-9]+$').hasMatch(trimmed)) {
-                          return 'Căn cước công dân chỉ được chứa số';
-                        }
-                        if (trimmed.length != 9 && trimmed.length != 12) {
-                          return 'Căn cước công dân phải có 9 số (CMND) hoặc 12 số (CCCD)';
-                        }
-                        if (trimmed.length > 20) {
-                          return 'Căn cước công dân không được vượt quá 20 ký tự';
-                        }
-                        return null;
-                      },
-                    ),
+                    _buildCardQuantitySelector(),
                     const SizedBox(height: 18),
                     _buildTextField(
                       controller: _phoneNumberCtrl,
@@ -1059,6 +1160,29 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAutoFillButton() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return OutlinedButton.icon(
+      onPressed: _fillPersonalInfo,
+      icon: Icon(Icons.auto_fix_high, color: colorScheme.primary),
+      label: Text(
+        'Điền thông tin cá nhân',
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: colorScheme.primary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+        side: BorderSide(color: colorScheme.primary.withOpacity(0.5)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
         ),
       ),
     );
@@ -1172,6 +1296,121 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
     );
   }
 
+  Widget _buildCardQuantitySelector() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final remainingSlots = _maxCards > 0 ? _maxCards - _registeredCards : 0;
+    final maxSelectable = remainingSlots > 0 ? remainingSlots : 1;
+    
+    return RegisterGlassPanel(
+      padding: const EdgeInsets.all(22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.credit_card_outlined,
+                color: colorScheme.primary,
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Số lượng thẻ đăng ký',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (_loadingMaxCards)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    else if (_maxCards > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          'Căn hộ này có thể đăng ký tối đa $_maxCards thẻ (đã đăng ký $_registeredCards thẻ, còn lại $remainingSlots slot)',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurface.withOpacity(0.68),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              IconButton(
+                onPressed: _cardQuantity > 1
+                    ? () {
+                        setState(() {
+                          _cardQuantity--;
+                          _hasUnsavedChanges = true;
+                        });
+                        _autoSave();
+                      }
+                    : null,
+                icon: const Icon(Icons.remove_circle_outline),
+                style: IconButton.styleFrom(
+                  backgroundColor: _cardQuantity > 1
+                      ? colorScheme.primaryContainer
+                      : colorScheme.surfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Text(
+                '$_cardQuantity',
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.primary,
+                ),
+              ),
+              const SizedBox(width: 16),
+              IconButton(
+                onPressed: _cardQuantity < maxSelectable
+                    ? () {
+                        setState(() {
+                          _cardQuantity++;
+                          _hasUnsavedChanges = true;
+                        });
+                        _autoSave();
+                      }
+                    : null,
+                icon: const Icon(Icons.add_circle_outline),
+                style: IconButton.styleFrom(
+                  backgroundColor: _cardQuantity < maxSelectable
+                      ? colorScheme.primaryContainer
+                      : colorScheme.surfaceVariant,
+                ),
+              ),
+              const Spacer(),
+              if (_maxCards > 0 && remainingSlots <= 0)
+                Text(
+                  'Đã đạt giới hạn',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.red,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
@@ -1183,10 +1422,8 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
     int maxLines = 1,
   }) {
     final isEditable = _isEditable(fieldKey);
-    final isAutoField = _isAutoFilledField(fieldKey);
-    final canEdit = !isAutoField && isEditable;
     final isEditing = _editingField == fieldKey;
-    final displayHint = _confirmed && !isEditable && !isAutoField
+    final displayHint = _confirmed && !isEditable
         ? 'Nhấn đúp để yêu cầu chỉnh sửa'
         : hint;
 
@@ -1199,10 +1436,10 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
       keyboardType: keyboardType,
       maxLines: maxLines,
       enabled: true,
-      readOnly: !canEdit,
+      readOnly: !isEditable,
       helperText:
           isEditing ? 'Đang chỉnh sửa... (Nhấn Done để hoàn tất)' : null,
-      onDoubleTap: isAutoField ? null : () => _requestEditField(fieldKey),
+      onDoubleTap: () => _requestEditField(fieldKey),
     );
   }
 

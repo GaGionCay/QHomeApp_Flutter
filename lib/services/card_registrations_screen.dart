@@ -1,6 +1,11 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io' show Platform;
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:dio/dio.dart';
 
 import '../auth/api_client.dart';
 import '../theme/app_colors.dart';
@@ -501,9 +506,12 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
       subtitleParts.add(unit);
     }
 
-    return _HomeGlassSection(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-      child: Row(
+    return InkWell(
+      onTap: () => _showCardDetail(context, card),
+      borderRadius: BorderRadius.circular(24),
+      child: _HomeGlassSection(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+        child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
@@ -601,6 +609,19 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
             ),
           ),
         ],
+      ),
+      ),
+    );
+  }
+
+  void _showCardDetail(BuildContext context, CardRegistrationSummary card) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _CardDetailSheet(
+        card: card,
+        onRefresh: _fetchData,
       ),
     );
   }
@@ -966,6 +987,416 @@ class _HomeGlassSection extends StatelessWidget {
           ),
           padding: padding,
           child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _CardDetailSheet extends StatefulWidget {
+  const _CardDetailSheet({
+    required this.card,
+    required this.onRefresh,
+  });
+
+  final CardRegistrationSummary card;
+  final VoidCallback onRefresh;
+
+  @override
+  State<_CardDetailSheet> createState() => _CardDetailSheetState();
+}
+
+class _CardDetailSheetState extends State<_CardDetailSheet> {
+  final ApiClient _apiClient = ApiClient();
+  bool _isProcessingPayment = false;
+  final DateFormat _dateTimeFmt = DateFormat('dd/MM/yyyy HH:mm');
+
+  bool _canResumePayment() {
+    final paymentStatus = widget.card.paymentStatus?.toUpperCase() ?? '';
+    final status = widget.card.status?.toUpperCase() ?? '';
+    final cardType = widget.card.cardType.toUpperCase();
+    
+    // Chỉ cho phép tiếp tục thanh toán nếu:
+    // 1. payment_status là UNPAID, PAYMENT_PENDING, hoặc PAYMENT_APPROVAL (cho vehicle)
+    // 2. status không phải REJECTED
+    // 3. Trong vòng 10 phút từ khi tạo (hoặc updatedAt nếu có)
+    final allowedPaymentStatuses = ['UNPAID', 'PAYMENT_PENDING'];
+    if (cardType.contains('VEHICLE')) {
+      allowedPaymentStatuses.add('PAYMENT_APPROVAL');
+    }
+    
+    if (!allowedPaymentStatuses.contains(paymentStatus)) {
+      return false;
+    }
+    if (status == 'REJECTED') {
+      return false;
+    }
+    
+    // Kiểm tra thời gian: trong vòng 10 phút
+    final now = DateTime.now();
+    final pivot = widget.card.updatedAt ?? widget.card.createdAt;
+    if (pivot == null) return false;
+    
+    final diff = now.difference(pivot);
+    return diff.inMinutes <= 10;
+  }
+
+  Future<void> _resumePayment() async {
+    if (_isProcessingPayment) return;
+    
+    setState(() => _isProcessingPayment = true);
+    
+    try {
+      final client = await _getServicesCardClient();
+      final cardType = widget.card.cardType.toUpperCase();
+      
+      // Xác định endpoint dựa trên loại thẻ
+      String endpoint;
+      if (cardType.contains('ELEVATOR')) {
+        endpoint = '/elevator-card/${widget.card.id}/resume-payment';
+      } else if (cardType.contains('RESIDENT')) {
+        endpoint = '/resident-card/${widget.card.id}/resume-payment';
+      } else if (cardType.contains('VEHICLE')) {
+        endpoint = '/register-service/${widget.card.id}/resume-payment';
+      } else {
+        throw Exception('Loại thẻ không được hỗ trợ');
+      }
+      
+      final res = await client.post(endpoint);
+      
+      if (res.statusCode != 200) {
+        throw Exception('Không thể tạo liên kết thanh toán');
+      }
+      
+      final paymentUrl = res.data['paymentUrl']?.toString();
+      if (paymentUrl == null || paymentUrl.isEmpty) {
+        throw Exception('Không nhận được đường dẫn thanh toán');
+      }
+      
+      // Đóng bottom sheet
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+      
+      // Mở trình duyệt thanh toán
+      final uri = Uri.parse(paymentUrl);
+      bool launched = false;
+      
+      if (!kIsWeb && Platform.isAndroid) {
+        try {
+          final intent = AndroidIntent(
+            action: 'action_view',
+            data: paymentUrl,
+          );
+          await intent.launchChooser('Chọn trình duyệt để thanh toán');
+          launched = true;
+        } catch (e) {
+          debugPrint('⚠️ Không thể mở chooser: $e');
+        }
+      }
+      
+      if (!launched) {
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          launched = true;
+        }
+      }
+      
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Không thể mở trình duyệt thanh toán'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      
+      // Refresh danh sách sau khi thanh toán
+      widget.onRefresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingPayment = false);
+      }
+    }
+  }
+
+  Future<Dio> _getServicesCardClient() async {
+    final baseUrl = ApiClient.buildServiceBase(port: 8083, path: '/api');
+    final dio = Dio(BaseOptions(
+      baseUrl: baseUrl,
+      connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+      receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+    ));
+    
+    final token = await _apiClient.storage.readAccessToken();
+    if (token != null && token.isNotEmpty) {
+      dio.options.headers['Authorization'] = 'Bearer $token';
+    }
+    
+    return dio;
+  }
+
+  String _cardTypeLabel(String? type) {
+    switch (type?.toUpperCase()) {
+      case 'RESIDENT_CARD':
+        return 'Thẻ cư dân';
+      case 'ELEVATOR_CARD':
+        return 'Thẻ thang máy';
+      case 'VEHICLE_CARD':
+        return 'Thẻ xe';
+      default:
+        return 'Thẻ cư dân';
+    }
+  }
+
+  String _approvalStatusLabel(CardRegistrationSummary card) {
+    final status = (card.status ?? '').toUpperCase();
+    switch (status) {
+      case 'COMPLETED':
+      case 'APPROVED':
+      case 'ACTIVE':
+        return 'Đã duyệt';
+      case 'ISSUED':
+        return 'Đã phát hành';
+      case 'READY_FOR_PAYMENT':
+        return 'Chờ thanh toán';
+      case 'PAYMENT_PENDING':
+        return 'Thanh toán đang xử lý';
+      case 'PROCESSING':
+      case 'IN_PROGRESS':
+        return 'Đang xử lý';
+      case 'PENDING':
+      case 'REVIEW_PENDING':
+        return 'Chờ duyệt';
+      case 'REJECTED':
+        return 'Bị từ chối';
+      case 'CANCELLED':
+      case 'VOID':
+        return 'Đã hủy';
+      default:
+        return status.isEmpty ? 'Không xác định' : status;
+    }
+  }
+
+  Color _approvalStatusColor(ThemeData theme, CardRegistrationSummary card) {
+    final status = (card.status ?? '').toUpperCase();
+    switch (status) {
+      case 'COMPLETED':
+      case 'APPROVED':
+      case 'ACTIVE':
+      case 'ISSUED':
+        return AppColors.success;
+      case 'READY_FOR_PAYMENT':
+        return theme.colorScheme.error;
+      case 'PAYMENT_PENDING':
+        return AppColors.warning;
+      case 'PROCESSING':
+      case 'IN_PROGRESS':
+        return AppColors.warning;
+      case 'PENDING':
+      case 'REVIEW_PENDING':
+        return AppColors.warning;
+      case 'REJECTED':
+        return theme.colorScheme.error;
+      case 'CANCELLED':
+      case 'VOID':
+        return theme.colorScheme.outline;
+      default:
+        return theme.colorScheme.primary;
+    }
+  }
+
+  String? _paymentStatusLabel(String? paymentStatus) {
+    final normalized = (paymentStatus ?? '').toUpperCase();
+    return switch (normalized) {
+      'PAID' => 'Đã thanh toán',
+      'PAYMENT_PENDING' => 'Thanh toán đang xử lý',
+      'UNPAID' => 'Chưa thanh toán',
+      'PENDING' => 'Thanh toán đang chờ',
+      _ => null,
+    };
+  }
+
+  Color _paymentStatusColor(ThemeData theme, String? paymentStatus) {
+    final normalized = (paymentStatus ?? '').toUpperCase();
+    switch (normalized) {
+      case 'PAID':
+        return AppColors.success;
+      case 'PAYMENT_PENDING':
+      case 'PENDING':
+        return AppColors.warning;
+      case 'UNPAID':
+        return theme.colorScheme.error;
+      default:
+        return theme.colorScheme.primary.withOpacity(0.6);
+    }
+  }
+
+  Widget _buildDetailRow(ThemeData theme, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final canResume = _canResumePayment();
+    
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) => Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.outline.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Content
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.all(20),
+                children: [
+                  // Title
+                  Text(
+                    widget.card.displayName ?? _cardTypeLabel(widget.card.cardType),
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  // Status chips
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _StatusChip(
+                        label: _approvalStatusLabel(widget.card),
+                        color: _approvalStatusColor(theme, widget.card),
+                        tone: StatusChipTone.solid,
+                      ),
+                      if (widget.card.paymentStatus != null)
+                        _StatusChip(
+                          label: _paymentStatusLabel(widget.card.paymentStatus) ?? '',
+                          color: _paymentStatusColor(theme, widget.card.paymentStatus),
+                          tone: StatusChipTone.neutral,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Details
+                  _buildDetailRow(theme, 'Mã đăng ký', widget.card.id),
+                  if (widget.card.apartmentNumber != null && widget.card.apartmentNumber!.isNotEmpty)
+                    _buildDetailRow(theme, 'Căn hộ', widget.card.apartmentNumber!),
+                  if (widget.card.buildingName != null && widget.card.buildingName!.isNotEmpty)
+                    _buildDetailRow(theme, 'Tòa nhà', widget.card.buildingName!),
+                  if (widget.card.paymentAmount != null)
+                    _buildDetailRow(theme, 'Số tiền', '${widget.card.paymentAmount!.toStringAsFixed(0)} VNĐ'),
+                  if (widget.card.createdAt != null)
+                    _buildDetailRow(theme, 'Ngày tạo', _dateTimeFmt.format(widget.card.createdAt!.toLocal())),
+                  if (widget.card.paymentDate != null)
+                    _buildDetailRow(theme, 'Ngày thanh toán', _dateTimeFmt.format(widget.card.paymentDate!.toLocal())),
+                  if (widget.card.approvedAt != null)
+                    _buildDetailRow(theme, 'Ngày duyệt', _dateTimeFmt.format(widget.card.approvedAt!.toLocal())),
+                  if (widget.card.note != null && widget.card.note!.isNotEmpty)
+                    _buildDetailRow(theme, 'Ghi chú', widget.card.note!),
+                  
+                  const SizedBox(height: 24),
+                  
+                  // Resume payment button (cho cả 3 loại thẻ)
+                  if (canResume)
+                    FilledButton.icon(
+                      onPressed: _isProcessingPayment ? null : _resumePayment,
+                      icon: _isProcessingPayment
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.payment),
+                      label: Text(_isProcessingPayment ? 'Đang xử lý...' : 'Tiếp tục thanh toán'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                    ),
+                  
+                  if (canResume)
+                    const SizedBox(height: 12),
+                  
+                  // Info message
+                  if (canResume)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, size: 20, color: theme.colorScheme.primary),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Bạn có thể tiếp tục thanh toán trong vòng 10 phút kể từ khi tạo đăng ký.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface.withOpacity(0.7),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../auth/api_client.dart';
+import '../auth/customer_interaction_api_client.dart';
 import '../contracts/contract_service.dart';
 import '../models/unit_info.dart';
 import '../profile/profile_service.dart';
@@ -74,7 +75,7 @@ class _CleaningRequestScreenState extends State<CleaningRequestScreen> {
   void initState() {
     super.initState();
     _apiClient = ApiClient();
-    _service = CleaningRequestService(_apiClient);
+    _service = CleaningRequestService(CustomerInteractionApiClient());
     _profileService = ProfileService(_apiClient.dio);
     _contractService = ContractService(_apiClient);
     _loadUnitContext();
@@ -427,9 +428,13 @@ class _CleaningRequestScreenState extends State<CleaningRequestScreen> {
         labelText: 'Địa điểm thực hiện',
         border: OutlineInputBorder(),
       ),
+      maxLength: 255,
       validator: (value) {
         if (value == null || value.trim().isEmpty) {
           return 'Vui lòng nhập địa điểm';
+        }
+        if (value.trim().length < 3) {
+          return 'Địa điểm phải có ít nhất 3 ký tự';
         }
         return null;
       },
@@ -444,9 +449,15 @@ class _CleaningRequestScreenState extends State<CleaningRequestScreen> {
         border: OutlineInputBorder(),
       ),
       keyboardType: TextInputType.phone,
+      maxLength: 15,
       validator: (value) {
         if (value == null || value.trim().isEmpty) {
           return 'Vui lòng nhập số điện thoại liên hệ';
+        }
+        final phoneRegex = RegExp(r'^[0-9]{10,15}$');
+        final cleanedPhone = value.trim().replaceAll(RegExp(r'[^\d]'), '');
+        if (!phoneRegex.hasMatch(cleanedPhone)) {
+          return 'Số điện thoại phải có từ 10-15 chữ số';
         }
         return null;
       },
@@ -532,6 +543,7 @@ class _CleaningRequestScreenState extends State<CleaningRequestScreen> {
     return TextFormField(
       controller: _noteController,
       maxLines: 3,
+      maxLength: 500,
       decoration: const InputDecoration(
         labelText: 'Ghi chú / yêu cầu đặc biệt (tùy chọn)',
         border: OutlineInputBorder(),

@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../auth/api_client.dart';
+import '../auth/customer_interaction_api_client.dart';
 import '../contracts/contract_service.dart';
 import '../models/unit_info.dart';
 import '../profile/profile_service.dart';
@@ -70,7 +71,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
   void initState() {
     super.initState();
     _apiClient = ApiClient();
-    _service = MaintenanceRequestService(_apiClient);
+    _service = MaintenanceRequestService(CustomerInteractionApiClient());
     _profileService = ProfileService(_apiClient.dio);
     _contractService = ContractService(_apiClient);
     _loadUnitContext();
@@ -433,9 +434,13 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
         labelText: 'Tiêu đề yêu cầu',
         border: OutlineInputBorder(),
       ),
+      maxLength: 255,
       validator: (value) {
         if (value == null || value.trim().isEmpty) {
           return 'Vui lòng nhập tiêu đề yêu cầu';
+        }
+        if (value.trim().length < 5) {
+          return 'Tiêu đề phải có ít nhất 5 ký tự';
         }
         return null;
       },
@@ -446,6 +451,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
     return TextFormField(
       controller: _descriptionController,
       maxLines: 5,
+      maxLength: 1000,
       decoration: const InputDecoration(
         labelText: 'Mô tả chi tiết',
         border: OutlineInputBorder(),
@@ -454,6 +460,9 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
       validator: (value) {
         if (value == null || value.trim().isEmpty) {
           return 'Vui lòng mô tả chi tiết vấn đề';
+        }
+        if (value.trim().length < 10) {
+          return 'Mô tả phải có ít nhất 10 ký tự';
         }
         return null;
       },
@@ -467,9 +476,13 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
         labelText: 'Địa điểm sửa chữa',
         border: OutlineInputBorder(),
       ),
+      maxLength: 255,
       validator: (value) {
         if (value == null || value.trim().isEmpty) {
           return 'Vui lòng nhập địa điểm sửa chữa';
+        }
+        if (value.trim().length < 3) {
+          return 'Địa điểm phải có ít nhất 3 ký tự';
         }
         return null;
       },
@@ -530,9 +543,13 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
             labelText: 'Người liên hệ',
             border: OutlineInputBorder(),
           ),
+          maxLength: 100,
           validator: (value) {
             if (value == null || value.trim().isEmpty) {
               return 'Vui lòng nhập tên người liên hệ';
+            }
+            if (value.trim().length < 2) {
+              return 'Tên người liên hệ phải có ít nhất 2 ký tự';
             }
             return null;
           },
@@ -545,9 +562,15 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
             border: OutlineInputBorder(),
           ),
           keyboardType: TextInputType.phone,
+          maxLength: 15,
           validator: (value) {
             if (value == null || value.trim().isEmpty) {
               return 'Vui lòng nhập số điện thoại liên hệ';
+            }
+            final phoneRegex = RegExp(r'^[0-9]{10,15}$');
+            final cleanedPhone = value.trim().replaceAll(RegExp(r'[^\d]'), '');
+            if (!phoneRegex.hasMatch(cleanedPhone)) {
+              return 'Số điện thoại phải có từ 10-15 chữ số';
             }
             return null;
           },
@@ -662,6 +685,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
         border: OutlineInputBorder(),
       ),
       maxLines: 3,
+      maxLength: 500,
     );
   }
 }

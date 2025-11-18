@@ -1,11 +1,11 @@
 import 'package:dio/dio.dart';
 
-import '../auth/api_client.dart';
+import '../auth/customer_interaction_api_client.dart';
 
 class CleaningRequestService {
-  CleaningRequestService(this._client);
+  CleaningRequestService(CustomerInteractionApiClient apiClient) : _dio = apiClient.dio;
 
-  final ApiClient _client;
+  final Dio _dio;
 
   Future<void> createRequest({
     required String unitId,
@@ -19,24 +19,35 @@ class CleaningRequestService {
     List<String>? extraServices,
     String? paymentMethod,
   }) async {
+    // Format content với tất cả thông tin
+    final contentParts = <String>[];
+    contentParts.add('Loại dịch vụ: $cleaningType');
+    contentParts.add('Ngày dọn dẹp: ${cleaningDate.toIso8601String().split('T').first}');
+    contentParts.add('Thời gian bắt đầu: ${startTime.inHours.toString().padLeft(2, '0')}:${(startTime.inMinutes % 60).toString().padLeft(2, '0')}');
+    contentParts.add('Thời lượng: $durationHours giờ');
+    contentParts.add('Địa điểm: $location');
+    contentParts.add('Số điện thoại liên hệ: $contactPhone');
+    if (extraServices != null && extraServices.isNotEmpty) {
+      contentParts.add('Dịch vụ bổ sung: ${extraServices.join(', ')}');
+    }
+    if (paymentMethod != null && paymentMethod.trim().isNotEmpty) {
+      contentParts.add('Phương thức thanh toán: $paymentMethod');
+    }
+    if (note != null && note.trim().isNotEmpty) {
+      contentParts.add('Ghi chú: ${note.trim()}');
+    }
+
+    final title = 'Yêu cầu dọn dẹp - $cleaningType';
+    final requestContent = contentParts.join('\n');
+
     final payload = {
-      'unitId': unitId,
-      'cleaningType': cleaningType,
-      'cleaningDate': cleaningDate.toIso8601String().split('T').first,
-      'startTime':
-          '${startTime.inHours.toString().padLeft(2, '0')}:${(startTime.inMinutes % 60).toString().padLeft(2, '0')}:00',
-      'durationHours': durationHours,
-      'location': location,
-      if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
-      'contactPhone': contactPhone,
-      if (extraServices != null && extraServices.isNotEmpty)
-        'extraServices': extraServices,
-      if (paymentMethod != null && paymentMethod.trim().isNotEmpty)
-        'paymentMethod': paymentMethod.trim(),
+      'title': title,
+      'content': requestContent,
+      'status': 'Pending', // Backend sẽ tự động set nếu không gửi
     };
 
     try {
-      await _client.dio.post('/cleaning-requests', data: payload);
+      await _dio.post('/requests/createRequest', data: payload);
     } on DioException catch (dioErr) {
       final message = dioErr.response?.data is Map<String, dynamic>
           ? (dioErr.response?.data['message'] as String?)

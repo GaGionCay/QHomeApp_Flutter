@@ -9,6 +9,7 @@ import '../theme/app_colors.dart';
 import '../common/layout_insets.dart';
 import 'service_booking_screen.dart';
 import 'service_booking_service.dart';
+import 'service_detail_screen.dart';
 
 class ServiceListScreen extends StatefulWidget {
   final String categoryCode;
@@ -26,10 +27,8 @@ class ServiceListScreen extends StatefulWidget {
 
 class _ServiceListScreenState extends State<ServiceListScreen> {
   late final ServiceBookingService _serviceBookingService;
-  final TextEditingController _searchController = TextEditingController();
 
   List<Map<String, dynamic>> _services = [];
-  List<Map<String, dynamic>> _filteredServices = const [];
   bool _loading = true;
   String? _error;
   final NumberFormat _currencyFormatter =
@@ -39,16 +38,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   void initState() {
     super.initState();
     _serviceBookingService = ServiceBookingService(AssetMaintenanceApiClient());
-    _searchController.addListener(_onSearchChanged);
     _loadServices();
-  }
-
-  @override
-  void dispose() {
-    _searchController
-      ..removeListener(_onSearchChanged)
-      ..dispose();
-    super.dispose();
   }
 
   Future<void> _loadServices() async {
@@ -60,11 +50,9 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     try {
       final services = await _serviceBookingService
           .getServicesByCategory(widget.categoryCode);
-      final filtered = _filterServices(services, _searchController.text);
 
       setState(() {
         _services = services;
-        _filteredServices = filtered;
         _loading = false;
       });
     } catch (e) {
@@ -137,12 +125,10 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                           children: [
                             _buildHeaderCard(context),
                             const SizedBox(height: 24),
-                            _buildSearchField(context),
-                            const SizedBox(height: 18),
-                            if (_filteredServices.isEmpty)
-                              _buildEmptyFilterState(context)
+                            if (_services.isEmpty)
+                              _buildEmptyState(theme)
                             else
-                              ..._filteredServices.map(
+                              ..._services.map(
                                 (service) => Padding(
                                   padding: const EdgeInsets.only(bottom: 18),
                                   child: _ServiceGlassCard(
@@ -175,7 +161,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ServiceBookingScreen(
+            builder: (_) => ServiceDetailScreen(
               serviceId: service['id'].toString(),
               serviceName: service['name'] as String? ?? 'Dịch vụ',
               categoryCode: widget.categoryCode,
@@ -427,72 +413,6 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     );
   }
 
-  Widget _buildSearchField(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            prefixIcon: const Icon(CupertinoIcons.search),
-            suffixIcon: _searchController.text.isNotEmpty
-                ? IconButton(
-                    onPressed: () => _searchController.clear(),
-                    icon: const Icon(CupertinoIcons.xmark_circle_fill),
-                  )
-                : null,
-            hintText: 'Tìm theo tên dịch vụ hoặc mô tả...',
-            filled: true,
-            fillColor: colorScheme.surface
-                .withOpacity(theme.brightness == Brightness.dark ? 0.5 : 0.78),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(22),
-              borderSide: BorderSide(
-                color: colorScheme.outline.withOpacity(0.08),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyFilterState(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return _ServiceGlassCard(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 32),
-        child: Column(
-          children: [
-            Icon(
-              CupertinoIcons.search,
-              size: 48,
-              color: colorScheme.onSurface.withOpacity(0.3),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Không tìm thấy dịch vụ phù hợp',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Thử đổi từ khóa khác hoặc xem các dịch vụ bên dưới.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurface.withOpacity(0.56),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildBookingTypeChip(String bookingType) {
     final label = _bookingTypeLabel(bookingType);
@@ -582,7 +502,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => ServiceBookingScreen(
+                builder: (_) => ServiceDetailScreen(
                   serviceId: service['id'].toString(),
                   serviceName: service['name'] as String? ?? 'Dịch vụ',
                   categoryCode: widget.categoryCode,
@@ -639,31 +559,6 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     return 'Liên hệ ban quản lý';
   }
 
-  void _onSearchChanged() {
-    final filtered = _filterServices(_services, _searchController.text);
-    setState(() {
-      _filteredServices = filtered;
-    });
-  }
-
-  List<Map<String, dynamic>> _filterServices(
-    List<Map<String, dynamic>> source,
-    String query,
-  ) {
-    final term = query.trim().toLowerCase();
-    if (term.isEmpty) {
-      return List<Map<String, dynamic>>.from(source);
-    }
-    return source.where((service) {
-      final name = service['name']?.toString().toLowerCase() ?? '';
-      final description =
-          service['description']?.toString().toLowerCase() ?? '';
-      final location = service['location']?.toString().toLowerCase() ?? '';
-      return name.contains(term) ||
-          description.contains(term) ||
-          location.contains(term);
-    }).toList();
-  }
 }
 
 class _ServiceGlassCard extends StatelessWidget {

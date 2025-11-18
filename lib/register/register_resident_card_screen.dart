@@ -62,6 +62,9 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   String? _defaultFullName;
   String? _defaultCitizenId;
   String? _defaultPhoneNumber;
+  
+  List<Map<String, dynamic>> _householdMembers = [];
+  bool _loadingHouseholdMembers = false;
 
   Future<Dio> _servicesCardClient() async {
     if (_servicesCardDio == null) {
@@ -126,7 +129,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     Future.microtask(() async {
       await _loadSavedData();
       await _loadUnitContext();
-      await _loadResidentContext();
+      // Không tự động load resident context nữa, chỉ load khi user click button
+      await _loadResidentContextDataOnly(); // Chỉ load data, không auto-fill
     });
   }
 
@@ -234,14 +238,9 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
 
       final data = jsonDecode(saved) as Map<String, dynamic>;
       setState(() {
-        _fullNameCtrl.text =
-            data['fullName'] ?? data['residentName'] ?? _fullNameCtrl.text;
-        _apartmentNumberCtrl.text =
-            data['apartmentNumber'] ?? _apartmentNumberCtrl.text;
-        _buildingNameCtrl.text = data['buildingName'] ?? _buildingNameCtrl.text;
+        // Chỉ load các field không phải thông tin cá nhân
+        // Không tự động điền: fullName, apartmentNumber, buildingName, citizenId, phoneNumber
         _requestType = data['requestType'] ?? _requestType;
-        _citizenIdCtrl.text = data['citizenId'] ?? _citizenIdCtrl.text;
-        _phoneNumberCtrl.text = data['phoneNumber'] ?? _phoneNumberCtrl.text;
         _noteCtrl.text = data['note'] ?? _noteCtrl.text;
         _residentId = data['residentId']?.toString() ?? _residentId;
         _selectedUnitId = data['unitId']?.toString() ?? _selectedUnitId;
@@ -284,6 +283,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       if (selectedUnit != null) {
         _applyUnitContext(selectedUnit);
         await prefs.setString(_selectedUnitPrefsKey, selectedUnit.id);
+        // Load danh sách thành viên khi có unit
+        _loadHouseholdMembers();
       }
     } catch (e) {
       debugPrint('❌ Lỗi tải thông tin căn hộ: $e');
@@ -291,15 +292,21 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   }
 
   void _applyUnitContext(UnitInfo unit) {
+    // Không tự động fill nữa, chỉ lưu thông tin unit
+    _hasUnsavedChanges = false;
+  }
+  
+  void _fillUnitContext(UnitInfo unit) {
     _apartmentNumberCtrl.text = unit.code;
     final building = (unit.buildingName?.isNotEmpty ?? false)
         ? unit.buildingName!
         : (unit.buildingCode ?? '');
     _buildingNameCtrl.text = building;
-    _hasUnsavedChanges = false;
+    _hasUnsavedChanges = true;
   }
 
-  Future<void> _loadResidentContext() async {
+  // Chỉ load data, không auto-fill
+  Future<void> _loadResidentContextDataOnly() async {
     try {
       final profileService = ProfileService(api.dio);
       final profile = await profileService.getProfile();
@@ -313,22 +320,9 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
           profile['phoneNumber']?.toString() ?? profile['phone']?.toString();
 
       setState(() {
-        _defaultFullName = profileFullName ?? _defaultFullName;
-        _defaultCitizenId = profileCitizenId ?? _defaultCitizenId;
-        _defaultPhoneNumber = profilePhone ?? _defaultPhoneNumber;
-
-        if (_fullNameCtrl.text.isEmpty &&
-            (_defaultFullName?.isNotEmpty ?? false)) {
-          _fullNameCtrl.text = _defaultFullName!;
-        }
-        if (_citizenIdCtrl.text.isEmpty &&
-            (_defaultCitizenId?.isNotEmpty ?? false)) {
-          _citizenIdCtrl.text = _defaultCitizenId!;
-        }
-        if (_phoneNumberCtrl.text.isEmpty &&
-            (_defaultPhoneNumber?.isNotEmpty ?? false)) {
-          _phoneNumberCtrl.text = _defaultPhoneNumber!;
-        }
+        _defaultFullName = profileFullName;
+        _defaultCitizenId = profileCitizenId;
+        _defaultPhoneNumber = profilePhone;
         if (_residentId == null || _residentId!.isEmpty) {
           _residentId = candidateResidentId;
         }
@@ -348,6 +342,218 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       }
     } catch (e) {
       debugPrint('❌ Lỗi tải thông tin cư dân: $e');
+    }
+  }
+  
+  // Load danh sách thành viên trong căn hộ
+  Future<void> _loadHouseholdMembers() async {
+    if (_selectedUnitId == null || _selectedUnitId!.isEmpty) {
+      return;
+    }
+    
+    setState(() => _loadingHouseholdMembers = true);
+    
+    try {
+      final client = await _servicesCardClient();
+      final res = await client.get(
+        '/resident-card/household-members',
+        queryParameters: {'unitId': _selectedUnitId},
+      );
+      
+      if (res.statusCode == 200 && res.data is List) {
+        setState(() {
+          _householdMembers = List<Map<String, dynamic>>.from(res.data);
+        });
+        debugPrint('✅ [ResidentCard] Đã tải ${_householdMembers.length} thành viên');
+      }
+    } catch (e) {
+      debugPrint('❌ [ResidentCard] Lỗi tải danh sách thành viên: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể tải danh sách thành viên: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loadingHouseholdMembers = false);
+      }
+    }
+  }
+
+  // Fill thông tin khi user click button
+  Future<void> _fillPersonalInfo() async {
+    // Nếu chưa có danh sách thành viên, load trước
+    if (_householdMembers.isEmpty && _selectedUnitId != null) {
+      await _loadHouseholdMembers();
+    }
+    
+    // Nếu vẫn không có thành viên hoặc không có unitId, chỉ điền thông tin của user hiện tại
+    if (_householdMembers.isEmpty || _selectedUnitId == null) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Điền thông tin cá nhân'),
+          content: const Text(
+            'Bạn có muốn tự động điền thông tin cá nhân của tài khoản đang đăng nhập vào các trường không?\n\n'
+            'Các thông tin sẽ được điền vào:\n'
+            '- Họ và tên\n'
+            '- Số căn hộ\n'
+            '- Tòa nhà\n'
+            '- Số CCCD/CMND\n'
+            '- Số điện thoại',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Hủy'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Điền thông tin', style: TextStyle(color: Colors.teal)),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm == true) {
+        _fillCurrentUserInfo();
+      }
+      return;
+    }
+    
+    // Hiển thị dialog chọn thành viên
+    final selectedMember = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Chọn thành viên'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: _loadingHouseholdMembers
+              ? const Center(child: CircularProgressIndicator())
+              : _householdMembers.isEmpty
+                  ? const Text('Không có thành viên nào trong căn hộ')
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _householdMembers.length,
+                      itemBuilder: (context, index) {
+                        final member = _householdMembers[index];
+                        final name = member['fullName']?.toString() ?? 'Không có tên';
+                        final citizenId = member['citizenId']?.toString() ?? '';
+                        return ListTile(
+                          title: Text(name),
+                          subtitle: citizenId.isNotEmpty ? Text('CCCD: $citizenId') : null,
+                          onTap: () => Navigator.pop(context, member),
+                        );
+                      },
+                    ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Hủy'),
+          ),
+        ],
+      ),
+    );
+
+    if (selectedMember != null) {
+      // Hiển thị popup xác nhận
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Điền thông tin cá nhân'),
+          content: Text(
+            'Bạn có muốn tự động điền thông tin của ${selectedMember['fullName'] ?? 'thành viên này'} vào các trường không?\n\n'
+            'Các thông tin sẽ được điền vào:\n'
+            '- Họ và tên\n'
+            '- Số căn hộ\n'
+            '- Tòa nhà\n'
+            '- Số CCCD/CMND\n'
+            '- Số điện thoại',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Hủy'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Điền thông tin', style: TextStyle(color: Colors.teal)),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm == true) {
+        _fillMemberInfo(selectedMember);
+      }
+    }
+  }
+  
+  void _fillCurrentUserInfo() {
+    setState(() {
+      if (_defaultFullName?.isNotEmpty ?? false) {
+        _fullNameCtrl.text = _defaultFullName!;
+      }
+      if (_defaultCitizenId?.isNotEmpty ?? false) {
+        _citizenIdCtrl.text = _defaultCitizenId!;
+      }
+      if (_defaultPhoneNumber?.isNotEmpty ?? false) {
+        _phoneNumberCtrl.text = _defaultPhoneNumber!;
+      }
+      if (_currentUnit != null) {
+        _fillUnitContext(_currentUnit!);
+      }
+      _hasUnsavedChanges = true;
+    });
+    _autoSave();
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Đã điền thông tin cá nhân'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+  
+  void _fillMemberInfo(Map<String, dynamic> member) {
+    setState(() {
+      final fullName = member['fullName']?.toString();
+      final citizenId = member['citizenId']?.toString();
+      final phoneNumber = member['phoneNumber']?.toString();
+      final residentId = member['residentId']?.toString();
+      
+      if (fullName?.isNotEmpty ?? false) {
+        _fullNameCtrl.text = fullName!;
+      }
+      if (citizenId?.isNotEmpty ?? false) {
+        _citizenIdCtrl.text = citizenId!;
+      }
+      if (phoneNumber?.isNotEmpty ?? false) {
+        _phoneNumberCtrl.text = phoneNumber!;
+      }
+      if (residentId?.isNotEmpty ?? false) {
+        _residentId = residentId;
+      }
+      if (_currentUnit != null) {
+        _fillUnitContext(_currentUnit!);
+      }
+      _hasUnsavedChanges = true;
+    });
+    _autoSave();
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✅ Đã điền thông tin của ${member['fullName'] ?? 'thành viên'}'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -647,7 +853,6 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   }
 
   Future<void> _requestEditField(String field) async {
-    if (_isAutoFilledField(field)) return;
     if (!_confirmed) return;
 
     if (_editingField != null && _editingField != field) {
@@ -719,13 +924,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     }
   }
 
-  bool _isAutoFilledField(String field) =>
-      field == 'apartmentNumber' || field == 'buildingName';
-
   bool _isEditable(String field) {
-    if (_isAutoFilledField(field)) {
-      return false;
-    }
     return !_confirmed || _editingField == field;
   }
 
@@ -835,18 +1034,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       _hasEditedAfterConfirm = false;
     });
     _clearSavedData();
-    if (_currentUnit != null) {
-      _applyUnitContext(_currentUnit!);
-    }
-    if (_defaultFullName?.isNotEmpty ?? false) {
-      _fullNameCtrl.text = _defaultFullName!;
-    }
-    if (_defaultCitizenId?.isNotEmpty ?? false) {
-      _citizenIdCtrl.text = _defaultCitizenId!;
-    }
-    if (_defaultPhoneNumber?.isNotEmpty ?? false) {
-      _phoneNumberCtrl.text = _defaultPhoneNumber!;
-    }
+    // Không tự động apply unit context và fill thông tin nữa
   }
 
   @override
@@ -940,6 +1128,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _buildFeeInfoCard(),
+                    const SizedBox(height: 20),
+                    _buildAutoFillButton(),
                     const SizedBox(height: 20),
                     _buildTextField(
                       controller: _fullNameCtrl,
@@ -1102,6 +1292,29 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     );
   }
 
+  Widget _buildAutoFillButton() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return OutlinedButton.icon(
+      onPressed: _fillPersonalInfo,
+      icon: Icon(Icons.auto_fix_high, color: colorScheme.primary),
+      label: Text(
+        'Điền thông tin cá nhân',
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: colorScheme.primary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+        side: BorderSide(color: colorScheme.primary.withOpacity(0.5)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
+    );
+  }
+
   Widget _buildFeeInfoCard() {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -1210,10 +1423,9 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     int maxLines = 1,
   }) {
     final editable = _isEditable(fieldKey);
-    final isAutoField = _isAutoFilledField(fieldKey);
-    final canEdit = !isAutoField && editable;
+    final isEditing = _editingField == fieldKey;
 
-    final displayHint = _confirmed && !editable && !isAutoField
+    final displayHint = _confirmed && !editable
         ? 'Nhấn đúp để yêu cầu chỉnh sửa'
         : hint;
 
@@ -1226,8 +1438,10 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       keyboardType: keyboardType,
       maxLines: maxLines,
       enabled: true,
-      readOnly: !canEdit,
-      onDoubleTap: isAutoField ? null : () => _requestEditField(fieldKey),
+      readOnly: !editable,
+      helperText:
+          isEditing ? 'Đang chỉnh sửa... (Nhấn Done để hoàn tất)' : null,
+      onDoubleTap: () => _requestEditField(fieldKey),
     );
   }
 

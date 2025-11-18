@@ -670,9 +670,13 @@ class _FeedbackFormSheetState extends State<FeedbackFormSheet> {
                       hintText: 'Ví dụ: Tiếng ồn từ căn hộ tầng trên',
                     ),
                     textInputAction: TextInputAction.next,
+                    maxLength: 255,
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
                         return 'Vui lòng nhập tiêu đề';
+                      }
+                      if (value.trim().length < 5) {
+                        return 'Tiêu đề phải có ít nhất 5 ký tự';
                       }
                       return null;
                     },
@@ -685,6 +689,7 @@ class _FeedbackFormSheetState extends State<FeedbackFormSheet> {
                       hintText: 'Mô tả vấn đề của bạn để ban quản lý hỗ trợ nhanh hơn',
                     ),
                     maxLines: 5,
+                    maxLength: 1000,
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
                         return 'Vui lòng mô tả vấn đề';

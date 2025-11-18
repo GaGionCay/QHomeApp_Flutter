@@ -413,12 +413,62 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   }
 
   void _applyUnitContext(UnitInfo unit) {
+    // Không tự động fill nữa, chỉ lưu thông tin unit
+    _hasUnsavedChanges = false;
+  }
+  
+  void _fillUnitContext(UnitInfo unit) {
     _apartmentNumberCtrl.text = unit.code;
     final building = (unit.buildingName?.isNotEmpty ?? false)
         ? unit.buildingName!
         : (unit.buildingCode ?? '');
     _buildingNameCtrl.text = building;
-    _hasUnsavedChanges = false;
+    _hasUnsavedChanges = true;
+  }
+  
+  // Fill thông tin khi user click button
+  Future<void> _fillPersonalInfo() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Điền thông tin cá nhân'),
+        content: const Text(
+          'Bạn có muốn tự động điền thông tin căn hộ của tài khoản đang đăng nhập vào các trường không?\n\n'
+          'Các thông tin sẽ được điền vào:\n'
+          '- Số căn hộ\n'
+          '- Tòa nhà',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Điền thông tin', style: TextStyle(color: Colors.teal)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      setState(() {
+        if (_currentUnit != null) {
+          _fillUnitContext(_currentUnit!);
+        }
+        _hasUnsavedChanges = true;
+      });
+      _autoSave();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Đã điền thông tin căn hộ'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _clearSavedData() async {
@@ -926,7 +976,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   }
 
   Future<void> _requestEditField(String field) async {
-    if (_isAutoFilledField(field)) return;
     if (!_confirmed) return;
 
     if (_editingField != null && _editingField != field) {
@@ -998,9 +1047,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     }
   }
 
-  bool _isAutoFilledField(String field) =>
-      field == 'apartmentNumber' || field == 'buildingName';
-
   bool _canRemoveImage(int index) {
     return !_confirmed || _editingField == 'image_$index';
   }
@@ -1044,7 +1090,30 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   }
 
   bool _isEditable(String field) =>
-      !_isAutoFilledField(field) && (!_confirmed || _editingField == field);
+      !_confirmed || _editingField == field;
+
+  Widget _buildAutoFillButton() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return OutlinedButton.icon(
+      onPressed: _fillPersonalInfo,
+      icon: Icon(Icons.auto_fix_high, color: colorScheme.primary),
+      label: Text(
+        'Điền thông tin căn hộ',
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: colorScheme.primary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+        side: BorderSide(color: colorScheme.primary.withOpacity(0.5)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
+    );
+  }
 
   Widget _buildFeeNoticeCard() {
     final theme = Theme.of(context);
@@ -1701,9 +1770,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
       _hasEditedAfterConfirm = false;
       _hasUnsavedChanges = false;
     });
-    if (_currentUnit != null) {
-      _applyUnitContext(_currentUnit!);
-    }
+    // Không tự động apply unit context nữa
   }
 
   @override
@@ -1816,6 +1883,8 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
                   children: [
                     _buildFeeNoticeCard(),
                     const SizedBox(height: 20),
+                    _buildAutoFillButton(),
+                    const SizedBox(height: 20),
                     _buildVehicleFormCard(),
                     const SizedBox(height: 24),
                     _buildImageSection(),
@@ -1871,14 +1940,12 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     TextInputType? keyboardType,
     String? hint,
   }) {
-    final isAutoField = _isAutoFilledField(fieldKey);
     final editable = _isEditable(fieldKey);
-    final canEdit = editable && !isAutoField;
     final isEditing = _editingField == fieldKey;
 
-    final displayHint = _confirmed && !editable && !isAutoField
+    final displayHint = _confirmed && !editable
         ? 'Nhấn đúp để yêu cầu chỉnh sửa'
-        : (hint ?? (isAutoField ? 'Hệ thống tự điền' : 'Nhập $label'));
+        : (hint ?? 'Nhập $label');
 
     return RegisterGlassTextField(
       controller: controller,
@@ -1889,10 +1956,10 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
       keyboardType: keyboardType,
       maxLines: maxLines,
       enabled: true,
-      readOnly: !canEdit,
+      readOnly: !editable,
       helperText:
           isEditing ? 'Đang chỉnh sửa... (Nhấn Done để hoàn tất)' : null,
-      onDoubleTap: isAutoField ? null : () => _requestEditField(fieldKey),
+      onDoubleTap: () => _requestEditField(fieldKey),
       onChanged: (value) {
         if (isEditing) {
           _autoSave();
