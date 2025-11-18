@@ -1030,7 +1030,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
     if (!allowedPaymentStatuses.contains(paymentStatus)) {
       return false;
     }
-    if (status == 'REJECTED') {
+    if (status == 'REJECTED' || status == 'CANCELLED') {
       return false;
     }
     
@@ -1166,14 +1166,10 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
         throw Exception('Loại thẻ không hỗ trợ cấp lại');
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Không thể cấp lại thẻ: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      _showErrorSnackbar(
+        error: e,
+        fallback: 'Không thể cấp lại thẻ',
+      );
     } finally {
       if (mounted) {
         setState(() => _isRequestingReplacement = false);
@@ -1249,14 +1245,10 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
         throw Exception('Không thể hủy thẻ (mã lỗi ${res.statusCode})');
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Không thể hủy thẻ: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      _showErrorSnackbar(
+        error: e,
+        fallback: 'Không thể hủy thẻ',
+      );
     } finally {
       if (mounted) {
         setState(() => _isCancelling = false);
@@ -1469,18 +1461,8 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
     await _launchPaymentUrl(paymentUrl);
   }
 
-  String _buildReplacementNote(dynamic originalNote) {
-    final base = StringBuffer('Yêu cầu cấp lại từ thẻ ${widget.card.id}');
-    if (originalNote != null) {
-      final note = originalNote.toString();
-      if (note.isNotEmpty) {
-        base.write(' | Ghi chú cũ: $note');
-      }
-    } else if (widget.card.note != null && widget.card.note!.isNotEmpty) {
-      base.write(' | Ghi chú cũ: ${widget.card.note}');
-    }
-    return base.toString();
-  }
+  String _buildReplacementNote(dynamic _) =>
+      'Yêu cầu cấp lại từ thẻ ${widget.card.id}';
 
   Future<void> _launchPaymentUrl(String paymentUrl) async {
     final uri = Uri.parse(paymentUrl);
@@ -1512,6 +1494,35 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
         ),
       );
     }
+  }
+  
+  void _showErrorSnackbar({required Object error, required String fallback}) {
+    final message = _extractErrorMessage(error, fallback);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  String _extractErrorMessage(Object error, String fallback) {
+    if (error is DioException) {
+      final data = error.response?.data;
+      if (data is Map && data['message'] is String && data['message'].toString().isNotEmpty) {
+        debugPrint('❌ DioException ${error.response?.statusCode}: ${data['message']}');
+        return data['message'].toString();
+      }
+      if (error.message != null && error.message!.isNotEmpty) {
+        debugPrint('❌ DioException ${error.response?.statusCode}: ${error.message}');
+        return error.message!;
+      }
+      debugPrint('❌ DioException ${error.response?.statusCode}: ${error.response?.data}');
+      return fallback;
+    }
+    debugPrint('❌ Error: $error');
+    return fallback;
   }
 
   String _cardTypeLabel(String? type) {
