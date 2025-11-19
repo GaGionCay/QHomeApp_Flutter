@@ -180,7 +180,9 @@ class _RequestCard extends StatelessWidget {
 
   Color _statusColor(BuildContext context) {
     final normalized = status.toUpperCase();
-    if (normalized.contains('APPROVED') || normalized.contains('COMPLETED')) {
+    if (normalized.contains('APPROVED') ||
+        normalized.contains('COMPLETED') ||
+        normalized.contains('DONE')) {
       return AppColors.success;
     }
     if (normalized.contains('PENDING') ||
