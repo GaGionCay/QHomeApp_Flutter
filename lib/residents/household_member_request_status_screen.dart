@@ -1,15 +1,13 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../auth/api_client.dart';
-import '../models/account_creation_request.dart';
+import '../models/household_member_request.dart';
 import '../models/unit_info.dart';
-import 'resident_account_service.dart';
+import 'household_member_request_service.dart';
 
-class AccountRequestStatusScreen extends StatefulWidget {
-  const AccountRequestStatusScreen({
+class HouseholdMemberRequestStatusScreen extends StatefulWidget {
+  const HouseholdMemberRequestStatusScreen({
     super.key,
     required this.unit,
   });
@@ -17,23 +15,23 @@ class AccountRequestStatusScreen extends StatefulWidget {
   final UnitInfo unit;
 
   @override
-  State<AccountRequestStatusScreen> createState() =>
-      _AccountRequestStatusScreenState();
+  State<HouseholdMemberRequestStatusScreen> createState() =>
+      _HouseholdMemberRequestStatusScreenState();
 }
 
-class _AccountRequestStatusScreenState
-    extends State<AccountRequestStatusScreen> {
-  late final ResidentAccountService _service;
-  List<AccountCreationRequest> _requests = [];
+class _HouseholdMemberRequestStatusScreenState
+    extends State<HouseholdMemberRequestStatusScreen> {
+  late final HouseholdMemberRequestService _service;
+  List<HouseholdMemberRequest> _requests = [];
   bool _loading = true;
   late final String _unitId;
   String? _error;
-  String? _cancellingRequestId;
+  String? _cancellingId;
 
   @override
   void initState() {
     super.initState();
-    _service = ResidentAccountService(ApiClient());
+    _service = HouseholdMemberRequestService(ApiClient());
     _unitId = widget.unit.id;
     _loadRequests();
   }
@@ -44,7 +42,7 @@ class _AccountRequestStatusScreenState
       _error = null;
     });
     try {
-      final data = await _service.getMyAccountRequests();
+      final data = await _service.getMyRequests();
       if (mounted) {
         setState(() {
           _requests = data;
@@ -65,13 +63,13 @@ class _AccountRequestStatusScreenState
     }
   }
 
-  Future<void> _confirmCancel(AccountCreationRequest request) async {
+  Future<void> _confirmCancel(HouseholdMemberRequest request) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Hủy yêu cầu?'),
-        content:
-            const Text('Bạn có chắc chắn muốn hủy yêu cầu tạo tài khoản này?'),
+      builder: (_) => AlertDialog(
+        title: const Text('Hủy yêu cầu đăng ký?'),
+        content: const Text(
+            'Bạn có chắc chắn muốn hủy yêu cầu đăng ký thành viên này?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -90,16 +88,16 @@ class _AccountRequestStatusScreenState
     }
   }
 
-  Future<void> _cancelRequest(AccountCreationRequest request) async {
+  Future<void> _cancelRequest(HouseholdMemberRequest request) async {
     setState(() {
-      _cancellingRequestId = request.id;
+      _cancellingId = request.id;
     });
     try {
-      await _service.cancelAccountRequest(request.id);
+      await _service.cancelRequest(request.id);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Đã hủy yêu cầu thành công.'),
+          content: Text('Đã hủy yêu cầu đăng ký thành viên.'),
           backgroundColor: Colors.green,
         ),
       );
@@ -115,86 +113,14 @@ class _AccountRequestStatusScreenState
     } finally {
       if (mounted) {
         setState(() {
-          _cancellingRequestId = null;
+          _cancellingId = null;
         });
       }
     }
   }
 
-  Color _statusColor(AccountCreationRequest request) {
-    if (request.isApproved) return Colors.green;
-    if (request.isRejected) return Colors.red;
-    if (request.isCancelled) return Colors.grey;
-    return Colors.orange;
-  }
-
-  IconData _statusIcon(AccountCreationRequest request) {
-    if (request.isApproved) return Icons.check_circle;
-    if (request.isRejected) return Icons.cancel;
-    if (request.isCancelled) return Icons.highlight_off;
-    return Icons.hourglass_top;
-  }
-
-  List<AccountCreationRequest> get _filteredRequests {
+  List<HouseholdMemberRequest> get _filteredRequests {
     return _requests.where((request) => request.unitId == _unitId).toList();
-  }
-
-  Widget _buildProofImage(String data) {
-    final uri = data.trim();
-    if (uri.isEmpty) return const SizedBox.shrink();
-
-    if (uri.startsWith('http')) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Image.network(
-          uri,
-          width: 80,
-          height: 80,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(Icons.broken_image_outlined),
-          ),
-        ),
-      );
-    }
-
-    final bytes = _decodeBase64Image(uri);
-    if (bytes == null) {
-      return Container(
-        width: 80,
-        height: 80,
-        decoration: BoxDecoration(
-          color: Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Icon(Icons.image_not_supported_outlined),
-      );
-    }
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Image.memory(
-        bytes,
-        width: 80,
-        height: 80,
-        fit: BoxFit.cover,
-      ),
-    );
-  }
-
-  Uint8List? _decodeBase64Image(String data) {
-    try {
-      final content = data.contains(',') ? data.split(',').last : data;
-      return base64Decode(content);
-    } catch (_) {
-      return null;
-    }
   }
 
   @override
@@ -202,12 +128,11 @@ class _AccountRequestStatusScreenState
     final theme = Theme.of(context);
     final primaryText = theme.colorScheme.onSurface;
     final secondaryText = theme.colorScheme.onSurfaceVariant;
-
     final filtered = _filteredRequests;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Theo dõi yêu cầu tạo tài khoản'),
+        title: const Text('Theo dõi đăng ký thành viên'),
       ),
       body: Column(
         children: [
@@ -237,7 +162,7 @@ class _AccountRequestStatusScreenState
                               padding: const EdgeInsets.all(24),
                               children: [
                                 Text(
-                                  'Bạn chưa gửi yêu cầu tạo tài khoản nào.',
+                                  'Bạn chưa gửi yêu cầu đăng ký thành viên nào.',
                                   style: theme.textTheme.bodyMedium?.copyWith(
                                     color: secondaryText,
                                   ),
@@ -250,7 +175,7 @@ class _AccountRequestStatusScreenState
                               itemCount: filtered.length,
                               itemBuilder: (context, index) {
                                 final request = filtered[index];
-                                return _buildAccountCard(
+                                return _buildMemberCard(
                                   theme,
                                   request,
                                   primaryText,
@@ -268,7 +193,6 @@ class _AccountRequestStatusScreenState
   Widget _buildUnitHeader(BuildContext context) {
     final theme = Theme.of(context);
     final unit = widget.unit;
-    final buildingLabel = unit.buildingName ?? unit.buildingCode;
 
     return Container(
       width: double.infinity,
@@ -286,7 +210,7 @@ class _AccountRequestStatusScreenState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
-            Icons.person_search_outlined,
+            Icons.home_work_outlined,
             color: theme.colorScheme.primary,
           ),
           const SizedBox(width: 14),
@@ -295,7 +219,7 @@ class _AccountRequestStatusScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Đang xem yêu cầu của',
+                  'Căn hộ đang theo dõi',
                   style: theme.textTheme.labelMedium?.copyWith(
                     color: theme.colorScheme.onSurface.withOpacity(0.7),
                     fontWeight: FontWeight.w600,
@@ -304,15 +228,14 @@ class _AccountRequestStatusScreenState
                 const SizedBox(height: 4),
                 Text(
                   unit.displayName,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: theme.textTheme.titleMedium,
                 ),
-                if ((buildingLabel ?? '').isNotEmpty)
+                if ((unit.buildingName ?? unit.buildingCode)?.isNotEmpty ??
+                    false)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
                     child: Text(
-                      'Tòa $buildingLabel',
+                      'Tòa ${unit.buildingName ?? unit.buildingCode}',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -333,15 +256,13 @@ class _AccountRequestStatusScreenState
     );
   }
 
-  Widget _buildAccountCard(
+  Widget _buildMemberCard(
     ThemeData theme,
-    AccountCreationRequest request,
+    HouseholdMemberRequest request,
     Color primaryText,
     Color secondaryText,
   ) {
-    final isCurrentUnit = request.unitId == _unitId || request.unitId == null;
-    final unitLabel = request.unitCode ??
-        (isCurrentUnit ? widget.unit.displayName : 'Căn hộ');
+    final unitLabel = request.unitCode ?? 'Căn hộ';
     final cardBackground = theme.brightness == Brightness.dark
         ? Colors.white.withOpacity(0.05)
         : Colors.white;
@@ -372,10 +293,11 @@ class _AccountRequestStatusScreenState
             children: [
               CircleAvatar(
                 radius: 22,
-                backgroundColor: _statusColor(request).withOpacity(0.18),
+                backgroundColor:
+                    _memberStatusColor(request.status).withOpacity(0.18),
                 child: Icon(
-                  _statusIcon(request),
-                  color: _statusColor(request),
+                  _memberStatusIcon(request.status),
+                  color: _memberStatusColor(request.status),
                 ),
               ),
               const SizedBox(width: 12),
@@ -384,7 +306,7 @@ class _AccountRequestStatusScreenState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      request.residentName ?? 'Thành viên',
+                      request.requestedResidentFullName ?? 'Thành viên',
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                         color: primaryText,
@@ -408,7 +330,7 @@ class _AccountRequestStatusScreenState
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                backgroundColor: _statusColor(request),
+                backgroundColor: _memberStatusColor(request.status),
               ),
             ],
           ),
@@ -420,125 +342,75 @@ class _AccountRequestStatusScreenState
                 color: secondaryText,
               ),
             ),
-          if ((request.residentPhone ?? '').isNotEmpty)
+          if ((request.requestedResidentPhone ?? '').isNotEmpty)
             Text(
-              'Điện thoại: ${request.residentPhone}',
+              'Điện thoại: ${request.requestedResidentPhone}',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: secondaryText,
               ),
             ),
-          if ((request.residentEmail ?? '').isNotEmpty)
+          if ((request.requestedResidentEmail ?? '').isNotEmpty)
             Text(
-              'Email: ${request.residentEmail}',
+              'Email: ${request.requestedResidentEmail}',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: secondaryText,
               ),
             ),
           const SizedBox(height: 8),
-          Text(
-            'Gửi lúc: ${request.formattedCreatedAt}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: secondaryText,
-            ),
-          ),
-          if (request.isApproved)
+          if (request.formattedCreatedAt != null)
             Text(
-              'Duyệt lúc: ${request.formattedApprovedAt}',
+              'Gửi lúc: ${request.formattedCreatedAt}',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: secondaryText,
               ),
             ),
-          if (request.isRejected) ...[
+          if (request.status == 'APPROVED' && request.approvedAt != null)
             Text(
-              'Từ chối lúc: ${request.formattedRejectedAt}',
+              'Duyệt lúc: ${DateFormat('dd/MM/yyyy HH:mm').format(request.approvedAt!.toLocal())}',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: secondaryText,
               ),
             ),
-            if ((request.rejectionReason ?? '').isNotEmpty)
-              Text(
-                'Lý do: ${request.rejectionReason}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-          ] else if (request.isCancelled) ...[
+          if (request.status == 'REJECTED' && request.rejectedAt != null)
             Text(
-              'Hủy lúc: ${request.formattedRejectedAt}',
+              'Từ chối lúc: ${DateFormat('dd/MM/yyyy HH:mm').format(request.rejectedAt!.toLocal())}',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: secondaryText,
               ),
             ),
+          if ((request.rejectionReason ?? '').isNotEmpty)
             Text(
-              'Bạn đã hủy yêu cầu này.',
+              'Lý do: ${request.rejectionReason}',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: secondaryText,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ],
-          if (request.hasProofImages) ...[
-            const SizedBox(height: 12),
-            Text(
-              'Ảnh minh chứng:',
-              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.error,
                 fontWeight: FontWeight.w600,
-                color: secondaryText,
               ),
             ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: request.proofOfRelationImageUrls
-                  .map(_buildProofImage)
-                  .toList(),
-            ),
-          ],
-          if (request.isApproved && (request.username ?? '').isNotEmpty) ...[
-            const SizedBox(height: 12),
-            const Divider(),
+          if ((request.note ?? '').isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
-              'Tài khoản:',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
+              'Ghi chú: ${request.note}',
+              style: theme.textTheme.bodySmall?.copyWith(
                 color: secondaryText,
               ),
             ),
-            Text(
-              'Username: ${request.username}',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: primaryText,
-              ),
-            ),
-            if ((request.email ?? '').isNotEmpty)
-              Text(
-                'Email: ${request.email}',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: primaryText,
-                ),
-              ),
           ],
           if (request.isPending) ...[
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerRight,
               child: OutlinedButton.icon(
-                icon: _cancellingRequestId == request.id
-                    ? SizedBox(
+                icon: _cancellingId == request.id
+                    ? const SizedBox(
                         width: 16,
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.close),
-                label: Text(
-                  _cancellingRequestId == request.id
-                      ? 'Đang hủy...'
-                      : 'Hủy yêu cầu',
-                ),
-                onPressed: _cancellingRequestId == request.id
+                label: Text(_cancellingId == request.id
+                    ? 'Đang hủy...'
+                    : 'Hủy yêu cầu'),
+                onPressed: _cancellingId == request.id
                     ? null
                     : () => _confirmCancel(request),
               ),
@@ -547,5 +419,31 @@ class _AccountRequestStatusScreenState
         ],
       ),
     );
+  }
+
+  Color _memberStatusColor(String status) {
+    switch (status.toUpperCase()) {
+      case 'APPROVED':
+        return Colors.green;
+      case 'REJECTED':
+        return Colors.red;
+      case 'CANCELLED':
+        return Colors.grey;
+      default:
+        return Colors.orange;
+    }
+  }
+
+  IconData _memberStatusIcon(String status) {
+    switch (status.toUpperCase()) {
+      case 'APPROVED':
+        return Icons.check_circle;
+      case 'REJECTED':
+        return Icons.cancel;
+      case 'CANCELLED':
+        return Icons.highlight_off;
+      default:
+        return Icons.pending_actions;
+    }
   }
 }

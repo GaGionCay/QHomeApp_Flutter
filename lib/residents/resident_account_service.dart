@@ -69,5 +69,23 @@ class ResidentAccountService {
             Map<String, dynamic>.from(item as Map)))
         .toList();
   }
+
+  Future<AccountCreationRequest> cancelAccountRequest(String requestId) async {
+    try {
+      final response =
+          await _apiClient.dio.patch('/residents/account-requests/$requestId/cancel');
+      return AccountCreationRequest.fromJson(
+        Map<String, dynamic>.from(response.data as Map),
+      );
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      if (data is Map &&
+          data['message'] is String &&
+          data['message'].toString().isNotEmpty) {
+        throw Exception(data['message']);
+      }
+      throw Exception('Không thể hủy yêu cầu. Vui lòng thử lại.');
+    }
+  }
 }
 

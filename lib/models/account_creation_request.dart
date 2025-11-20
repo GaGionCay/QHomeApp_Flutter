@@ -103,6 +103,8 @@ class AccountCreationRequest {
         return 'Đã duyệt';
       case 'REJECTED':
         return 'Từ chối';
+      case 'CANCELLED':
+        return 'Đã hủy';
       case 'PENDING':
         return 'Đang chờ duyệt';
       default:
@@ -130,5 +132,6 @@ class AccountCreationRequest {
   bool get isPending => status.toUpperCase() == 'PENDING';
   bool get isApproved => status.toUpperCase() == 'APPROVED';
   bool get isRejected => status.toUpperCase() == 'REJECTED';
+  bool get isCancelled => status.toUpperCase() == 'CANCELLED';
 }
 

@@ -22,6 +22,7 @@ import '../news/resident_service.dart';
 import '../notifications/notification_screen.dart';
 import '../notifications/notification_read_store.dart';
 import '../residents/household_member_request_screen.dart';
+import '../residents/household_member_request_status_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
@@ -71,7 +72,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isWeatherLoading = true;
   _WeatherSnapshot? _weatherSnapshot;
   String? _weatherError;
-  
+
   // Error states
   String? _electricityError;
   String? _unpaidServicesError;
@@ -108,12 +109,14 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     // Listen for new incoming notifications via WebSocket - update count immediately without API call
     _eventBus.on('notifications_incoming', (_) {
-      debugPrint('🔔 HomeScreen nhận event notifications_incoming -> tăng unread count...');
+      debugPrint(
+          '🔔 HomeScreen nhận event notifications_incoming -> tăng unread count...');
       if (mounted) {
         setState(() {
           _unreadNotificationCount = _unreadNotificationCount + 1;
         });
-        debugPrint('✅ Đã tăng unread notification count: $_unreadNotificationCount');
+        debugPrint(
+            '✅ Đã tăng unread notification count: $_unreadNotificationCount');
       }
     });
     _eventBus.on('unit_context_changed', (data) {
@@ -649,13 +652,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _openCardRegistrationScreen() async {
     final residentId = _profile?['residentId']?.toString();
-    final unitId = _selectedUnitId ?? (_units.isNotEmpty ? _units.first.id : null);
+    final unitId =
+        _selectedUnitId ?? (_units.isNotEmpty ? _units.first.id : null);
 
-    if (residentId == null || residentId.isEmpty || unitId == null || unitId.isEmpty) {
+    if (residentId == null ||
+        residentId.isEmpty ||
+        unitId == null ||
+        unitId.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Không xác định được cư dân hoặc căn hộ để hiển thị thẻ'),
+          content:
+              Text('Không xác định được cư dân hoặc căn hộ để hiển thị thẻ'),
         ),
       );
       return;
@@ -867,7 +875,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final textTheme = theme.textTheme;
     final now = DateTime.now();
     final isDark = themeController.isDark;
-    
+
     // Get selected unit information
     UnitInfo? selectedUnit;
     if (_units.isNotEmpty) {
@@ -884,15 +892,15 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedUnit = _units.first;
       }
     }
-    
+
     // Get greeting text and icon
     final greetingPeriodText = _getGreetingPeriodText(now);
     final timeIcon = _getTimeOfDayIcon(now);
-    
+
     // Get unit information
     final apartmentName = selectedUnit?.code ?? 'Căn hộ mặc định';
     final buildingName = selectedUnit?.buildingName ?? '';
-    
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 320),
       curve: Curves.easeOutCubic,
@@ -986,7 +994,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(16),
@@ -1043,9 +1052,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-  
+
   /// Builds QR scanner button
-  Widget _buildQrScannerButton(BuildContext context, ThemeData theme, bool isDark) {
+  Widget _buildQrScannerButton(
+      BuildContext context, ThemeData theme, bool isDark) {
     return GestureDetector(
       onTap: () {
         Navigator.of(context).push(
@@ -1074,7 +1084,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Builds notification button with badge for unread notifications
-  Widget _buildNotificationButton(BuildContext context, ThemeData theme, bool isDark) {
+  Widget _buildNotificationButton(
+      BuildContext context, ThemeData theme, bool isDark) {
     return GestureDetector(
       onTap: _openNotificationsScreen,
       child: Stack(
@@ -1117,7 +1128,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 child: Center(
                   child: Text(
-                    _unreadNotificationCount > 99 ? '99+' : '${_unreadNotificationCount}',
+                    _unreadNotificationCount > 99
+                        ? '99+'
+                        : '${_unreadNotificationCount}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 11,
@@ -1174,21 +1187,22 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildPriorityAlertsCard(BuildContext context) {
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
-    
+
     // Calculate total alerts
-    final totalAlerts = _unpaidInvoiceCount + _unreadNotificationCount + _unpaidBookingCount;
-    
+    final totalAlerts =
+        _unpaidInvoiceCount + _unreadNotificationCount + _unpaidBookingCount;
+
     // Don't show if no alerts and no errors
-    if (totalAlerts == 0 && 
-        _unpaidServicesError == null && 
-        _unpaidInvoicesError == null && 
+    if (totalAlerts == 0 &&
+        _unpaidServicesError == null &&
+        _unpaidInvoicesError == null &&
         _notificationsError == null) {
       return const SizedBox.shrink();
     }
-    
+
     // Build alert items
     final alertItems = <_AlertItem>[];
-    
+
     if (_unpaidInvoiceCount > 0) {
       alertItems.add(_AlertItem(
         icon: Icons.receipt_long,
@@ -1198,7 +1212,7 @@ class _HomeScreenState extends State<HomeScreen> {
         onTap: _openUnpaidInvoicesScreen,
       ));
     }
-    
+
     if (_unreadNotificationCount > 0) {
       alertItems.add(_AlertItem(
         icon: Icons.notifications_none,
@@ -1208,7 +1222,7 @@ class _HomeScreenState extends State<HomeScreen> {
         onTap: _openNotificationsScreen,
       ));
     }
-    
+
     if (_unpaidBookingCount > 0) {
       alertItems.add(_AlertItem(
         icon: Icons.pending_actions_outlined,
@@ -1218,7 +1232,7 @@ class _HomeScreenState extends State<HomeScreen> {
         onTap: _openUnpaidBookingsScreen,
       ));
     }
-    
+
     // Add error items
     if (_unpaidInvoicesError != null) {
       alertItems.add(_AlertItem(
@@ -1232,7 +1246,7 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ));
     }
-    
+
     if (_notificationsError != null) {
       alertItems.add(_AlertItem(
         icon: Icons.error_outline,
@@ -1244,7 +1258,7 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ));
     }
-    
+
     if (_unpaidServicesError != null) {
       alertItems.add(_AlertItem(
         icon: Icons.error_outline,
@@ -1256,11 +1270,11 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ));
     }
-    
+
     if (alertItems.isEmpty) {
       return const SizedBox.shrink();
     }
-    
+
     return _HomeGlassCard(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Column(
@@ -1301,7 +1315,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: alertItem.onTap,
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: alertItem.color.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(12),
@@ -1328,7 +1343,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const SizedBox(width: 4),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: alertItem.color,
                           borderRadius: BorderRadius.circular(8),
@@ -1402,8 +1418,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: Text(
                             'Đang cập nhật khí hậu...',
                             style: textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurface
-                                  .withOpacity(0.7),
+                              color:
+                                  theme.colorScheme.onSurface.withOpacity(0.7),
                             ),
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
@@ -1416,8 +1432,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           _weatherError ?? 'Không lấy được thời tiết',
                           key: const ValueKey('weather-error'),
                           style: textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurface
-                                .withOpacity(0.7),
+                            color: theme.colorScheme.onSurface.withOpacity(0.7),
                           ),
                         )
                       : Column(
@@ -1532,6 +1547,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
   Widget _buildElectricityChartSection(Size size) {
     final theme = Theme.of(context);
 
@@ -1563,7 +1579,8 @@ class _HomeScreenState extends State<HomeScreen> {
               onRetry: () async {
                 final invoiceService = InvoiceService(_apiClient);
                 try {
-                  final electricityData = await invoiceService.getElectricityMonthlyData(
+                  final electricityData =
+                      await invoiceService.getElectricityMonthlyData(
                     unitId: _selectedUnitId,
                   );
                   if (mounted) {
@@ -1594,7 +1611,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-  
+
   Widget _buildErrorState({
     required BuildContext context,
     required String error,
@@ -1639,7 +1656,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ],
     );
   }
-  
+
   Widget _buildEmptyState({
     required BuildContext context,
     required String message,
@@ -1671,6 +1688,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final defaultUnitId = ownerUnits.any((unit) => unit.id == _selectedUnitId)
         ? (_selectedUnitId ?? ownerUnits.first.id)
         : ownerUnits.first.id;
+    final selectedOwnerUnit = ownerUnits.firstWhere(
+      (unit) => unit.id == defaultUnitId,
+      orElse: () => ownerUnits.first,
+    );
 
     final residentName = _profile?['fullName']?.toString() ??
         _profile?['username']?.toString() ??
@@ -1707,8 +1728,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (_) => HouseholdMemberRequestScreen(
-                    units: ownerUnits,
-                    initialUnitId: defaultUnitId,
+                    unit: selectedOwnerUnit,
                   ),
                 ),
               );
@@ -1728,15 +1748,32 @@ class _HomeScreenState extends State<HomeScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (_) => HouseholdMemberRegistrationScreen(
-                    unit: ownerUnits.firstWhere(
-                      (unit) => unit.id == defaultUnitId,
-                      orElse: () => ownerUnits.first,
-                    ),
+                    unit: selectedOwnerUnit,
                   ),
                 ),
               );
             },
             actionLabel: 'Tạo yêu cầu',
+          ),
+          const Divider(),
+          _HomeActionTile(
+            icon: Icons.assignment_turned_in_outlined,
+            accentColor: AppColors.warning,
+            title: 'Theo dõi đăng ký thành viên',
+            subtitle: const [
+              'Xem trạng thái các yêu cầu thêm thành viên đã gửi.',
+            ],
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => HouseholdMemberRequestStatusScreen(
+                    unit: selectedOwnerUnit,
+                  ),
+                ),
+              );
+            },
+            actionLabel: 'Xem danh sách',
           ),
           const Divider(),
           _HomeActionTile(
@@ -1751,8 +1788,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (_) => AccountRequestStatusScreen(
-                    units: ownerUnits,
-                    initialUnitId: defaultUnitId,
+                    unit: selectedOwnerUnit,
                   ),
                 ),
               );
@@ -1852,7 +1888,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required VoidCallback onTap,
   }) {
     final theme = Theme.of(context);
-    
+
     return _HomeGlassCard(
       padding: const EdgeInsets.all(18),
       child: InkWell(
@@ -2281,4 +2317,3 @@ class _WeatherRateLimitException implements Exception {
 
   final String source;
 }
-

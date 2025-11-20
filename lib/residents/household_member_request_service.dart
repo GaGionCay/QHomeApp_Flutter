@@ -80,4 +80,51 @@ class HouseholdMemberRequestService {
       rethrow;
     }
   }
+
+  Future<List<HouseholdMemberRequest>> getMyRequests() async {
+    try {
+      final response =
+          await _apiClient.dio.get('/household-member-requests/my');
+      final data = response.data;
+      if (data is List) {
+        return data
+            .map((item) => HouseholdMemberRequest.fromJson(
+                  Map<String, dynamic>.from(item as Map),
+                ))
+            .toList();
+      }
+      return const [];
+    } on DioException catch (e) {
+      final responseData = e.response?.data;
+      if (responseData is Map &&
+          responseData['message'] is String &&
+          (responseData['message'] as String).isNotEmpty) {
+        throw Exception(responseData['message']);
+      }
+      rethrow;
+    }
+  }
+
+  Future<HouseholdMemberRequest> cancelRequest(String requestId) async {
+    try {
+      final response =
+          await _apiClient.dio.patch('/household-member-requests/$requestId/cancel');
+      final data = response.data;
+      if (data is Map<String, dynamic>) {
+        return HouseholdMemberRequest.fromJson(data);
+      }
+      if (data is Map) {
+        return HouseholdMemberRequest.fromJson(Map<String, dynamic>.from(data));
+      }
+      throw Exception('Không thể đọc dữ liệu phản hồi.');
+    } on DioException catch (e) {
+      final responseData = e.response?.data;
+      if (responseData is Map &&
+          responseData['message'] is String &&
+          (responseData['message'] as String).isNotEmpty) {
+        throw Exception(responseData['message']);
+      }
+      throw Exception('Không thể hủy yêu cầu. Vui lòng thử lại.');
+    }
+  }
 }
