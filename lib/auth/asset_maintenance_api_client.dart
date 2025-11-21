@@ -22,15 +22,15 @@ class AssetMaintenanceApiClient {
     final dio = Dio(
       BaseOptions(
         baseUrl: _baseUrl,
-        connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
-        receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+        connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+        receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
       ),
     );
     final authDio = Dio(
       BaseOptions(
         baseUrl: ApiClient.activeBaseUrl,
-        connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
-        receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+        connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+        receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
       ),
     );
     final authService = AuthService(authDio, storage);
@@ -101,3 +101,4 @@ class AssetMaintenanceApiClient {
     );
   }
 }
+

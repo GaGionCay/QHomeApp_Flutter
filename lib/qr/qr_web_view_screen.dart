@@ -148,7 +148,7 @@ class _QrWebViewScreenState extends State<QrWebViewScreen> {
                           Text(
                             'Đang tải trang web...',
                             style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurface.withOpacity(0.7),
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                             ),
                           ),
                         ],
@@ -184,7 +184,7 @@ class _QrWebViewScreenState extends State<QrWebViewScreen> {
             Text(
               _error ?? 'Đã xảy ra lỗi không xác định',
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.7),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
               ),
               textAlign: TextAlign.center,
             ),
@@ -216,7 +216,7 @@ class _QrWebViewScreenState extends State<QrWebViewScreen> {
         color: theme.colorScheme.surface,
         border: Border(
           top: BorderSide(
-            color: theme.colorScheme.outline.withOpacity(0.1),
+            color: theme.colorScheme.outline.withValues(alpha: 0.1),
             width: 1,
           ),
         ),

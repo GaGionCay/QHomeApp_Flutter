@@ -19,8 +19,8 @@ class InvoiceService {
     final baseUrl = ApiClient.buildServiceBase(port: 8085);
     final dio = Dio(BaseOptions(
       baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
-      receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+      connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+      receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
     ));
     dio.interceptors.add(LogInterceptor(
       request: true,
@@ -288,4 +288,5 @@ class InvoiceService {
     }
   }
 }
+
 

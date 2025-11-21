@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../auth/auth_provider.dart';
+import '../profile/profile_service.dart';
 import '../widgets/app_primary_button.dart';
-import '../widgets/app_text_field.dart';
 import 'verify_otp_screen.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
@@ -13,54 +13,70 @@ class ChangePasswordScreen extends StatefulWidget {
 }
 
 class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
-  final emailCtrl = TextEditingController();
-  final FocusNode _emailFocus = FocusNode();
-  bool loading = false;
+  String? _email;
+  bool _loading = false;
+  bool _emailLoading = true;
+  String? _emailError;
 
   @override
-  void dispose() {
-    emailCtrl.dispose();
-    _emailFocus.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadEmail();
+    });
+  }
+
+  Future<void> _loadEmail() async {
+    final auth = context.read<AuthProvider>();
+    setState(() {
+      _emailLoading = true;
+      _emailError = null;
+    });
+    try {
+      final profileService = ProfileService(auth.apiClient.dio);
+      final profile = await profileService.getProfile();
+      final fetchedEmail = profile['email']?.toString();
+      if (mounted) {
+        setState(() {
+          _email = fetchedEmail;
+          _emailLoading = false;
+          _emailError = fetchedEmail == null || fetchedEmail.isEmpty
+              ? 'Không tìm thấy email cho tài khoản này.'
+              : null;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _email = null;
+          _emailLoading = false;
+          _emailError = 'Không thể lấy thông tin email: $e';
+        });
+      }
+    }
   }
 
   Future<void> _submit(AuthProvider auth) async {
     FocusScope.of(context).unfocus();
-    
-    final email = emailCtrl.text.trim();
-    
-    if (email.isEmpty) {
+
+    if (_email == null || _email!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Vui lòng nhập email'),
+          content: Text('Không xác định được email. Vui lòng thử lại sau.'),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
-    
-    final emailRegex = RegExp(
-      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
-    );
-    
-    if (!emailRegex.hasMatch(email)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Email không hợp lệ. Vui lòng nhập đúng định dạng email.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-    
-    setState(() => loading = true);
+
+    setState(() => _loading = true);
     try {
-      await auth.requestReset(email);
+      await auth.requestReset(_email!);
       if (!mounted) return;
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => VerifyOtpScreen(email: email),
+          builder: (_) => VerifyOtpScreen(email: _email!),
         ),
       );
     } catch (e) {
@@ -73,7 +89,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       );
     } finally {
       if (mounted) {
-        setState(() => loading = false);
+        setState(() => _loading = false);
       }
     }
   }
@@ -105,8 +121,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           );
 
     final accentGlow = isDark
-        ? theme.colorScheme.primary.withOpacity(0.18)
-        : theme.colorScheme.primary.withOpacity(0.18);
+        ? theme.colorScheme.primary.withValues(alpha: 0.18)
+        : theme.colorScheme.primary.withValues(alpha: 0.18);
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
@@ -190,30 +206,90 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Nhập email của bạn. Chúng tôi sẽ gửi mã OTP để giúp bạn đổi mật khẩu.',
+                              'Chúng tôi sẽ sử dụng email của tài khoản đang đăng nhập để gửi mã OTP đổi mật khẩu.',
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: theme.colorScheme.onSurface
                                     .withValues(alpha: 0.65),
                               ),
                             ),
-                            const SizedBox(height: 32),
-                            AppLuxeTextField(
-                              controller: emailCtrl,
-                              focusNode: _emailFocus,
-                              hint: 'Email đăng nhập',
-                              icon: Icons.email_outlined,
-                              keyboardType: TextInputType.emailAddress,
-                              textInputAction: TextInputAction.done,
-                              onSubmitted: (_) => _submit(auth),
-                            ),
+                            const SizedBox(height: 24),
+                            if (_emailLoading)
+                              const Center(
+                                child: CircularProgressIndicator(),
+                              )
+                            else if (_emailError != null)
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.errorContainer,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Text(
+                                  _emailError!,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: theme.colorScheme.onErrorContainer,
+                                  ),
+                                ),
+                              )
+                            else
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color:
+                                      theme.colorScheme.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: theme.colorScheme.outline
+                                        .withValues(alpha: 0.2),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: theme.colorScheme.primary
+                                            .withValues(alpha: 0.12),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        Icons.email_outlined,
+                                        color: theme.colorScheme.primary,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Email xác thực',
+                                            style: theme.textTheme.labelLarge,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            _email ?? '',
+                                            style: theme.textTheme.bodyLarge,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             const SizedBox(height: 24),
                             const Spacer(),
                             AppPrimaryButton(
-                              onPressed: loading ? null : () => _submit(auth),
+                              onPressed: _loading || _emailLoading
+                                  ? null
+                                  : () => _submit(auth),
                               label: 'Gửi OTP',
-                              loading: loading,
+                              loading: _loading,
                               icon: Icons.send_rounded,
-                              enabled: !loading,
+                              enabled: !_loading && !_emailLoading,
                             ),
                             const SizedBox(height: 24),
                           ],

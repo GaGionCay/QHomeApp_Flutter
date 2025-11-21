@@ -260,7 +260,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
               Icon(
                 CupertinoIcons.doc_text_search,
                 size: 56,
-                color: theme.colorScheme.onSurface.withOpacity(0.3),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
               ),
               const SizedBox(height: 16),
               Text(
@@ -330,7 +330,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
                             Text(
                               contract.contractType,
                               style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurface.withOpacity(0.65),
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
                               ),
                             ),
                           ],
@@ -342,7 +342,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: statusColor.withOpacity(0.16),
+                          color: statusColor.withValues(alpha: 0.16),
                           borderRadius: BorderRadius.circular(18),
                         ),
                         child: Row(
@@ -396,10 +396,10 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.surface.withOpacity(0.5),
+                        color: theme.colorScheme.surface.withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: theme.colorScheme.outline.withOpacity(0.1),
+                          color: theme.colorScheme.outline.withValues(alpha: 0.1),
                         ),
                       ),
                       child: Row(
@@ -407,14 +407,14 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
                           Icon(
                             CupertinoIcons.info_circle,
                             size: 20,
-                            color: theme.colorScheme.onSurface.withOpacity(0.6),
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               'Hợp đồng này không có tài liệu đính kèm',
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                               ),
                             ),
                           ),
@@ -586,7 +586,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
                     'Thông tin hệ thống',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -638,7 +638,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
               Text(
                 label,
                 style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.onSurface.withOpacity(0.6),
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -666,9 +666,9 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          color: theme.colorScheme.surface.withOpacity(0.75),
+          color: theme.colorScheme.surface.withValues(alpha: 0.75),
           border: Border.all(
-            color: theme.colorScheme.outline.withOpacity(0.1),
+            color: theme.colorScheme.outline.withValues(alpha: 0.1),
           ),
         ),
         child: Column(
@@ -680,7 +680,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
                   height: 48,
                   width: 48,
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withOpacity(0.12),
+                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -707,7 +707,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
                         Text(
                           _formatFileSize(file.fileSize!),
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withOpacity(0.6),
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                           ),
                         ),
                       ],
@@ -746,14 +746,14 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
               const SizedBox(height: 8),
               LinearProgressIndicator(
                 value: progress / 100,
-                backgroundColor: theme.colorScheme.surface.withOpacity(0.3),
+                backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.3),
                 minHeight: 2,
               ),
               const SizedBox(height: 4),
               Text(
                 'Đang tải: $progress%',
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withOpacity(0.6),
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   fontSize: 11,
                 ),
               ),
@@ -1004,7 +1004,7 @@ class _DetailGlassCard extends StatelessWidget {
                 : AppColors.glassLayerGradient(),
             borderRadius: BorderRadius.circular(26),
             border: Border.all(
-              color: theme.colorScheme.outline.withOpacity(0.08),
+              color: theme.colorScheme.outline.withValues(alpha: 0.08),
             ),
             boxShadow: AppColors.subtleShadow,
           ),

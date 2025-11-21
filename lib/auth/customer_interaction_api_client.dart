@@ -29,13 +29,13 @@ class CustomerInteractionApiClient {
     final storage = TokenStorage();
     final dio = Dio(BaseOptions(
       baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
-      receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+      connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+      receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
     ));
     final authDio = Dio(BaseOptions(
       baseUrl: ApiClient.activeBaseUrl,
-      connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
-      receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+      connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+      receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
     ));
     final authService = AuthService(authDio, storage);
     return CustomerInteractionApiClient._(dio, storage, authService);
@@ -88,3 +88,4 @@ class CustomerInteractionApiClient {
     ));
   }
 }
+

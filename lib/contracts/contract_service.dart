@@ -19,8 +19,8 @@ class ContractService {
     final baseUrl = ApiClient.buildServiceBase(port: 8082, path: '/api');
     return Dio(BaseOptions(
       baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
-      receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+      connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+      receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
     ));
   }
 
@@ -167,3 +167,4 @@ class ContractService {
     }
   }
 }
+

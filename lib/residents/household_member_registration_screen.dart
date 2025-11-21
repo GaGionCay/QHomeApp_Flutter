@@ -280,7 +280,7 @@ class _HouseholdMemberRegistrationScreenState
                                           },
                                     child: Container(
                                       decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.6),
+                                        color: Colors.black.withValues(alpha: 0.6),
                                         shape: BoxShape.circle,
                                       ),
                                       padding: const EdgeInsets.all(4),
@@ -381,11 +381,11 @@ class _HouseholdMemberRegistrationScreenState
                                 final isDark =
                                     theme.brightness == Brightness.dark;
                                 final cardColor = isDark
-                                    ? Colors.white.withOpacity(0.05)
+                                    ? Colors.white.withValues(alpha: 0.05)
                                     : Colors.white;
                                 final borderColor = isDark
-                                    ? Colors.white.withOpacity(0.08)
-                                    : Colors.black.withOpacity(0.05);
+                                    ? Colors.white.withValues(alpha: 0.08)
+                                    : Colors.black.withValues(alpha: 0.05);
                                 final primaryText = theme.colorScheme.onSurface;
                                 final secondaryText =
                                     theme.colorScheme.onSurfaceVariant;
@@ -398,7 +398,7 @@ class _HouseholdMemberRegistrationScreenState
                                     boxShadow: [
                                       if (!isDark)
                                         BoxShadow(
-                                          color: Colors.black.withOpacity(0.04),
+                                          color: Colors.black.withValues(alpha: 0.04),
                                           blurRadius: 12,
                                           offset: const Offset(0, 6),
                                         ),
@@ -417,7 +417,7 @@ class _HouseholdMemberRegistrationScreenState
                                             radius: 22,
                                             backgroundColor: theme
                                                 .colorScheme.primary
-                                                .withOpacity(0.16),
+                                                .withValues(alpha: 0.16),
                                             child: Icon(
                                               Icons.person_outline,
                                               color: theme.colorScheme.primary,
@@ -467,7 +467,7 @@ class _HouseholdMemberRegistrationScreenState
                                               ),
                                               backgroundColor: theme
                                                   .colorScheme.primary
-                                                  .withOpacity(
+                                                  .withValues(alpha: 
                                                       isDark ? 0.25 : 0.12),
                                             ),
                                         ],
@@ -538,12 +538,12 @@ class _HouseholdMemberRegistrationScreenState
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceVariant.withOpacity(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 
           theme.brightness == Brightness.dark ? 0.3 : 0.6,
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: theme.colorScheme.primary.withOpacity(0.2),
+          color: theme.colorScheme.primary.withValues(alpha: 0.2),
         ),
       ),
       child: Row(
@@ -561,7 +561,7 @@ class _HouseholdMemberRegistrationScreenState
                 Text(
                   'Đăng ký tài khoản cho',
                   style: theme.textTheme.labelMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -586,7 +586,7 @@ class _HouseholdMemberRegistrationScreenState
                 Text(
                   'Muốn đổi căn hộ? Vào Cài đặt > Căn hộ của tôi.',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                   ),
                 ),
               ],
@@ -617,3 +617,5 @@ class _ProofImage {
 
   String get dataUri => 'data:$mimeType;base64,${base64Encode(bytes)}';
 }
+
+

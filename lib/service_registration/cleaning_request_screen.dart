@@ -371,7 +371,7 @@ class _CleaningRequestScreenState extends State<CleaningRequestScreen> {
           if (_isLoading)
             Positioned.fill(
               child: Container(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 child: const Center(
                   child: CircularProgressIndicator(),
                 ),
@@ -407,7 +407,7 @@ class _CleaningRequestScreenState extends State<CleaningRequestScreen> {
     String? errorText,
   }) {
     final theme = Theme.of(context);
-    final surfaceColor = theme.colorScheme.surface.withOpacity(
+    final surfaceColor = theme.colorScheme.surface.withValues(alpha: 
       theme.brightness == Brightness.dark ? 0.7 : 0.95,
     );
     return Container(
@@ -417,11 +417,11 @@ class _CleaningRequestScreenState extends State<CleaningRequestScreen> {
         borderRadius: BorderRadius.circular(22),
         color: surfaceColor,
         border: Border.all(
-          color: theme.colorScheme.outlineVariant.withOpacity(0.4),
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(
+            color: Colors.black.withValues(alpha: 
               theme.brightness == Brightness.dark ? 0.35 : 0.08,
             ),
             blurRadius: 32,
@@ -444,7 +444,7 @@ class _CleaningRequestScreenState extends State<CleaningRequestScreen> {
             Text(
               subtitle,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
+                color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7),
               ),
             ),
           ],
@@ -478,7 +478,7 @@ class _CleaningRequestScreenState extends State<CleaningRequestScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.primaryContainer.withOpacity(0.2),
+                  color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(
@@ -502,7 +502,7 @@ class _CleaningRequestScreenState extends State<CleaningRequestScreen> {
                               unit.buildingName!,
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: theme.textTheme.bodySmall?.color
-                                    ?.withOpacity(0.7),
+                                    ?.withValues(alpha: 0.7),
                               ),
                             ),
                         ],
@@ -712,7 +712,7 @@ class _CleaningRequestScreenState extends State<CleaningRequestScreen> {
           Text(
             'Giá có thể điều chỉnh nếu phát sinh thêm nhu cầu.',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
+              color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7),
             ),
           ),
         ],
@@ -731,15 +731,15 @@ class _CleaningRequestScreenState extends State<CleaningRequestScreen> {
     final theme = Theme.of(context);
     final borderColor = selected
         ? theme.colorScheme.primary
-        : theme.colorScheme.outlineVariant.withOpacity(0.4);
+        : theme.colorScheme.outlineVariant.withValues(alpha: 0.4);
     final gradientColors = selected
         ? [
-            theme.colorScheme.primary.withOpacity(0.15),
-            theme.colorScheme.primary.withOpacity(0.05),
+            theme.colorScheme.primary.withValues(alpha: 0.15),
+            theme.colorScheme.primary.withValues(alpha: 0.05),
           ]
         : [
-            theme.colorScheme.surfaceVariant.withOpacity(0.35),
-            theme.colorScheme.surfaceVariant.withOpacity(0.1),
+            theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+            theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.1),
           ];
     return GestureDetector(
       onTap: onTap,
@@ -760,8 +760,8 @@ class _CleaningRequestScreenState extends State<CleaningRequestScreen> {
           boxShadow: [
             BoxShadow(
               color: selected
-                  ? theme.colorScheme.primary.withOpacity(0.25)
-                  : Colors.black.withOpacity(0.04),
+                  ? theme.colorScheme.primary.withValues(alpha: 0.25)
+                  : Colors.black.withValues(alpha: 0.04),
               blurRadius: selected ? 24 : 12,
               offset: const Offset(0, 10),
             ),
@@ -776,7 +776,7 @@ class _CleaningRequestScreenState extends State<CleaningRequestScreen> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withOpacity(0.1),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Icon(
@@ -813,7 +813,7 @@ class _CleaningRequestScreenState extends State<CleaningRequestScreen> {
               padding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withOpacity(0.08),
+                color: theme.colorScheme.primary.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(

@@ -48,7 +48,7 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
           );
 
     final bottomGlow = isDark
-        ? theme.colorScheme.primary.withOpacity(0.16)
+        ? theme.colorScheme.primary.withValues(alpha: 0.16)
         : AppColors.primaryEmerald.withValues(alpha: 0.18);
 
     return GestureDetector(

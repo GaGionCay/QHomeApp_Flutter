@@ -162,10 +162,10 @@ class _LoginScreenState extends State<LoginScreen> {
           );
 
     final topGlowColor = isDark
-        ? theme.colorScheme.primary.withOpacity(0.18)
+        ? theme.colorScheme.primary.withValues(alpha: 0.18)
         : AppColors.primaryEmerald.withValues(alpha: 0.22);
     final bottomGlowColor = isDark
-        ? theme.colorScheme.secondary.withOpacity(0.12)
+        ? theme.colorScheme.secondary.withValues(alpha: 0.12)
         : AppColors.primaryBlue.withValues(alpha: 0.16);
 
     return GestureDetector(
@@ -267,7 +267,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               'Chào mừng trở lại,',
                               style: textTheme.headlineSmall?.copyWith(
                                 color: theme.colorScheme.onSurface
-                                    .withOpacity(0.65),
+                                    .withValues(alpha: 0.65),
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -328,7 +328,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   'Bạn có thể bật đăng nhập bằng vân tay trong phần Cài đặt sau khi đăng nhập.',
                                   style: textTheme.bodySmall?.copyWith(
                                     color: theme.colorScheme.onSurface
-                                        .withOpacity(0.7),
+                                        .withValues(alpha: 0.7),
                                   ),
                                   textAlign: TextAlign.center,
                                 ),

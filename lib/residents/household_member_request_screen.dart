@@ -523,7 +523,7 @@ class _HouseholdMemberRequestScreenState
                             IconButton(
                               tooltip: 'Xóa ảnh',
                               style: IconButton.styleFrom(
-                                backgroundColor: Colors.black.withOpacity(0.6),
+                                backgroundColor: Colors.black.withValues(alpha: 0.6),
                                 foregroundColor: Colors.white,
                               ),
                               icon: const Icon(Icons.close),
@@ -575,12 +575,12 @@ class _HouseholdMemberRequestScreenState
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceVariant.withOpacity(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 
           theme.brightness == Brightness.dark ? 0.3 : 0.6,
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: theme.colorScheme.primary.withOpacity(0.2),
+          color: theme.colorScheme.primary.withValues(alpha: 0.2),
         ),
       ),
       child: Row(
@@ -598,7 +598,7 @@ class _HouseholdMemberRequestScreenState
                 Text(
                   'Căn hộ đang thao tác',
                   style: theme.textTheme.labelMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -622,7 +622,7 @@ class _HouseholdMemberRequestScreenState
                 Text(
                   'Muốn đổi căn hộ? Vào Cài đặt > Căn hộ của tôi.',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                   ),
                 ),
               ],
@@ -692,7 +692,7 @@ class _HouseholdMemberRequestScreenState
     final household = _currentHousehold!;
     return Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary.withOpacity(0.05),
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(16),
       ),
       padding: const EdgeInsets.all(16),
@@ -734,3 +734,5 @@ class _HouseholdMemberRequestScreenState
     return 'image/jpeg';
   }
 }
+
+

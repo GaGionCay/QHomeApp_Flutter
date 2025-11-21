@@ -69,8 +69,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     if (_servicesCardDio == null) {
       _servicesCardDio = Dio(BaseOptions(
         baseUrl: ApiClient.buildServiceBase(port: 8083, path: '/api'),
-        connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
-        receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+        connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+        receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
       ));
       _servicesCardDio!.interceptors.add(LogInterceptor(
         request: true,
@@ -633,8 +633,9 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     // Listen for subsequent deep links
     _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
       if (uri == null) return;
-      if (uri.scheme != 'qhomeapp' || uri.host != 'vnpay-resident-card-result')
+      if (uri.scheme != 'qhomeapp' || uri.host != 'vnpay-resident-card-result') {
         return;
+      }
       await _handleDeepLinkPayment(uri);
     }, onError: (err) {
       debugPrint('❌ Lỗi khi nhận deep link: $err');
@@ -1327,7 +1328,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       ),
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-        side: BorderSide(color: colorScheme.primary.withOpacity(0.5)),
+        side: BorderSide(color: colorScheme.primary.withValues(alpha: 0.5)),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
@@ -1385,7 +1386,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
                 Text(
                   'Sau khi gửi yêu cầu, bạn sẽ được chuyển tới cổng thanh toán VNPAY để hoàn tất thanh toán.',
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurface.withOpacity(0.68),
+                    color: colorScheme.onSurface.withValues(alpha: 0.68),
                     height: 1.45,
                   ),
                 ),
@@ -1446,3 +1447,4 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     return buffer.toString();
   }
 }
+

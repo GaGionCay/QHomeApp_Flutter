@@ -78,10 +78,11 @@ class _UnpaidServiceBookingsScreenState
         _error = e.toString();
       });
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -313,7 +314,7 @@ class _UnpaidServiceBookingsScreenState
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: AppColors.warning.withOpacity(0.16),
+                    color: AppColors.warning.withValues(alpha: 0.16),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Text(

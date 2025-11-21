@@ -11,6 +11,7 @@ import 'notification_view_model.dart';
 import 'widgets/notification_card.dart';
 import 'widgets/notification_date_filter.dart';
 import 'widgets/notification_group_header.dart';
+import 'widgets/notification_list_skeleton.dart';
 import 'widgets/notification_search_bar.dart';
 import 'widgets/notification_read_status_filter.dart';
 import 'widgets/notification_type_filter.dart';
@@ -29,7 +30,8 @@ class NotificationScreen extends StatefulWidget {
   State<NotificationScreen> createState() => _NotificationScreenState();
 }
 
-class _NotificationScreenState extends State<NotificationScreen> {
+class _NotificationScreenState extends State<NotificationScreen>
+    with TickerProviderStateMixin {
   late final NotificationViewModel _viewModel;
   final ScrollController _scrollController = ScrollController();
   final ApiClient _api = ApiClient();
@@ -38,6 +40,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
   String? _residentId;
   String? _buildingId;
   Set<String> _readIds = {};
+  bool _filtersCollapsed = true;
+  double _lastScrollOffset = 0;
 
   @override
   void initState() {
@@ -82,6 +86,17 @@ class _NotificationScreenState extends State<NotificationScreen> {
         _viewModel.loadMore();
       }
     }
+
+    final offset = _scrollController.position.pixels;
+    final delta = offset - _lastScrollOffset;
+    const threshold = 12;
+    if (delta > threshold &&
+        offset > 24 &&
+        !_filtersCollapsed &&
+        _viewModel.notifications.isNotEmpty) {
+      setState(() => _filtersCollapsed = true);
+    }
+    _lastScrollOffset = offset;
   }
 
   Future<void> _loadIdsAndFetch() async {
@@ -147,14 +162,16 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   Future<void> _updateReadStatus() async {
     if (_residentId == null || _residentId!.isEmpty) {
-      debugPrint('⚠️ [NotificationScreen] Cannot update read status: residentId is null');
+      debugPrint(
+          '⚠️ [NotificationScreen] Cannot update read status: residentId is null');
       return;
     }
-    
+
     // Reload read IDs from local storage to ensure we have the latest data
     _readIds = await NotificationReadStore.load(_residentId!);
-    
-    final notifications = List<ResidentNotification>.from(_viewModel.notifications);
+
+    final notifications =
+        List<ResidentNotification>.from(_viewModel.notifications);
     bool updated = false;
     for (var i = 0; i < notifications.length; i++) {
       if (_readIds.contains(notifications[i].id) && !notifications[i].isRead) {
@@ -164,7 +181,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
     }
     if (updated) {
       _viewModel.updateNotifications(notifications);
-      debugPrint('✅ [NotificationScreen] Updated read status for ${notifications.where((n) => _readIds.contains(n.id)).length} notifications');
+      debugPrint(
+          '✅ [NotificationScreen] Updated read status for ${notifications.where((n) => _readIds.contains(n.id)).length} notifications');
     }
   }
 
@@ -223,7 +241,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
     final notification = _parseRealtimeNotification(payload);
     if (notification == null) return;
 
-    final notifications = List<ResidentNotification>.from(_viewModel.notifications);
+    final notifications =
+        List<ResidentNotification>.from(_viewModel.notifications);
     final alreadyExists =
         notifications.any((element) => element.id == notification.id);
     if (alreadyExists) return;
@@ -289,7 +308,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   void _handleNotificationMarkedRead(String notificationId) {
-    final notifications = List<ResidentNotification>.from(_viewModel.notifications);
+    final notifications =
+        List<ResidentNotification>.from(_viewModel.notifications);
     final index =
         notifications.indexWhere((element) => element.id == notificationId);
     if (index == -1) return;
@@ -316,6 +336,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
             backgroundColor: Theme.of(context).colorScheme.surface,
             appBar: AppBar(
               title: const Text('Thông báo'),
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back_rounded),
                 onPressed: () => Navigator.of(context).maybePop(),
@@ -323,42 +345,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
             ),
             body: Column(
               children: [
-                NotificationSearchBar(
-                  searchQuery: viewModel.searchQuery,
-                  onSearchChanged: (query) {
-                    viewModel.setSearchQuery(query);
-                  },
-                  onClear: () {
-                    viewModel.clearSearch();
-                  },
-                ),
-                NotificationReadStatusFilterWidget(
-                  currentFilter: viewModel.readStatusFilter,
-                  onFilterChanged: (filter) {
-                    viewModel.setReadStatusFilter(filter);
-                  },
-                ),
-                NotificationTypeFilterWidget(
-                  currentFilter: viewModel.typeFilter,
-                  onFilterChanged: (filter) {
-                    viewModel.setTypeFilter(filter);
-                  },
-                ),
-                NotificationDateFilter(
-                  dateFrom: viewModel.filterDateFrom,
-                  dateTo: viewModel.filterDateTo,
-                  hasActiveFilters: viewModel.hasActiveFilters,
-                  onDateFilterChanged: (from, to) async {
-                    viewModel.setDateFilter(from, to);
-                    await viewModel.loadNotifications(refresh: true);
-                    await _updateReadStatus();
-                  },
-                  onClearFilters: () async {
-                    viewModel.clearFilters();
-                    await viewModel.loadNotifications(refresh: true);
-                    await _updateReadStatus();
-                  },
-                ),
+                _buildFilterSection(context, viewModel),
                 Expanded(
                   child: RefreshIndicator(
                     color: Theme.of(context).colorScheme.primary,
@@ -379,7 +366,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   Widget _buildBody(BuildContext context, NotificationViewModel viewModel) {
     if (viewModel.isLoading && viewModel.notifications.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return NotificationListSkeleton(controller: _scrollController);
     }
 
     if (viewModel.error != null && viewModel.notifications.isEmpty) {
@@ -417,41 +404,46 @@ class _NotificationScreenState extends State<NotificationScreen> {
       return _buildEmptyState(context);
     }
 
-    return ListView.builder(
-      controller: _scrollController,
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      itemCount: grouped.length * 2 + (viewModel.isLoadingMore ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index == grouped.length * 2 && viewModel.isLoadingMore) {
-          return const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      child: ListView.builder(
+        key: ValueKey(viewModel.notifications.length),
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        itemCount: grouped.length * 2 + (viewModel.isLoadingMore ? 1 : 0),
+        itemBuilder: (context, index) {
+          if (index == grouped.length * 2 && viewModel.isLoadingMore) {
+            return const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
 
-        if (index.isOdd) {
-          final groupIndex = (index - 1) ~/ 2;
-          final groupKey = grouped.keys.elementAt(groupIndex);
-          final notifications = grouped[groupKey]!;
+          if (index.isOdd) {
+            final groupIndex = (index - 1) ~/ 2;
+            final groupKey = grouped.keys.elementAt(groupIndex);
+            final notifications = grouped[groupKey]!;
 
-          return Column(
-            children: [
-              for (final notification in notifications)
-                NotificationCard(
-                  notification: notification,
-                  residentId: _residentId,
-                  onMarkedAsRead: () =>
-                      _handleNotificationMarkedRead(notification.id),
-                ),
-            ],
-          );
-        } else {
-          final groupIndex = index ~/ 2;
-          final groupKey = grouped.keys.elementAt(groupIndex);
-          return NotificationGroupHeader(title: groupKey);
-        }
-      },
+            return Column(
+              children: [
+                for (final notification in notifications)
+                  NotificationCard(
+                    key: ValueKey(notification.id),
+                    notification: notification,
+                    residentId: _residentId,
+                    onMarkedAsRead: () =>
+                        _handleNotificationMarkedRead(notification.id),
+                  ),
+              ],
+            );
+          } else {
+            final groupIndex = index ~/ 2;
+            final groupKey = grouped.keys.elementAt(groupIndex);
+            return NotificationGroupHeader(title: groupKey);
+          }
+        },
+      ),
     );
   }
 
@@ -481,5 +473,119 @@ class _NotificationScreenState extends State<NotificationScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildFilterSection(
+      BuildContext context, NotificationViewModel viewModel) {
+    final theme = Theme.of(context);
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: GestureDetector(
+            onTap: _toggleFilters,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.tune_rounded, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Bộ lọc',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    _filtersCollapsed
+                        ? Icons.keyboard_arrow_down_rounded
+                        : Icons.keyboard_arrow_up_rounded,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            transitionBuilder: (child, animation) {
+              final slideAnimation = Tween<Offset>(
+                begin: const Offset(0, -0.05),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              ));
+              return ClipRect(
+                child: FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: slideAnimation,
+                    child: child,
+                  ),
+                ),
+              );
+            },
+            child: _filtersCollapsed
+                ? const SizedBox.shrink()
+                : Column(
+                    key: const ValueKey('notification-filters-open'),
+                    children: [
+                      NotificationSearchBar(
+                        searchQuery: viewModel.searchQuery,
+                        onSearchChanged: (query) {
+                          viewModel.setSearchQuery(query);
+                        },
+                        onClear: () {
+                          viewModel.clearSearch();
+                        },
+                      ),
+                      NotificationReadStatusFilterWidget(
+                        currentFilter: viewModel.readStatusFilter,
+                        onFilterChanged: (filter) {
+                          viewModel.setReadStatusFilter(filter);
+                        },
+                      ),
+                      NotificationTypeFilterWidget(
+                        currentFilter: viewModel.typeFilter,
+                        onFilterChanged: (filter) {
+                          viewModel.setTypeFilter(filter);
+                        },
+                      ),
+                      NotificationDateFilter(
+                        dateFrom: viewModel.filterDateFrom,
+                        dateTo: viewModel.filterDateTo,
+                        hasActiveFilters: viewModel.hasActiveFilters,
+                        onDateFilterChanged: (from, to) async {
+                          viewModel.setDateFilter(from, to);
+                          await viewModel.loadNotifications(refresh: true);
+                          await _updateReadStatus();
+                        },
+                        onClearFilters: () async {
+                          viewModel.clearFilters();
+                          await viewModel.loadNotifications(refresh: true);
+                          await _updateReadStatus();
+                        },
+                      ),
+                    ],
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _toggleFilters() {
+    setState(() => _filtersCollapsed = !_filtersCollapsed);
   }
 }

@@ -8,38 +8,38 @@ import 'auth_service.dart';
 import 'token_storage.dart';
 
 class ApiClient {
-  static const String LAN_HOST_IP = '192.168.100.33';
-  //static const String LAN_HOST_IP = '192.168.100.28';
-  static const String LAN_BACKUP_HOST_IP = '192.168.1.15'; 
-  static const String OFFICE_HOST_IP = '10.33.63.155';
-  //static const String OFFICE_BACKUP_HOST_IP = '10.34.38.236'; 
-  static const String OFFICE_BACKUP_HOST_IP = '192.168.100.28'; 
-  static const String LOCALHOST_IP = 'localhost';
+  static const String lanHostIp = '192.168.100.33';
+  //static const String lanHostIp = '192.168.100.28';
+  static const String lanBackupHostIp = '192.168.1.15'; 
+  static const String officeHostIp = '10.33.63.155';
+  //static const String officeBackupHostIp = '10.34.38.236'; 
+  static const String officeBackupHostIp = '192.168.100.28'; 
+  static const String localhostIp = 'localhost';
 
-  static const int API_PORT = 8081;
-  static const int TIMEOUT_SECONDS = 10;
+  static const int apiPort = 8081;
+  static const int timeoutSeconds = 10;
 
-  static const String HOST_IP = kIsWeb ? LOCALHOST_IP : OFFICE_BACKUP_HOST_IP;
-  static const String BASE_URL = 'http://$HOST_IP:$API_PORT/api';
-  static const String FILE_BASE_URL = 'http://$HOST_IP:$API_PORT';
+  static const String hostIp = kIsWeb ? localhostIp : officeBackupHostIp;
+  static const String baseUrl = 'http://$hostIp:$apiPort/api';
+  static const String fileBaseUrl = 'http://$hostIp:$apiPort';
 
   static const Map<String, String> _wifiHostOverrides = {
-    'WifiNha': LAN_HOST_IP,
-    'WifiNha2': LAN_BACKUP_HOST_IP,
-    'WifiCongTy': OFFICE_HOST_IP,
-    'WifiCongTyMoi': OFFICE_BACKUP_HOST_IP,
+    'WifiNha': lanHostIp,
+    'WifiNha2': lanBackupHostIp,
+    'WifiCongTy': officeHostIp,
+    'WifiCongTyMoi': officeBackupHostIp,
   };
 
   static const Map<String, String> _localIpPrefixOverrides = {
-    '192.168.100.': LAN_HOST_IP,
-    '192.168.1.': LAN_BACKUP_HOST_IP,
-    '10.33.': OFFICE_HOST_IP,
-    '10.189.': OFFICE_BACKUP_HOST_IP,
+    '192.168.100.': lanHostIp,
+    '192.168.1.': lanBackupHostIp,
+    '10.33.': officeHostIp,
+    '10.189.': officeBackupHostIp,
   };
 
-  static String _activeHostIp = HOST_IP;
-  static String _activeBaseUrl = BASE_URL;
-  static String _activeFileBaseUrl = FILE_BASE_URL;
+  static String _activeHostIp = hostIp;
+  static String _activeBaseUrl = baseUrl;
+  static String _activeFileBaseUrl = fileBaseUrl;
 
   static bool _isInitialized = false;
   static Future<void>? _initializing;
@@ -71,14 +71,14 @@ class ApiClient {
 
     final dio = Dio(BaseOptions(
       baseUrl: _activeBaseUrl,
-      connectTimeout: const Duration(seconds: TIMEOUT_SECONDS),
-      receiveTimeout: const Duration(seconds: TIMEOUT_SECONDS),
+      connectTimeout: const Duration(seconds: timeoutSeconds),
+      receiveTimeout: const Duration(seconds: timeoutSeconds),
     ));
 
     final authDio = Dio(BaseOptions(
       baseUrl: _activeBaseUrl,
-      connectTimeout: const Duration(seconds: TIMEOUT_SECONDS),
-      receiveTimeout: const Duration(seconds: TIMEOUT_SECONDS),
+      connectTimeout: const Duration(seconds: timeoutSeconds),
+      receiveTimeout: const Duration(seconds: timeoutSeconds),
     ));
 
     final authService = AuthService(authDio, storage);
@@ -88,7 +88,7 @@ class ApiClient {
   }
   static Future<void> _initializeDynamicHost() async {
     if (kIsWeb) {
-      _setActiveHost(LOCALHOST_IP);
+      _setActiveHost(localhostIp);
     } else {
       try {
         final info = NetworkInfo();
@@ -99,11 +99,11 @@ class ApiClient {
 
         final overrideIp = _resolveIpForWifi(wifiName);
         _setActiveHost(
-          overrideIp ?? _resolveIpByLocalAddress(wifiIP) ?? HOST_IP,
+          overrideIp ?? _resolveIpByLocalAddress(wifiIP) ?? hostIp,
         );
       } catch (e) {
         print('⚠️ Network detect failed: $e');
-        _setActiveHost(OFFICE_HOST_IP);
+        _setActiveHost(officeHostIp);
       }
     }
 
@@ -112,8 +112,8 @@ class ApiClient {
 
   static void _setActiveHost(String hostIp) {
     _activeHostIp = hostIp;
-    _activeBaseUrl = 'http://$hostIp:$API_PORT/api';
-    _activeFileBaseUrl = 'http://$hostIp:$API_PORT';
+    _activeBaseUrl = 'http://$hostIp:$apiPort/api';
+    _activeFileBaseUrl = 'http://$hostIp:$apiPort';
   }
 
   static String? _resolveIpForWifi(String? wifiName) {
@@ -229,13 +229,13 @@ class ApiClient {
 
     final dio = Dio(BaseOptions(
       baseUrl: _activeBaseUrl,
-      connectTimeout: const Duration(seconds: TIMEOUT_SECONDS),
-      receiveTimeout: const Duration(seconds: TIMEOUT_SECONDS),
+      connectTimeout: const Duration(seconds: timeoutSeconds),
+      receiveTimeout: const Duration(seconds: timeoutSeconds),
     ));
     final authDio = Dio(BaseOptions(
       baseUrl: _activeBaseUrl,
-      connectTimeout: const Duration(seconds: TIMEOUT_SECONDS),
-      receiveTimeout: const Duration(seconds: TIMEOUT_SECONDS),
+      connectTimeout: const Duration(seconds: timeoutSeconds),
+      receiveTimeout: const Duration(seconds: timeoutSeconds),
     ));
     final authService = AuthService(authDio, storage);
     print('🌐 ApiClient.create() → $_activeBaseUrl');
@@ -251,7 +251,7 @@ class ApiClient {
         final uri = Uri.tryParse(url);
         if (uri != null) {
           // Lấy port từ URL gốc hoặc dùng port mặc định
-          final port = uri.port != 0 ? uri.port : API_PORT;
+          final port = uri.port != 0 ? uri.port : apiPort;
           final host = _activeHostIp;
           // Giữ nguyên scheme (http/https)
           final scheme = uri.scheme;
@@ -270,3 +270,5 @@ class ApiClient {
     return '$_activeFileBaseUrl$path';
   }
 }
+
+

@@ -249,7 +249,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                     gradient: backgroundGradient,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 10,
                         offset: const Offset(0, -2),
                       ),
@@ -334,7 +334,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         ? AppColors.darkGlassLayerGradient()
         : AppColors.glassLayerGradient();
     final borderColor = (isDark ? AppColors.navyOutline : AppColors.neutralOutline)
-        .withOpacity(0.45);
+        .withValues(alpha: 0.45);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -366,17 +366,17 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           end: Alignment.bottomRight,
           colors: isDark
               ? [
-                  colorScheme.primary.withOpacity(0.3),
-                  colorScheme.primary.withOpacity(0.2),
+                  colorScheme.primary.withValues(alpha: 0.3),
+                  colorScheme.primary.withValues(alpha: 0.2),
                 ]
               : [
-                  colorScheme.primary.withOpacity(0.15),
-                  colorScheme.primary.withOpacity(0.08),
+                  colorScheme.primary.withValues(alpha: 0.15),
+                  colorScheme.primary.withValues(alpha: 0.08),
                 ],
         ),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: colorScheme.primary.withOpacity(0.2),
+          color: colorScheme.primary.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -387,15 +387,15 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             'Chọn khung giờ phù hợp và gửi yêu cầu để ban quản lý chuẩn bị cho bạn.',
             style: theme.textTheme.bodyLarge?.copyWith(
                   color: isDark
-                      ? Colors.white.withOpacity(0.9)
-                      : colorScheme.onSurface.withOpacity(0.85),
+                      ? Colors.white.withValues(alpha: 0.9)
+                      : colorScheme.onSurface.withValues(alpha: 0.85),
                   height: 1.5,
                   fontWeight: FontWeight.w500,
                 ) ??
                 TextStyle(
                   color: isDark
-                      ? Colors.white.withOpacity(0.9)
-                      : colorScheme.onSurface.withOpacity(0.85),
+                      ? Colors.white.withValues(alpha: 0.9)
+                      : colorScheme.onSurface.withValues(alpha: 0.85),
                   height: 1.5,
                   fontWeight: FontWeight.w500,
                 ),
@@ -444,11 +444,11 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: isDark
-            ? Colors.white.withOpacity(0.15)
-            : Colors.white.withOpacity(0.7),
+            ? Colors.white.withValues(alpha: 0.15)
+            : Colors.white.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: colorScheme.primary.withOpacity(0.3),
+          color: colorScheme.primary.withValues(alpha: 0.3),
           width: 1,
         ),
       ),
@@ -465,15 +465,15 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             label,
             style: theme.textTheme.labelSmall?.copyWith(
                   color: isDark
-                      ? Colors.white.withOpacity(0.9)
-                      : colorScheme.onSurface.withOpacity(0.85),
+                      ? Colors.white.withValues(alpha: 0.9)
+                      : colorScheme.onSurface.withValues(alpha: 0.85),
                   fontWeight: FontWeight.w600,
                 ) ??
                 TextStyle(
                   fontSize: 12,
                   color: isDark
-                      ? Colors.white.withOpacity(0.9)
-                      : colorScheme.onSurface.withOpacity(0.85),
+                      ? Colors.white.withValues(alpha: 0.9)
+                      : colorScheme.onSurface.withValues(alpha: 0.85),
                   fontWeight: FontWeight.w600,
                 ),
           ),
@@ -506,12 +506,12 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: colorScheme.primaryContainer.withOpacity(
+                color: colorScheme.primaryContainer.withValues(alpha: 
                   isDark ? 0.28 : 0.26,
                 ),
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(
-                  color: colorScheme.primary.withOpacity(0.2),
+                  color: colorScheme.primary.withValues(alpha: 0.2),
                   width: 1,
                 ),
               ),
@@ -544,12 +544,12 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
-                          color: colorScheme.primary.withOpacity(
+                          color: colorScheme.primary.withValues(alpha: 
                             isDark ? 0.28 : 0.16,
                           ),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: colorScheme.primary.withOpacity(
+                            color: colorScheme.primary.withValues(alpha: 
                               isDark ? 0.6 : 0.4,
                             ),
                           ),
@@ -594,13 +594,13 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             style: theme.textTheme.bodyLarge?.copyWith(
                   height: 1.6,
                   color: isDark
-                      ? Colors.white.withOpacity(0.82)
+                      ? Colors.white.withValues(alpha: 0.82)
                       : AppColors.textPrimary,
                 ) ??
                 TextStyle(
                   height: 1.6,
                   color: isDark
-                      ? Colors.white.withOpacity(0.82)
+                      ? Colors.white.withValues(alpha: 0.82)
                       : AppColors.textPrimary,
                 ),
           ),
@@ -670,10 +670,10 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            color: colorScheme.primary.withOpacity(isDark ? 0.22 : 0.12),
+            color: colorScheme.primary.withValues(alpha: isDark ? 0.22 : 0.12),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: colorScheme.primary.withOpacity(0.2),
+              color: colorScheme.primary.withValues(alpha: 0.2),
               width: 1,
             ),
           ),
@@ -735,8 +735,8 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: Material(
           color: isDark
-              ? Colors.white.withOpacity(0.12)
-              : Colors.white.withOpacity(0.75),
+              ? Colors.white.withValues(alpha: 0.12)
+              : Colors.white.withValues(alpha: 0.75),
           child: InkWell(
             onTap: onTap,
             child: SizedBox(

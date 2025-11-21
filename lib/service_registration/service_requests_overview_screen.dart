@@ -210,7 +210,7 @@ class _RequestCard extends StatelessWidget {
                 height: 48,
                 width: 48,
                 decoration: BoxDecoration(
-                  color: accent.withOpacity(0.15),
+                  color: accent.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(icon, color: accent),
@@ -228,7 +228,7 @@ class _RequestCard extends StatelessWidget {
                     Text(
                       subtitle,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
+                        color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7),
                       ),
                     ),
                   ],
@@ -237,7 +237,7 @@ class _RequestCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: _statusColor(context).withOpacity(0.1),
+                  color: _statusColor(context).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -255,7 +255,7 @@ class _RequestCard extends StatelessWidget {
             Text(
               note!,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.textTheme.bodySmall?.color?.withOpacity(0.8),
+                color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.8),
               ),
             ),
             const SizedBox(height: 12),
@@ -263,7 +263,7 @@ class _RequestCard extends StatelessWidget {
           Text(
             'Tạo lúc $createdAtText',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.textTheme.bodySmall?.color?.withOpacity(0.6),
+              color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
             ),
           ),
         ],
@@ -316,7 +316,7 @@ class _EmptyState extends StatelessWidget {
                 Text(
                   message,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -354,7 +354,7 @@ class _ErrorState extends StatelessWidget {
             Text(
               message,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
               ),
               textAlign: TextAlign.center,
             ),
@@ -390,7 +390,7 @@ class _HomeGlassContainer extends StatelessWidget {
           gradient: gradient,
           borderRadius: borderRadius,
           border: Border.all(
-            color: theme.colorScheme.outline.withOpacity(0.08),
+            color: theme.colorScheme.outline.withValues(alpha: 0.08),
           ),
           boxShadow: AppColors.subtleShadow,
         ),

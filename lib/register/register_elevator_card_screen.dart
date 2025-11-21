@@ -70,8 +70,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     if (_servicesCardDio == null) {
       _servicesCardDio = Dio(BaseOptions(
         baseUrl: ApiClient.buildServiceBase(port: 8083, path: '/api'),
-        connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
-        receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+        connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+        receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
       ));
       _servicesCardDio!.interceptors.add(LogInterceptor(
         request: true,
@@ -457,8 +457,9 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     // Listen for subsequent deep links
     _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
       if (uri == null) return;
-      if (uri.scheme != 'qhomeapp' || uri.host != 'vnpay-elevator-card-result')
+      if (uri.scheme != 'qhomeapp' || uri.host != 'vnpay-elevator-card-result') {
         return;
+      }
       await _handleDeepLinkPayment(uri);
     }, onError: (err) {
       debugPrint('❌ Lỗi khi nhận deep link: $err');
@@ -1131,13 +1132,13 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
           const SizedBox(height: 18),
           Divider(
             height: 1,
-            color: colorScheme.outlineVariant.withOpacity(0.3),
+            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
           ),
           const SizedBox(height: 16),
           Text(
             'Sau khi gửi yêu cầu, bạn sẽ được chuyển tới cổng thanh toán VNPAY để hoàn tất thanh toán. Vui lòng chuẩn bị thông tin thanh toán trước khi tiếp tục.',
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurface.withOpacity(0.68),
+              color: colorScheme.onSurface.withValues(alpha: 0.68),
               height: 1.45,
             ),
           ),
@@ -1191,7 +1192,7 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
                         child: Text(
                           'Căn hộ này có thể đăng ký tối đa $_maxCards thẻ (đã đăng ký $_registeredCards thẻ, còn lại $remainingSlots slot)',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurface.withOpacity(0.68),
+                            color: colorScheme.onSurface.withValues(alpha: 0.68),
                           ),
                         ),
                       ),
@@ -1217,7 +1218,7 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
                 style: IconButton.styleFrom(
                   backgroundColor: _cardQuantity > 1
                       ? colorScheme.primaryContainer
-                      : colorScheme.surfaceVariant,
+                      : colorScheme.surfaceContainerHighest,
                 ),
               ),
               const SizedBox(width: 16),
@@ -1243,7 +1244,7 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
                 style: IconButton.styleFrom(
                   backgroundColor: _cardQuantity < maxSelectable
                       ? colorScheme.primaryContainer
-                      : colorScheme.surfaceVariant,
+                      : colorScheme.surfaceContainerHighest,
                 ),
               ),
               const Spacer(),
@@ -1313,3 +1314,4 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
     return buffer.toString();
   }
 }
+

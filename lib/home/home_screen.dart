@@ -588,18 +588,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final theme = Theme.of(context);
 
-    return _HomeGlassCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: _openUnpaidBookingsScreen,
-        child: Row(
-          children: [
-            Container(
-              height: 48,
-              width: 48,
-              decoration: BoxDecoration(
-                color: AppColors.warning.withOpacity(0.16),
+        return _HomeGlassCard(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: _openUnpaidBookingsScreen,
+            child: Row(
+              children: [
+                Container(
+                  height: 48,
+                  width: 48,
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withValues(alpha: 0.16),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: const Icon(
@@ -623,7 +623,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text(
                     'Bạn có $_unpaidBookingCount dịch vụ cần xử lý.',
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.65),
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
                     ),
                   ),
                 ],
@@ -633,7 +633,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Icon(
               CupertinoIcons.right_chevron,
               size: 18,
-              color: theme.colorScheme.onSurface.withOpacity(0.5),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
             ),
           ],
         ),
@@ -662,8 +662,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content:
-              Text('Không xác định được cư dân hoặc căn hộ để hiển thị thẻ'),
+          content: Text('Không xác định được cư dân hoặc căn hộ để hiển thị thẻ'),
         ),
       );
       return;
@@ -798,7 +797,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 height: media.size.width * 0.7,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: theme.colorScheme.primary.withOpacity(0.12),
+                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
                 ),
               ),
             ),
@@ -832,9 +831,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 const SizedBox(height: 24),
                                 _buildPriorityAlertsCard(context),
                                 const SizedBox(height: 24),
-                                _buildInvoiceFeaturesRow(media.size),
-                                const SizedBox(height: 24),
-                                _buildNewsAndCardRow(media.size),
+                                _buildFeatureGrid(media.size),
                                 const SizedBox(height: 24),
                                 _buildServiceDeck(context),
                                 const SizedBox(height: 24),
@@ -930,7 +927,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(14),
                           ),
                           child: Icon(
@@ -945,7 +942,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: Text(
                             greetingPeriodText,
                             style: textTheme.titleMedium?.copyWith(
-                              color: Colors.white.withOpacity(0.9),
+                              color: Colors.white.withValues(alpha: 0.9),
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                               letterSpacing: 0.2,
@@ -997,10 +994,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
+                    color: Colors.white.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.2),
+                    border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.2),
                     width: 1,
                   ),
                 ),
@@ -1008,7 +1005,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     Icon(
                       CupertinoIcons.house_alt_fill,
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       size: 20,
                     ),
                     const SizedBox(width: 12),
@@ -1029,7 +1026,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             Text(
                               buildingName,
                               style: textTheme.bodySmall?.copyWith(
-                                color: Colors.white.withOpacity(0.8),
+                                color: Colors.white.withValues(alpha: 0.8),
                                 fontSize: 13,
                               ),
                               maxLines: 1,
@@ -1041,7 +1038,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     Icon(
                       CupertinoIcons.chevron_right,
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       size: 18,
                     ),
                   ],
@@ -1066,11 +1063,11 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       child: Container(
         padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.2),
+          decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: Colors.white.withOpacity(0.3),
+            color: Colors.white.withValues(alpha: 0.3),
             width: 1,
           ),
         ),
@@ -1093,11 +1090,11 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
@@ -1130,7 +1127,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Text(
                     _unreadNotificationCount > 99
                         ? '99+'
-                        : '${_unreadNotificationCount}',
+                        : '$_unreadNotificationCount',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 11,
@@ -1285,7 +1282,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.warning.withOpacity(0.16),
+                  color: AppColors.warning.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -1318,10 +1315,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: alertItem.color.withOpacity(0.12),
+                    color: alertItem.color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: alertItem.color.withOpacity(0.3),
+                      color: alertItem.color.withValues(alpha: 0.3),
                       width: 1,
                     ),
                   ),
@@ -1418,9 +1415,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: Text(
                             'Đang cập nhật khí hậu...',
                             style: textTheme.bodyMedium?.copyWith(
-                              color:
-                                  theme.colorScheme.onSurface.withOpacity(0.7),
-                            ),
+                                      color:
+                                        theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                                    ),
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
                           ),
@@ -1432,7 +1429,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           _weatherError ?? 'Không lấy được thời tiết',
                           key: const ValueKey('weather-error'),
                           style: textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurface.withOpacity(0.7),
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                           ),
                         )
                       : Column(
@@ -1463,16 +1460,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                     'Độ ẩm ${snapshot.humidity?.toStringAsFixed(0)}%',
                                 ].join(' · '),
                                 style: textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurface
-                                      .withOpacity(0.6),
+                                    color: theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.6),
                                 ),
                               ),
                             const SizedBox(height: 2),
                             Text(
                               'Cập nhật ${_formatTime(snapshot.fetchedAt)}',
                               style: textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.onSurface
-                                    .withOpacity(0.45),
+                                    color: theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.45),
                                 letterSpacing: 0.2,
                               ),
                             ),
@@ -1637,7 +1634,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Text(
           error.length > 100 ? '${error.substring(0, 100)}...' : error,
           style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurface.withOpacity(0.6),
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
           ),
           textAlign: TextAlign.center,
           maxLines: 2,
@@ -1666,14 +1663,14 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Icon(
           Icons.insert_chart_outlined,
-          color: theme.colorScheme.onSurface.withOpacity(0.3),
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
           size: 48,
         ),
         const SizedBox(height: 12),
         Text(
           message,
           style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurface.withOpacity(0.6),
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
           ),
           textAlign: TextAlign.center,
         ),
@@ -1800,129 +1797,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildInvoiceFeaturesRow(Size size) {
-    const spacing = 18.0;
+  
 
-    return Row(
-      children: [
-        Expanded(
-          child: _buildFeatureCard(
-            icon: Icons.description_outlined,
-            label: 'Hóa đơn mới',
-            accent: AppColors.primaryBlue,
-            onTap: () {
-              debugPrint(
-                  '🧾 [HomeScreen] mở Hóa đơn mới với unit=$_selectedUnitId, units=${_units.length}');
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => InvoiceListScreen(
-                    initialUnitId: _selectedUnitId,
-                    initialUnits: _units,
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        SizedBox(width: spacing),
-        Expanded(
-          child: _buildFeatureCard(
-            icon: Icons.verified_outlined,
-            label: 'Đã thanh toán',
-            accent: AppColors.primaryEmerald,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => PaidInvoicesScreen(
-                    initialUnitId: _selectedUnitId,
-                    initialUnits: _units,
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildNewsAndCardRow(Size size) {
-    const spacing = 18.0;
-
-    return Row(
-      children: [
-        Expanded(
-          child: _buildFeatureCard(
-            icon: Icons.newspaper_outlined,
-            label: 'Tin tức',
-            accent: AppColors.warning,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const NewsScreen(),
-                ),
-              );
-            },
-          ),
-        ),
-        SizedBox(width: spacing),
-        Expanded(
-          child: _buildFeatureCard(
-            icon: CupertinoIcons.creditcard_fill,
-            label: 'Quản lý thẻ cư dân',
-            accent: AppColors.primaryAqua,
-            onTap: _openCardRegistrationScreen,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFeatureCard({
-    required IconData icon,
-    required String label,
-    required Color accent,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
-
-    return _HomeGlassCard(
-      padding: const EdgeInsets.all(18),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              height: 48,
-              width: 48,
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(icon, color: accent),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              label,
-              style: theme.textTheme.titleMedium,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Chạm để xem chi tiết',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  
 
   /// Returns greeting period based on time of day:
   /// Morning (5:00 - 11:59): "sáng"
@@ -2037,6 +1914,184 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     ];
   }
+
+  Widget _buildFeatureGrid(Size size) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final items = [
+      _ServiceCardData(
+        title: 'Hóa đơn mới',
+        subtitle: 'Xem và thanh toán hóa đơn',
+        icon: Icons.description_outlined,
+        accent: AppColors.primaryBlue,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => InvoiceListScreen(
+                initialUnitId: _selectedUnitId,
+                initialUnits: _units,
+              ),
+            ),
+          );
+        },
+      ),
+      _ServiceCardData(
+        title: 'Đã thanh toán',
+        subtitle: 'Lịch sử thanh toán của bạn',
+        icon: Icons.verified_outlined,
+        accent: AppColors.primaryEmerald,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PaidInvoicesScreen(
+                initialUnitId: _selectedUnitId,
+                initialUnits: _units,
+              ),
+            ),
+          );
+        },
+      ),
+      _ServiceCardData(
+        title: 'Tin tức',
+        subtitle: 'Cập nhật thông báo & tin tức',
+        icon: Icons.newspaper_outlined,
+        accent: AppColors.warning,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const NewsScreen(),
+            ),
+          );
+        },
+      ),
+      _ServiceCardData(
+        title: 'Quản lý thẻ',
+        subtitle: 'Thẻ cư dân & thẻ máy',
+        icon: CupertinoIcons.creditcard_fill,
+        accent: AppColors.primaryAqua,
+        onTap: _openCardRegistrationScreen,
+      ),
+    ];
+
+    const spacing = 16.0;
+
+    return _HomeGlassCard(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final availableWidth = constraints.maxWidth;
+          final tileWidth = (availableWidth - spacing) / 2;
+
+          return Wrap(
+            spacing: spacing,
+            runSpacing: spacing,
+            children: items.map((data) {
+              return SizedBox(
+                width: tileWidth,
+                child: _FeatureGridTile(
+                  data: data,
+                  isDark: isDark,
+                ),
+              );
+            }).toList(),
+          );
+        },
+      ),
+    );
+  }
+
+}
+
+class _FeatureGridTile extends StatefulWidget {
+  const _FeatureGridTile({required this.data, required this.isDark});
+
+  final _ServiceCardData data;
+  final bool isDark;
+
+  @override
+  State<_FeatureGridTile> createState() => _FeatureGridTileState();
+}
+
+class _FeatureGridTileState extends State<_FeatureGridTile> {
+  bool _hover = false;
+  bool _pressed = false;
+
+  void _onEnter(bool hover) => setState(() => _hover = hover);
+  void _onPressed(bool pressed) => setState(() => _pressed = pressed);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final borderColor = widget.isDark
+        ? Colors.white.withValues(alpha: 0.14)
+        : theme.colorScheme.outlineVariant.withValues(alpha: 0.6);
+
+    final scale = _pressed ? 0.98 : (_hover ? 1.02 : 1.0);
+
+    return MouseRegion(
+      onEnter: (_) => _onEnter(true),
+      onExit: (_) => _onEnter(false),
+      child: GestureDetector(
+        onTapDown: (_) => _onPressed(true),
+        onTapUp: (_) {
+          _onPressed(false);
+          widget.data.onTap();
+        },
+        onTapCancel: () => _onPressed(false),
+        child: AnimatedScale(
+          scale: scale,
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOutCubic,
+          child: Container(
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: borderColor, width: 2),
+            ),
+            padding: const EdgeInsets.all(14),
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    height: 46,
+                    width: 46,
+                    decoration: BoxDecoration(
+                      color: widget.data.accent.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(widget.data.icon, color: widget.data.accent),
+                  ),
+                  const Spacer(),
+                  Text(
+                    widget.data.title,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    widget.data.subtitle,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _HomeGlassCard extends StatelessWidget {
@@ -2056,6 +2111,11 @@ class _HomeGlassCard extends StatelessWidget {
         ? AppColors.darkGlassLayerGradient()
         : AppColors.glassLayerGradient();
 
+    final isDark = theme.brightness == Brightness.dark;
+    final borderColor = isDark
+        ? theme.colorScheme.outline.withValues(alpha: 0.08)
+        : theme.colorScheme.outlineVariant.withValues(alpha: 0.2);
+
     return ClipRRect(
       borderRadius: borderRadius,
       child: BackdropFilter(
@@ -2065,7 +2125,7 @@ class _HomeGlassCard extends StatelessWidget {
             gradient: gradient,
             borderRadius: borderRadius,
             border: Border.all(
-              color: theme.colorScheme.outline.withOpacity(0.08),
+              color: borderColor,
             ),
             boxShadow: AppColors.subtleShadow,
           ),
@@ -2158,7 +2218,7 @@ class _ServiceCard extends StatelessWidget {
               Icon(
                 CupertinoIcons.chevron_forward,
                 size: 18,
-                color: theme.colorScheme.onSurface.withOpacity(0.5),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
               ),
             ],
           ),
@@ -2208,7 +2268,7 @@ class _HomeActionTile extends StatelessWidget {
                 height: 48,
                 width: 48,
                 decoration: BoxDecoration(
-                  color: accentColor.withOpacity(0.14),
+                  color: accentColor.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(icon, color: accentColor),
@@ -2230,7 +2290,7 @@ class _HomeActionTile extends StatelessWidget {
                           line,
                           style: theme.textTheme.bodySmall?.copyWith(
                             color:
-                                theme.colorScheme.onSurface.withOpacity(0.56),
+                                theme.colorScheme.onSurface.withValues(alpha: 0.56),
                           ),
                         ),
                       ),

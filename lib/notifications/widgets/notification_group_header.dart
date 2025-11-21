@@ -12,24 +12,35 @@ class NotificationGroupHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: 24, bottom: 12, left: 4, right: 4),
+      padding: const EdgeInsets.only(top: 24, bottom: 12),
       child: Row(
         children: [
-          Container(
-            width: 4,
-            height: 20,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary,
-              borderRadius: BorderRadius.circular(2),
+          Expanded(
+            child: Container(
+              height: 1,
+              color: theme.colorScheme.outline.withValues(alpha: 0.08),
             ),
           ),
           const SizedBox(width: 12),
-          Text(
-            title,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              fontSize: 16,
-              color: theme.colorScheme.onSurface,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(30),
+            ),
+            child: Text(
+              title,
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Container(
+              height: 1,
+              color: theme.colorScheme.outline.withValues(alpha: 0.08),
             ),
           ),
         ],
@@ -37,4 +48,3 @@ class NotificationGroupHeader extends StatelessWidget {
     );
   }
 }
-

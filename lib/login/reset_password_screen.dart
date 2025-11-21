@@ -52,7 +52,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           );
 
     final topGlow = isDark
-        ? theme.colorScheme.primary.withOpacity(0.16)
+        ? theme.colorScheme.primary.withValues(alpha: 0.16)
         : AppColors.primaryBlue.withValues(alpha: 0.16);
 
     return GestureDetector(

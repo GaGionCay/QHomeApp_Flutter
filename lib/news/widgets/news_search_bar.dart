@@ -30,7 +30,8 @@ class _NewsSearchBarState extends State<NewsSearchBar> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.searchQuery != widget.searchQuery) {
       _controller.text = widget.searchQuery;
-      _controller.selection = TextSelection.collapsed(offset: widget.searchQuery.length);
+      _controller.selection =
+          TextSelection.collapsed(offset: widget.searchQuery.length);
     }
   }
 
@@ -43,62 +44,65 @@ class _NewsSearchBarState extends State<NewsSearchBar> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: theme.colorScheme.outline.withValues(alpha: 0.1),
-            width: 1,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      color: theme.colorScheme.surface,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: theme.colorScheme.outline.withValues(alpha: 0.08),
           ),
+          boxShadow: [
+            if (!isDark)
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+          ],
         ),
-      ),
-      child: TextField(
-        controller: _controller,
-        onChanged: widget.onSearchChanged,
-        decoration: InputDecoration(
-          hintText: 'Tìm kiếm theo tiêu đề...',
-          prefixIcon: const Icon(Icons.search, size: 20),
-          suffixIcon: widget.searchQuery.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear, size: 20),
-                  onPressed: () {
-                    _controller.clear();
-                    widget.onClear();
-                  },
-                  tooltip: 'Xóa',
-                )
-              : null,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(
-              color: theme.colorScheme.outline.withValues(alpha: 0.3),
+        child: Row(
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Icon(Icons.search, size: 20),
             ),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(
-              color: theme.colorScheme.outline.withValues(alpha: 0.3),
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                onChanged: widget.onSearchChanged,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Tìm kiếm nhanh...',
+                  border: InputBorder.none,
+                  isDense: true,
+                  hintStyle: TextStyle(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                    fontSize: 14,
+                  ),
+                ),
+              ),
             ),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(
-              color: theme.colorScheme.primary,
-              width: 2,
-            ),
-          ),
-          filled: true,
-          fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          hintStyle: TextStyle(
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
-            fontSize: 14,
-          ),
+            if (widget.searchQuery.isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.close_rounded, size: 20),
+                onPressed: () {
+                  _controller.clear();
+                  widget.onClear();
+                },
+                tooltip: 'Xóa tìm kiếm',
+              ),
+            const SizedBox(width: 8),
+          ],
         ),
       ),
     );
   }
 }
-

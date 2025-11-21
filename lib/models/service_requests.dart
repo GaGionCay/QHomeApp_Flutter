@@ -30,7 +30,7 @@ class CleaningRequestSummary {
           ? '$timeString:00'
           : timeString.length == 8
               ? timeString
-              : '$timeString';
+              : timeString;
       scheduled = DateTime.tryParse('${dateString}T$cleanedTime');
     }
 

@@ -1029,7 +1029,6 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       case 'open_app':
         // Try to parse as URI and launch with app chooser
         await _launchWithAppChooser(code);
-        break;
       case 'copy':
         await Clipboard.setData(ClipboardData(text: code));
         if (mounted) {
@@ -1041,11 +1040,9 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
           );
         }
         _resetScanner();
-        break;
       case 'cancel':
       default:
         _resetScanner();
-        break;
     }
   }
 
@@ -1366,7 +1363,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
         // Dark overlay
         ColorFiltered(
           colorFilter: ColorFilter.mode(
-            Colors.black.withOpacity(0.5),
+            Colors.black.withValues(alpha: 0.5),
             BlendMode.srcOut,
           ),
           child: Stack(
@@ -1411,8 +1408,8 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     final media = MediaQuery.of(context);
     final appBarHeight = kToolbarHeight + media.padding.top;
     final bottomPadding = media.padding.bottom;
-    final instructionsHeight = 120.0; // Height of instructions box
-    final instructionsPadding = 24.0; // Padding below instructions
+    const instructionsHeight = 120.0; // Height of instructions box
+    const instructionsPadding = 24.0; // Padding below instructions
     
     // Available height for scanning area
     final availableHeight = size.height - 
@@ -1442,10 +1439,10 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       margin: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.7),
+        color: Colors.black.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withOpacity(0.2),
+          color: Colors.white.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -1469,7 +1466,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
           Text(
             'Đảm bảo mã QR nằm trong khung và có đủ ánh sáng',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha: 0.7),
             ),
             textAlign: TextAlign.center,
           ),
@@ -1502,7 +1499,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
             Text(
               _errorMessage ?? 'Vui lòng cấp quyền truy cập camera để quét mã QR',
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha: 0.7),
               ),
               textAlign: TextAlign.center,
             ),

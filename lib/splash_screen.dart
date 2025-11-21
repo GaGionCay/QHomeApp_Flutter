@@ -149,8 +149,8 @@ class _SplashScreenState extends State<SplashScreen>
         animation: _controller,
         builder: (context, child) {
           final glowColor = isDark
-              ? AppColors.primaryBlue.withOpacity(_glowTween.value)
-              : AppColors.primaryEmerald.withOpacity(_glowTween.value);
+              ? AppColors.primaryBlue.withValues(alpha: _glowTween.value)
+              : AppColors.primaryEmerald.withValues(alpha: _glowTween.value);
 
           return Stack(
             fit: StackFit.expand,

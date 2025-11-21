@@ -5,14 +5,17 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:intl/intl.dart';
+import 'package:shimmer/shimmer.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 import '../auth/api_client.dart';
 import '../contracts/contract_service.dart';
 import '../core/event_bus.dart';
 import '../models/resident_news.dart';
 import '../profile/profile_service.dart';
 import '../theme/app_colors.dart';
-import 'resident_service.dart';
 import 'news_read_store.dart';
+import 'resident_service.dart';
 
 class NewsDetailScreen extends StatefulWidget {
   final Map<String, dynamic>? news;
@@ -67,6 +70,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
       return null;
     }
   }
+
   Future<void> _fetchById(String id) async {
     if (mounted) {
       setState(() => _loading = true);
@@ -78,7 +82,8 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
       final residentService = ResidentService();
       final residentId = await _getResidentId();
       if (residentId != null && residentId.isNotEmpty) {
-        final allNews = await residentService.getResidentNews(residentId, size: 1000);
+        final allNews =
+            await residentService.getResidentNews(residentId, size: 1000);
         loadedNews = allNews.firstWhere(
           (n) => n.id == id,
           orElse: () => throw Exception('News not found'),
@@ -101,11 +106,12 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
         updatedAt: DateTime.now(),
       );
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _residentNews = loadedNews;
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _residentNews = loadedNews;
+          _loading = false;
+        });
+      }
       if (_residentNews != null) {
         _scheduleMarkRead();
       }
@@ -181,12 +187,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
     final theme = Theme.of(context);
 
     if (_loading) {
-      return Scaffold(
-        backgroundColor: theme.colorScheme.surface,
-        body: const Center(
-          child: CupertinoActivityIndicator(radius: 16),
-        ),
-      );
+      return const _NewsDetailSkeleton();
     }
 
     final news = _residentNews;
@@ -218,6 +219,10 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
     final DateTime? publishAt = news.publishAt;
     final List<NewsImage> images = List.from(news.images)
       ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final imageAttachments =
+        images.where((img) => _isImageAttachment(img)).toList();
+    final fileAttachments =
+        images.where((img) => !_isImageAttachment(img)).toList();
 
     final backgroundGradient = theme.brightness == Brightness.dark
         ? const LinearGradient(
@@ -238,6 +243,8 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
               Colors.white,
             ],
           );
+    final coverUrl =
+        news.coverImageUrl ?? (images.isNotEmpty ? images.first.url : null);
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -251,16 +258,16 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
           slivers: [
             SliverAppBar(
               backgroundColor: Colors.transparent,
-              foregroundColor: theme.colorScheme.onSurface,
+              foregroundColor: Colors.white,
               elevation: 0,
               scrolledUnderElevation: 0,
               pinned: true,
               stretch: true,
-              leadingWidth: 66,
-              expandedHeight: 160,
+              leadingWidth: 60,
+              expandedHeight: coverUrl != null ? 320 : 220,
               systemOverlayStyle: theme.appBarTheme.systemOverlayStyle,
               title: const Text(
-                'Chi tiết thông tin',
+                'Tin tức',
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
               centerTitle: true,
@@ -272,29 +279,13 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                 ),
               ),
               flexibleSpace: FlexibleSpaceBar(
-                collapseMode: CollapseMode.parallax,
-                background: Container(
-                  decoration: BoxDecoration(gradient: backgroundGradient),
-                  padding: const EdgeInsets.fromLTRB(24, 100, 24, 36),
-                  child: Align(
-                    alignment: Alignment.bottomLeft,
-                    child: Text(
-                      news.title,
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                            color: theme.colorScheme.onSurface,
-                            fontWeight: FontWeight.w700,
-                            height: 1.2,
-                            letterSpacing: -0.3,
-                          ) ??
-                          TextStyle(
-                            color: theme.colorScheme.onSurface,
-                            fontSize: 24,
-                            fontWeight: FontWeight.w700,
-                            height: 1.2,
-                            letterSpacing: -0.3,
-                          ),
-                    ),
-                  ),
+                stretchModes: const [
+                  StretchMode.zoomBackground,
+                  StretchMode.fadeTitle,
+                ],
+                background: _NewsDetailHeader(
+                  news: news,
+                  coverUrl: coverUrl,
                 ),
               ),
             ),
@@ -317,11 +308,19 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                                 ? summary
                                 : 'Không có tóm tắt cho thông tin này.',
                             style: theme.textTheme.bodyLarge?.copyWith(
-                              height: 1.6,
-                              color: theme.brightness == Brightness.dark
-                                  ? Colors.white.withOpacity(0.82)
-                                  : AppColors.textPrimary,
-                            ),
+                                  height: 1.7,
+                                  fontSize: 17,
+                                  color: theme.brightness == Brightness.dark
+                                      ? Colors.white.withValues(alpha: 0.84)
+                                      : AppColors.textPrimary,
+                                ) ??
+                                TextStyle(
+                                  height: 1.7,
+                                  fontSize: 17,
+                                  color: theme.brightness == Brightness.dark
+                                      ? Colors.white.withValues(alpha: 0.84)
+                                      : AppColors.textPrimary,
+                                ),
                           ),
                           const SizedBox(height: 20),
                           _buildMetaRow(
@@ -355,20 +354,20 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                                   margin: Margins.zero,
                                   padding: HtmlPaddings.zero,
                                   color: theme.brightness == Brightness.dark
-                                      ? Colors.white.withOpacity(0.86)
+                                      ? Colors.white.withValues(alpha: 0.88)
                                       : AppColors.textPrimary,
-                                  fontSize: FontSize(16),
-                                  lineHeight: const LineHeight(1.65),
+                                  fontSize: FontSize(17),
+                                  lineHeight: const LineHeight(1.75),
                                 ),
                                 'p': Style(
-                                  margin: Margins.only(bottom: 14),
+                                  margin: Margins.only(bottom: 16),
                                 ),
                                 'li': Style(
-                                  margin: Margins.only(bottom: 8),
+                                  margin: Margins.only(bottom: 10),
                                 ),
                                 'h2': Style(
-                                  margin: Margins.only(top: 18, bottom: 12),
-                                  fontSize: FontSize(20),
+                                  margin: Margins.only(top: 22, bottom: 12),
+                                  fontSize: FontSize(22),
                                   fontWeight: FontWeight.bold,
                                   color: theme.brightness == Brightness.dark
                                       ? Colors.white
@@ -380,7 +379,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                         ),
                       ),
                     ],
-                    if (images.isNotEmpty) ...[
+                    if (imageAttachments.isNotEmpty) ...[
                       const SizedBox(height: 20),
                       _glassPanel(
                         padding: const EdgeInsets.all(18),
@@ -397,9 +396,36 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                               ),
                             ),
                             const SizedBox(height: 12),
-                            ...images
+                            ...imageAttachments
                                 .map((img) => _buildImageItem(context, img))
                                 .toList(),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (fileAttachments.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      _glassPanel(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Tệp đính kèm',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: theme.brightness == Brightness.dark
+                                    ? Colors.white
+                                    : AppColors.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            ...fileAttachments.map(
+                              (attachment) => _buildAttachmentTile(
+                                context,
+                                attachment,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -424,8 +450,9 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
     final gradient = isDark
         ? AppColors.darkGlassLayerGradient()
         : AppColors.glassLayerGradient();
-    final borderColor = (isDark ? AppColors.navyOutline : AppColors.neutralOutline)
-        .withOpacity(0.45);
+    final borderColor =
+        (isDark ? AppColors.navyOutline : AppColors.neutralOutline)
+            .withValues(alpha: 0.45);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -454,9 +481,9 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withOpacity(isDark ? 0.28 : 0.16),
+        color: color.withValues(alpha: isDark ? 0.28 : 0.16),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withOpacity(isDark ? 0.8 : 0.45)),
+        border: Border.all(color: color.withValues(alpha: isDark ? 0.8 : 0.45)),
       ),
       child: Text(
         status.toUpperCase(),
@@ -487,7 +514,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
         Container(
           padding: const EdgeInsets.all(9),
           decoration: BoxDecoration(
-            color: theme.colorScheme.primary.withOpacity(isDark ? 0.22 : 0.12),
+            color: theme.colorScheme.primary.withValues(alpha: isDark ? 0.22 : 0.12),
             shape: BoxShape.circle,
           ),
           child: Icon(
@@ -528,9 +555,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
 
   Widget _buildImageItem(BuildContext context, NewsImage image) {
     final theme = Theme.of(context);
-    final imageUrl = image.url.startsWith('http')
-        ? ApiClient.fileUrl(image.url)
-        : ApiClient.fileUrl(image.url);
+    final imageUrl = _resolveFileUrl(image.url);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -545,13 +570,13 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
                 imageUrl: imageUrl,
                 fit: BoxFit.cover,
                 placeholder: (context, url) => Container(
-                  color: theme.colorScheme.surfaceVariant.withOpacity(0.2),
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
                   child: const Center(
                     child: CupertinoActivityIndicator(),
                   ),
                 ),
                 errorWidget: (context, url, error) => Container(
-                  color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                   child: Icon(
                     CupertinoIcons.exclamationmark_triangle,
                     color: theme.colorScheme.error,
@@ -563,8 +588,8 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
             if (image.caption != null && image.caption!.isNotEmpty)
               Container(
                 color: theme.brightness == Brightness.dark
-                    ? Colors.black.withOpacity(0.4)
-                    : Colors.white.withOpacity(0.7),
+                    ? Colors.black.withValues(alpha: 0.4)
+                    : Colors.white.withValues(alpha: 0.7),
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 child: Text(
@@ -589,6 +614,139 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
     );
   }
 
+  Widget _buildAttachmentTile(BuildContext context, NewsImage attachment) {
+    final theme = Theme.of(context);
+    final resolvedUrl = _resolveFileUrl(attachment.url);
+    final fileName = attachment.caption?.isNotEmpty == true
+        ? attachment.caption!
+        : Uri.tryParse(resolvedUrl)?.pathSegments.last ?? 'Tập tin đính kèm';
+    final contentType = attachment.contentType?.toLowerCase() ?? '';
+
+    IconData icon;
+    if (contentType.contains('pdf') ||
+        fileName.toLowerCase().endsWith('.pdf')) {
+      icon = Icons.picture_as_pdf_outlined;
+    } else if (contentType.contains('sheet') ||
+        fileName.toLowerCase().endsWith('.xls') ||
+        fileName.toLowerCase().endsWith('.xlsx')) {
+      icon = Icons.table_chart_outlined;
+    } else if (contentType.contains('word') ||
+        fileName.toLowerCase().endsWith('.doc') ||
+        fileName.toLowerCase().endsWith('.docx')) {
+      icon = Icons.description_outlined;
+    } else if (contentType.contains('zip') ||
+        fileName.toLowerCase().endsWith('.zip') ||
+        fileName.toLowerCase().endsWith('.rar')) {
+      icon = Icons.folder_zip_outlined;
+    } else {
+      icon = Icons.insert_drive_file_outlined;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.08),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  fileName,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (attachment.fileSize != null)
+                  Text(
+                    _formatFileSize(attachment.fileSize!),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          IconButton(
+            icon: const Icon(Icons.download_rounded),
+            tooltip: 'Tải xuống',
+            onPressed: () => _openAttachment(context, resolvedUrl),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openAttachment(BuildContext context, String url) async {
+    final uri = Uri.parse(url);
+    try {
+      final success = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Không thể mở tệp đính kèm.'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể mở tệp: $e'),
+        ),
+      );
+    }
+  }
+
+  bool _isImageAttachment(NewsImage image) {
+    final contentType = image.contentType?.toLowerCase() ?? '';
+    if (contentType.startsWith('image/')) return true;
+    final url = image.url.toLowerCase();
+    return url.endsWith('.png') ||
+        url.endsWith('.jpg') ||
+        url.endsWith('.jpeg') ||
+        url.endsWith('.gif') ||
+        url.endsWith('.webp');
+  }
+
+  String _resolveFileUrl(String url) {
+    if (url.startsWith('http')) return url;
+    return ApiClient.fileUrl(url);
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    final kb = bytes / 1024;
+    if (kb < 1024) return '${kb.toStringAsFixed(1)} KB';
+    final mb = kb / 1024;
+    return '${mb.toStringAsFixed(1)} MB';
+  }
+
   Widget _buildFrostedIconButton({
     required IconData icon,
     required VoidCallback onTap,
@@ -601,8 +759,8 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: Material(
           color: isDark
-              ? Colors.white.withOpacity(0.12)
-              : Colors.white.withOpacity(0.75),
+              ? Colors.white.withValues(alpha: 0.12)
+              : Colors.white.withValues(alpha: 0.75),
           child: InkWell(
             onTap: onTap,
             child: SizedBox(
@@ -619,5 +777,151 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
       ),
     );
   }
-
 }
+
+class _NewsDetailHeader extends StatelessWidget {
+  const _NewsDetailHeader({
+    required this.news,
+    required this.coverUrl,
+  });
+
+  final ResidentNews news;
+  final String? coverUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final overlay = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        Colors.black.withValues(alpha: 0.15),
+        Colors.black.withValues(alpha: 0.45),
+        Colors.black.withValues(alpha: 0.72),
+      ],
+    );
+
+    Widget imageWidget;
+    if (coverUrl != null && coverUrl!.isNotEmpty) {
+      imageWidget = CachedNetworkImage(
+        imageUrl: ApiClient.fileUrl(coverUrl!),
+        fit: BoxFit.cover,
+        placeholder: (_, __) => Container(
+          color: Colors.black.withValues(alpha: 0.08),
+        ),
+        errorWidget: (_, __, ___) => Container(
+          color: Colors.black.withValues(alpha: 0.08),
+          child: const Icon(Icons.broken_image_outlined, size: 32),
+        ),
+      );
+      imageWidget = Hero(
+        tag: 'news-cover-${news.id}',
+        child: imageWidget,
+      );
+    } else {
+      imageWidget = Container(
+        color: theme.colorScheme.primary.withValues(alpha: 0.12),
+        child: Icon(
+          Icons.article_outlined,
+          size: 48,
+          color: theme.colorScheme.primary,
+        ),
+      );
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Positioned.fill(child: imageWidget),
+        Container(decoration: BoxDecoration(gradient: overlay)),
+        Positioned(
+          left: 24,
+          right: 24,
+          bottom: 32,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                news.title,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          height: 1.2,
+                          letterSpacing: -0.3,
+                        ) ??
+                    const TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                news.summary,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      height: 1.6,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _NewsDetailSkeleton extends StatelessWidget {
+  const _NewsDetailSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      backgroundColor: theme.colorScheme.surface,
+      body: Shimmer.fromColors(
+        baseColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        highlightColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            Container(
+              height: 300,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(24),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: List.generate(5, (index) {
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: index == 4 ? 0 : 16),
+                    child: Container(
+                      height: index == 0 ? 22 : 14,
+                      width: index == 4 ? 120 : double.infinity,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+

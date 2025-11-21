@@ -364,7 +364,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
           if (_isLoading)
             Positioned.fill(
               child: Container(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 child: const Center(child: CircularProgressIndicator()),
               ),
             ),
@@ -394,7 +394,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
     String? errorText,
   }) {
     final theme = Theme.of(context);
-    final color = theme.colorScheme.surface.withOpacity(
+    final color = theme.colorScheme.surface.withValues(alpha: 
       theme.brightness == Brightness.dark ? 0.75 : 0.98,
     );
     return Container(
@@ -403,10 +403,10 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.4)),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(theme.brightness == Brightness.dark ? 0.4 : 0.08),
+            color: Colors.black.withValues(alpha: theme.brightness == Brightness.dark ? 0.4 : 0.08),
             offset: const Offset(0, 14),
             blurRadius: 32,
             spreadRadius: -12,
@@ -425,7 +425,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
             Text(
               subtitle,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
+                color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7),
               ),
             ),
           ],
@@ -458,7 +458,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withOpacity(0.12),
+                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(Icons.apartment_outlined, color: theme.colorScheme.primary),
@@ -475,7 +475,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
                             Text(
                               unit.buildingName!,
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
+                                color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7),
                               ),
                             ),
                         ],
@@ -706,7 +706,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
             Text(
               'Chưa có tệp đính kèm',
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6),
+                color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
               ),
             )
           else
@@ -752,7 +752,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
           height: 96,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            color: theme.colorScheme.surfaceVariant.withOpacity(0.4),
+            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
             image: attachment.isVideo
                 ? null
                 : DecorationImage(

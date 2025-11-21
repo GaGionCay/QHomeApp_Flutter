@@ -16,6 +16,7 @@ import '../models/unit_info.dart';
 import '../services/card_registration_service.dart';
 
 enum _CardCategory { vehicle, resident, elevator }
+
 enum _StatusFilter { all, approved, paid, pending }
 
 class CardRegistrationsScreen extends StatefulWidget {
@@ -189,7 +190,8 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
         const SizedBox(height: 16),
         if (filteredCards.isEmpty)
           _buildEmptyFilteredState(theme)
-        else ..._buildGroupedByDay(theme, filteredCards),
+        else
+          ..._buildGroupedByDay(theme, filteredCards),
         if (_isLoading && filteredCards.isNotEmpty)
           const Padding(
             padding: EdgeInsets.only(top: 12),
@@ -215,11 +217,13 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
 
       bool ok = true;
       if (_fromDate != null) {
-        final start = DateTime(_fromDate!.year, _fromDate!.month, _fromDate!.day);
+        final start =
+            DateTime(_fromDate!.year, _fromDate!.month, _fromDate!.day);
         ok = ok && !pivot.isBefore(start);
       }
       if (_toDate != null) {
-        final end = DateTime(_toDate!.year, _toDate!.month, _toDate!.day, 23, 59, 59, 999);
+        final end = DateTime(
+            _toDate!.year, _toDate!.month, _toDate!.day, 23, 59, 59, 999);
         ok = ok && !pivot.isAfter(end);
       }
       return ok;
@@ -262,7 +266,8 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
     );
   }
 
-  List<Widget> _buildGroupedByDay(ThemeData theme, List<CardRegistrationSummary> items) {
+  List<Widget> _buildGroupedByDay(
+      ThemeData theme, List<CardRegistrationSummary> items) {
     // Group theo ngày dựa trên paymentDate nếu có, ngược lại theo createdAt (hoặc updatedAt)
     final Map<DateTime, List<CardRegistrationSummary>> byDay = {};
     for (final item in items) {
@@ -273,8 +278,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
     }
 
     // Sắp xếp ngày giảm dần
-    final dayKeys = byDay.keys.toList()
-      ..sort((a, b) => b.compareTo(a));
+    final dayKeys = byDay.keys.toList()..sort((a, b) => b.compareTo(a));
 
     final List<Widget> widgets = [];
     for (final day in dayKeys) {
@@ -287,7 +291,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
             _humanDayLabel(day),
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w700,
-              color: theme.colorScheme.onSurface.withOpacity(0.85),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
             ),
           ),
         ),
@@ -305,7 +309,9 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
     }
 
     // Các item không có ngày (hiếm) gom vào cuối
-    final noDate = items.where((e) => (e.paymentDate ?? e.createdAt ?? e.updatedAt) == null).toList();
+    final noDate = items
+        .where((e) => (e.paymentDate ?? e.createdAt ?? e.updatedAt) == null)
+        .toList();
     if (noDate.isNotEmpty) {
       widgets.add(
         Padding(
@@ -314,7 +320,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
             'Khác',
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w700,
-              color: theme.colorScheme.onSurface.withOpacity(0.85),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
             ),
           ),
         ),
@@ -422,13 +428,13 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
               decoration: BoxDecoration(
                 color: selected
-                    ? theme.colorScheme.primary.withOpacity(0.15)
+                    ? theme.colorScheme.primary.withValues(alpha: 0.15)
                     : theme.colorScheme.surface,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: selected
-                      ? theme.colorScheme.primary.withOpacity(0.35)
-                      : theme.colorScheme.outline.withOpacity(0.12),
+                      ? theme.colorScheme.primary.withValues(alpha: 0.35)
+                      : theme.colorScheme.outline.withValues(alpha: 0.12),
                 ),
               ),
               child: Column(
@@ -439,7 +445,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
                     size: 18,
                     color: selected
                         ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurface.withOpacity(0.7),
+                        : theme.colorScheme.onSurface.withValues(alpha: 0.7),
                   ),
                   const SizedBox(height: 6),
                   Text(
@@ -448,7 +454,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
                     style: theme.textTheme.labelMedium?.copyWith(
                       color: selected
                           ? theme.colorScheme.primary
-                          : theme.colorScheme.onSurface.withOpacity(0.75),
+                          : theme.colorScheme.onSurface.withValues(alpha: 0.75),
                       fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                     ),
                   ),
@@ -477,18 +483,18 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
           ),
           selected: selected,
           onSelected: (_) => _onStatusFilterChanged(filter),
-          selectedColor: theme.colorScheme.primary.withOpacity(0.15),
+          selectedColor: theme.colorScheme.primary.withValues(alpha: 0.15),
           labelStyle: theme.textTheme.labelMedium?.copyWith(
             color: selected
                 ? theme.colorScheme.primary
-                : theme.colorScheme.onSurface.withOpacity(0.8),
+                : theme.colorScheme.onSurface.withValues(alpha: 0.8),
           ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
             side: BorderSide(
               color: selected
-                  ? theme.colorScheme.primary.withOpacity(0.4)
-                  : theme.colorScheme.outline.withOpacity(0.15),
+                  ? theme.colorScheme.primary.withValues(alpha: 0.4)
+                  : theme.colorScheme.outline.withValues(alpha: 0.15),
             ),
           ),
           backgroundColor: theme.colorScheme.surface,
@@ -518,7 +524,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
           Text(
             'Bạn chưa có đăng ký $label trong danh sách hiện tại. Vui lòng chọn loại thẻ khác hoặc tạo mới từ trang dịch vụ.',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.65),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
             ),
           ),
         ],
@@ -546,22 +552,18 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
         title = 'Chưa có thẻ đã duyệt';
         description =
             'Hiện chưa có $categoryLabel nào đã được duyệt. Khi thẻ được admin phê duyệt, chúng sẽ hiển thị ở đây.';
-        break;
       case _StatusFilter.paid:
         title = 'Chưa có thẻ đã thanh toán';
         description =
             'Bạn chưa có $categoryLabel nào đã thanh toán trong bộ lọc hiện tại. Vui lòng kiểm tra lại sau khi hoàn tất thanh toán.';
-        break;
       case _StatusFilter.pending:
         title = 'Không có thẻ chờ xử lý';
         description =
             'Tất cả $categoryLabel của bạn đều đã được cập nhật trạng thái. Các thẻ đang chờ duyệt hoặc chờ thanh toán sẽ xuất hiện tại đây.';
-        break;
       case _StatusFilter.all:
         title = 'Không có dữ liệu';
         description =
             'Không có $categoryLabel nào trong danh sách theo điều kiện lọc hiện tại.';
-        break;
     }
 
     return _HomeGlassSection(
@@ -570,21 +572,21 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
         children: [
           Text(
             title,
-            style:
-                theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+            style: theme.textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 6),
           Text(
             description,
             style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.7),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
             ),
           ),
           const SizedBox(height: 4),
           Text(
             'Bộ lọc: $filterLabel',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.5),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
               fontStyle: FontStyle.italic,
             ),
           ),
@@ -637,7 +639,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
           Text(
             'Vui lòng kiểm tra kết nối và thử lại.\n$_error',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.65),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
             ),
           ),
           const SizedBox(height: 12),
@@ -665,7 +667,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
           Text(
             'Bạn chưa có đăng ký thẻ cư dân, thang máy hoặc thẻ xe tại $unitLabel.',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.65),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
             ),
           ),
         ],
@@ -702,104 +704,105 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
       child: _HomeGlassSection(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
         child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            height: 48,
-            width: 48,
-            decoration: BoxDecoration(
-              color: approvalColor.withOpacity(0.16),
-              borderRadius: BorderRadius.circular(16),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: 48,
+              width: 48,
+              decoration: BoxDecoration(
+                color: approvalColor.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(icon, color: approvalColor),
             ),
-            child: Icon(icon, color: approvalColor),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  card.displayName ?? label,
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w600),
-                ),
-                if (subtitleParts.isNotEmpty) ...[
-                  const SizedBox(height: 4),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    subtitleParts.join(' • '),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.6),
-                    ),
+                    card.displayName ?? label,
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w600),
                   ),
-                ],
-                const SizedBox(height: 6),
-                if (card.paymentStatus != null &&
-                    card.paymentStatus!.toUpperCase() == 'PAID' &&
-                    card.paymentDate != null) ...[
-                  Row(
-                    children: [
-                      const Icon(Icons.access_time, size: 14),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Thanh toán: ${_dateTimeFmt.format(card.paymentDate!.toLocal())}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withOpacity(0.6),
-                          fontWeight: FontWeight.w500,
-                        ),
+                  if (subtitleParts.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitleParts.join(' • '),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                ],
-                // Hiển thị thời gian admin duyệt khi có approvedAt
-                if (card.approvedAt != null) ...[
-                  Row(
-                    children: [
-                      const Icon(Icons.verified, size: 14),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Duyệt: ${_dateTimeFmt.format(card.approvedAt!.toLocal())}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withOpacity(0.62),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                ],
-                if (card.note != null && card.note!.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    card.note!,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.55),
                     ),
-                  ),
-                ],
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _StatusChip(
-                      label: approvalLabel,
-                      color: approvalColor,
-                      tone: StatusChipTone.solid,
-                    ),
-                    if (paymentLabel != null)
-                      _StatusChip(
-                        label: paymentLabel,
-                        color: paymentColor,
-                        tone: StatusChipTone.neutral,
-                      ),
                   ],
-                ),
-              ],
+                  const SizedBox(height: 6),
+                  if (card.paymentStatus != null &&
+                      card.paymentStatus!.toUpperCase() == 'PAID' &&
+                      card.paymentDate != null) ...[
+                    Row(
+                      children: [
+                        const Icon(Icons.access_time, size: 14),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Thanh toán: ${_dateTimeFmt.format(card.paymentDate!.toLocal())}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                  // Hiển thị thời gian admin duyệt khi có approvedAt
+                  if (card.approvedAt != null) ...[
+                    Row(
+                      children: [
+                        const Icon(Icons.verified, size: 14),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Duyệt: ${_dateTimeFmt.format(card.approvedAt!.toLocal())}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color:
+                                theme.colorScheme.onSurface.withValues(alpha: 0.62),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                  if (card.note != null && card.note!.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      card.note!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _StatusChip(
+                        label: approvalLabel,
+                        color: approvalColor,
+                        tone: StatusChipTone.solid,
+                      ),
+                      if (paymentLabel != null)
+                        _StatusChip(
+                          label: paymentLabel,
+                          color: paymentColor,
+                          tone: StatusChipTone.neutral,
+                        ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
@@ -809,10 +812,33 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _CardDetailSheet(
-        card: card,
-        onRefresh: _fetchData,
-      ),
+      barrierColor: Colors.black.withValues(alpha: 0.35),
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).maybePop(),
+                ),
+              ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () {},
+                  child: _CardDetailSheet(
+                    card: card,
+                    onRefresh: _fetchData,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -993,7 +1019,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
       case 'UNPAID':
         return theme.colorScheme.error;
       default:
-        return theme.colorScheme.primary.withOpacity(0.6);
+        return theme.colorScheme.primary.withValues(alpha: 0.6);
     }
   }
 
@@ -1056,8 +1082,8 @@ class _StatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final borderRadius = BorderRadius.circular(14);
     final background = switch (tone) {
-      StatusChipTone.solid => color.withOpacity(0.16),
-      StatusChipTone.neutral => color.withOpacity(0.1),
+      StatusChipTone.solid => color.withValues(alpha: 0.16),
+      StatusChipTone.neutral => color.withValues(alpha: 0.1),
     };
     final textStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
           color: color,
@@ -1070,7 +1096,7 @@ class _StatusChip extends StatelessWidget {
         color: background,
         borderRadius: borderRadius,
         border: tone == StatusChipTone.neutral
-            ? Border.all(color: color.withOpacity(0.3))
+            ? Border.all(color: color.withValues(alpha: 0.3))
             : null,
       ),
       child: Text(label, style: textStyle),
@@ -1107,7 +1133,7 @@ class _HomeInfoCard extends StatelessWidget {
             height: 48,
             width: 48,
             decoration: BoxDecoration(
-              color: accent.withOpacity(0.16),
+              color: accent.withValues(alpha: 0.16),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Icon(leading, color: accent),
@@ -1126,7 +1152,7 @@ class _HomeInfoCard extends StatelessWidget {
                 Text(
                   subtitle,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.65),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
                   ),
                 ),
               ],
@@ -1165,7 +1191,7 @@ class _HomeGlassSection extends StatelessWidget {
             gradient: gradient,
             borderRadius: borderRadius,
             border: Border.all(
-              color: theme.colorScheme.outline.withOpacity(0.08),
+              color: theme.colorScheme.outline.withValues(alpha: 0.08),
             ),
             boxShadow: AppColors.subtleShadow,
           ),
@@ -1201,7 +1227,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
     final paymentStatus = widget.card.paymentStatus?.trim().toUpperCase() ?? '';
     final status = widget.card.status?.trim().toUpperCase() ?? '';
     final cardType = widget.card.cardType.trim().toUpperCase();
-    
+
     // Chỉ cho phép tiếp tục thanh toán nếu:
     // 1. payment_status là UNPAID, PAYMENT_PENDING, hoặc PAYMENT_APPROVAL (cho vehicle)
     // 2. status không phải REJECTED
@@ -1210,32 +1236,32 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
     if (cardType.contains('VEHICLE')) {
       allowedPaymentStatuses.add('PAYMENT_APPROVAL');
     }
-    
+
     if (!allowedPaymentStatuses.contains(paymentStatus)) {
       return false;
     }
     if (status == 'REJECTED' || status == 'CANCELLED') {
       return false;
     }
-    
+
     // Kiểm tra thời gian: trong vòng 10 phút
     final now = DateTime.now();
     final pivot = widget.card.updatedAt ?? widget.card.createdAt;
     if (pivot == null) return false;
-    
+
     final diff = now.difference(pivot);
     return diff.inMinutes <= 10;
   }
 
   Future<void> _resumePayment() async {
     if (_isProcessingPayment) return;
-    
+
     setState(() => _isProcessingPayment = true);
-    
+
     try {
       final client = await _getServicesCardClient();
       final cardType = widget.card.cardType.toUpperCase();
-      
+
       // Xác định endpoint dựa trên loại thẻ
       String endpoint;
       if (cardType.contains('ELEVATOR')) {
@@ -1247,18 +1273,18 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
       } else {
         throw Exception('Loại thẻ không được hỗ trợ');
       }
-      
+
       final res = await client.post(endpoint);
-      
+
       if (res.statusCode != 200) {
         throw Exception('Không thể tạo liên kết thanh toán');
       }
-      
+
       final paymentUrl = res.data['paymentUrl']?.toString();
       if (paymentUrl == null || paymentUrl.isEmpty) {
         throw Exception('Không nhận được đường dẫn thanh toán');
       }
-      
+
       // Refresh danh sách sau khi tạo link thanh toán
       widget.onRefresh();
       if (mounted) {
@@ -1285,23 +1311,22 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
     final baseUrl = ApiClient.buildServiceBase(port: 8083, path: '/api');
     final dio = Dio(BaseOptions(
       baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
-      receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+      connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+      receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
     ));
-    
+
     final token = await _apiClient.storage.readAccessToken();
     if (token != null && token.isNotEmpty) {
       dio.options.headers['Authorization'] = 'Bearer $token';
     }
-    
+
     return dio;
   }
 
   bool _canRequestReplacement() {
     final cardType = widget.card.cardType.trim().toUpperCase();
     final status = widget.card.status?.trim().toUpperCase() ?? '';
-    final paymentStatus =
-        widget.card.paymentStatus?.trim().toUpperCase() ?? '';
+    final paymentStatus = widget.card.paymentStatus?.trim().toUpperCase() ?? '';
 
     if (status != 'CANCELLED') return false;
     if (paymentStatus != 'PAID') return false;
@@ -1366,8 +1391,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
     if (status == 'CANCELLED' || status == 'REJECTED' || status == 'VOID') {
       return false;
     }
-    final paymentStatus =
-        widget.card.paymentStatus?.trim().toUpperCase() ?? '';
+    final paymentStatus = widget.card.paymentStatus?.trim().toUpperCase() ?? '';
     return paymentStatus == 'PAID';
   }
 
@@ -1461,7 +1485,9 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
 
     final missing = <String>[];
     if (unitId == null || unitId.toString().isEmpty) missing.add('căn hộ');
-    if (residentId == null || residentId.toString().isEmpty) missing.add('cư dân');
+    if (residentId == null || residentId.toString().isEmpty) {
+      missing.add('cư dân');
+    }
     if (fullName == null || fullName.toString().isEmpty) missing.add('họ tên');
     if (apartmentNumber == null || apartmentNumber.toString().isEmpty) {
       missing.add('số căn hộ');
@@ -1469,7 +1495,9 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
     if (buildingName == null || buildingName.toString().isEmpty) {
       missing.add('tòa nhà');
     }
-    if (citizenId == null || citizenId.toString().isEmpty) missing.add('CCCD/CMND');
+    if (citizenId == null || citizenId.toString().isEmpty) {
+      missing.add('CCCD/CMND');
+    }
     if (phoneNumber == null || phoneNumber.toString().isEmpty) {
       missing.add('số điện thoại');
     }
@@ -1528,7 +1556,8 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
 
     final missing = <String>[];
     if (unitId == null || unitId.toString().isEmpty) missing.add('căn hộ');
-    if (residentId == null || residentId.toString().isEmpty) missing.add('cư dân');
+    if (residentId == null || residentId.toString().isEmpty)
+      missing.add('cư dân');
     if (apartmentNumber == null || apartmentNumber.toString().isEmpty) {
       missing.add('số căn hộ');
     }
@@ -1583,8 +1612,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
 
     final detail = Map<String, dynamic>.from(detailRes.data as Map);
     final unitId = detail['unitId'] ?? widget.card.unitId;
-    final serviceType =
-        detail['serviceType'] ?? 'VEHICLE_REGISTRATION';
+    final serviceType = detail['serviceType'] ?? 'VEHICLE_REGISTRATION';
     final vehicleType = detail['vehicleType'];
     final licensePlate = detail['licensePlate'];
     final vehicleBrand = detail['vehicleBrand'];
@@ -1679,7 +1707,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
       );
     }
   }
-  
+
   void _showErrorSnackbar({required Object error, required String fallback}) {
     final message = _extractErrorMessage(error, fallback);
     if (!mounted) return;
@@ -1694,15 +1722,20 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
   String _extractErrorMessage(Object error, String fallback) {
     if (error is DioException) {
       final data = error.response?.data;
-      if (data is Map && data['message'] is String && data['message'].toString().isNotEmpty) {
-        debugPrint('❌ DioException ${error.response?.statusCode}: ${data['message']}');
+      if (data is Map &&
+          data['message'] is String &&
+          data['message'].toString().isNotEmpty) {
+        debugPrint(
+            '❌ DioException ${error.response?.statusCode}: ${data['message']}');
         return data['message'].toString();
       }
       if (error.message != null && error.message!.isNotEmpty) {
-        debugPrint('❌ DioException ${error.response?.statusCode}: ${error.message}');
+        debugPrint(
+            '❌ DioException ${error.response?.statusCode}: ${error.message}');
         return error.message!;
       }
-      debugPrint('❌ DioException ${error.response?.statusCode}: ${error.response?.data}');
+      debugPrint(
+          '❌ DioException ${error.response?.statusCode}: ${error.response?.data}');
       return fallback;
     }
     debugPrint('❌ Error: $error');
@@ -1801,7 +1834,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
       case 'UNPAID':
         return theme.colorScheme.error;
       default:
-        return theme.colorScheme.primary.withOpacity(0.6);
+        return theme.colorScheme.primary.withValues(alpha: 0.6);
     }
   }
 
@@ -1816,7 +1849,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
             child: Text(
               label,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1840,8 +1873,9 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
     final canResume = _canResumePayment();
     final canRequestReplacement = _canRequestReplacement();
     final canCancel = _canCancelCard();
-    
+
     return DraggableScrollableSheet(
+      expand: false,
       initialChildSize: 0.7,
       minChildSize: 0.5,
       maxChildSize: 0.95,
@@ -1858,7 +1892,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: theme.colorScheme.outline.withOpacity(0.3),
+                color: theme.colorScheme.outline.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -1870,13 +1904,14 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
                 children: [
                   // Title
                   Text(
-                    widget.card.displayName ?? _cardTypeLabel(widget.card.cardType),
+                    widget.card.displayName ??
+                        _cardTypeLabel(widget.card.cardType),
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 20),
-                  
+
                   // Status chips
                   Wrap(
                     spacing: 8,
@@ -1889,33 +1924,47 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
                       ),
                       if (widget.card.paymentStatus != null)
                         _StatusChip(
-                          label: _paymentStatusLabel(widget.card.paymentStatus) ?? '',
-                          color: _paymentStatusColor(theme, widget.card.paymentStatus),
+                          label:
+                              _paymentStatusLabel(widget.card.paymentStatus) ??
+                                  '',
+                          color: _paymentStatusColor(
+                              theme, widget.card.paymentStatus),
                           tone: StatusChipTone.neutral,
                         ),
                     ],
                   ),
                   const SizedBox(height: 24),
-                  
+
                   // Details
                   _buildDetailRow(theme, 'Mã đăng ký', widget.card.id),
-                  if (widget.card.apartmentNumber != null && widget.card.apartmentNumber!.isNotEmpty)
-                    _buildDetailRow(theme, 'Căn hộ', widget.card.apartmentNumber!),
-                  if (widget.card.buildingName != null && widget.card.buildingName!.isNotEmpty)
-                    _buildDetailRow(theme, 'Tòa nhà', widget.card.buildingName!),
+                  if (widget.card.apartmentNumber != null &&
+                      widget.card.apartmentNumber!.isNotEmpty)
+                    _buildDetailRow(
+                        theme, 'Căn hộ', widget.card.apartmentNumber!),
+                  if (widget.card.buildingName != null &&
+                      widget.card.buildingName!.isNotEmpty)
+                    _buildDetailRow(
+                        theme, 'Tòa nhà', widget.card.buildingName!),
                   if (widget.card.paymentAmount != null)
-                    _buildDetailRow(theme, 'Số tiền', '${widget.card.paymentAmount!.toStringAsFixed(0)} VNĐ'),
+                    _buildDetailRow(theme, 'Số tiền',
+                        '${widget.card.paymentAmount!.toStringAsFixed(0)} VNĐ'),
                   if (widget.card.createdAt != null)
-                    _buildDetailRow(theme, 'Ngày tạo', _dateTimeFmt.format(widget.card.createdAt!.toLocal())),
+                    _buildDetailRow(theme, 'Ngày tạo',
+                        _dateTimeFmt.format(widget.card.createdAt!.toLocal())),
                   if (widget.card.paymentDate != null)
-                    _buildDetailRow(theme, 'Ngày thanh toán', _dateTimeFmt.format(widget.card.paymentDate!.toLocal())),
+                    _buildDetailRow(
+                        theme,
+                        'Ngày thanh toán',
+                        _dateTimeFmt
+                            .format(widget.card.paymentDate!.toLocal())),
                   if (widget.card.approvedAt != null)
-                    _buildDetailRow(theme, 'Ngày duyệt', _dateTimeFmt.format(widget.card.approvedAt!.toLocal())),
+                    _buildDetailRow(theme, 'Ngày duyệt',
+                        _dateTimeFmt.format(widget.card.approvedAt!.toLocal())),
                   if (widget.card.note != null && widget.card.note!.isNotEmpty)
                     _buildDetailRow(theme, 'Ghi chú', widget.card.note!),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Resume payment button (cho cả 3 loại thẻ)
                   if (canResume)
                     FilledButton.icon(
@@ -1927,32 +1976,36 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.payment),
-                      label: Text(_isProcessingPayment ? 'Đang xử lý...' : 'Tiếp tục thanh toán'),
+                      label: Text(_isProcessingPayment
+                          ? 'Đang xử lý...'
+                          : 'Tiếp tục thanh toán'),
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
                     ),
-                  
-                  if (canResume)
-                    const SizedBox(height: 12),
-                  
+
+                  if (canResume) const SizedBox(height: 12),
+
                   // Info message
                   if (canResume)
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+                        color:
+                            theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.info_outline, size: 20, color: theme.colorScheme.primary),
+                          Icon(Icons.info_outline,
+                              size: 20, color: theme.colorScheme.primary),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               'Bạn có thể tiếp tục thanh toán trong vòng 10 phút kể từ khi tạo đăng ký.',
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface.withOpacity(0.7),
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.7),
                               ),
                             ),
                           ),
@@ -1970,7 +2023,8 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
                               height: 20,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Icon(Icons.cancel_outlined, color: Colors.red),
+                          : const Icon(Icons.cancel_outlined,
+                              color: Colors.red),
                       label: Text(
                         _isCancelling ? 'Đang hủy...' : 'Hủy thẻ hiện tại',
                         style: const TextStyle(color: Colors.red),
@@ -1984,7 +2038,8 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.errorContainer.withOpacity(0.3),
+                        color:
+                            theme.colorScheme.errorContainer.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
@@ -1997,7 +2052,8 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
                             child: Text(
                               'Sau khi hủy, thẻ này sẽ bị vô hiệu hóa hoàn toàn. Bạn cần hủy thẻ cũ trước khi đăng ký thẻ thay thế.',
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface.withOpacity(0.75),
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.75),
                               ),
                             ),
                           ),
@@ -2009,7 +2065,8 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
                   if (canRequestReplacement) ...[
                     const SizedBox(height: 16),
                     FilledButton.icon(
-                      onPressed: _isRequestingReplacement ? null : _requestReplacement,
+                      onPressed:
+                          _isRequestingReplacement ? null : _requestReplacement,
                       icon: _isRequestingReplacement
                           ? const SizedBox(
                               width: 20,
@@ -2030,7 +2087,8 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.secondaryContainer.withOpacity(0.3),
+                        color: theme.colorScheme.secondaryContainer
+                            .withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
@@ -2043,7 +2101,8 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
                             child: Text(
                               'Chức năng này dùng lại toàn bộ thông tin của thẻ đã duyệt để tạo đăng ký cấp lại. Bạn chỉ cần thanh toán để hoàn tất.',
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface.withOpacity(0.75),
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.75),
                               ),
                             ),
                           ),
@@ -2060,3 +2119,4 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
     );
   }
 }
+

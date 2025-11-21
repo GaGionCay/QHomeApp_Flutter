@@ -65,10 +65,10 @@ class AppTheme {
         elevation: 0,
       ),
       dividerTheme: DividerThemeData(
-        color: colorScheme.outlineVariant.withOpacity(0.32),
+        color: colorScheme.outlineVariant.withValues(alpha: 0.32),
         thickness: 1,
       ),
-      iconTheme: IconThemeData(color: colorScheme.onSurface.withOpacity(0.74)),
+      iconTheme: IconThemeData(color: colorScheme.onSurface.withValues(alpha: 0.74)),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           elevation: 0,
@@ -93,17 +93,17 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: isDark
-            ? AppColors.navySurfaceElevated.withOpacity(0.82)
-            : AppColors.neutralSurface.withOpacity(0.88),
+            ? AppColors.navySurfaceElevated.withValues(alpha: 0.82)
+            : AppColors.neutralSurface.withValues(alpha: 0.88),
         border: _glassInputBorder(colorScheme, borderRadius: 20),
         enabledBorder: _glassInputBorder(colorScheme, borderRadius: 20),
         focusedBorder:
             _glassInputBorder(colorScheme, borderRadius: 22, focused: true),
         hintStyle: textTheme.bodyMedium?.copyWith(
-          color: colorScheme.onSurface.withOpacity(0.45),
+          color: colorScheme.onSurface.withValues(alpha: 0.45),
         ),
         labelStyle: textTheme.bodyMedium?.copyWith(
-          color: colorScheme.onSurface.withOpacity(0.65),
+          color: colorScheme.onSurface.withValues(alpha: 0.65),
         ),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
@@ -111,13 +111,13 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: Colors.transparent,
-        indicatorColor: colorScheme.primary.withOpacity(0.14),
+        indicatorColor: colorScheme.primary.withValues(alpha: 0.14),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           final isSelected = states.contains(WidgetState.selected);
           return IconThemeData(
             color: isSelected
                 ? colorScheme.primary
-                : colorScheme.onSurfaceVariant.withOpacity(0.66),
+                : colorScheme.onSurfaceVariant.withValues(alpha: 0.66),
             size: isSelected ? 26 : 24,
           );
         }),
@@ -127,7 +127,7 @@ class AppTheme {
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
             color: isSelected
                 ? colorScheme.primary
-                : colorScheme.onSurfaceVariant.withOpacity(0.7),
+                : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
           );
         }),
         elevation: 0,
@@ -142,7 +142,7 @@ class AppTheme {
       ),
       scrollbarTheme: ScrollbarThemeData(
         thumbColor:
-            WidgetStateProperty.all(colorScheme.primary.withOpacity(0.3)),
+            WidgetStateProperty.all(colorScheme.primary.withValues(alpha: 0.3)),
         radius: const Radius.circular(12),
       ),
       pageTransitionsTheme: const PageTransitionsTheme(
@@ -154,9 +154,9 @@ class AppTheme {
           TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
         },
       ),
-      splashColor: colorScheme.primary.withOpacity(0.08),
+      splashColor: colorScheme.primary.withValues(alpha: 0.08),
       highlightColor: Colors.transparent,
-      hoverColor: colorScheme.primary.withOpacity(0.05),
+      hoverColor: colorScheme.primary.withValues(alpha: 0.05),
     );
   }
 
@@ -169,7 +169,7 @@ class AppTheme {
     return OutlineInputBorder(
       borderRadius: BorderRadius.circular(borderRadius),
       borderSide: BorderSide(
-          color: color.withOpacity(focused ? 0.6 : 0.24),
+          color: color.withValues(alpha: focused ? 0.6 : 0.24),
           width: focused ? 1.2 : 1),
     );
   }
@@ -232,3 +232,5 @@ class AppTheme {
     inversePrimary: AppColors.primaryBlue,
   );
 }
+
+

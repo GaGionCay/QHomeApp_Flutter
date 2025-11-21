@@ -274,12 +274,12 @@ class _AccountRequestStatusScreenState
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceVariant.withOpacity(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 
           theme.brightness == Brightness.dark ? 0.25 : 0.55,
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: theme.colorScheme.primary.withOpacity(0.2),
+          color: theme.colorScheme.primary.withValues(alpha: 0.2),
         ),
       ),
       child: Row(
@@ -297,7 +297,7 @@ class _AccountRequestStatusScreenState
                 Text(
                   'Đang xem yêu cầu của',
                   style: theme.textTheme.labelMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -322,7 +322,7 @@ class _AccountRequestStatusScreenState
                 Text(
                   'Muốn đổi căn hộ? Vào Cài đặt > Căn hộ của tôi.',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                   ),
                 ),
               ],
@@ -343,11 +343,11 @@ class _AccountRequestStatusScreenState
     final unitLabel = request.unitCode ??
         (isCurrentUnit ? widget.unit.displayName : 'Căn hộ');
     final cardBackground = theme.brightness == Brightness.dark
-        ? Colors.white.withOpacity(0.05)
+        ? Colors.white.withValues(alpha: 0.05)
         : Colors.white;
     final cardBorderColor = theme.brightness == Brightness.dark
-        ? Colors.white.withOpacity(0.08)
-        : Colors.black.withOpacity(0.05);
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.05);
 
     return Container(
       decoration: BoxDecoration(
@@ -357,7 +357,7 @@ class _AccountRequestStatusScreenState
         boxShadow: [
           if (theme.brightness == Brightness.light)
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 12,
               offset: const Offset(0, 6),
             ),
@@ -372,7 +372,7 @@ class _AccountRequestStatusScreenState
             children: [
               CircleAvatar(
                 radius: 22,
-                backgroundColor: _statusColor(request).withOpacity(0.18),
+                backgroundColor: _statusColor(request).withValues(alpha: 0.18),
                 child: Icon(
                   _statusIcon(request),
                   color: _statusColor(request),
@@ -549,3 +549,5 @@ class _AccountRequestStatusScreenState
     );
   }
 }
+
+

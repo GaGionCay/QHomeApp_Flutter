@@ -444,7 +444,7 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final background = color.withOpacity(0.12);
+    final background = color.withValues(alpha: 0.12);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -544,7 +544,7 @@ class _FeedbackCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Text(
@@ -563,7 +563,7 @@ class _FeedbackCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Text(
@@ -653,7 +653,7 @@ class _FeedbackFormSheetState extends State<FeedbackFormSheet> {
                       height: 4,
                       margin: const EdgeInsets.only(bottom: 16),
                       decoration: BoxDecoration(
-                        color: Colors.grey.withOpacity(0.4),
+                        color: Colors.grey.withValues(alpha: 0.4),
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),

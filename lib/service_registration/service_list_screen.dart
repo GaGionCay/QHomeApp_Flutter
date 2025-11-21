@@ -7,7 +7,6 @@ import 'package:intl/intl.dart';
 import '../auth/asset_maintenance_api_client.dart';
 import '../theme/app_colors.dart';
 import '../common/layout_insets.dart';
-import 'service_booking_screen.dart';
 import 'service_booking_service.dart';
 import 'service_detail_screen.dart';
 
@@ -182,7 +181,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                   height: 58,
                   width: 58,
                   decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer.withOpacity(0.26),
+                    color: colorScheme.primaryContainer.withValues(alpha: 0.26),
                     borderRadius: BorderRadius.circular(18),
                   ),
                   child: Icon(
@@ -232,7 +231,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurface.withOpacity(0.72),
+                  color: colorScheme.onSurface.withValues(alpha: 0.72),
                   height: 1.46,
                 ),
               ),
@@ -244,14 +243,14 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                   Icon(
                     CupertinoIcons.map_pin_ellipse,
                     size: 18,
-                    color: colorScheme.onSurface.withOpacity(0.6),
+                    color: colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       location,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurface.withOpacity(0.6),
+                        color: colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                   ),
@@ -319,14 +318,14 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           Icon(
             Icons.error_outline,
             size: 64,
-            color: theme.colorScheme.error.withOpacity(0.7),
+            color: theme.colorScheme.error.withValues(alpha: 0.7),
           ),
           const SizedBox(height: 16),
           Text(
             'Lỗi: $_error',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyLarge?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.74),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.74),
             ),
           ),
           const SizedBox(height: 20),
@@ -348,13 +347,13 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           Icon(
             Icons.inventory_2_outlined,
             size: 64,
-            color: theme.colorScheme.onSurface.withOpacity(0.3),
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
           ),
           const SizedBox(height: 16),
           Text(
             'Chưa có dịch vụ nào',
             style: theme.textTheme.bodyLarge?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.65),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
             ),
           ),
         ],
@@ -395,7 +394,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           Text(
             'Chọn khung giờ phù hợp và gửi yêu cầu để ban quản lý chuẩn bị cho bạn.',
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: Colors.white.withOpacity(0.9),
+              color: Colors.white.withValues(alpha: 0.9),
             ),
           ),
           const SizedBox(height: 16),
@@ -420,7 +419,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.16),
+        color: color.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Text(
@@ -446,8 +445,8 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        color: colorScheme.surface.withOpacity(0.75),
-        border: Border.all(color: colorScheme.outline.withOpacity(0.08)),
+        color: colorScheme.surface.withValues(alpha: 0.75),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.08)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -460,7 +459,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
               Text(
                 label,
                 style: theme.textTheme.labelSmall?.copyWith(
-                  color: colorScheme.onSurface.withOpacity(0.5),
+                  color: colorScheme.onSurface.withValues(alpha: 0.5),
                 ),
               ),
               const SizedBox(height: 2),
@@ -581,7 +580,7 @@ class _ServiceGlassCard extends StatelessWidget {
                 : AppColors.glassLayerGradient(),
             borderRadius: BorderRadius.circular(26),
             border: Border.all(
-              color: theme.colorScheme.outline.withOpacity(0.08),
+              color: theme.colorScheme.outline.withValues(alpha: 0.08),
             ),
             boxShadow: AppColors.subtleShadow,
           ),
@@ -602,9 +601,9 @@ class _HeroTag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.15),
+        color: Colors.white.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.22)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
       ),
       child: Text(
         label,

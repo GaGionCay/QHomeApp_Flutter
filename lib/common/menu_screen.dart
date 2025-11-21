@@ -302,7 +302,7 @@ class _MenuScreenState extends State<MenuScreen> {
                   Text(
                     email,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                   ),
                 const SizedBox(height: 10),
@@ -402,7 +402,7 @@ class _ProfileGlassCard extends StatelessWidget {
                 : AppColors.glassLayerGradient(),
             borderRadius: BorderRadius.circular(28),
             border: Border.all(
-              color: theme.colorScheme.outline.withOpacity(0.08),
+              color: theme.colorScheme.outline.withValues(alpha: 0.08),
             ),
             boxShadow: AppColors.elevatedShadow,
           ),
@@ -436,7 +436,7 @@ class _ServiceGlassCard extends StatelessWidget {
                 : AppColors.glassLayerGradient(),
             borderRadius: BorderRadius.circular(26),
             border: Border.all(
-              color: theme.colorScheme.outline.withOpacity(0.08),
+              color: theme.colorScheme.outline.withValues(alpha: 0.08),
             ),
             boxShadow: AppColors.subtleShadow,
           ),
@@ -466,13 +466,13 @@ class _ProfilePill extends StatelessWidget {
     final bool useLightTreatment = hasGradient && !isDark;
     final Color backgroundColor = hasGradient
         ? Colors.transparent
-        : theme.colorScheme.surface.withOpacity(isDark ? 0.28 : 0.92);
+        : theme.colorScheme.surface.withValues(alpha: isDark ? 0.28 : 0.92);
     final Color borderColor = hasGradient
         ? Colors.transparent
-        : theme.colorScheme.outline.withOpacity(isDark ? 0.15 : 0.2);
+        : theme.colorScheme.outline.withValues(alpha: isDark ? 0.15 : 0.2);
     final Color textColor = hasGradient
         ? (useLightTreatment
-            ? theme.colorScheme.onSurface.withOpacity(0.86)
+            ? theme.colorScheme.onSurface.withValues(alpha: 0.86)
             : Colors.white)
         : theme.colorScheme.onSurface;
     final Color iconColor = hasGradient
@@ -543,7 +543,7 @@ class _MenuGlassTile extends StatelessWidget {
                   : AppColors.glassLayerGradient(),
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: colorScheme.outline.withOpacity(0.08),
+                color: colorScheme.outline.withValues(alpha: 0.08),
               ),
               boxShadow: AppColors.subtleShadow,
             ),
@@ -554,7 +554,7 @@ class _MenuGlassTile extends StatelessWidget {
                   height: 48,
                   width: 48,
                   decoration: BoxDecoration(
-                    color: effectiveColor.withOpacity(isDark ? 0.22 : 0.16),
+                    color: effectiveColor.withValues(alpha: isDark ? 0.22 : 0.16),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Icon(icon, color: effectiveColor),
@@ -574,7 +574,7 @@ class _MenuGlassTile extends StatelessWidget {
                       Text(
                         subtitle,
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurface.withOpacity(0.6),
+                          color: colorScheme.onSurface.withValues(alpha: 0.6),
                         ),
                       ),
                     ],
@@ -582,7 +582,7 @@ class _MenuGlassTile extends StatelessWidget {
                 ),
                 Icon(
                   CupertinoIcons.chevron_forward,
-                  color: colorScheme.onSurface.withOpacity(0.4),
+                  color: colorScheme.onSurface.withValues(alpha: 0.4),
                 ),
               ],
             ),
@@ -615,9 +615,9 @@ class _QuickActionChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
-          color: colorScheme.surface.withOpacity(0.78),
+          color: colorScheme.surface.withValues(alpha: 0.78),
           border: Border.all(
-            color: colorScheme.outline.withOpacity(0.08),
+            color: colorScheme.outline.withValues(alpha: 0.08),
           ),
         ),
         child: Row(

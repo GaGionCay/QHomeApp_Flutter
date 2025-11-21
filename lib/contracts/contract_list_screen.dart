@@ -108,10 +108,11 @@ class _ContractListScreenState extends State<ContractListScreen> {
         SnackBar(content: Text('Lỗi tải hợp đồng: $e')),
       );
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _loadingContracts = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loadingContracts = false;
+        });
+      }
     }
   }
 
@@ -191,7 +192,7 @@ class _ContractListScreenState extends State<ContractListScreen> {
                   _error!,
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.74),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.74),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -218,14 +219,14 @@ class _ContractListScreenState extends State<ContractListScreen> {
                 Icon(
                   CupertinoIcons.person_crop_square,
                   size: 56,
-                  color: theme.colorScheme.onSurface.withOpacity(0.3),
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
                 ),
                 const SizedBox(height: 16),
                 Text(
                   'Bạn chưa được gán vào căn hộ nào.\nLiên hệ quản lý để được cấp quyền.',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.65),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
                   ),
                 ),
               ],
@@ -300,7 +301,7 @@ class _ContractListScreenState extends State<ContractListScreen> {
                       Text(
                         'Tòa ${selectedUnit.buildingName ?? selectedUnit.buildingCode ?? '-'}',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withOpacity(0.7),
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                         ),
                       ),
                     ],
@@ -356,9 +357,9 @@ class _ContractListScreenState extends State<ContractListScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        color: theme.colorScheme.surface.withOpacity(0.75),
+        color: theme.colorScheme.surface.withValues(alpha: 0.75),
         border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.08),
+          color: theme.colorScheme.outline.withValues(alpha: 0.08),
         ),
       ),
       child: Row(
@@ -387,7 +388,7 @@ class _ContractListScreenState extends State<ContractListScreen> {
             Icon(
               CupertinoIcons.doc_text_search,
               size: 56,
-              color: theme.colorScheme.onSurface.withOpacity(0.3),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
             ),
             const SizedBox(height: 16),
             Text(
@@ -401,7 +402,7 @@ class _ContractListScreenState extends State<ContractListScreen> {
               'Bạn sẽ nhận thông báo khi hợp đồng được ban quản lý cập nhật.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.58),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.58),
               ),
             ),
           ],
@@ -431,15 +432,12 @@ class _ContractListScreenState extends State<ContractListScreen> {
       case 'ACTIVE':
         statusColor = const Color(0xFF34C759);
         statusIcon = CupertinoIcons.check_mark_circled_solid;
-        break;
       case 'TERMINATED':
         statusColor = const Color(0xFFFF3B30);
         statusIcon = CupertinoIcons.xmark_circle_fill;
-        break;
       case 'EXPIRED':
         statusColor = const Color(0xFFFF9500);
         statusIcon = CupertinoIcons.time_solid;
-        break;
       default:
         statusColor = theme.colorScheme.primary;
         statusIcon = CupertinoIcons.info_circle_fill;
@@ -477,7 +475,7 @@ class _ContractListScreenState extends State<ContractListScreen> {
                         Text(
                           'Loại: ${contract.contractType}',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withOpacity(0.65),
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
                           ),
                         ),
                       ],
@@ -487,7 +485,7 @@ class _ContractListScreenState extends State<ContractListScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.16),
+                      color: statusColor.withValues(alpha: 0.16),
                       borderRadius: BorderRadius.circular(18),
                     ),
                     child: Row(
@@ -601,9 +599,9 @@ class _ContractListScreenState extends State<ContractListScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          color: theme.colorScheme.surface.withOpacity(0.75),
+          color: theme.colorScheme.surface.withValues(alpha: 0.75),
           border: Border.all(
-            color: theme.colorScheme.outline.withOpacity(0.1),
+            color: theme.colorScheme.outline.withValues(alpha: 0.1),
           ),
         ),
         child: Row(
@@ -644,7 +642,7 @@ class _ServiceGlassCard extends StatelessWidget {
                 : AppColors.glassLayerGradient(),
             borderRadius: BorderRadius.circular(26),
             border: Border.all(
-              color: theme.colorScheme.outline.withOpacity(0.08),
+              color: theme.colorScheme.outline.withValues(alpha: 0.08),
             ),
             boxShadow: AppColors.subtleShadow,
           ),

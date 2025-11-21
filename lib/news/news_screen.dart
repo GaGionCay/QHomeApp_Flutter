@@ -12,6 +12,7 @@ import 'news_read_store.dart';
 import 'news_view_model.dart';
 import 'widgets/news_card.dart';
 import 'widgets/news_group_header.dart';
+import 'widgets/news_list_skeleton.dart';
 import 'widgets/news_search_bar.dart';
 
 class NewsScreen extends StatefulWidget {
@@ -21,7 +22,7 @@ class NewsScreen extends StatefulWidget {
   State<NewsScreen> createState() => _NewsScreenState();
 }
 
-class _NewsScreenState extends State<NewsScreen> {
+class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
   late final NewsViewModel _viewModel;
   final ScrollController _scrollController = ScrollController();
   final ApiClient _api = ApiClient();
@@ -29,6 +30,8 @@ class _NewsScreenState extends State<NewsScreen> {
   late final AppEventBus _bus;
   String? _residentId;
   Set<String> _readIds = {};
+  bool _filtersCollapsed = true;
+  double _lastScrollOffset = 0;
 
   @override
   void initState() {
@@ -70,6 +73,17 @@ class _NewsScreenState extends State<NewsScreen> {
         _viewModel.loadMore();
       }
     }
+
+    final currentOffset = _scrollController.position.pixels;
+    final delta = currentOffset - _lastScrollOffset;
+    const threshold = 12;
+    if (delta > threshold &&
+        currentOffset > 24 &&
+        !_filtersCollapsed &&
+        _viewModel.news.isNotEmpty) {
+      setState(() => _filtersCollapsed = true);
+    }
+    _lastScrollOffset = currentOffset;
   }
 
   Future<void> _loadResidentIdAndFetch() async {
@@ -188,34 +202,7 @@ class _NewsScreenState extends State<NewsScreen> {
             ),
             body: Column(
               children: [
-                NewsSearchBar(
-                  searchQuery: viewModel.searchQuery,
-                  onSearchChanged: (query) {
-                    viewModel.setSearchQuery(query);
-                  },
-                  onClear: () {
-                    viewModel.clearSearch();
-                  },
-                ),
-                NotificationReadStatusFilterWidget(
-                  currentFilter: viewModel.readStatusFilter,
-                  onFilterChanged: (filter) {
-                    viewModel.setReadStatusFilter(filter);
-                  },
-                ),
-                NotificationDateFilter(
-                  dateFrom: viewModel.filterDateFrom,
-                  dateTo: viewModel.filterDateTo,
-                  hasActiveFilters: viewModel.hasActiveFilters,
-                  onDateFilterChanged: (from, to) {
-                    viewModel.setDateFilter(from, to);
-                    viewModel.loadNews(refresh: true);
-                  },
-                  onClearFilters: () {
-                    viewModel.clearFilters();
-                    viewModel.loadNews(refresh: true);
-                  },
-                ),
+                _buildFilterSection(context, viewModel),
                 Expanded(
                   child: RefreshIndicator(
                     color: Theme.of(context).colorScheme.primary,
@@ -233,7 +220,7 @@ class _NewsScreenState extends State<NewsScreen> {
 
   Widget _buildBody(BuildContext context, NewsViewModel viewModel) {
     if (viewModel.isLoading && viewModel.news.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return NewsListSkeleton(controller: _scrollController);
     }
 
     if (viewModel.error != null && viewModel.news.isEmpty) {
@@ -337,5 +324,110 @@ class _NewsScreenState extends State<NewsScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildFilterSection(BuildContext context, NewsViewModel viewModel) {
+    final theme = Theme.of(context);
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: GestureDetector(
+            onTap: _toggleFilters,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.tune_rounded, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Bộ lọc',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    _filtersCollapsed
+                        ? Icons.keyboard_arrow_down_rounded
+                        : Icons.keyboard_arrow_up_rounded,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            transitionBuilder: (child, animation) {
+              final slideAnimation = Tween<Offset>(
+                begin: const Offset(0, -0.05),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              ));
+              return ClipRect(
+                child: FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: slideAnimation,
+                    child: child,
+                  ),
+                ),
+              );
+            },
+            child: _filtersCollapsed
+                ? const SizedBox.shrink()
+                : Column(
+                    key: const ValueKey('news-filters-open'),
+                    children: [
+                      NewsSearchBar(
+                        searchQuery: viewModel.searchQuery,
+                        onSearchChanged: (query) {
+                          viewModel.setSearchQuery(query);
+                        },
+                        onClear: () {
+                          viewModel.clearSearch();
+                        },
+                      ),
+                      NotificationReadStatusFilterWidget(
+                        currentFilter: viewModel.readStatusFilter,
+                        onFilterChanged: (filter) {
+                          viewModel.setReadStatusFilter(filter);
+                        },
+                      ),
+                      NotificationDateFilter(
+                        dateFrom: viewModel.filterDateFrom,
+                        dateTo: viewModel.filterDateTo,
+                        hasActiveFilters: viewModel.hasActiveFilters,
+                        onDateFilterChanged: (from, to) {
+                          viewModel.setDateFilter(from, to);
+                          viewModel.loadNews(refresh: true);
+                        },
+                        onClearFilters: () {
+                          viewModel.clearFilters();
+                          viewModel.loadNews(refresh: true);
+                        },
+                      ),
+                    ],
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _toggleFilters() {
+    setState(() => _filtersCollapsed = !_filtersCollapsed);
   }
 }

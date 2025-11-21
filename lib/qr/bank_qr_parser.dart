@@ -568,7 +568,7 @@ class BankQRParser {
           if (tag26.length >= binStart + 6) {
             final potentialBin = tag26.substring(binStart, binStart + 6);
             if (RegExp(r'970\d{3}').hasMatch(potentialBin)) {
-              if (bin == null) bin = potentialBin;
+              bin ??= potentialBin;
               if ((accountNumber == null || accountNumber.isEmpty) && tag26.length > binStart + 6) {
                 accountNumber = tag26.substring(binStart + 6);
               }

@@ -1,7 +1,6 @@
 import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
@@ -99,7 +98,7 @@ class _ThemeModeSection extends StatelessWidget {
           Text(
             'Cá nhân hóa giao diện với màu sắc sáng hoặc tối. Bạn cũng có thể mặc định theo thiết lập hệ thống.',
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.72),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.72),
             ),
           ),
           const SizedBox(height: 20),
@@ -181,8 +180,8 @@ class _ThemeModeOption extends StatelessWidget {
               borderRadius: BorderRadius.circular(22),
               border: Border.all(
                 color: isSelected
-                    ? Colors.white.withOpacity(0.35)
-                    : colorScheme.outline.withOpacity(0.08),
+                    ? Colors.white.withValues(alpha: 0.35)
+                    : colorScheme.outline.withValues(alpha: 0.08),
               ),
               boxShadow:
                   isSelected ? AppColors.elevatedShadow : AppColors.subtleShadow,
@@ -196,10 +195,10 @@ class _ThemeModeOption extends StatelessWidget {
                       height: 48,
                       width: 48,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(isSelected ? 0.22 : 0.18),
+                        color: Colors.white.withValues(alpha: isSelected ? 0.22 : 0.18),
                         borderRadius: BorderRadius.circular(16),
                         border: isSelected
-                            ? Border.all(color: Colors.white.withOpacity(0.4))
+                            ? Border.all(color: Colors.white.withValues(alpha: 0.4))
                             : null,
                       ),
                       child: Icon(
@@ -225,7 +224,7 @@ class _ThemeModeOption extends StatelessWidget {
                       duration: const Duration(milliseconds: 200),
                       child: Icon(
                         CupertinoIcons.check_mark_circled_solid,
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha: 0.9),
                       ),
                     ),
                   ],
@@ -235,8 +234,8 @@ class _ThemeModeOption extends StatelessWidget {
                   description,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: isSelected
-                        ? Colors.white.withOpacity(0.85)
-                        : colorScheme.onSurface.withOpacity(0.6),
+                        ? Colors.white.withValues(alpha: 0.85)
+                        : colorScheme.onSurface.withValues(alpha: 0.6),
                     height: 1.35,
                   ),
                 ),
@@ -487,11 +486,11 @@ class _FingerprintSettingsSectionState extends State<_FingerprintSettingsSection
                         label: Text(
                           'Đang tắt',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurface.withOpacity(0.8),
+                            color: colorScheme.onSurface.withValues(alpha: 0.8),
                           ),
                         ),
                         backgroundColor:
-                            colorScheme.surfaceVariant.withOpacity(0.5),
+                            colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                       ),
               ),
             ],
@@ -502,7 +501,7 @@ class _FingerprintSettingsSectionState extends State<_FingerprintSettingsSection
                 ? 'Bạn đã kích hoạt đăng nhập bằng vân tay. Lần sau có thể dùng vân tay ngay tại màn hình đăng nhập.'
                 : 'Đăng ký vân tay để lần sau có thể đăng nhập nhanh mà không cần nhập mật khẩu.',
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurface.withOpacity(0.7),
+              color: colorScheme.onSurface.withValues(alpha: 0.7),
             ),
           ),
           const SizedBox(height: 20),
@@ -533,12 +532,6 @@ class _FingerprintSettingsSectionState extends State<_FingerprintSettingsSection
 }
 
 // Face Settings Section
-class _FaceSettingsSection extends StatelessWidget {
-  const _FaceSettingsSection();
-  @override
-  Widget build(BuildContext context) => const SizedBox.shrink();
-}
-
 class _UnitSwitcherSectionState extends State<_UnitSwitcherSection> {
   late final ContractService _contractService;
   List<UnitInfo> _units = [];
@@ -656,7 +649,7 @@ class _UnitSwitcherSectionState extends State<_UnitSwitcherSection> {
                     Text(
                       'Lựa chọn căn hộ mặc định để đồng bộ với toàn bộ tiện ích và dữ liệu hiển thị.',
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurface.withOpacity(0.68),
+                        color: colorScheme.onSurface.withValues(alpha: 0.68),
                       ),
                     ),
                   ],
@@ -695,7 +688,7 @@ class _UnitSwitcherSectionState extends State<_UnitSwitcherSection> {
             Text(
               'Bạn chưa được gán vào căn hộ nào. Vui lòng liên hệ ban quản lý để được hỗ trợ.',
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurface.withOpacity(0.7),
+                color: colorScheme.onSurface.withValues(alpha: 0.7),
               ),
             )
           else
@@ -718,7 +711,7 @@ class _UnitSwitcherSectionState extends State<_UnitSwitcherSection> {
                           'Đang cập nhật căn hộ...',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color:
-                                theme.colorScheme.onSurface.withOpacity(0.72),
+                                theme.colorScheme.onSurface.withValues(alpha: 0.72),
                           ),
                         ),
                       ),
@@ -740,11 +733,11 @@ class _UnitSwitcherSectionState extends State<_UnitSwitcherSection> {
 
   Widget _buildUnitDropdown(ThemeData theme, bool isDark) {
     final outlineColor =
-        isDark ? Colors.white.withOpacity(0.18) : Colors.white.withOpacity(0.28);
+        isDark ? Colors.white.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.28);
     final gradient =
         isDark ? AppColors.darkGlassLayerGradient() : AppColors.glassLayerGradient();
     final textColor =
-        isDark ? Colors.white : theme.colorScheme.onSurface.withOpacity(0.9);
+        isDark ? Colors.white : theme.colorScheme.onSurface.withValues(alpha: 0.9);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
@@ -765,7 +758,7 @@ class _UnitSwitcherSectionState extends State<_UnitSwitcherSection> {
                 value: _selectedUnitId,
                 dropdownColor: isDark
                     ? AppColors.navySurfaceElevated
-                    : Colors.white.withOpacity(0.98),
+                    : Colors.white.withValues(alpha: 0.98),
                 icon: Icon(
                   CupertinoIcons.chevron_down,
                   color: isDark ? Colors.white : theme.colorScheme.primary,
@@ -820,7 +813,7 @@ class _SettingsGlassCard extends StatelessWidget {
                 : AppColors.glassLayerGradient(),
             borderRadius: BorderRadius.circular(28),
             border: Border.all(
-              color: theme.colorScheme.outline.withOpacity(0.08),
+              color: theme.colorScheme.outline.withValues(alpha: 0.08),
             ),
             boxShadow: AppColors.elevatedShadow,
           ),

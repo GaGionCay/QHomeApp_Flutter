@@ -166,12 +166,12 @@ class _RealtimeNotificationBannerState
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final baseColor =
-        isDark ? const Color(0xFF101012).withOpacity(0.85) : Colors.white.withOpacity(0.92);
+        isDark ? const Color(0xFF101012).withValues(alpha: 0.85) : Colors.white.withValues(alpha: 0.92);
     final borderColor = isDark
-        ? Colors.white.withOpacity(0.12)
-        : Colors.black.withOpacity(0.08);
+        ? Colors.white.withValues(alpha: 0.12)
+        : Colors.black.withValues(alpha: 0.08);
     final subtitleStyle = theme.textTheme.labelSmall?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant.withOpacity(0.72),
+      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.72),
       fontWeight: FontWeight.w500,
       letterSpacing: -0.1,
     );
@@ -219,7 +219,7 @@ class _RealtimeNotificationBannerState
                             border: Border.all(color: borderColor),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(
+                                color: Colors.black.withValues(alpha: 
                                     isDark ? 0.35 : 0.12),
                                 blurRadius: 24,
                                 offset: const Offset(0, 18),
@@ -291,7 +291,7 @@ class _RealtimeNotificationBannerState
                                   icon: Icon(
                                     Icons.close_rounded,
                                     color: theme.colorScheme.onSurface
-                                        .withOpacity(0.7),
+                                        .withValues(alpha: 0.7),
                                   ),
                                 ),
                               ],
@@ -332,7 +332,7 @@ class _DefaultLeadingIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final background = isDarkMode ? Colors.white.withOpacity(0.14) : color.withOpacity(0.12);
+    final background = isDarkMode ? Colors.white.withValues(alpha: 0.14) : color.withValues(alpha: 0.12);
     return Container(
       decoration: BoxDecoration(
         shape: BoxShape.circle,
@@ -347,4 +347,6 @@ class _DefaultLeadingIcon extends StatelessWidget {
     );
   }
 }
+
+
 

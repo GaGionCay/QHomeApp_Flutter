@@ -141,7 +141,7 @@ class _ElectricityChartState extends State<ElectricityChart> {
             gradient: _cardGradient(context),
             borderRadius: BorderRadius.circular(28),
             border: Border.all(
-              color: theme.colorScheme.outline.withOpacity(0.08),
+              color: theme.colorScheme.outline.withValues(alpha: 0.08),
             ),
             boxShadow: AppColors.subtleShadow,
           ),
@@ -211,11 +211,11 @@ class _ElectricityChartState extends State<ElectricityChart> {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: isDark
-            ? theme.colorScheme.surface.withOpacity(0.12)
-            : Colors.white.withOpacity(0.72),
+            ? theme.colorScheme.surface.withValues(alpha: 0.12)
+            : Colors.white.withValues(alpha: 0.72),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.08),
+          color: theme.colorScheme.outline.withValues(alpha: 0.08),
         ),
       ),
       child: Row(
@@ -232,7 +232,7 @@ class _ElectricityChartState extends State<ElectricityChart> {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 color: selected
-                    ? theme.colorScheme.primary.withOpacity(0.16)
+                    ? theme.colorScheme.primary.withValues(alpha: 0.16)
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(16),
               ),
@@ -275,7 +275,7 @@ class _ElectricityChartState extends State<ElectricityChart> {
         double computedBarWidth =
             ((baseWidth - (barCount + 1) * minSpacing) / barCount)
                 .clamp(minBarWidth, maxBarWidth);
-        final barSpacing = minSpacing;
+        const barSpacing = minSpacing;
 
         final chartContentWidth =
             barCount * computedBarWidth + (barCount + 1) * barSpacing;
@@ -297,8 +297,8 @@ class _ElectricityChartState extends State<ElectricityChart> {
                   enabled: true,
                   touchTooltipData: BarTouchTooltipData(
                     tooltipBgColor: theme.brightness == Brightness.dark
-                        ? AppColors.navySurface.withOpacity(0.9)
-                        : Colors.black.withOpacity(0.85),
+                        ? AppColors.navySurface.withValues(alpha: 0.9)
+                        : Colors.black.withValues(alpha: 0.85),
                     tooltipRoundedRadius: 14,
                     tooltipPadding: const EdgeInsets.symmetric(
                       horizontal: 14,
@@ -342,7 +342,7 @@ class _ElectricityChartState extends State<ElectricityChart> {
                                   (theme.textTheme.labelSmall?.fontSize ?? 12) *
                                       textScale,
                               color: theme.colorScheme.onSurfaceVariant
-                                  .withOpacity(0.8),
+                                  .withValues(alpha: 0.8),
                             ),
                           ),
                         );
@@ -369,7 +369,7 @@ class _ElectricityChartState extends State<ElectricityChart> {
                                             12) *
                                         textScale,
                                 color: theme.colorScheme.onSurfaceVariant
-                                    .withOpacity(0.7),
+                                    .withValues(alpha: 0.7),
                               ),
                             ),
                           );
@@ -384,7 +384,7 @@ class _ElectricityChartState extends State<ElectricityChart> {
                   drawVerticalLine: false,
                   horizontalInterval: maxY / 4,
                   getDrawingHorizontalLine: (value) => FlLine(
-                    color: theme.colorScheme.outline.withOpacity(0.08),
+                    color: theme.colorScheme.outline.withValues(alpha: 0.08),
                     strokeWidth: 1,
                   ),
                 ),
@@ -402,14 +402,14 @@ class _ElectricityChartState extends State<ElectricityChart> {
                           begin: Alignment.bottomCenter,
                           end: Alignment.topCenter,
                           colors: [
-                            AppColors.primaryEmerald.withOpacity(0.95),
-                            AppColors.primaryAqua.withOpacity(0.85),
+                            AppColors.primaryEmerald.withValues(alpha: 0.95),
+                            AppColors.primaryAqua.withValues(alpha: 0.85),
                           ],
                         ),
                         backDrawRodData: BackgroundBarChartRodData(
                           show: true,
                           toY: maxY,
-                          color: theme.colorScheme.surface.withOpacity(0.08),
+                          color: theme.colorScheme.surface.withValues(alpha: 0.08),
                         ),
                       ),
                     ],
@@ -444,19 +444,19 @@ class _ElectricityChartState extends State<ElectricityChart> {
         icon: Icons.auto_graph_rounded,
         gradient: LinearGradient(
           colors: [
-            AppColors.skyMist.withOpacity(0.95),
-            AppColors.primaryBlue.withOpacity(0.85),
+            AppColors.skyMist.withValues(alpha: 0.95),
+            AppColors.primaryBlue.withValues(alpha: 0.85),
           ],
         ),
       ),
       DecoratedBox(
         decoration: BoxDecoration(
           color: theme.brightness == Brightness.dark
-              ? theme.colorScheme.surface.withOpacity(0.14)
-              : Colors.white.withOpacity(0.78),
+              ? theme.colorScheme.surface.withValues(alpha: 0.14)
+              : Colors.white.withValues(alpha: 0.78),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: theme.colorScheme.outline.withOpacity(0.08),
+            color: theme.colorScheme.outline.withValues(alpha: 0.08),
           ),
         ),
         child: Padding(
@@ -584,7 +584,7 @@ class _ElectricityChartState extends State<ElectricityChart> {
             gradient: _cardGradient(context),
             borderRadius: BorderRadius.circular(28),
             border: Border.all(
-              color: theme.colorScheme.outline.withOpacity(0.08),
+              color: theme.colorScheme.outline.withValues(alpha: 0.08),
             ),
             boxShadow: AppColors.subtleShadow,
           ),
@@ -653,11 +653,11 @@ class _MiniStatCard extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: theme.brightness == Brightness.dark
-            ? theme.colorScheme.surface.withOpacity(0.14)
-            : Colors.white.withOpacity(0.78),
+            ? theme.colorScheme.surface.withValues(alpha: 0.14)
+            : Colors.white.withValues(alpha: 0.78),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.08),
+          color: theme.colorScheme.outline.withValues(alpha: 0.08),
         ),
       ),
       child: Padding(
@@ -699,3 +699,6 @@ class _MiniStatCard extends StatelessWidget {
     );
   }
 }
+
+
+

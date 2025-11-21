@@ -70,8 +70,8 @@ class AppColors {
       begin: begin,
       end: end,
       colors: [
-        neutralSurfaceElevated.withOpacity(0.94),
-        neutralSurface.withOpacity(0.82),
+        neutralSurfaceElevated.withValues(alpha: 0.94),
+        neutralSurface.withValues(alpha: 0.82),
       ],
     );
   }
@@ -84,8 +84,8 @@ class AppColors {
       begin: begin,
       end: end,
       colors: [
-        navySurfaceElevated.withOpacity(0.95),
-        navySurface.withOpacity(0.88),
+        navySurfaceElevated.withValues(alpha: 0.95),
+        navySurface.withValues(alpha: 0.88),
       ],
     );
   }

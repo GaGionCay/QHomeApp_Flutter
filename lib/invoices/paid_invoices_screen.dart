@@ -171,8 +171,8 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 colors: [
-                                  AppColors.danger.withOpacity(0.88),
-                                  Colors.redAccent.withOpacity(0.82),
+                                  AppColors.danger.withValues(alpha: 0.88),
+                                  Colors.redAccent.withValues(alpha: 0.82),
                                 ],
                               ),
                               borderRadius: BorderRadius.circular(20),
@@ -362,11 +362,11 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
           DecoratedBox(
             decoration: BoxDecoration(
               color: theme.brightness == Brightness.dark
-                  ? theme.colorScheme.surface.withOpacity(0.16)
-                  : Colors.white.withOpacity(0.82),
+                  ? theme.colorScheme.surface.withValues(alpha: 0.16)
+                  : Colors.white.withValues(alpha: 0.82),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: theme.colorScheme.outline.withOpacity(0.08),
+                color: theme.colorScheme.outline.withValues(alpha: 0.08),
               ),
             ),
             child: DropdownButtonHideUnderline(
@@ -442,14 +442,14 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
                     color: selected
-                        ? accent.withOpacity(0.16)
+                        ? accent.withValues(alpha: 0.16)
                         : theme.brightness == Brightness.dark
-                            ? theme.colorScheme.surface.withOpacity(0.12)
-                            : Colors.white.withOpacity(0.72),
+                            ? theme.colorScheme.surface.withValues(alpha: 0.12)
+                            : Colors.white.withValues(alpha: 0.72),
                     border: Border.all(
                       color: selected
-                          ? accent.withOpacity(0.65)
-                          : theme.colorScheme.outline.withOpacity(0.12),
+                          ? accent.withValues(alpha: 0.65)
+                          : theme.colorScheme.outline.withValues(alpha: 0.12),
                     ),
                     boxShadow: selected ? AppColors.subtleShadow : const [],
                   ),
@@ -462,7 +462,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
                         color: selected
                             ? accent
                             : theme.colorScheme.onSurfaceVariant
-                                .withOpacity(0.8),
+                                .withValues(alpha: 0.8),
                       ),
                       const SizedBox(width: 10),
                       Text(
@@ -586,11 +586,11 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: isDark
-            ? theme.colorScheme.surface.withOpacity(0.14)
-            : Colors.white.withOpacity(0.78),
+            ? theme.colorScheme.surface.withValues(alpha: 0.14)
+            : Colors.white.withValues(alpha: 0.78),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.08),
+          color: theme.colorScheme.outline.withValues(alpha: 0.08),
         ),
         boxShadow: AppColors.subtleShadow,
       ),
@@ -607,8 +607,8 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
                   begin: Alignment.bottomLeft,
                   end: Alignment.topRight,
                   colors: [
-                    accent.withOpacity(0.9),
-                    accent.withOpacity(0.55),
+                    accent.withValues(alpha: 0.9),
+                    accent.withValues(alpha: 0.55),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(12),
@@ -652,11 +652,11 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: isDark
-              ? theme.colorScheme.surface.withOpacity(0.16)
-              : Colors.white.withOpacity(0.78),
+              ? theme.colorScheme.surface.withValues(alpha: 0.16)
+              : Colors.white.withValues(alpha: 0.78),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: theme.colorScheme.outline.withOpacity(0.08),
+            color: theme.colorScheme.outline.withValues(alpha: 0.08),
           ),
         ),
         child: Padding(
@@ -735,14 +735,14 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(18),
                     color: selected
-                        ? accent.withOpacity(0.18)
+                        ? accent.withValues(alpha: 0.18)
                         : theme.brightness == Brightness.dark
-                            ? theme.colorScheme.surface.withOpacity(0.12)
-                            : Colors.white.withOpacity(0.78),
+                            ? theme.colorScheme.surface.withValues(alpha: 0.12)
+                            : Colors.white.withValues(alpha: 0.78),
                     border: Border.all(
                       color: selected
-                          ? accent.withOpacity(0.7)
-                          : theme.colorScheme.outline.withOpacity(0.12),
+                          ? accent.withValues(alpha: 0.7)
+                          : theme.colorScheme.outline.withValues(alpha: 0.12),
                     ),
                     boxShadow: selected ? AppColors.subtleShadow : const [],
                   ),
@@ -791,8 +791,8 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      accent.withOpacity(0.92),
-                      accent.withOpacity(0.55),
+                      accent.withValues(alpha: 0.92),
+                      accent.withValues(alpha: 0.55),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(18),
@@ -827,11 +827,11 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
           DecoratedBox(
             decoration: BoxDecoration(
               color: theme.brightness == Brightness.dark
-                  ? theme.colorScheme.surface.withOpacity(0.14)
-                  : Colors.white.withOpacity(0.78),
+                  ? theme.colorScheme.surface.withValues(alpha: 0.14)
+                  : Colors.white.withValues(alpha: 0.78),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: theme.colorScheme.outline.withOpacity(0.08),
+                color: theme.colorScheme.outline.withValues(alpha: 0.08),
               ),
             ),
             child: Padding(
@@ -885,8 +885,8 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  AppColors.success.withOpacity(0.9),
-                  AppColors.primaryEmerald.withOpacity(0.85),
+                  AppColors.success.withValues(alpha: 0.9),
+                  AppColors.primaryEmerald.withValues(alpha: 0.85),
                 ],
               ),
               borderRadius: BorderRadius.circular(20),
@@ -933,8 +933,8 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  accent.withOpacity(0.9),
-                  accent.withOpacity(0.55),
+                  accent.withValues(alpha: 0.9),
+                  accent.withValues(alpha: 0.55),
                 ],
               ),
               borderRadius: BorderRadius.circular(18),
@@ -1071,8 +1071,8 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        serviceColor.withOpacity(0.92),
-                        serviceColor.withOpacity(0.55),
+                        serviceColor.withValues(alpha: 0.92),
+                        serviceColor.withValues(alpha: 0.55),
                       ],
                     ),
                     borderRadius: BorderRadius.circular(18),
@@ -1101,7 +1101,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: AppColors.success.withOpacity(0.16),
+                              color: AppColors.success.withValues(alpha: 0.16),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
@@ -1153,7 +1153,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            Divider(color: secondary.withOpacity(0.12), height: 1),
+            Divider(color: secondary.withValues(alpha: 0.12), height: 1),
             const SizedBox(height: 14),
             Row(
               children: [
@@ -1406,7 +1406,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.success.withOpacity(0.16),
+                    color: AppColors.success.withValues(alpha: 0.16),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -1607,7 +1607,7 @@ class _PaidGlassCard extends StatelessWidget {
             gradient: gradient,
             borderRadius: borderRadius,
             border: Border.all(
-              color: theme.colorScheme.outline.withOpacity(0.08),
+              color: theme.colorScheme.outline.withValues(alpha: 0.08),
             ),
             boxShadow: AppColors.subtleShadow,
           ),
@@ -1620,3 +1620,5 @@ class _PaidGlassCard extends StatelessWidget {
     );
   }
 }
+
+

@@ -336,7 +336,7 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                               Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: typeColor.withOpacity(
+                                  color: typeColor.withValues(alpha: 
                                       isDark ? 0.28 : 0.16),
                                   shape: BoxShape.circle,
                                 ),
@@ -375,13 +375,13 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                             style: theme.textTheme.bodyLarge?.copyWith(
                                   height: 1.6,
                                   color: isDark
-                                      ? Colors.white.withOpacity(0.82)
+                                      ? Colors.white.withValues(alpha: 0.82)
                                       : AppColors.textPrimary,
                                 ) ??
                                 TextStyle(
                                   height: 1.6,
                                   color: isDark
-                                      ? Colors.white.withOpacity(0.82)
+                                      ? Colors.white.withValues(alpha: 0.82)
                                       : AppColors.textPrimary,
                                 ),
                           ),
@@ -453,7 +453,7 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
         ? AppColors.darkGlassLayerGradient()
         : AppColors.glassLayerGradient();
     final borderColor = (isDark ? AppColors.navyOutline : AppColors.neutralOutline)
-        .withOpacity(0.45);
+        .withValues(alpha: 0.45);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -482,10 +482,10 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(isDark ? 0.28 : 0.16),
+        color: color.withValues(alpha: isDark ? 0.28 : 0.16),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: color.withOpacity(isDark ? 0.6 : 0.4),
+          color: color.withValues(alpha: isDark ? 0.6 : 0.4),
         ),
       ),
       child: Text(
@@ -517,7 +517,7 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
         Container(
           padding: const EdgeInsets.all(9),
           decoration: BoxDecoration(
-            color: theme.colorScheme.primary.withOpacity(isDark ? 0.22 : 0.12),
+            color: theme.colorScheme.primary.withValues(alpha: isDark ? 0.22 : 0.12),
             shape: BoxShape.circle,
           ),
           child: Icon(
@@ -648,8 +648,8 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: Material(
           color: isDark
-              ? Colors.white.withOpacity(0.12)
-              : Colors.white.withOpacity(0.75),
+              ? Colors.white.withValues(alpha: 0.12)
+              : Colors.white.withValues(alpha: 0.75),
           child: InkWell(
             onTap: onTap,
             child: SizedBox(

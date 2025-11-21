@@ -719,7 +719,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
     final normalizedToday = DateTime(today.year, today.month, today.day);
     final lastDate =
         normalizedToday.add(Duration(days: _advanceBookingDays(detail)));
-    final predicate = (DateTime date) => _isDateAllowed(detail, date);
+    bool predicate(DateTime date) => _isDateAllowed(detail, date);
 
     final firstSelectable =
         _nextAllowedDate(detail, normalizedToday, lastDate, predicate);

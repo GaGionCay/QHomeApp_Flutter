@@ -405,7 +405,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
                       ? AppColors.darkGlassLayerGradient()
                       : AppColors.glassLayerGradient(),
                   border: Border.all(
-                    color: theme.colorScheme.outline.withOpacity(0.12),
+                    color: theme.colorScheme.outline.withValues(alpha: 0.12),
                   ),
                   borderRadius: BorderRadius.circular(26),
                   boxShadow: const [

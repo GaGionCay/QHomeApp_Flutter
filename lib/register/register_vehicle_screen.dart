@@ -130,8 +130,8 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     if (_servicesCardDio == null) {
       _servicesCardDio = Dio(BaseOptions(
         baseUrl: ApiClient.buildServiceBase(port: 8083, path: '/api'),
-        connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
-        receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+        connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+        receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
       ));
       _servicesCardDio!.interceptors.add(LogInterceptor(
         request: true,
@@ -645,7 +645,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
-                        '⚠️ Upload timeout. Đang thử lại lần $retryCount/$maxRetries sau ${delaySeconds} giây...'),
+                        '⚠️ Upload timeout. Đang thử lại lần $retryCount/$maxRetries sau $delaySeconds giây...'),
                     backgroundColor: Colors.orange,
                     duration: Duration(seconds: delaySeconds),
                   ),
@@ -1091,7 +1091,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
                 Text(
                   'Phí áp dụng cho mỗi thẻ phương tiện. Bạn sẽ được chuyển tới VNPAY để hoàn tất thanh toán ngay sau khi gửi yêu cầu.',
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurface.withOpacity(0.68),
+                    color: colorScheme.onSurface.withValues(alpha: 0.68),
                     height: 1.45,
                   ),
                 ),
@@ -1338,7 +1338,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: reachedLimit
                       ? AppColors.warning
-                      : colorScheme.onSurface.withOpacity(0.6),
+                      : colorScheme.onSurface.withValues(alpha: 0.6),
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -1350,16 +1350,16 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
               height: 140,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
-                color: colorScheme.surface.withOpacity(isDark ? 0.22 : 0.58),
+                color: colorScheme.surface.withValues(alpha: isDark ? 0.22 : 0.58),
                 border: Border.all(
-                  color: colorScheme.outline.withOpacity(0.08),
+                  color: colorScheme.outline.withValues(alpha: 0.08),
                 ),
               ),
               child: Center(
                 child: Text(
                   'Chưa chọn ảnh xe',
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurface.withOpacity(0.6),
+                    color: colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
               ),
@@ -1524,7 +1524,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
                   right: 8,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.55),
+                      color: Colors.black.withValues(alpha: 0.55),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: const Padding(
@@ -1548,7 +1548,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.55),
+                      color: Colors.black.withValues(alpha: 0.55),
                       borderRadius: const BorderRadius.only(
                         bottomLeft: Radius.circular(22),
                         bottomRight: Radius.circular(22),
@@ -1874,3 +1874,4 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     );
   }
 }
+

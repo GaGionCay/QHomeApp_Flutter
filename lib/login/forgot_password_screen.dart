@@ -46,7 +46,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           );
 
     final accentGlow = isDark
-        ? theme.colorScheme.primary.withOpacity(0.18)
+        ? theme.colorScheme.primary.withValues(alpha: 0.18)
         : AppColors.primaryBlue.withValues(alpha: 0.18);
 
     return GestureDetector(

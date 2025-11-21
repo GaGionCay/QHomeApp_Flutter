@@ -167,8 +167,8 @@ class _RegisterServiceDetailScreenState
     if (_servicesCardDio == null) {
       _servicesCardDio = Dio(BaseOptions(
       baseUrl: ApiClient.buildServiceBase(port: 8083, path: '/api'),
-        connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
-        receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+        connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+        receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
       ));
       _servicesCardDio!.interceptors.add(LogInterceptor(
         request: true,
@@ -240,9 +240,9 @@ class _RegisterServiceDetailScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.4)),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -277,9 +277,9 @@ class _RegisterServiceDetailScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.4)),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -558,4 +558,5 @@ class _RegisterServiceDetailScreenState
     );
   }
 }
+
 

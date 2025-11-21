@@ -19,127 +19,79 @@ class NotificationReadStatusFilterWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final filters = [
+      (
+        filter: NotificationReadStatusFilter.all,
+        label: 'Tất cả',
+        icon: Icons.list_rounded
+      ),
+      (
+        filter: NotificationReadStatusFilter.unread,
+        label: 'Chưa đọc',
+        icon: Icons.mark_email_unread_outlined
+      ),
+      (
+        filter: NotificationReadStatusFilter.read,
+        label: 'Đã đọc',
+        icon: Icons.done_all_rounded
+      ),
+    ];
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: theme.colorScheme.outline.withValues(alpha: 0.1),
-            width: 1,
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          Text(
-            'Lọc theo:',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Row(
-              children: [
-                Expanded(
-                  child: _FilterButton(
-                    label: 'Tất cả',
-                    icon: Icons.list_alt,
-                    isSelected: currentFilter == NotificationReadStatusFilter.all,
-                    onTap: () => onFilterChanged(NotificationReadStatusFilter.all),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      color: theme.colorScheme.surface,
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: filters.map((entry) {
+          final isSelected = currentFilter == entry.filter;
+          return GestureDetector(
+            onTap: () => onFilterChanged(entry.filter),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(32),
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.24),
+                          blurRadius: 16,
+                          offset: const Offset(0, 8),
+                        ),
+                      ]
+                    : [],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    entry.icon,
+                    size: 16,
+                    color: isSelected
+                        ? theme.colorScheme.onPrimary
+                        : theme.colorScheme.onSurface.withValues(alpha: 0.65),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _FilterButton(
-                    label: 'Đã đọc',
-                    icon: Icons.mark_email_read,
-                    isSelected: currentFilter == NotificationReadStatusFilter.read,
-                    onTap: () => onFilterChanged(NotificationReadStatusFilter.read),
+                  const SizedBox(width: 6),
+                  Text(
+                    entry.label,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight:
+                          isSelected ? FontWeight.w700 : FontWeight.w500,
+                      color: isSelected
+                          ? theme.colorScheme.onPrimary
+                          : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _FilterButton(
-                    label: 'Chưa đọc',
-                    icon: Icons.mark_email_unread,
-                    isSelected: currentFilter == NotificationReadStatusFilter.unread,
-                    onTap: () => onFilterChanged(NotificationReadStatusFilter.unread),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FilterButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _FilterButton({
-    required this.label,
-    required this.icon,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? theme.colorScheme.primaryContainer
-              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected
-                ? theme.colorScheme.primary
-                : theme.colorScheme.outline.withValues(alpha: 0.2),
-            width: isSelected ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: isSelected
-                  ? theme.colorScheme.onPrimaryContainer
-                  : theme.colorScheme.onSurface.withValues(alpha: 0.7),
-            ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  color: isSelected
-                      ? theme.colorScheme.onPrimaryContainer
-                      : theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                  fontSize: 12,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                ],
               ),
             ),
-          ],
-        ),
+          );
+        }).toList(),
       ),
     );
   }
 }
-

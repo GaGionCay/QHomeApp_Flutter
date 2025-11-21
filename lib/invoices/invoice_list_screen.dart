@@ -56,7 +56,7 @@ class _InvoicesGlassCard extends StatelessWidget {
             gradient: gradient,
             borderRadius: borderRadius,
             border: Border.all(
-              color: theme.colorScheme.outline.withOpacity(0.08),
+              color: theme.colorScheme.outline.withValues(alpha: 0.08),
             ),
             boxShadow: AppColors.subtleShadow,
           ),
@@ -356,17 +356,17 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
     final isDark = theme.brightness == Brightness.dark;
     final onSurface = theme.colorScheme.onSurface;
     final secondary = isDark
-        ? Colors.white.withOpacity(0.7)
+        ? Colors.white.withValues(alpha: 0.7)
         : theme.colorScheme.onSurfaceVariant;
 
     return DecoratedBox(
       decoration: BoxDecoration(
         color: isDark
-            ? theme.colorScheme.surface.withOpacity(0.12)
-            : Colors.white.withOpacity(0.78),
+            ? theme.colorScheme.surface.withValues(alpha: 0.12)
+            : Colors.white.withValues(alpha: 0.78),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.08),
+          color: theme.colorScheme.outline.withValues(alpha: 0.08),
         ),
         boxShadow: AppColors.subtleShadow,
       ),
@@ -381,8 +381,8 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                   begin: Alignment.bottomLeft,
                   end: Alignment.topRight,
                   colors: [
-                    accent.withOpacity(0.9),
-                    accent.withOpacity(0.5),
+                    accent.withValues(alpha: 0.9),
+                    accent.withValues(alpha: 0.5),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(14),
@@ -521,11 +521,11 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
     return DecoratedBox(
       decoration: BoxDecoration(
         color: isDark
-            ? theme.colorScheme.surface.withOpacity(0.14)
-            : Colors.white.withOpacity(0.78),
+            ? theme.colorScheme.surface.withValues(alpha: 0.14)
+            : Colors.white.withValues(alpha: 0.78),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.08),
+          color: theme.colorScheme.outline.withValues(alpha: 0.08),
         ),
       ),
       child: Padding(
@@ -797,14 +797,14 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
                 color: selected
-                    ? accent.withOpacity(0.18)
+                    ? accent.withValues(alpha: 0.18)
                     : theme.brightness == Brightness.dark
-                        ? theme.colorScheme.surface.withOpacity(0.12)
-                        : Colors.white.withOpacity(0.74),
+                        ? theme.colorScheme.surface.withValues(alpha: 0.12)
+                        : Colors.white.withValues(alpha: 0.74),
                 border: Border.all(
                   color: selected
-                      ? accent.withOpacity(0.7)
-                      : theme.colorScheme.outline.withOpacity(0.16),
+                      ? accent.withValues(alpha: 0.7)
+                      : theme.colorScheme.outline.withValues(alpha: 0.16),
                 ),
                 boxShadow: selected ? AppColors.subtleShadow : const [],
               ),
@@ -816,7 +816,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                     size: 18,
                     color: selected
                         ? accent
-                        : theme.colorScheme.onSurfaceVariant.withOpacity(0.8),
+                        : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                   ),
                   const SizedBox(width: 8),
                   Text(
@@ -859,8 +859,8 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                     begin: Alignment.bottomLeft,
                     end: Alignment.topRight,
                     colors: [
-                      accent.withOpacity(0.9),
-                      accent.withOpacity(0.55),
+                      accent.withValues(alpha: 0.9),
+                      accent.withValues(alpha: 0.55),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(18),
@@ -893,7 +893,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
           ),
           const SizedBox(height: 12),
           Divider(
-            color: secondary.withOpacity(0.1),
+            color: secondary.withValues(alpha: 0.1),
             height: 1,
           ),
           const SizedBox(height: 12),
@@ -934,8 +934,8 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  AppColors.success.withOpacity(0.85),
-                  AppColors.primaryEmerald.withOpacity(0.8),
+                  AppColors.success.withValues(alpha: 0.85),
+                  AppColors.primaryEmerald.withValues(alpha: 0.8),
                 ],
               ),
               borderRadius: BorderRadius.circular(20),
@@ -985,8 +985,8 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  accent.withOpacity(0.85),
-                  accent.withOpacity(0.55),
+                  accent.withValues(alpha: 0.85),
+                  accent.withValues(alpha: 0.55),
                 ],
               ),
               borderRadius: BorderRadius.circular(18),
@@ -1042,8 +1042,8 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                       begin: Alignment.bottomLeft,
                       end: Alignment.topRight,
                       colors: [
-                        serviceColor.withOpacity(0.92),
-                        serviceColor.withOpacity(0.6),
+                        serviceColor.withValues(alpha: 0.92),
+                        serviceColor.withValues(alpha: 0.6),
                       ],
                     ),
                     borderRadius: BorderRadius.circular(18),
@@ -1072,7 +1072,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.16),
+                              color: statusColor.withValues(alpha: 0.16),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
@@ -1119,7 +1119,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
               ],
             ),
             const SizedBox(height: 18),
-            Divider(color: secondary.withOpacity(0.12), height: 1),
+            Divider(color: secondary.withValues(alpha: 0.12), height: 1),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -1153,7 +1153,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.success.withOpacity(0.16),
+                      color: AppColors.success.withValues(alpha: 0.16),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
@@ -1250,8 +1250,8 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 colors: [
-                                  AppColors.danger.withOpacity(0.88),
-                                  Colors.redAccent.withOpacity(0.82),
+                                  AppColors.danger.withValues(alpha: 0.88),
+                                  Colors.redAccent.withValues(alpha: 0.82),
                                 ],
                               ),
                               borderRadius: BorderRadius.circular(20),
@@ -1397,3 +1397,5 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
     );
   }
 }
+
+

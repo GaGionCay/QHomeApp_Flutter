@@ -19,8 +19,8 @@ class CardRegistrationService {
     final baseUrl = ApiClient.buildServiceBase(port: _servicePort);
     final dio = Dio(BaseOptions(
       baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
-      receiveTimeout: const Duration(seconds: ApiClient.TIMEOUT_SECONDS),
+      connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+      receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
     ));
     dio.interceptors.add(LogInterceptor(
       request: false,
@@ -79,5 +79,6 @@ class CardRegistrationService {
         .toList();
   }
 }
+
 
 

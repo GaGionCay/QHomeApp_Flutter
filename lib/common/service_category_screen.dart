@@ -370,7 +370,7 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
               : AppColors.glassLayerGradient(),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           border: Border.all(
-            color: colorScheme.outline.withOpacity(0.08),
+            color: colorScheme.outline.withValues(alpha: 0.08),
           ),
         ),
         child: Column(
@@ -381,7 +381,7 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: colorScheme.onSurface.withOpacity(0.3),
+                color: colorScheme.onSurface.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -396,7 +396,7 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
                       height: 64,
                       width: 64,
                       decoration: BoxDecoration(
-                        color: colorScheme.primaryContainer.withOpacity(
+                        color: colorScheme.primaryContainer.withValues(alpha: 
                           isDark ? 0.24 : 0.32,
                         ),
                         borderRadius: BorderRadius.circular(18),
@@ -427,7 +427,7 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
                       Text(
                         description,
                         style: theme.textTheme.bodyLarge?.copyWith(
-                          color: colorScheme.onSurface.withOpacity(0.8),
+                          color: colorScheme.onSurface.withValues(alpha: 0.8),
                           height: 1.5,
                         ),
                       ),
@@ -547,7 +547,7 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
           Text(
             'Đặt tiện ích thuận tiện, theo dõi trạng thái dịch vụ và thanh toán trực tuyến ngay trong ứng dụng.',
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: Colors.white.withOpacity(0.9),
+              color: Colors.white.withValues(alpha: 0.9),
             ),
           ),
           const SizedBox(height: 16),
@@ -567,8 +567,8 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
 
   Widget _buildCategorySkeleton(BuildContext context) {
     final theme = Theme.of(context);
-    final base = theme.colorScheme.surfaceVariant.withOpacity(0.4);
-    final highlight = theme.colorScheme.surface.withOpacity(0.7);
+    final base = theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4);
+    final highlight = theme.colorScheme.surface.withValues(alpha: 0.7);
     return Shimmer.fromColors(
       baseColor: base,
       highlightColor: highlight,
@@ -617,9 +617,9 @@ class _HeroChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(isDark ? 0.14 : 0.18),
+        color: Colors.white.withValues(alpha: isDark ? 0.14 : 0.18),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.24)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.24)),
       ),
       child: Text(
         label,
@@ -669,7 +669,7 @@ class _AmenityCard extends StatelessWidget {
                   : AppColors.glassLayerGradient(),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: colorScheme.outline.withOpacity(0.08),
+                color: colorScheme.outline.withValues(alpha: 0.08),
               ),
               boxShadow: AppColors.subtleShadow,
             ),
@@ -682,7 +682,7 @@ class _AmenityCard extends StatelessWidget {
                      height: 46,
                      width: 46,
                      decoration: BoxDecoration(
-                       color: colorScheme.primaryContainer.withOpacity(
+                       color: colorScheme.primaryContainer.withValues(alpha: 
                          isDark ? 0.24 : 0.32,
                        ),
                        borderRadius: BorderRadius.circular(14),
@@ -708,7 +708,7 @@ class _AmenityCard extends StatelessWidget {
                        maxLines: 3,
                        overflow: TextOverflow.ellipsis,
                        style: theme.textTheme.bodySmall?.copyWith(
-                         color: colorScheme.onSurface.withOpacity(0.64),
+                         color: colorScheme.onSurface.withValues(alpha: 0.64),
                          height: 1.38,
                        ),
                      ),
@@ -772,7 +772,7 @@ class _QuickActionCard extends StatelessWidget {
                 : AppColors.glassLayerGradient(),
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: colorScheme.outline.withOpacity(0.08),
+              color: colorScheme.outline.withValues(alpha: 0.08),
             ),
             boxShadow: AppColors.subtleShadow,
           ),
@@ -787,7 +787,7 @@ class _QuickActionCard extends StatelessWidget {
                       height: 52,
                       width: 52,
                       decoration: BoxDecoration(
-                        color: data.color.withOpacity(isDark ? 0.22 : 0.18),
+                        color: data.color.withValues(alpha: isDark ? 0.22 : 0.18),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Icon(data.icon, color: data.color, size: 26),
@@ -807,7 +807,7 @@ class _QuickActionCard extends StatelessWidget {
                 Text(
                   data.description,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurface.withOpacity(0.7),
+                    color: colorScheme.onSurface.withValues(alpha: 0.7),
                     height: 1.45,
                   ),
                 ),
@@ -950,8 +950,8 @@ class _IOSStyleServicePopupState extends State<_IOSStyleServicePopup>
                       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                       child: Container(
                         color: isDark
-                            ? Colors.black.withOpacity(0.6)
-                            : Colors.black.withOpacity(0.3),
+                            ? Colors.black.withValues(alpha: 0.6)
+                            : Colors.black.withValues(alpha: 0.3),
                       ),
                     ),
                   ),
@@ -977,7 +977,7 @@ class _IOSStyleServicePopupState extends State<_IOSStyleServicePopup>
                             borderRadius: BorderRadius.circular(28),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.3),
+                                color: Colors.black.withValues(alpha: 0.3),
                                 blurRadius: 30,
                                 spreadRadius: 5,
                                 offset: const Offset(0, 10),
@@ -1003,7 +1003,7 @@ class _IOSStyleServicePopupState extends State<_IOSStyleServicePopup>
                                     boxShadow: [
                                       BoxShadow(
                                         color: colorScheme.primary
-                                            .withOpacity(0.3),
+                                            .withValues(alpha: 0.3),
                                         blurRadius: 15,
                                         spreadRadius: 2,
                                       ),
@@ -1042,7 +1042,7 @@ class _IOSStyleServicePopupState extends State<_IOSStyleServicePopup>
                                     widget.description,
                                     style: theme.textTheme.bodyMedium?.copyWith(
                                       color: colorScheme.onSurface
-                                          .withOpacity(0.7),
+                                          .withValues(alpha: 0.7),
                                       height: 1.4,
                                     ),
                                     textAlign: TextAlign.center,
@@ -1057,7 +1057,7 @@ class _IOSStyleServicePopupState extends State<_IOSStyleServicePopup>
                                   border: Border(
                                     top: BorderSide(
                                       color: colorScheme.outline
-                                          .withOpacity(0.1),
+                                          .withValues(alpha: 0.1),
                                       width: 0.5,
                                     ),
                                   ),
@@ -1073,7 +1073,7 @@ class _IOSStyleServicePopupState extends State<_IOSStyleServicePopup>
                                     Container(
                                       height: 0.5,
                                       color: colorScheme.outline
-                                          .withOpacity(0.1),
+                                          .withValues(alpha: 0.1),
                                     ),
                                     _IOSActionButton(
                                       label: 'Chi tiết',
@@ -1132,7 +1132,7 @@ class _IOSActionButton extends StatelessWidget {
                 icon,
                 color: isPrimary
                     ? colorScheme.primary
-                    : colorScheme.onSurface.withOpacity(0.7),
+                    : colorScheme.onSurface.withValues(alpha: 0.7),
                 size: 22,
               ),
               const SizedBox(width: 10),
@@ -1142,7 +1142,7 @@ class _IOSActionButton extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                   color: isPrimary
                       ? colorScheme.primary
-                      : colorScheme.onSurface.withOpacity(0.7),
+                      : colorScheme.onSurface.withValues(alpha: 0.7),
                   letterSpacing: -0.3,
                 ),
               ),

@@ -354,7 +354,7 @@ class _UnitTile extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.08)),
-        color: theme.colorScheme.surfaceVariant.withValues(alpha: 0.1),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.1),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -35,7 +35,7 @@ class RegisterGlassPanel extends StatelessWidget {
                 : AppColors.glassLayerGradient(),
             borderRadius: BorderRadius.circular(borderRadius),
             border: Border.all(
-              color: theme.colorScheme.outline.withOpacity(0.08),
+              color: theme.colorScheme.outline.withValues(alpha: 0.08),
             ),
             boxShadow: shadow ?? AppColors.subtleShadow,
           ),
@@ -88,15 +88,15 @@ class _RegisterGlassDropdownState<T> extends State<RegisterGlassDropdown<T>> {
     final interactive = widget.enabled;
     final labelColor = _isFocused && interactive
         ? theme.colorScheme.primary
-        : theme.colorScheme.onSurface.withOpacity(interactive ? 0.74 : 0.45);
+        : theme.colorScheme.onSurface.withValues(alpha: interactive ? 0.74 : 0.45);
 
     final borderColor = _isFocused && interactive
         ? theme.colorScheme.primary
-        : theme.colorScheme.outline.withOpacity(interactive ? 0.1 : 0.05);
+        : theme.colorScheme.outline.withValues(alpha: interactive ? 0.1 : 0.05);
 
     final iconColor = _isFocused && interactive
         ? theme.colorScheme.primary
-        : theme.colorScheme.onSurface.withOpacity(interactive ? 0.7 : 0.4);
+        : theme.colorScheme.onSurface.withValues(alpha: interactive ? 0.7 : 0.4);
 
     // Kích thước BorderRadius thống nhất
     const double borderRadius = 24;
@@ -159,7 +159,7 @@ class _RegisterGlassDropdownState<T> extends State<RegisterGlassDropdown<T>> {
                         onChanged: interactive ? widget.onChanged : null,
                         isExpanded: true,
                         dropdownColor: isDark
-                            ? AppColors.navySurfaceElevated.withOpacity(0.96)
+                            ? AppColors.navySurfaceElevated.withValues(alpha: 0.96)
                             : Colors.white,
                         style: theme.textTheme.bodyLarge,
                         icon: Icon(
@@ -176,7 +176,7 @@ class _RegisterGlassDropdownState<T> extends State<RegisterGlassDropdown<T>> {
                           hintText: widget.hint.isEmpty ? null : widget.hint,
                           hintStyle: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.colorScheme.onSurface
-                                .withOpacity(interactive ? 0.45 : 0.35),
+                                .withValues(alpha: interactive ? 0.45 : 0.35),
                           ),
                           prefixIcon: Icon(widget.icon, color: iconColor),
                           // **QUAN TRỌNG:** Điều chỉnh contentPadding để kiểm soát không gian bên trong
@@ -275,14 +275,14 @@ class _RegisterGlassTextFieldState extends State<RegisterGlassTextField> {
 
     final borderColor = hasFocus && interactive
         ? theme.colorScheme.primary
-        : theme.colorScheme.outline.withOpacity(interactive ? 0.1 : 0.05);
+        : theme.colorScheme.outline.withValues(alpha: interactive ? 0.1 : 0.05);
     final iconColor = hasFocus && interactive
         ? theme.colorScheme.primary
-        : theme.colorScheme.onSurface.withOpacity(interactive ? 0.65 : 0.4);
+        : theme.colorScheme.onSurface.withValues(alpha: interactive ? 0.65 : 0.4);
 
     final labelColor = hasFocus && interactive
         ? theme.colorScheme.primary
-        : theme.colorScheme.onSurface.withOpacity(interactive ? 0.74 : 0.45);
+        : theme.colorScheme.onSurface.withValues(alpha: interactive ? 0.74 : 0.45);
     
     // Kích thước BorderRadius thống nhất
     const double borderRadius = 24;
@@ -351,10 +351,10 @@ class _RegisterGlassTextFieldState extends State<RegisterGlassTextField> {
                         helperMaxLines: 2,
                         hintStyle: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurface
-                              .withOpacity(interactive ? 0.45 : 0.35),
+                              .withValues(alpha: interactive ? 0.45 : 0.35),
                         ),
                         helperStyle: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.primary.withOpacity(0.8),
+                          color: theme.colorScheme.primary.withValues(alpha: 0.8),
                         ),
                         prefixIcon: Icon(widget.icon, color: iconColor),
                         // **QUAN TRỌNG:** Điều chỉnh contentPadding để kiểm soát không gian bên trong

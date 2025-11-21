@@ -56,12 +56,12 @@ class _AppLuxeTextFieldState extends State<AppLuxeTextField> {
     final isDark = theme.brightness == Brightness.dark;
 
     final fillColor = isDark
-        ? AppColors.navySurfaceElevated.withOpacity(0.78)
-        : theme.colorScheme.surface.withOpacity(0.92);
+        ? AppColors.navySurfaceElevated.withValues(alpha: 0.78)
+        : theme.colorScheme.surface.withValues(alpha: 0.92);
 
     final iconColor = _isFocused
         ? theme.colorScheme.primary
-        : theme.colorScheme.onSurface.withOpacity(0.55);
+        : theme.colorScheme.onSurface.withValues(alpha: 0.55);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
@@ -101,7 +101,7 @@ class _AppLuxeTextFieldState extends State<AppLuxeTextField> {
           suffixIcon: widget.suffix,
           hintText: widget.hint,
           hintStyle: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurface.withOpacity(0.5),
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
           ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(18),
@@ -114,7 +114,7 @@ class _AppLuxeTextFieldState extends State<AppLuxeTextField> {
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(18),
             borderSide: BorderSide(
-              color: theme.colorScheme.primary.withOpacity(0.28),
+              color: theme.colorScheme.primary.withValues(alpha: 0.28),
               width: 1.4,
             ),
           ),
