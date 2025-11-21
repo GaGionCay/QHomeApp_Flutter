@@ -236,6 +236,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
         }
 
         if (responseCode == '00') {
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('✅ $invoiceLabel đã được thanh toán thành công!'),
@@ -243,10 +244,12 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
               backgroundColor: Colors.green,
             ),
           );
+          if (!mounted) return;
           setState(() {
             _futureCategories = _loadCategories();
           });
         } else {
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('❌ Thanh toán $invoiceLabel thất bại'),

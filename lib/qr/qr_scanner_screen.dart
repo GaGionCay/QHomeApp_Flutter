@@ -103,7 +103,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     }
 
     log('📝 Cleaned QR code length: ${cleanedCode.length}');
-    log('📝 QR code preview: ${cleanedCode.length > 100 ? cleanedCode.substring(0, 100) + "..." : cleanedCode}');
+    log('📝 QR code preview: ${cleanedCode.length > 100 ? '${cleanedCode.substring(0, 100)}...' : cleanedCode}');
 
     try {
       // Bước 1: Nhận diện và phân loại QR code
@@ -193,8 +193,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
         detectedBank = await BankQRParser.getBankInfo(bankData.bin!);
       } catch (e) {
         log('⚠️ Error getting bank info: $e');
-        // Fallback về sync method nếu async fail
-        detectedBank = BankQRParser.getBankInfoSync(bankData.bin!);
+        // detectedBank remains null if async fails
       }
     }
     
@@ -327,6 +326,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
   Future<void> _showBrowserSelectionDialog(Uri url, List<BankInfo> availableBrowsers) async {
     if (!mounted) return;
     
+    if (!mounted) return;
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -652,14 +652,14 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
         detectedBank = await BankQRParser.getBankInfo(qrData.bin!);
       } catch (e) {
         log('⚠️ Error getting bank info: $e');
-        // Fallback về sync method nếu async fail
-        detectedBank = BankQRParser.getBankInfoSync(qrData.bin!);
+        // detectedBank remains null if async fails
       }
     }
     final accountNumber = qrData.accountNumber ?? '';
     final amount = qrData.amount;
     final addInfo = qrData.addInfo;
     
+    if (!mounted) return;
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1051,7 +1051,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     
     log('🔍 Attempting to launch QR code with app chooser...');
     log('   QR code length: ${code.length}');
-    log('   QR code preview: ${code.length > 100 ? code.substring(0, 100) + "..." : code}');
+    log('   QR code preview: ${code.length > 100 ? '${code.substring(0, 100)}...' : code}');
     
     Uri? uriToLaunch;
     
@@ -1132,7 +1132,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       // If we can't create a launchable URI, show detailed error
       log('❌ FAILED: Could not find any method to launch QR code');
       log('   Tried: Direct URI, Constructed URL');
-      log('   QR code: ${code.length > 200 ? code.substring(0, 200) + "..." : code}');
+      log('   QR code: ${code.length > 200 ? '${code.substring(0, 200)}...' : code}');
       
       if (!mounted) return;
       

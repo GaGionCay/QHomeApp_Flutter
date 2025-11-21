@@ -734,6 +734,7 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
         ),
       );
       if (wantSwitch != true) return;
+      if (!mounted) return;
     }
 
     final wantEdit = await showDialog<bool>(
@@ -839,6 +840,7 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
         }
         if (!launched) {
           await prefs.remove(_pendingPaymentKey);
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Không thể mở trình duyệt thanh toán'),
@@ -860,11 +862,10 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
         debugPrint('❌ Lỗi xoá pending payment: $err');
       }
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi: $message')),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi: $message')),
+      );
     } finally {
       setState(() => _submitting = false);
     }

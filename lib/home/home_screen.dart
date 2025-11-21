@@ -512,7 +512,9 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       return Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.low,
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.low,
+        ),
       );
     } catch (e, stack) {
       debugPrint('⚠️ Failed to obtain device location: $e');

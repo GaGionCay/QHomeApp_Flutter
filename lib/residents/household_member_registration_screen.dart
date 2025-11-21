@@ -159,16 +159,15 @@ class _HouseholdMemberRegistrationScreenState
                     .map((image) => image.dataUri)
                     .toList(growable: false),
               );
-              if (mounted) {
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Đã gửi yêu cầu tạo tài khoản thành công.'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-                await _loadMembers();
-              }
+              if (!mounted) return;
+              Navigator.of(context).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Đã gửi yêu cầu tạo tài khoản thành công.'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+              await _loadMembers();
             } catch (e) {
               setStateDialog(() {
                 submitting = false;

@@ -1126,8 +1126,9 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
             ..._combos.map(
               (combo) => RadioListTile<String>(
                 value: combo['id'].toString(),
-                groupValue: _selectedComboId,
+                groupValue: _selectedComboId, // ignore: deprecated_member_use
                 onChanged: (value) {
+                  // ignore: deprecated_member_use
                   setState(() {
                     _selectedComboId = value;
                   });
@@ -1181,8 +1182,9 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
             ..._tickets.map(
               (ticket) => RadioListTile<String>(
                 value: ticket['id'].toString(),
-                groupValue: _selectedTicketId,
+                groupValue: _selectedTicketId, // ignore: deprecated_member_use
                 onChanged: (value) {
+                  // ignore: deprecated_member_use
                   setState(() {
                     _selectedTicketId = value;
                   });

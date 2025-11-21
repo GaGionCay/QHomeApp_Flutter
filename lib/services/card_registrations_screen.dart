@@ -1556,8 +1556,9 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
 
     final missing = <String>[];
     if (unitId == null || unitId.toString().isEmpty) missing.add('căn hộ');
-    if (residentId == null || residentId.toString().isEmpty)
+    if (residentId == null || residentId.toString().isEmpty) {
       missing.add('cư dân');
+    }
     if (apartmentNumber == null || apartmentNumber.toString().isEmpty) {
       missing.add('số căn hộ');
     }

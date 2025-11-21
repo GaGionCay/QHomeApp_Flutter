@@ -947,6 +947,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
         ),
       );
       if (wantSwitch != true) return;
+      if (!mounted) return;
     }
 
     final wantEdit = await showDialog<bool>(
@@ -1605,6 +1606,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
           await launchUrl(uri, mode: LaunchMode.externalApplication);
         } else {
           await prefs.remove(_pendingPaymentKey);
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Không thể mở trình duyệt thanh toán'),
@@ -1692,7 +1694,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) async {
+      onPopInvokedWithResult: (didPop, result) async {
         if (!didPop) {
           final shouldPop = await _onWillPop();
           if (shouldPop && mounted) {

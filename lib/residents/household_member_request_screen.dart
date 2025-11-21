@@ -171,6 +171,7 @@ class _HouseholdMemberRequestScreenState
     // Không quá 100 tuổi
     final hundredYearsAgo = DateTime(now.year - 100, now.month, now.day);
     if (result.isBefore(hundredYearsAgo)) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ngày sinh không được quá 100 tuổi.')),
       );

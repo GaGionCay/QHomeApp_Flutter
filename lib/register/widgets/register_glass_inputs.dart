@@ -152,7 +152,7 @@ class _RegisterGlassDropdownState<T> extends State<RegisterGlassDropdown<T>> {
                     child: Padding(
                       padding: EdgeInsets.zero, // Giữ nguyên Padding.zero ở đây
                       child: DropdownButtonFormField<T>(
-                        value: widget.value,
+                        initialValue: widget.value,
                         items: widget.items,
                         autovalidateMode: AutovalidateMode.onUserInteraction,
                         validator: widget.validator,

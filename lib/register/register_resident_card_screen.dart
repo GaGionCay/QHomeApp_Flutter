@@ -385,6 +385,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     // Nếu chưa có danh sách thành viên, load trước
     if (_householdMembers.isEmpty && _selectedUnitId != null) {
       await _loadHouseholdMembers();
+      if (!mounted) return;
     }
     
     // Nếu vẫn không có thành viên hoặc không có unitId, chỉ điền thông tin của user hiện tại
@@ -482,6 +483,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       ),
     );
 
+    if (!mounted) return;
     if (selectedMember != null) {
       // Hiển thị popup xác nhận
       final confirm = await showDialog<bool>(
@@ -510,6 +512,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         ),
       );
 
+      if (!mounted) return;
       if (confirm == true) {
         _fillMemberInfo(selectedMember);
       }
@@ -898,6 +901,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         ),
       );
       if (wantSwitch != true) return;
+      if (!mounted) return;
     }
 
     final wantEdit = await showDialog<bool>(
@@ -1005,6 +1009,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         }
         if (!launched) {
           await prefs.remove(_pendingPaymentKey);
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Không thể mở trình duyệt thanh toán'),

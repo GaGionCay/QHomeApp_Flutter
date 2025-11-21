@@ -114,13 +114,12 @@ class _QrWebViewScreenState extends State<QrWebViewScreen> {
               if (await canLaunchUrl(uri)) {
                 await launchUrl(uri, mode: LaunchMode.externalApplication);
               } else {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Không thể mở URL trong trình duyệt'),
-                    ),
-                  );
-                }
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Không thể mở URL trong trình duyệt'),
+                  ),
+                );
               }
             },
             tooltip: 'Mở trong trình duyệt',

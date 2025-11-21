@@ -706,7 +706,8 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
         uri,
         mode: LaunchMode.externalApplication,
       );
-      if (!success && mounted) {
+      if (!mounted) return;
+      if (!success) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Không thể mở tệp đính kèm.'),

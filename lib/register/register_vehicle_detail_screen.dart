@@ -142,16 +142,17 @@ class _RegisterServiceDetailScreenState
         }
 
         if (responseCode == '00') {
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('✅ Thanh toán thành công!'),
               backgroundColor: Colors.green,
             ),
           );
-          if (mounted) {
-            Navigator.pop(context, true);
-          }
+          if (!mounted) return;
+          Navigator.pop(context, true);
         } else {
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('⚠️ Thanh toán thất bại'),
@@ -375,7 +376,7 @@ class _RegisterServiceDetailScreenState
         
         return PopScope(
           canPop: true,
-          onPopInvoked: (didPop) {
+          onPopInvokedWithResult: (didPop, result) {
             if (!didPop && Navigator.canPop(dialogContext)) {
               Navigator.of(dialogContext).pop();
             }
@@ -450,8 +451,6 @@ class _RegisterServiceDetailScreenState
     
     return PopScope(
       canPop: true,
-      onPopInvoked: (didPop) {
-      },
       child: Scaffold(
         appBar: AppBar(
           backgroundColor: const Color(0xFF26A69A),

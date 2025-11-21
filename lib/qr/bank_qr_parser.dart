@@ -330,7 +330,7 @@ class BankQRParser {
     }
 
     _log('🔍 Starting to identify QR code (length: ${qrCode.length})');
-    _log('📄 QR code preview: ${qrCode.length > 100 ? qrCode.substring(0, 100) + "..." : qrCode}');
+    _log('📄 QR code preview: ${qrCode.length > 100 ? '${qrCode.substring(0, 100)}...' : qrCode}');
 
     try {
       _log('🔍 Step 1: Checking if QR is URL format...');
@@ -825,8 +825,8 @@ class BankQRParser {
                     final packageNameLower = packageName.toLowerCase();
                     
                     if (packageNameLower == bankPackageLower ||
-                        packageNameLower.startsWith(bankPackageLower + '.') ||
-                        bankPackageLower.startsWith(packageNameLower + '.')) {
+                        packageNameLower.startsWith('$bankPackageLower.') ||
+                        bankPackageLower.startsWith('$packageNameLower.')) {
                       bin = entry.key;
                       
                       appInfo = BankInfo(
