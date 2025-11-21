@@ -115,6 +115,7 @@ class _QrWebViewScreenState extends State<QrWebViewScreen> {
                 await launchUrl(uri, mode: LaunchMode.externalApplication);
               } else {
                 if (!mounted) return;
+                // ignore: use_build_context_synchronously
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Không thể mở URL trong trình duyệt'),

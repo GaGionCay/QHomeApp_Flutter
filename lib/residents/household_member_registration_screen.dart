@@ -160,7 +160,9 @@ class _HouseholdMemberRegistrationScreenState
                     .toList(growable: false),
               );
               if (!mounted) return;
+              // ignore: use_build_context_synchronously
               Navigator.of(context).pop();
+              // ignore: use_build_context_synchronously
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Đã gửi yêu cầu tạo tài khoản thành công.'),

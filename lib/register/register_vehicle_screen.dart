@@ -1698,6 +1698,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
         if (!didPop) {
           final shouldPop = await _onWillPop();
           if (shouldPop && mounted) {
+            // ignore: use_build_context_synchronously
             Navigator.of(context).pop();
           }
         }

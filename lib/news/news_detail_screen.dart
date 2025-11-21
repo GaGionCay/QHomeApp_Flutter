@@ -708,6 +708,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
       );
       if (!mounted) return;
       if (!success) {
+        // ignore: use_build_context_synchronously
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Không thể mở tệp đính kèm.'),
@@ -716,6 +717,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
       }
     } catch (e) {
       if (!mounted) return;
+      // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Không thể mở tệp: $e'),
