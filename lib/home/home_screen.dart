@@ -1736,26 +1736,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const Divider(),
           _HomeActionTile(
-            icon: Icons.group_add_outlined,
-            accentColor: AppColors.primaryEmerald,
-            title: 'Đăng ký tài khoản cho thành viên',
-            subtitle: const [
-              'Gửi lời mời tạo tài khoản cho người thân trong hộ gia đình.',
-            ],
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => HouseholdMemberRegistrationScreen(
-                    unit: selectedOwnerUnit,
-                  ),
-                ),
-              );
-            },
-            actionLabel: 'Tạo yêu cầu',
-          ),
-          const Divider(),
-          _HomeActionTile(
             icon: Icons.assignment_turned_in_outlined,
             accentColor: AppColors.warning,
             title: 'Theo dõi đăng ký thành viên',
@@ -1773,6 +1753,26 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
             actionLabel: 'Xem danh sách',
+          ),
+          const Divider(),
+          _HomeActionTile(
+            icon: Icons.group_add_outlined,
+            accentColor: AppColors.primaryEmerald,
+            title: 'Đăng ký tài khoản cho thành viên',
+            subtitle: const [
+              'Gửi lời mời tạo tài khoản cho người thân trong hộ gia đình.',
+            ],
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => HouseholdMemberRegistrationScreen(
+                    unit: selectedOwnerUnit,
+                  ),
+                ),
+              );
+            },
+            actionLabel: 'Tạo yêu cầu',
           ),
           const Divider(),
           _HomeActionTile(
@@ -2054,40 +2054,38 @@ class _FeatureGridTileState extends State<_FeatureGridTile> {
               border: Border.all(color: borderColor, width: 2),
             ),
             padding: const EdgeInsets.all(14),
-            child: AspectRatio(
-              aspectRatio: 1,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    height: 46,
-                    width: 46,
-                    decoration: BoxDecoration(
-                      color: widget.data.accent.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(widget.data.icon, color: widget.data.accent),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  height: 46,
+                  width: 46,
+                  decoration: BoxDecoration(
+                    color: widget.data.accent.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  const Spacer(),
-                  Text(
-                    widget.data.title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  child: Icon(widget.data.icon, color: widget.data.accent),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  widget.data.title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    widget.data.subtitle,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  widget.data.subtitle,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
-                ],
-              ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
         ),

@@ -35,20 +35,23 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
   late Future<_PaidData> _futureData;
   String? _selectedCategoryCode;
   List<UnitInfo> _units = [];
-  late String _selectedUnitId;
-  static const String _allUnitsKey = 'ALL_UNITS';
+  String? _selectedUnitId;
   static const String _allMonthsKey = 'ALL';
+  static const Set<String> _utilityCategoryCodes = {
+    'ELECTRIC',
+    'ELECTRICITY',
+    'WATER',
+  };
   String _selectedMonthKey = _allMonthsKey;
 
   Future<_PaidData> _loadData() async {
-    String? unitFilter =
-        _selectedUnitId == _allUnitsKey ? null : _selectedUnitId;
+    String? unitFilter = _selectedUnitId;
+    if (unitFilter == null || unitFilter.isEmpty) {
+      unitFilter = widget.initialUnitId;
+    }
     if (unitFilter == null || unitFilter.isEmpty) {
       if (_units.isNotEmpty) {
         unitFilter = _units.first.id;
-      } else if (widget.initialUnitId != null &&
-          widget.initialUnitId!.isNotEmpty) {
-        unitFilter = widget.initialUnitId;
       }
     }
 
@@ -80,7 +83,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
     _units = widget.initialUnits != null
         ? List<UnitInfo>.from(widget.initialUnits!)
         : <UnitInfo>[];
-    _selectedUnitId = _allUnitsKey;
+    _selectedUnitId = widget.initialUnitId;
     _selectedMonthKey = _allMonthsKey;
     _futureData = _loadData();
   }
@@ -214,7 +217,8 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
 
               final rawCategories = snapshot.data?.categories ?? [];
               final paidBookings = snapshot.data?.paidBookings ?? [];
-              final monthOptions = _buildMonthOptions(rawCategories);
+              final utilityCategories = _filterUtilityCategories(rawCategories);
+              final monthOptions = _buildMonthOptions(utilityCategories);
 
               if (_selectedMonthKey != _allMonthsKey &&
                   !monthOptions.any((opt) => opt.key == _selectedMonthKey)) {
@@ -228,7 +232,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
               }
 
               final categories =
-                  _filterCategoriesByMonth(rawCategories, _selectedMonthKey);
+                  _filterCategoriesByMonth(utilityCategories, _selectedMonthKey);
 
               InvoiceCategory? selectedCategory;
               if (categories.isNotEmpty) {
@@ -247,7 +251,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
               }
 
               final content = <Widget>[
-                _buildUnitFilterCard(),
+                _buildUnitContextCard(),
                 const SizedBox(height: 18),
                 _buildMonthFilterCard(monthOptions),
                 const SizedBox(height: 18),
@@ -688,86 +692,49 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
     );
   }
 
-  Widget _buildUnitFilterCard() {
+  Widget _buildUnitContextCard() {
     final theme = Theme.of(context);
-    final options = <_UnitOption>[
-      const _UnitOption(_allUnitsKey, 'Tất cả căn hộ'),
-      ..._units.map((unit) => _UnitOption(unit.id, unit.displayName)),
-    ];
-
-    final current = _selectedUnitId;
+    final unitName = _unitDisplayName(_selectedUnitId) ??
+        _unitDisplayName(widget.initialUnitId) ??
+        'Tất cả căn hộ';
 
     return _PaidGlassCard(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(
-            'Lọc theo căn hộ',
-            style: theme.textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+          Icon(
+            Icons.apartment_outlined,
+            color: theme.colorScheme.primary,
+            size: 32,
           ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 12,
-            runSpacing: 10,
-            children: options.map((option) {
-              final selected = current == option.id;
-              final accent = theme.colorScheme.primary;
-
-              return GestureDetector(
-                onTap: () {
-                  if (_selectedUnitId == option.id) return;
-                  setState(() {
-                    _selectedUnitId = option.id;
-                    _selectedCategoryCode = null;
-                    _selectedMonthKey = _allMonthsKey;
-                    _futureData = _loadData();
-                  });
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    color: selected
-                        ? accent.withValues(alpha: 0.18)
-                        : theme.brightness == Brightness.dark
-                            ? theme.colorScheme.surface.withValues(alpha: 0.12)
-                            : Colors.white.withValues(alpha: 0.78),
-                    border: Border.all(
-                      color: selected
-                          ? accent.withValues(alpha: 0.7)
-                          : theme.colorScheme.outline.withValues(alpha: 0.12),
-                    ),
-                    boxShadow: selected ? AppColors.subtleShadow : const [],
-                  ),
-                  child: Text(
-                    option.label,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      color: selected
-                          ? accent
-                          : theme.colorScheme.onSurfaceVariant,
-                    ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Căn hộ hiện tại',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-              );
-            }).toList(),
-          ),
-          if (_units.isEmpty) ...[
-            const SizedBox(height: 12),
-            Text(
-              'Bạn chưa được gán vào căn hộ nào, hiển thị tất cả hóa đơn.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+                const SizedBox(height: 4),
+                Text(
+                  unitName,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Dữ liệu chỉ hiển thị theo căn hộ bạn chọn trong Cài đặt.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -985,6 +952,23 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen> {
     ];
 
     return options;
+  }
+
+  List<InvoiceCategory> _filterUtilityCategories(List<InvoiceCategory> categories) {
+    return categories
+        .where((category) =>
+            _utilityCategoryCodes.contains(category.categoryCode.toUpperCase()))
+        .toList();
+  }
+
+  String? _unitDisplayName(String? unitId) {
+    if (unitId == null || unitId.isEmpty) return null;
+    for (final unit in _units) {
+      if (unit.id == unitId) {
+        return unit.displayName;
+      }
+    }
+    return null;
   }
 
   List<InvoiceCategory> _filterCategoriesByMonth(
@@ -1572,13 +1556,6 @@ class _PaidData {
   final List<Map<String, dynamic>> paidBookings;
 
   const _PaidData({required this.categories, required this.paidBookings});
-}
-
-class _UnitOption {
-  final String id;
-  final String label;
-
-  const _UnitOption(this.id, this.label);
 }
 
 class _PaidGlassCard extends StatelessWidget {
