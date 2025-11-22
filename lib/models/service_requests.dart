@@ -72,6 +72,9 @@ class MaintenanceRequestSummary {
     required this.createdAt,
     this.preferredDatetime,
     this.note,
+    this.lastResentAt,
+    this.resendAlertSent = false,
+    this.callAlertSent = false,
   });
 
   final String id;
@@ -82,6 +85,9 @@ class MaintenanceRequestSummary {
   final DateTime createdAt;
   final DateTime? preferredDatetime;
   final String? note;
+  final DateTime? lastResentAt;
+  final bool resendAlertSent;
+  final bool callAlertSent;
 
   factory MaintenanceRequestSummary.fromJson(Map<String, dynamic> json) {
     return MaintenanceRequestSummary(
@@ -93,6 +99,9 @@ class MaintenanceRequestSummary {
       createdAt: _parseDateTime(json['createdAt']) ?? DateTime.now(),
       preferredDatetime: _parseDateTime(json['preferredDatetime']),
       note: json['note']?.toString(),
+      lastResentAt: _parseDateTime(json['lastResentAt']),
+      resendAlertSent: _parseBool(json['resendAlertSent']),
+      callAlertSent: _parseBool(json['callAlertSent']),
     );
   }
 }

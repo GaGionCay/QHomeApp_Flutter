@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 
 import '../auth/api_client.dart';
@@ -38,7 +39,9 @@ class _ServiceRequestsOverviewScreenState
   final _timeFormatter = DateFormat('HH:mm');
   final Set<String> _cancellingRequestIds = {};
   final Set<String> _resendingRequestIds = {};
+  final Set<String> _resendingMaintenanceRequestIds = {};
   Timer? _cleaningRequestRefreshTimer;
+  MaintenanceRequestConfig? _maintenanceConfig;
   static const int _pageSize = 6;
 
   @override
@@ -49,6 +52,7 @@ class _ServiceRequestsOverviewScreenState
     _maintenanceService = MaintenanceRequestService(_apiClient);
     _eventBus = AppEventBus();
     _loadData();
+    _loadMaintenanceConfig();
     _setupNotificationListeners();
     _schedulePeriodicRefresh();
   }
@@ -74,6 +78,24 @@ class _ServiceRequestsOverviewScreenState
         unawaited(_loadData());
       },
     );
+  }
+
+  Future<void> _loadMaintenanceConfig() async {
+    try {
+      final config = await _maintenanceService.getConfig();
+      if (mounted) {
+        setState(() {
+          _maintenanceConfig = config;
+        });
+      }
+    } catch (e) {
+      // Use default config on error
+      if (mounted) {
+        setState(() {
+          _maintenanceConfig = MaintenanceRequestConfig.defaultConfig();
+        });
+      }
+    }
   }
 
   Future<void> _loadData() async {
@@ -238,6 +260,21 @@ class _ServiceRequestsOverviewScreenState
     return true;
   }
 
+  bool _shouldShowResendButtonMaintenance(MaintenanceRequestSummary request) {
+    final normalizedStatus = request.status.toUpperCase();
+    if (!normalizedStatus.contains('PENDING')) return false;
+    if (request.resendAlertSent != true) return false;
+    if (request.callAlertSent == true) return false; // Show call button instead
+    return true;
+  }
+
+  bool _shouldShowCallButtonMaintenance(MaintenanceRequestSummary request) {
+    final normalizedStatus = request.status.toUpperCase();
+    if (!normalizedStatus.contains('PENDING')) return false;
+    if (request.callAlertSent != true) return false;
+    return true;
+  }
+
   Future<void> _resendCleaningRequest(String requestId) async {
     if (_resendingRequestIds.contains(requestId)) return;
     setState(() => _resendingRequestIds.add(requestId));
@@ -262,6 +299,47 @@ class _ServiceRequestsOverviewScreenState
       if (mounted) {
         setState(() => _resendingRequestIds.remove(requestId));
       }
+    }
+  }
+
+  Future<void> _resendMaintenanceRequest(String requestId) async {
+    if (_resendingMaintenanceRequestIds.contains(requestId)) return;
+    setState(() => _resendingMaintenanceRequestIds.add(requestId));
+    try {
+      await _maintenanceService.resendRequest(requestId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Yêu cầu sửa chữa đã được gửi lại.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+      await _loadData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể gửi lại yêu cầu sửa chữa: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _resendingMaintenanceRequestIds.remove(requestId));
+      }
+    }
+  }
+
+  Future<void> _callAdmin(String phoneNumber) async {
+    final uri = Uri.parse('tel:$phoneNumber');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể gọi số điện thoại: $phoneNumber'),
+        ),
+      );
     }
   }
 
@@ -324,33 +402,33 @@ class _ServiceRequestsOverviewScreenState
                   _cleaningRequests.length + (_hasMoreCleaningRequests ? 1 : 0),
               itemBuilder: (context, index) {
                 if (index < _cleaningRequests.length) {
-                  final request = _cleaningRequests[index];
-                  final scheduleText = request.scheduledAt != null
-                      ? '${_dateFormatter.format(request.scheduledAt!)} • ${_timeFormatter.format(request.scheduledAt!)}'
-                      : 'Chưa xác định thời gian';
-                  final extra = request.extraServices.isEmpty
-                      ? null
-                      : 'Bao gồm: ${request.extraServices.join(', ')}';
-                  final canCancel = _isCancelable(request.status);
+                final request = _cleaningRequests[index];
+                final scheduleText = request.scheduledAt != null
+                    ? '${_dateFormatter.format(request.scheduledAt!)} • ${_timeFormatter.format(request.scheduledAt!)}'
+                    : 'Chưa xác định thời gian';
+                final extra = request.extraServices.isEmpty
+                    ? null
+                    : 'Bao gồm: ${request.extraServices.join(', ')}';
+                final canCancel = _isCancelable(request.status);
                   final canResend = _shouldShowResendButton(request);
-                  return _RequestCard(
-                    icon: Icons.cleaning_services_outlined,
-                    accent: AppColors.primaryAqua,
-                    title: request.cleaningType,
-                    subtitle: '$scheduleText • ${request.location}',
-                    note: extra ?? request.note,
-                    status: request.status,
-                    createdAt: request.createdAt,
+                return _RequestCard(
+                  icon: Icons.cleaning_services_outlined,
+                  accent: AppColors.primaryAqua,
+                  title: request.cleaningType,
+                  subtitle: '$scheduleText • ${request.location}',
+                  note: extra ?? request.note,
+                  status: request.status,
+                  createdAt: request.createdAt,
                     lastResentAt: request.lastResentAt,
                     onCancel: canCancel
                         ? () => _cancelCleaningRequest(request.id)
                         : null,
-                    isCanceling: _cancellingRequestIds.contains(request.id),
+                  isCanceling: _cancellingRequestIds.contains(request.id),
                     onResend: canResend
                         ? () => _resendCleaningRequest(request.id)
                         : null,
                     isResending: _resendingRequestIds.contains(request.id),
-                  );
+                );
                 }
                 return _buildLoadMoreTile(isCleaning: true);
               },
@@ -373,25 +451,36 @@ class _ServiceRequestsOverviewScreenState
                   (_hasMoreMaintenanceRequests ? 1 : 0),
               itemBuilder: (context, index) {
                 if (index < _maintenanceRequests.length) {
-                  final request = _maintenanceRequests[index];
-                  final preferred = request.preferredDatetime != null
-                      ? '${_dateFormatter.format(request.preferredDatetime!)} • ${_timeFormatter.format(request.preferredDatetime!)}'
-                      : 'Chưa xác định thời gian';
-                  final canCancel = _isCancelable(request.status);
-                  return _RequestCard(
-                    icon: Icons.handyman_outlined,
-                    accent: AppColors.primaryBlue,
-                    title: request.title,
+                final request = _maintenanceRequests[index];
+                final preferred = request.preferredDatetime != null
+                    ? '${_dateFormatter.format(request.preferredDatetime!)} • ${_timeFormatter.format(request.preferredDatetime!)}'
+                    : 'Chưa xác định thời gian';
+                final canCancel = _isCancelable(request.status);
+                final canResend = _shouldShowResendButtonMaintenance(request);
+                final canCall = _shouldShowCallButtonMaintenance(request);
+                final adminPhone = _maintenanceConfig?.adminPhone ?? '0984000036';
+                return _RequestCard(
+                  icon: Icons.handyman_outlined,
+                  accent: AppColors.primaryBlue,
+                  title: request.title,
                     subtitle:
                         '${request.category} • ${request.location}\n$preferred',
-                    note: request.note,
-                    status: request.status,
-                    createdAt: request.createdAt,
+                  note: request.note,
+                  status: request.status,
+                  createdAt: request.createdAt,
+                    lastResentAt: request.lastResentAt,
                     onCancel: canCancel
                         ? () => _cancelMaintenanceRequest(request.id)
                         : null,
-                    isCanceling: _cancellingRequestIds.contains(request.id),
-                  );
+                  isCanceling: _cancellingRequestIds.contains(request.id),
+                    onResend: canResend
+                        ? () => _resendMaintenanceRequest(request.id)
+                        : null,
+                    isResending: _resendingMaintenanceRequestIds.contains(request.id),
+                    onCall: canCall
+                        ? () => _callAdmin(adminPhone)
+                        : null,
+                );
                 }
                 return _buildLoadMoreTile(isCleaning: false);
               },
@@ -422,7 +511,7 @@ class _ServiceRequestsOverviewScreenState
               : const Icon(Icons.more_horiz),
           label: Text(isLoading ? 'Đang tải...' : label),
         ),
-      ),
+            ),
     );
   }
 }
@@ -441,6 +530,7 @@ class _RequestCard extends StatelessWidget {
     this.isCanceling = false,
     this.onResend,
     this.isResending = false,
+    this.onCall,
   });
 
   final IconData icon;
@@ -455,6 +545,7 @@ class _RequestCard extends StatelessWidget {
   final bool isCanceling;
   final VoidCallback? onResend;
   final bool isResending;
+  final VoidCallback? onCall;
 
   Color _statusColor(BuildContext context) {
     final normalized = status.toUpperCase();
@@ -555,13 +646,22 @@ class _RequestCard extends StatelessWidget {
               ),
             ),
           ],
-          if (onResend != null || onCancel != null) ...[
+          if (onResend != null || onCall != null || onCancel != null) ...[
             const SizedBox(height: 8),
             Wrap(
               alignment: WrapAlignment.end,
               spacing: 8,
               runSpacing: 8,
               children: [
+                if (onCall != null)
+                  FilledButton.icon(
+                    onPressed: onCall,
+                    icon: const Icon(Icons.phone, size: 18),
+                    label: const Text('Gọi ADMIN'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.danger,
+                    ),
+                  ),
                 if (onResend != null)
                   FilledButton.icon(
                     onPressed: isResending ? null : onResend,
@@ -581,16 +681,16 @@ class _RequestCard extends StatelessWidget {
                   ),
                 if (onCancel != null)
                   TextButton.icon(
-                    onPressed: isCanceling ? null : onCancel,
-                    icon: isCanceling
-                        ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.cancel_outlined, size: 18),
+                onPressed: isCanceling ? null : onCancel,
+                icon: isCanceling
+                    ? const SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.cancel_outlined, size: 18),
                     label: Text(isCanceling ? 'Đang hủy...' : 'Hủy'),
-                  ),
+              ),
               ],
             ),
           ],

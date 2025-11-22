@@ -91,4 +91,61 @@ class MaintenanceRequestService {
       );
     }
   }
+
+  Future<void> resendRequest(String requestId) async {
+    try {
+      await _dio.post('/maintenance-requests/$requestId/resend');
+    } on DioException catch (dioErr) {
+      final message = dioErr.response?.data is Map<String, dynamic>
+          ? (dioErr.response?.data['message'] as String?)
+          : dioErr.message;
+      throw Exception(
+        message?.isNotEmpty == true
+            ? message
+            : 'Không thể gửi lại yêu cầu sửa chữa.',
+      );
+    }
+  }
+
+  Future<MaintenanceRequestConfig> getConfig() async {
+    try {
+      final response = await _dio.get('/maintenance-requests/config');
+      return MaintenanceRequestConfig.fromJson(response.data);
+    } on DioException {
+      // Return default config on error
+      return MaintenanceRequestConfig.defaultConfig();
+    }
+  }
+}
+
+class MaintenanceRequestConfig {
+  final Duration reminderThreshold;
+  final Duration callThreshold;
+  final String adminPhone;
+
+  MaintenanceRequestConfig({
+    required this.reminderThreshold,
+    required this.callThreshold,
+    required this.adminPhone,
+  });
+
+  factory MaintenanceRequestConfig.fromJson(Map<String, dynamic> json) {
+    return MaintenanceRequestConfig(
+      reminderThreshold: Duration(
+        minutes: json['reminderThresholdMinutes'] ?? 30,
+      ),
+      callThreshold: Duration(
+        minutes: json['callThresholdMinutes'] ?? 60,
+      ),
+      adminPhone: json['adminPhone'] ?? '0984000036',
+    );
+  }
+
+  factory MaintenanceRequestConfig.defaultConfig() {
+    return MaintenanceRequestConfig(
+      reminderThreshold: const Duration(minutes: 30),
+      callThreshold: const Duration(minutes: 60),
+      adminPhone: '0984000036',
+    );
+  }
 }

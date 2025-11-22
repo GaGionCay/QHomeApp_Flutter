@@ -958,6 +958,10 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
         return 'Đã duyệt';
       case 'ISSUED':
         return 'Đã phát hành';
+      case 'NEEDS_RENEWAL':
+        return 'Cần gia hạn';
+      case 'SUSPENDED':
+        return 'Tạm ngưng';
       case 'READY_FOR_PAYMENT':
         return 'Chờ thanh toán';
       case 'PAYMENT_PENDING':
@@ -988,6 +992,10 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
       case 'ACTIVE':
       case 'ISSUED':
         return AppColors.success;
+      case 'NEEDS_RENEWAL':
+        return AppColors.warning; // Màu vàng để nhắc người dùng
+      case 'SUSPENDED':
+        return theme.colorScheme.error; // Màu đỏ để cảnh báo
       case 'READY_FOR_PAYMENT':
         return theme.colorScheme.error;
       case 'PAYMENT_PENDING':
@@ -1253,6 +1261,27 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
     return diff.inMinutes <= 10;
   }
 
+  bool _canRenewCard() {
+    final status = widget.card.status?.trim().toUpperCase() ?? '';
+    final paymentStatus = widget.card.paymentStatus?.trim().toUpperCase() ?? '';
+    
+    // Chỉ cho phép gia hạn nếu:
+    // 1. status = NEEDS_RENEWAL (cần gia hạn sau 30 ngày)
+    // 2. paymentStatus = PAID (đã thanh toán trước đó)
+    // 3. Có approvedAt (đã được admin approve)
+    if (status != 'NEEDS_RENEWAL' && status != 'SUSPENDED') {
+      return false;
+    }
+    if (paymentStatus != 'PAID') {
+      return false;
+    }
+    if (widget.card.approvedAt == null) {
+      return false;
+    }
+    
+    return true;
+  }
+
   Future<void> _resumePayment() async {
     if (_isProcessingPayment) return;
 
@@ -1278,6 +1307,60 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
 
       if (res.statusCode != 200) {
         throw Exception('Không thể tạo liên kết thanh toán');
+      }
+
+      final paymentUrl = res.data['paymentUrl']?.toString();
+      if (paymentUrl == null || paymentUrl.isEmpty) {
+        throw Exception('Không nhận được đường dẫn thanh toán');
+      }
+
+      // Refresh danh sách sau khi tạo link thanh toán
+      widget.onRefresh();
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+      await _launchPaymentUrl(paymentUrl);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingPayment = false);
+      }
+    }
+  }
+
+  Future<void> _renewCard() async {
+    if (_isProcessingPayment) return;
+
+    setState(() => _isProcessingPayment = true);
+
+    try {
+      final client = await _getServicesCardClient();
+      final cardType = widget.card.cardType.toUpperCase();
+
+      // Xác định endpoint dựa trên loại thẻ (dùng resume-payment endpoint cho gia hạn)
+      String endpoint;
+      if (cardType.contains('ELEVATOR')) {
+        endpoint = '/elevator-card/${widget.card.id}/resume-payment';
+      } else if (cardType.contains('RESIDENT')) {
+        endpoint = '/resident-card/${widget.card.id}/resume-payment';
+      } else if (cardType.contains('VEHICLE')) {
+        endpoint = '/register-service/${widget.card.id}/resume-payment';
+      } else {
+        throw Exception('Loại thẻ không được hỗ trợ');
+      }
+
+      final res = await client.post(endpoint);
+
+      if (res.statusCode != 200) {
+        throw Exception('Không thể tạo liên kết thanh toán gia hạn');
       }
 
       final paymentUrl = res.data['paymentUrl']?.toString();
@@ -1765,6 +1848,10 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
         return 'Đã duyệt';
       case 'ISSUED':
         return 'Đã phát hành';
+      case 'NEEDS_RENEWAL':
+        return 'Cần gia hạn';
+      case 'SUSPENDED':
+        return 'Tạm ngưng';
       case 'READY_FOR_PAYMENT':
         return 'Chờ thanh toán';
       case 'PAYMENT_PENDING':
@@ -1793,6 +1880,10 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
       case 'ACTIVE':
       case 'ISSUED':
         return AppColors.success;
+      case 'NEEDS_RENEWAL':
+        return AppColors.warning; // Màu vàng để nhắc người dùng
+      case 'SUSPENDED':
+        return theme.colorScheme.error; // Màu đỏ để cảnh báo
       case 'READY_FOR_PAYMENT':
         return theme.colorScheme.error;
       case 'PAYMENT_PENDING':
@@ -1872,6 +1963,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final canResume = _canResumePayment();
+    final canRenew = _canRenewCard();
     final canRequestReplacement = _canRequestReplacement();
     final canCancel = _canCancelCard();
 
@@ -1966,8 +2058,57 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
 
                   const SizedBox(height: 24),
 
-                  // Resume payment button (cho cả 3 loại thẻ)
-                  if (canResume)
+                  // Renew card button (khi thẻ cần gia hạn)
+                  if (canRenew)
+                    FilledButton.icon(
+                      onPressed: _isProcessingPayment ? null : _renewCard,
+                      icon: _isProcessingPayment
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.refresh),
+                      label: Text(_isProcessingPayment
+                          ? 'Đang xử lý...'
+                          : 'Gia hạn thẻ'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: AppColors.primaryAqua,
+                      ),
+                    ),
+
+                  if (canRenew) const SizedBox(height: 12),
+
+                  // Info message for renewal
+                  if (canRenew)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color:
+                            theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline,
+                              size: 20, color: theme.colorScheme.primary),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Thẻ của bạn đã hết hạn. Vui lòng thanh toán để gia hạn thẻ.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.7),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // Resume payment button (cho đăng ký mới, chưa thanh toán)
+                  if (canResume && !canRenew)
                     FilledButton.icon(
                       onPressed: _isProcessingPayment ? null : _resumePayment,
                       icon: _isProcessingPayment
@@ -1985,10 +2126,10 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
                       ),
                     ),
 
-                  if (canResume) const SizedBox(height: 12),
+                  if (canResume && !canRenew) const SizedBox(height: 12),
 
                   // Info message
-                  if (canResume)
+                  if (canResume && !canRenew)
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
