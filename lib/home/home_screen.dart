@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
@@ -25,11 +26,11 @@ import '../residents/household_member_request_screen.dart';
 import '../residents/household_member_request_status_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:app_links/app_links.dart';
-import 'dart:async';
 import '../residents/household_member_registration_screen.dart';
 import '../residents/account_request_status_screen.dart';
 import '../auth/asset_maintenance_api_client.dart';
 import '../service_registration/service_booking_service.dart';
+import '../service_registration/cleaning_request_service.dart';
 import '../service_registration/unpaid_service_bookings_screen.dart';
 import '../feedback/feedback_screen.dart';
 import '../theme/app_colors.dart';
@@ -42,6 +43,7 @@ import '../register/register_elevator_card_screen.dart';
 import '../register/register_resident_card_screen.dart';
 import '../qr/qr_scanner_screen.dart';
 import '../service_registration/service_requests_overview_screen.dart';
+import '../models/service_requests.dart';
 
 class HomeScreen extends StatefulWidget {
   final void Function(int)? onNavigateToTab;
@@ -60,6 +62,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _eventBus = AppEventBus();
   late AppLinks _appLinks;
   StreamSubscription? _paymentSub;
+  late final CleaningRequestService _cleaningRequestService;
 
   Map<String, dynamic>? _profile;
   // Removed: List<NewsItem> _notifications = []; - now using ResidentNews from admin API
@@ -85,6 +88,17 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _selectedUnitPrefsKey = 'selected_unit_id';
 
   bool _loading = true;
+  CleaningRequestSummary? _pendingCleaningRequest;
+  Timer? _resendVisibilityTimer;
+  Timer? _cleaningRequestRefreshTimer;
+  bool _isResendInProgress = false;
+  Duration? _resendCancelWindow;
+  Duration? _noResendCancelWindow;
+
+  static const Duration _resendButtonThreshold = Duration.zero;
+  static const Duration _defaultResendCancelWindow = Duration(hours: 5); // Fallback
+  static const Duration _defaultNoResendCancelWindow = Duration(hours: 6); // Fallback
+  static const int _serviceRequestPageSize = 8;
 
   @override
   void initState() {
@@ -93,6 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _contractService = ContractService(_apiClient);
     _assetMaintenanceClient = AssetMaintenanceApiClient();
     _serviceBookingService = ServiceBookingService(_assetMaintenanceClient);
+    _cleaningRequestService = CleaningRequestService(_apiClient);
     _appLinks = AppLinks();
     _initialize();
     _listenForPaymentResult();
@@ -106,6 +121,8 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint(
           '🔔 HomeScreen nhận event notifications_update -> cập nhật quick alerts...');
       await _loadUnreadNotifications();
+      // Also refresh cleaning request state to update resend button visibility
+      await _loadCleaningRequestState();
     });
     // Listen for new incoming notifications via WebSocket - update count immediately without API call
     _eventBus.on('notifications_incoming', (_) {
@@ -118,6 +135,8 @@ class _HomeScreenState extends State<HomeScreen> {
         debugPrint(
             '✅ Đã tăng unread notification count: $_unreadNotificationCount');
       }
+      // Also refresh cleaning request state when new notification arrives
+      unawaited(_loadCleaningRequestState());
     });
     _eventBus.on('unit_context_changed', (data) {
       if (!mounted) return;
@@ -221,10 +240,120 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) {
       setState(() => _loading = false);
     }
+
+    await _loadCleaningRequestState();
+  }
+
+  Future<void> _loadCleaningRequestState() async {
+    try {
+      // Load config first if not loaded
+      if (_resendCancelWindow == null || _noResendCancelWindow == null) {
+        try {
+          final config = await _cleaningRequestService.getConfig();
+          if (mounted) {
+            setState(() {
+              _resendCancelWindow = config.resendCancelThreshold;
+              _noResendCancelWindow = config.noResendCancelThreshold;
+            });
+          }
+        } catch (e) {
+          // Use defaults if config load fails
+          if (mounted) {
+            setState(() {
+              _resendCancelWindow = _defaultResendCancelWindow;
+              _noResendCancelWindow = _defaultNoResendCancelWindow;
+            });
+          }
+        }
+      }
+
+      final page = await _cleaningRequestService.getMyRequests(
+        limit: _serviceRequestPageSize,
+        offset: 0,
+      );
+      _updatePendingCleaningRequest(page.requests);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _pendingCleaningRequest = null;
+      });
+      _scheduleResendButton(null);
+    }
+  }
+
+  void _updatePendingCleaningRequest(List<CleaningRequestSummary> requests) {
+    final pending = requests.where(_isPendingCleaningRequest).toList()
+      ..sort((a, b) =>
+          _resendReferenceTimestamp(b).compareTo(_resendReferenceTimestamp(a)));
+    final candidate = pending.isNotEmpty ? pending.first : null;
+    if (!mounted) return;
+    setState(() {
+      _pendingCleaningRequest = candidate;
+    });
+    _scheduleResendButton(candidate);
+    _scheduleCleaningRequestRefresh(candidate);
   }
 
   Future<void> _refreshAll() async {
     await _loadAllData();
+  }
+
+  bool _isPendingCleaningRequest(CleaningRequestSummary request) {
+    final normalized = request.status.toUpperCase();
+    const finalKeywords = ['APPROVED', 'COMPLETED', 'DONE', 'CANCEL', 'REJECT'];
+    if (finalKeywords.any((keyword) => normalized.contains(keyword))) {
+      return false;
+    }
+    return normalized.contains('PENDING') ||
+        normalized.contains('NEW') ||
+        normalized.isNotEmpty;
+  }
+
+  DateTime _resendReferenceTimestamp(CleaningRequestSummary request) =>
+      request.lastResentAt ?? request.updatedAt ?? request.createdAt;
+
+  void _scheduleResendButton(CleaningRequestSummary? request) {
+    _resendVisibilityTimer?.cancel();
+    if (request == null || !_isPendingCleaningRequest(request)) return;
+    final target =
+        _resendReferenceTimestamp(request).add(_resendButtonThreshold);
+    final now = DateTime.now();
+    if (!target.isAfter(now)) {
+      if (mounted) {
+        setState(() {});
+      }
+      return;
+    }
+    _resendVisibilityTimer = Timer(target.difference(now), () {
+      if (!mounted) return;
+      setState(() {});
+    });
+  }
+
+  void _clearResendTimer() {
+    _resendVisibilityTimer?.cancel();
+    _resendVisibilityTimer = null;
+  }
+
+  void _scheduleCleaningRequestRefresh(CleaningRequestSummary? request) {
+    _cleaningRequestRefreshTimer?.cancel();
+    if (request == null || !_isPendingCleaningRequest(request)) {
+      return;
+    }
+    // Refresh every 1 minute to check for resendAlertSent updates
+    _cleaningRequestRefreshTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      debugPrint('🔄 Periodic refresh: Checking cleaning request state...');
+      unawaited(_loadCleaningRequestState());
+    });
+  }
+
+  void _clearCleaningRequestRefreshTimer() {
+    _cleaningRequestRefreshTimer?.cancel();
+    _cleaningRequestRefreshTimer = null;
   }
 
   Future<void> _loadUnpaidServices() async {
@@ -590,18 +719,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final theme = Theme.of(context);
 
-        return _HomeGlassCard(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(20),
-            onTap: _openUnpaidBookingsScreen,
-            child: Row(
-              children: [
-                Container(
-                  height: 48,
-                  width: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.warning.withValues(alpha: 0.16),
+    return _HomeGlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: _openUnpaidBookingsScreen,
+        child: Row(
+          children: [
+            Container(
+              height: 48,
+              width: 48,
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.16),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: const Icon(
@@ -625,7 +754,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text(
                     'Bạn có $_unpaidBookingCount dịch vụ cần xử lý.',
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+                      color:
+                          theme.colorScheme.onSurface.withValues(alpha: 0.65),
                     ),
                   ),
                 ],
@@ -664,7 +794,8 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Không xác định được cư dân hoặc căn hộ để hiển thị thẻ'),
+          content:
+              Text('Không xác định được cư dân hoặc căn hộ để hiển thị thẻ'),
         ),
       );
       return;
@@ -738,6 +869,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _clearResendTimer();
+    _clearCleaningRequestRefreshTimer();
     _paymentSub?.cancel();
     super.dispose();
   }
@@ -996,9 +1129,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15),
+                  color: Colors.white.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
+                  border: Border.all(
                     color: Colors.white.withValues(alpha: 0.2),
                     width: 1,
                   ),
@@ -1065,7 +1198,7 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       child: Container(
         padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
+        decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
@@ -1092,7 +1225,7 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
+            decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
@@ -1417,9 +1550,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: Text(
                             'Đang cập nhật khí hậu...',
                             style: textTheme.bodyMedium?.copyWith(
-                                      color:
-                                        theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                                    ),
+                              color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.7),
+                            ),
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
                           ),
@@ -1431,7 +1564,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           _weatherError ?? 'Không lấy được thời tiết',
                           key: const ValueKey('weather-error'),
                           style: textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.7),
                           ),
                         )
                       : Column(
@@ -1462,7 +1596,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     'Độ ẩm ${snapshot.humidity?.toStringAsFixed(0)}%',
                                 ].join(' · '),
                                 style: textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.onSurface
+                                  color: theme.colorScheme.onSurface
                                       .withValues(alpha: 0.6),
                                 ),
                               ),
@@ -1470,8 +1604,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             Text(
                               'Cập nhật ${_formatTime(snapshot.fetchedAt)}',
                               style: textTheme.labelSmall?.copyWith(
-                                    color: theme.colorScheme.onSurface
-                                      .withValues(alpha: 0.45),
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.45),
                                 letterSpacing: 0.2,
                               ),
                             ),
@@ -1542,9 +1676,143 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
             ],
           ),
+          if (_shouldShowResendCleaningPrompt) ...[
+            const SizedBox(height: 14),
+            _buildCleaningResendPrompt(),
+          ],
         ],
       ),
     );
+  }
+
+  bool get _shouldShowResendCleaningPrompt {
+    final request = _pendingCleaningRequest;
+    if (request == null || !_isPendingCleaningRequest(request)) return false;
+    if (!request.resendAlertSent) return false;
+    // Show button immediately after reminder is sent
+    return true;
+  }
+
+  Duration _timeSinceReference(CleaningRequestSummary request) =>
+      DateTime.now().difference(_resendReferenceTimestamp(request));
+
+  Duration _timeUntilAutoCancel(CleaningRequestSummary request) {
+    final now = DateTime.now();
+    final resendWindow = _resendCancelWindow ?? _defaultResendCancelWindow;
+    final noResendWindow = _noResendCancelWindow ?? _defaultNoResendCancelWindow;
+    
+    if (request.lastResentAt != null) {
+      // If already resent: cancel after resendCancelThreshold from lastResentAt
+      final elapsedSinceResend = now.difference(request.lastResentAt!);
+      final remaining = resendWindow - elapsedSinceResend;
+      return remaining.isNegative ? Duration.zero : remaining;
+    } else {
+      // If not resent: cancel after noResendCancelThreshold from createdAt
+      final elapsedSinceCreation = now.difference(request.createdAt);
+      final remaining = noResendWindow - elapsedSinceCreation;
+      return remaining.isNegative ? Duration.zero : remaining;
+    }
+  }
+
+  String _formatDurationLabel(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes % 60;
+    final parts = <String>[];
+    if (hours > 0) parts.add('$hours giờ');
+    if (minutes > 0) parts.add('$minutes phút');
+    if (parts.isEmpty) return '${duration.inSeconds} giây';
+    return parts.join(' ');
+  }
+
+  Widget _buildCleaningResendPrompt() {
+    final request = _pendingCleaningRequest!;
+    final elapsed = _timeSinceReference(request);
+    final remaining = _timeUntilAutoCancel(request);
+    final autoCancelLabel = remaining > Duration.zero
+        ? 'Nếu không gửi lại, yêu cầu tự hủy sau ${_formatDurationLabel(remaining)}.'
+        : 'Yêu cầu đang sắp tự hủy.';
+
+    return _HomeGlassCard(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.cleaning_services_outlined,
+                  color: AppColors.primaryAqua),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Admin chưa phản hồi yêu cầu dọn dẹp của bạn sau ${_formatDurationLabel(elapsed)}.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            request.lastResentAt != null
+                ? 'Nhấn "Gửi lại yêu cầu" để tiếp tục chờ hồi đáp từ admin.'
+                : 'Nhấn "Gửi lại yêu cầu" để kích hoạt lại chu kỳ và tiếp tục chờ hồi đáp.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            autoCancelLabel,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 14),
+          FilledButton.icon(
+            onPressed: _isResendInProgress ? null : _onSendCleaningRequestAgain,
+            icon: _isResendInProgress
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+            label: Text(_isResendInProgress
+                ? 'Đang gửi lại...'
+                : 'Gửi lại yêu cầu dọn dẹp'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _onSendCleaningRequestAgain() async {
+    final request = _pendingCleaningRequest;
+    if (request == null) return;
+    setState(() => _isResendInProgress = true);
+    try {
+      await _cleaningRequestService.resendRequest(request.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Yêu cầu dọn dẹp đã được gửi lại.'),
+          backgroundColor: AppColors.primaryEmerald,
+        ),
+      );
+      await _loadCleaningRequestState();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể gửi lại yêu cầu: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isResendInProgress = false);
+      }
+    }
   }
 
   Widget _buildElectricityChartSection(Size size) {
@@ -1736,26 +2004,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const Divider(),
           _HomeActionTile(
-            icon: Icons.assignment_turned_in_outlined,
-            accentColor: AppColors.warning,
-            title: 'Theo dõi đăng ký thành viên',
-            subtitle: const [
-              'Xem trạng thái các yêu cầu thêm thành viên đã gửi.',
-            ],
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => HouseholdMemberRequestStatusScreen(
-                    unit: selectedOwnerUnit,
-                  ),
-                ),
-              );
-            },
-            actionLabel: 'Xem danh sách',
-          ),
-          const Divider(),
-          _HomeActionTile(
             icon: Icons.group_add_outlined,
             accentColor: AppColors.primaryEmerald,
             title: 'Đăng ký tài khoản cho thành viên',
@@ -1773,6 +2021,26 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
             actionLabel: 'Tạo yêu cầu',
+          ),
+          const Divider(),
+          _HomeActionTile(
+            icon: Icons.assignment_turned_in_outlined,
+            accentColor: AppColors.warning,
+            title: 'Theo dõi đăng ký thành viên',
+            subtitle: const [
+              'Xem trạng thái các yêu cầu thêm thành viên đã gửi.',
+            ],
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => HouseholdMemberRequestStatusScreen(
+                    unit: selectedOwnerUnit,
+                  ),
+                ),
+              );
+            },
+            actionLabel: 'Xem danh sách',
           ),
           const Divider(),
           _HomeActionTile(
@@ -1798,10 +2066,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-  
-
-  
 
   /// Returns greeting period based on time of day:
   /// Morning (5:00 - 11:59): "sáng"
@@ -2004,7 +2268,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
 }
 
 class _FeatureGridTile extends StatefulWidget {
@@ -2289,8 +2552,8 @@ class _HomeActionTile extends StatelessWidget {
                         child: Text(
                           line,
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color:
-                                theme.colorScheme.onSurface.withValues(alpha: 0.56),
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.56),
                           ),
                         ),
                       ),

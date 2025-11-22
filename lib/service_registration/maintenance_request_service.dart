@@ -47,18 +47,24 @@ class MaintenanceRequestService {
     }
   }
 
-  Future<List<MaintenanceRequestSummary>> getMyRequests() async {
+  Future<ServiceRequestPage<MaintenanceRequestSummary>> getMyRequests({
+    int limit = 20,
+    int offset = 0,
+  }) async {
     try {
-      final response = await _dio.get('/maintenance-requests/my');
-      final data = response.data;
-      if (data is List) {
-        return data
-            .map((item) => MaintenanceRequestSummary.fromJson(
-                  Map<String, dynamic>.from(item as Map),
-                ))
-            .toList();
-      }
-      throw Exception('Dữ liệu trả về không hợp lệ');
+      final response = await _dio.get(
+        '/maintenance-requests/my',
+        queryParameters: {
+          'limit': limit,
+          'offset': offset,
+        },
+      );
+      return parseServiceRequestPage(
+        response.data,
+        (json) => MaintenanceRequestSummary.fromJson(json),
+        limit: limit,
+        offset: offset,
+      );
     } on DioException catch (dioErr) {
       final message = dioErr.response?.data is Map<String, dynamic>
           ? (dioErr.response?.data['message'] as String?)
@@ -67,6 +73,21 @@ class MaintenanceRequestService {
         message?.isNotEmpty == true
             ? message
             : 'Không thể tải danh sách yêu cầu sửa chữa.',
+      );
+    }
+  }
+
+  Future<void> cancelRequest(String requestId) async {
+    try {
+      await _dio.patch('/maintenance-requests/$requestId/cancel');
+    } on DioException catch (dioErr) {
+      final message = dioErr.response?.data is Map<String, dynamic>
+          ? (dioErr.response?.data['message'] as String?)
+          : dioErr.message;
+      throw Exception(
+        message?.isNotEmpty == true
+            ? message
+            : 'Không thể hủy yêu cầu sửa chữa.',
       );
     }
   }

@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../auth/api_client.dart';
+import '../core/event_bus.dart';
 import '../models/service_requests.dart';
 import '../theme/app_colors.dart';
 import 'cleaning_request_service.dart';
@@ -11,21 +14,32 @@ class ServiceRequestsOverviewScreen extends StatefulWidget {
   const ServiceRequestsOverviewScreen({super.key});
 
   @override
-  State<ServiceRequestsOverviewScreen> createState() => _ServiceRequestsOverviewScreenState();
+  State<ServiceRequestsOverviewScreen> createState() =>
+      _ServiceRequestsOverviewScreenState();
 }
 
-class _ServiceRequestsOverviewScreenState extends State<ServiceRequestsOverviewScreen> {
+class _ServiceRequestsOverviewScreenState
+    extends State<ServiceRequestsOverviewScreen> {
   late final ApiClient _apiClient;
   late final CleaningRequestService _cleaningService;
   late final MaintenanceRequestService _maintenanceService;
+  late final AppEventBus _eventBus;
 
   List<CleaningRequestSummary> _cleaningRequests = const [];
   List<MaintenanceRequestSummary> _maintenanceRequests = const [];
   bool _loading = true;
   String? _error;
+  int? _cleaningTotal;
+  int? _maintenanceTotal;
+  bool _loadingMoreCleaning = false;
+  bool _loadingMoreMaintenance = false;
 
   final _dateFormatter = DateFormat('dd/MM/yyyy');
   final _timeFormatter = DateFormat('HH:mm');
+  final Set<String> _cancellingRequestIds = {};
+  final Set<String> _resendingRequestIds = {};
+  Timer? _cleaningRequestRefreshTimer;
+  static const int _pageSize = 6;
 
   @override
   void initState() {
@@ -33,24 +47,64 @@ class _ServiceRequestsOverviewScreenState extends State<ServiceRequestsOverviewS
     _apiClient = ApiClient();
     _cleaningService = CleaningRequestService(_apiClient);
     _maintenanceService = MaintenanceRequestService(_apiClient);
+    _eventBus = AppEventBus();
     _loadData();
+    _setupNotificationListeners();
+    _schedulePeriodicRefresh();
+  }
+
+  void _setupNotificationListeners() {
+    _eventBus.on('notifications_update', (_) async {
+      await _loadData();
+    });
+    _eventBus.on('notifications_incoming', (_) {
+      unawaited(_loadData());
+    });
+  }
+
+  void _schedulePeriodicRefresh() {
+    // Refresh every 1 minute to check for resendAlertSent updates
+    _cleaningRequestRefreshTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        unawaited(_loadData());
+      },
+    );
   }
 
   Future<void> _loadData() async {
     setState(() {
       _loading = true;
       _error = null;
+      _cleaningRequests = [];
+      _maintenanceRequests = [];
+      _cleaningTotal = null;
+      _maintenanceTotal = null;
+      _loadingMoreCleaning = false;
+      _loadingMoreMaintenance = false;
     });
 
     try {
-      final cleaningFuture = _cleaningService.getMyRequests();
-      final maintenanceFuture = _maintenanceService.getMyRequests();
-      final cleaning = await cleaningFuture;
-      final maintenance = await maintenanceFuture;
+      final cleaningFuture = _cleaningService.getMyRequests(
+        limit: _pageSize,
+        offset: 0,
+      );
+      final maintenanceFuture = _maintenanceService.getMyRequests(
+        limit: _pageSize,
+        offset: 0,
+      );
+      final cleaningPage = await cleaningFuture;
+      final maintenancePage = await maintenanceFuture;
       if (!mounted) return;
       setState(() {
-        _cleaningRequests = cleaning;
-        _maintenanceRequests = maintenance;
+        _cleaningRequests = cleaningPage.requests;
+        _maintenanceRequests = maintenancePage.requests;
+        _cleaningTotal = cleaningPage.total;
+        _maintenanceTotal = maintenancePage.total;
         _loading = false;
       });
     } catch (e) {
@@ -61,6 +115,168 @@ class _ServiceRequestsOverviewScreenState extends State<ServiceRequestsOverviewS
       });
     }
   }
+
+  Future<void> _loadMoreCleaningRequests() async {
+    if (_loadingMoreCleaning || !_hasMoreCleaningRequests) return;
+    setState(() => _loadingMoreCleaning = true);
+    try {
+      final nextOffset = _cleaningRequests.length;
+      final page = await _cleaningService.getMyRequests(
+        limit: _pageSize,
+        offset: nextOffset,
+      );
+      if (!mounted) return;
+      setState(() {
+        _cleaningRequests = [..._cleaningRequests, ...page.requests];
+        _cleaningTotal = page.total;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể tải thêm yêu cầu dọn dẹp: $e'),
+        ),
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() => _loadingMoreCleaning = false);
+    }
+  }
+
+  Future<void> _loadMoreMaintenanceRequests() async {
+    if (_loadingMoreMaintenance || !_hasMoreMaintenanceRequests) return;
+    setState(() => _loadingMoreMaintenance = true);
+    try {
+      final nextOffset = _maintenanceRequests.length;
+      final page = await _maintenanceService.getMyRequests(
+        limit: _pageSize,
+        offset: nextOffset,
+      );
+      if (!mounted) return;
+      setState(() {
+        _maintenanceRequests = [..._maintenanceRequests, ...page.requests];
+        _maintenanceTotal = page.total;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể tải thêm yêu cầu sửa chữa: $e'),
+        ),
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() => _loadingMoreMaintenance = false);
+    }
+  }
+
+  bool _isCancelable(String status) {
+    final normalized = status.toUpperCase();
+    return normalized.contains('PENDING') ||
+        normalized.contains('IN_PROGRESS') ||
+        normalized.contains('PROCESSING');
+  }
+
+  Future<void> _cancelCleaningRequest(String requestId) async {
+    if (_cancellingRequestIds.contains(requestId)) return;
+    setState(() => _cancellingRequestIds.add(requestId));
+    try {
+      await _cleaningService.cancelRequest(requestId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã hủy yêu cầu dọn dẹp.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+      await _loadData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể hủy yêu cầu dọn dẹp: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _cancellingRequestIds.remove(requestId));
+      }
+    }
+  }
+
+  Future<void> _cancelMaintenanceRequest(String requestId) async {
+    if (_cancellingRequestIds.contains(requestId)) return;
+    setState(() => _cancellingRequestIds.add(requestId));
+    try {
+      await _maintenanceService.cancelRequest(requestId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã hủy yêu cầu sửa chữa.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+      await _loadData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể hủy yêu cầu sửa chữa: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _cancellingRequestIds.remove(requestId));
+      }
+    }
+  }
+
+  bool _shouldShowResendButton(CleaningRequestSummary request) {
+    final normalizedStatus = request.status.toUpperCase();
+    if (!normalizedStatus.contains('PENDING')) return false;
+    if (request.resendAlertSent != true) return false;
+    return true;
+  }
+
+  Future<void> _resendCleaningRequest(String requestId) async {
+    if (_resendingRequestIds.contains(requestId)) return;
+    setState(() => _resendingRequestIds.add(requestId));
+    try {
+      await _cleaningService.resendRequest(requestId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Yêu cầu dọn dẹp đã được gửi lại.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+      await _loadData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể gửi lại yêu cầu dọn dẹp: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _resendingRequestIds.remove(requestId));
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _cleaningRequestRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  bool get _hasMoreCleaningRequests =>
+      _cleaningTotal != null && _cleaningRequests.length < _cleaningTotal!;
+
+  bool get _hasMoreMaintenanceRequests =>
+      _maintenanceTotal != null &&
+      _maintenanceRequests.length < _maintenanceTotal!;
 
   @override
   Widget build(BuildContext context) {
@@ -104,24 +320,39 @@ class _ServiceRequestsOverviewScreenState extends State<ServiceRequestsOverviewS
           : ListView.separated(
               padding: const EdgeInsets.all(16),
               separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemCount: _cleaningRequests.length,
+              itemCount:
+                  _cleaningRequests.length + (_hasMoreCleaningRequests ? 1 : 0),
               itemBuilder: (context, index) {
-                final request = _cleaningRequests[index];
-                final scheduleText = request.scheduledAt != null
-                    ? '${_dateFormatter.format(request.scheduledAt!)} • ${_timeFormatter.format(request.scheduledAt!)}'
-                    : 'Chưa xác định thời gian';
-                final extra = request.extraServices.isEmpty
-                    ? null
-                    : 'Bao gồm: ${request.extraServices.join(', ')}';
-                return _RequestCard(
-                  icon: Icons.cleaning_services_outlined,
-                  accent: AppColors.primaryAqua,
-                  title: request.cleaningType,
-                  subtitle: '$scheduleText • ${request.location}',
-                  note: extra ?? request.note,
-                  status: request.status,
-                  createdAt: request.createdAt,
-                );
+                if (index < _cleaningRequests.length) {
+                  final request = _cleaningRequests[index];
+                  final scheduleText = request.scheduledAt != null
+                      ? '${_dateFormatter.format(request.scheduledAt!)} • ${_timeFormatter.format(request.scheduledAt!)}'
+                      : 'Chưa xác định thời gian';
+                  final extra = request.extraServices.isEmpty
+                      ? null
+                      : 'Bao gồm: ${request.extraServices.join(', ')}';
+                  final canCancel = _isCancelable(request.status);
+                  final canResend = _shouldShowResendButton(request);
+                  return _RequestCard(
+                    icon: Icons.cleaning_services_outlined,
+                    accent: AppColors.primaryAqua,
+                    title: request.cleaningType,
+                    subtitle: '$scheduleText • ${request.location}',
+                    note: extra ?? request.note,
+                    status: request.status,
+                    createdAt: request.createdAt,
+                    lastResentAt: request.lastResentAt,
+                    onCancel: canCancel
+                        ? () => _cancelCleaningRequest(request.id)
+                        : null,
+                    isCanceling: _cancellingRequestIds.contains(request.id),
+                    onResend: canResend
+                        ? () => _resendCleaningRequest(request.id)
+                        : null,
+                    isResending: _resendingRequestIds.contains(request.id),
+                  );
+                }
+                return _buildLoadMoreTile(isCleaning: true);
               },
             ),
     );
@@ -138,23 +369,60 @@ class _ServiceRequestsOverviewScreenState extends State<ServiceRequestsOverviewS
           : ListView.separated(
               padding: const EdgeInsets.all(16),
               separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemCount: _maintenanceRequests.length,
+              itemCount: _maintenanceRequests.length +
+                  (_hasMoreMaintenanceRequests ? 1 : 0),
               itemBuilder: (context, index) {
-                final request = _maintenanceRequests[index];
-                final preferred = request.preferredDatetime != null
-                    ? '${_dateFormatter.format(request.preferredDatetime!)} • ${_timeFormatter.format(request.preferredDatetime!)}'
-                    : 'Chưa xác định thời gian';
-                return _RequestCard(
-                  icon: Icons.handyman_outlined,
-                  accent: AppColors.primaryBlue,
-                  title: request.title,
-                  subtitle: '${request.category} • ${request.location}\n$preferred',
-                  note: request.note,
-                  status: request.status,
-                  createdAt: request.createdAt,
-                );
+                if (index < _maintenanceRequests.length) {
+                  final request = _maintenanceRequests[index];
+                  final preferred = request.preferredDatetime != null
+                      ? '${_dateFormatter.format(request.preferredDatetime!)} • ${_timeFormatter.format(request.preferredDatetime!)}'
+                      : 'Chưa xác định thời gian';
+                  final canCancel = _isCancelable(request.status);
+                  return _RequestCard(
+                    icon: Icons.handyman_outlined,
+                    accent: AppColors.primaryBlue,
+                    title: request.title,
+                    subtitle:
+                        '${request.category} • ${request.location}\n$preferred',
+                    note: request.note,
+                    status: request.status,
+                    createdAt: request.createdAt,
+                    onCancel: canCancel
+                        ? () => _cancelMaintenanceRequest(request.id)
+                        : null,
+                    isCanceling: _cancellingRequestIds.contains(request.id),
+                  );
+                }
+                return _buildLoadMoreTile(isCleaning: false);
               },
             ),
+    );
+  }
+
+  Widget _buildLoadMoreTile({required bool isCleaning}) {
+    final isLoading =
+        isCleaning ? _loadingMoreCleaning : _loadingMoreMaintenance;
+    final label =
+        isCleaning ? 'Xem thêm yêu cầu dọn dẹp' : 'Xem thêm yêu cầu sửa chữa';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Center(
+        child: FilledButton.icon(
+          onPressed: isLoading
+              ? null
+              : () => isCleaning
+                  ? _loadMoreCleaningRequests()
+                  : _loadMoreMaintenanceRequests(),
+          icon: isLoading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.more_horiz),
+          label: Text(isLoading ? 'Đang tải...' : label),
+        ),
+      ),
     );
   }
 }
@@ -168,6 +436,11 @@ class _RequestCard extends StatelessWidget {
     required this.status,
     required this.createdAt,
     this.note,
+    this.lastResentAt,
+    this.onCancel,
+    this.isCanceling = false,
+    this.onResend,
+    this.isResending = false,
   });
 
   final IconData icon;
@@ -177,6 +450,11 @@ class _RequestCard extends StatelessWidget {
   final String status;
   final DateTime createdAt;
   final String? note;
+  final DateTime? lastResentAt;
+  final VoidCallback? onCancel;
+  final bool isCanceling;
+  final VoidCallback? onResend;
+  final bool isResending;
 
   Color _statusColor(BuildContext context) {
     final normalized = status.toUpperCase();
@@ -228,14 +506,16 @@ class _RequestCard extends StatelessWidget {
                     Text(
                       subtitle,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7),
+                        color: theme.textTheme.bodySmall?.color
+                            ?.withValues(alpha: 0.7),
                       ),
                     ),
                   ],
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: _statusColor(context).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
@@ -266,6 +546,54 @@ class _RequestCard extends StatelessWidget {
               color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
             ),
           ),
+          if (lastResentAt != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Gửi lại lúc: ${DateFormat('dd/MM/yyyy HH:mm').format(lastResentAt!)}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+          if (onResend != null || onCancel != null) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (onResend != null)
+                  FilledButton.icon(
+                    onPressed: isResending ? null : onResend,
+                    icon: isResending
+                        ? const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.refresh, size: 18),
+                    label: Text(
+                      isResending ? 'Đang gửi lại...' : 'Gửi lại',
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primaryAqua,
+                    ),
+                  ),
+                if (onCancel != null)
+                  TextButton.icon(
+                    onPressed: isCanceling ? null : onCancel,
+                    icon: isCanceling
+                        ? const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.cancel_outlined, size: 18),
+                    label: Text(isCanceling ? 'Đang hủy...' : 'Hủy'),
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -348,7 +676,8 @@ class _ErrorState extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               'Không thể tải dữ liệu',
-              style: theme.textTheme.titleMedium?.copyWith(color: AppColors.danger),
+              style: theme.textTheme.titleMedium
+                  ?.copyWith(color: AppColors.danger),
             ),
             const SizedBox(height: 8),
             Text(
@@ -400,4 +729,3 @@ class _HomeGlassContainer extends StatelessWidget {
     );
   }
 }
-
