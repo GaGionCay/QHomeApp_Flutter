@@ -53,5 +53,14 @@
 	<string>Ứng dụng cần quyền truy cập camera để quét mã QR code.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Ứng dụng cần sử dụng Face ID để xác thực đăng nhập bằng khuôn mặt.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

@@ -3,9 +3,7 @@ import 'api_client.dart';
 import 'iam_api_client.dart';
 
 class EmailVerificationService {
-  EmailVerificationService(this._apiClient);
-
-  final ApiClient _apiClient;
+  EmailVerificationService();
 
   // Create a public Dio instance for IAM service (port 8088) without auth interceptors
   Dio get _publicDio {

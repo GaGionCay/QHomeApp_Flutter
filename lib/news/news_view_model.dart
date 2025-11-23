@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
 import '../models/resident_news.dart';
-import '../models/news_paged_response.dart';
 import '../news/resident_service.dart';
 import '../notifications/widgets/notification_read_status_filter.dart';
 

@@ -678,24 +678,18 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
   Widget _buildCardItem(ThemeData theme, CardRegistrationSummary card) {
     final icon = _cardTypeIcon(card.cardType);
     final label = _cardTypeLabel(card.cardType);
-    final unit = _unitDisplayName(card.unitId);
     final approvalLabel = _approvalStatusLabel(card);
     final approvalColor = _approvalStatusColor(theme, card);
     final paymentLabel = _paymentStatusLabel(card.paymentStatus);
     final paymentColor = _paymentStatusColor(theme, card.paymentStatus);
     final subtitleParts = <String>[];
 
+    // Chỉ hiển thị Căn hộ và Tòa nhà
     if (card.apartmentNumber != null && card.apartmentNumber!.isNotEmpty) {
       subtitleParts.add('Căn hộ ${card.apartmentNumber}');
     }
     if (card.buildingName != null && card.buildingName!.isNotEmpty) {
-      subtitleParts.add(card.buildingName!);
-    }
-    if (card.reference != null && card.reference!.isNotEmpty) {
-      subtitleParts.add(card.reference!);
-    }
-    if (unit != null && unit.isNotEmpty) {
-      subtitleParts.add(unit);
+      subtitleParts.add('Tòa ${card.buildingName}');
     }
 
     return InkWell(
@@ -1062,16 +1056,6 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
       default:
         return 'Thẻ cư dân';
     }
-  }
-
-  String? _unitDisplayName(String? unitId) {
-    if (unitId == null || unitId.isEmpty) return null;
-    for (final unit in widget.units) {
-      if (unit.id == unitId) {
-        return unit.displayName;
-      }
-    }
-    return null;
   }
 }
 

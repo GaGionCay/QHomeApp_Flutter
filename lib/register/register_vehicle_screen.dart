@@ -17,6 +17,7 @@ import '../auth/api_client.dart';
 import '../contracts/contract_service.dart';
 import '../core/app_router.dart';
 import '../models/unit_info.dart';
+import '../services/card_pricing_service.dart';
 import 'register_guide_screen.dart';
 import '../theme/app_colors.dart';
 import 'widgets/register_glass_inputs.dart';
@@ -35,6 +36,11 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   final _formKey = GlobalKey<FormState>();
   final _storageKey = 'register_service_draft';
   final _pendingPaymentKey = 'pending_registration_payment';
+  
+  // Card pricing
+  double _registrationFee = 30000.0; // Default fallback
+  bool _loadingPrice = false;
+  late final CardPricingService _cardPricingService;
 
   final TextEditingController _licenseCtrl = TextEditingController();
   final TextEditingController _brandCtrl = TextEditingController();
@@ -66,11 +72,13 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _contractService = ContractService(api);
+    _cardPricingService = CardPricingService(api.dio);
     _loadSavedData();
     _loadUnitContext();
     _listenForPaymentResult();
     _setupAutoSave();
     _checkPendingPayment();
+    _loadCardPrice();
   }
 
   void _navigateToServicesHome({String? snackMessage}) {
@@ -418,6 +426,24 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     _buildingNameCtrl.text = building;
     if (markUnsaved) {
       _hasUnsavedChanges = true;
+    }
+  }
+
+  Future<void> _loadCardPrice() async {
+    setState(() => _loadingPrice = true);
+    try {
+      final price = await _cardPricingService.getCardPrice('VEHICLE');
+      if (mounted) {
+        setState(() {
+          _registrationFee = price;
+          _loadingPrice = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ [VehicleCard] Lỗi tải giá thẻ: $e');
+      if (mounted) {
+        setState(() => _loadingPrice = false);
+      }
     }
   }
   
@@ -1081,13 +1107,24 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  '30.000 VNĐ',
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: colorScheme.primary,
-                  ),
-                ),
+                _loadingPrice
+                    ? SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            colorScheme.primary,
+                          ),
+                        ),
+                      )
+                    : Text(
+                        _formatVnd(_registrationFee.toInt()),
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: colorScheme.primary,
+                        ),
+                      ),
                 const SizedBox(height: 8),
                 Text(
                   'Phí áp dụng cho mỗi thẻ phương tiện. Bạn sẽ được chuyển tới VNPAY để hoàn tất thanh toán ngay sau khi gửi yêu cầu.',
@@ -1803,8 +1840,8 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
                               _confirmed
                                   ? (_hasEditedAfterConfirm
                                       ? 'Xác nhận và thanh toán'
-                                      : 'Đăng ký và thanh toán (30.000 VNĐ)')
-                                  : 'Đăng ký và thanh toán (30.000 VNĐ)',
+                                      : 'Đăng ký và thanh toán (${_formatVnd(_registrationFee.toInt())})')
+                                  : 'Đăng ký và thanh toán (${_formatVnd(_registrationFee.toInt())})',
                               style: theme.textTheme.titleMedium?.copyWith(
                                 color: theme.colorScheme.onPrimary,
                                 fontWeight: FontWeight.w700,
@@ -1875,6 +1912,20 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
             }
           : null,
     );
+  }
+
+  String _formatVnd(int amount) {
+    final digits = amount.toString();
+    final buffer = StringBuffer();
+    for (int i = 0; i < digits.length; i++) {
+      buffer.write(digits[i]);
+      final remaining = digits.length - i - 1;
+      if (remaining % 3 == 0 && remaining != 0) {
+        buffer.write('.');
+      }
+    }
+    buffer.write(' VND');
+    return buffer.toString();
   }
 }
 

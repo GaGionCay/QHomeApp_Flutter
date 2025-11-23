@@ -87,7 +87,7 @@ class _HouseholdMemberRequestScreenState
     super.initState();
     final apiClient = ApiClient();
     _service = HouseholdMemberRequestService(apiClient);
-    _emailVerificationService = EmailVerificationService(apiClient);
+    _emailVerificationService = EmailVerificationService();
     _loadHousehold(widget.unit.id);
     
     // Reset email verified state when email changes and trigger rebuild for OTP button

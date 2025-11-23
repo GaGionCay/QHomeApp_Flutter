@@ -1,4 +1,5 @@
 import 'package:animations/animations.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -294,29 +295,27 @@ class _CoverImage extends StatelessWidget {
                   color: Theme.of(context).colorScheme.primary,
                 ),
               )
-            : Image.network(
-                _getImageUrl(url!.trim()),
+            : CachedNetworkImage(
+                imageUrl: _getImageUrl(url!.trim()),
                 fit: BoxFit.cover,
-                headers: const {
+                httpHeaders: const {
                   'Accept': 'image/*',
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                 },
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return Container(
-                    color: placeholder,
-                    child: Center(
-                      child: CircularProgressIndicator(
-                        value: loadingProgress.expectedTotalBytes != null
-                            ? loadingProgress.cumulativeBytesLoaded /
-                                loadingProgress.expectedTotalBytes!
-                            : null,
-                        strokeWidth: 2,
-                      ),
+                memCacheWidth: 220, // 110 * 2 for retina
+                memCacheHeight: 144, // 72 * 2 for retina
+                maxWidthDiskCache: 220,
+                maxHeightDiskCache: 144,
+                placeholder: (context, url) => Container(
+                  color: placeholder,
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
                     ),
-                  );
-                },
-                errorBuilder: (context, error, stackTrace) {
-                  final imageUrl = _getImageUrl(url!.trim());
+                  ),
+                ),
+                errorWidget: (context, url, error) {
+                  final imageUrl = _getImageUrl(url.trim());
                   
                   // Determine error type for better logging
                   String errorType = 'Unknown';
@@ -360,7 +359,7 @@ class _CoverImage extends StatelessWidget {
                   }
                   
                   // Check if URL is not a valid image URL
-                  final isValidImageUrl = _isValidImageUrl(url!);
+                  final isValidImageUrl = _isValidImageUrl(url);
                   
                   // Only log errors in debug mode to avoid spam in production
                   if (kDebugMode) {
@@ -371,9 +370,6 @@ class _CoverImage extends StatelessWidget {
                     debugPrint('   Error Message: $errorMessage');
                     debugPrint('   Is Valid Image URL: $isValidImageUrl');
                     debugPrint('   Is Image Load Error: $isImageLoadError');
-                    if (stackTrace != null) {
-                      debugPrint('   StackTrace: $stackTrace');
-                    }
                   }
                   
                   // If image cannot be loaded or URL is not a valid image URL,
@@ -394,7 +390,7 @@ class _CoverImage extends StatelessWidget {
                     color: placeholder,
                     child: Icon(
                       Icons.broken_image_outlined,
-                      color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
                       size: 32,
                     ),
                   );

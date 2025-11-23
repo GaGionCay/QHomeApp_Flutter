@@ -52,9 +52,7 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
   void _initContractService() {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final apiClient = authProvider.apiClient;
-    if (apiClient != null) {
-      _contractService = ContractService(apiClient);
-    }
+    _contractService = ContractService(apiClient);
   }
 
   Future<void> _loadUnits() async {

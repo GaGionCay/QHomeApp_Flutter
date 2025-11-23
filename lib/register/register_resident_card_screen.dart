@@ -17,6 +17,7 @@ import '../contracts/contract_service.dart';
 import '../core/app_router.dart';
 import '../models/unit_info.dart';
 import '../profile/profile_service.dart';
+import '../services/card_pricing_service.dart';
 import '../theme/app_colors.dart';
 import 'widgets/register_glass_inputs.dart';
 
@@ -34,7 +35,11 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   final _formKey = GlobalKey<FormState>();
   final _storageKey = 'register_resident_card_draft';
   final _pendingPaymentKey = 'pending_resident_card_payment';
-  static const int _registrationFee = 30000;
+  
+  // Card pricing
+  double _registrationFee = 30000.0; // Default fallback
+  bool _loadingPrice = false;
+  late final CardPricingService _cardPricingService;
 
   final TextEditingController _fullNameCtrl = TextEditingController();
   final TextEditingController _apartmentNumberCtrl = TextEditingController();
@@ -103,10 +108,12 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _contractService = ContractService(api);
+    _cardPricingService = CardPricingService(api.dio);
     _initialize();
     _listenForPaymentResult();
     _setupAutoSave();
     _checkPendingPayment();
+    _loadCardPrice();
   }
 
   void _navigateToServicesHome({String? snackMessage}) {
@@ -131,6 +138,24 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       // Không tự động load resident context nữa, chỉ load khi user click button
       await _loadResidentContextDataOnly(); // Chỉ load data, không auto-fill
     });
+  }
+
+  Future<void> _loadCardPrice() async {
+    setState(() => _loadingPrice = true);
+    try {
+      final price = await _cardPricingService.getCardPrice('RESIDENT');
+      if (mounted) {
+        setState(() {
+          _registrationFee = price;
+          _loadingPrice = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ [ResidentCard] Lỗi tải giá thẻ: $e');
+      if (mounted) {
+        setState(() => _loadingPrice = false);
+      }
+    }
   }
 
   @override
@@ -1388,13 +1413,24 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  _formatVnd(_registrationFee),
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.primary,
-                  ),
-                ),
+                _loadingPrice
+                    ? SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            colorScheme.primary,
+                          ),
+                        ),
+                      )
+                    : Text(
+                        _formatVnd(_registrationFee.toInt()),
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.primary,
+                        ),
+                      ),
                 const SizedBox(height: 8),
                 Text(
                   'Sau khi gửi yêu cầu, bạn sẽ được chuyển tới cổng thanh toán VNPAY để hoàn tất thanh toán.',

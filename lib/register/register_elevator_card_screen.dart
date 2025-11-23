@@ -18,6 +18,7 @@ import '../contracts/contract_service.dart';
 import '../core/app_router.dart';
 import '../models/unit_info.dart';
 import '../profile/profile_service.dart';
+import '../services/card_pricing_service.dart';
 import '../theme/app_colors.dart';
 import 'widgets/register_glass_inputs.dart';
 
@@ -35,7 +36,11 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   final _formKey = GlobalKey<FormState>();
   final _storageKey = 'register_elevator_card_draft';
   final _pendingPaymentKey = 'pending_elevator_card_payment';
-  static const int _registrationFee = 30000;
+  
+  // Card pricing
+  double _registrationFee = 30000.0; // Default fallback
+  bool _loadingPrice = false;
+  late final CardPricingService _cardPricingService;
 
   final TextEditingController _apartmentNumberCtrl = TextEditingController();
   final TextEditingController _buildingNameCtrl = TextEditingController();
@@ -101,10 +106,12 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _contractService = ContractService(api);
+    _cardPricingService = CardPricingService(api.dio);
     _initialize();
     _listenForPaymentResult();
     _setupAutoSave();
     _checkPendingPayment();
+    _loadCardPrice();
   }
 
   void _navigateToServicesHome({String? snackMessage}) {
@@ -129,6 +136,24 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       // Không tự động load resident context nữa, chỉ load khi user click button
       await _loadResidentContextDataOnly(); // Chỉ load data, không auto-fill
     });
+  }
+
+  Future<void> _loadCardPrice() async {
+    setState(() => _loadingPrice = true);
+    try {
+      final price = await _cardPricingService.getCardPrice('ELEVATOR');
+      if (mounted) {
+        setState(() {
+          _registrationFee = price;
+          _loadingPrice = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ [ElevatorCard] Lỗi tải giá thẻ: $e');
+      if (mounted) {
+        setState(() => _loadingPrice = false);
+      }
+    }
   }
 
   @override
@@ -1127,13 +1152,24 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
                       ),
                     ),
                     const SizedBox(height: 6),
-                    Text(
-                      _formatVnd(_registrationFee),
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: colorScheme.primary,
-                      ),
-                    ),
+                    _loadingPrice
+                        ? SizedBox(
+                            height: 24,
+                            width: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                colorScheme.primary,
+                              ),
+                            ),
+                          )
+                        : Text(
+                            _formatVnd(_registrationFee.toInt()),
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: colorScheme.primary,
+                            ),
+                          ),
                   ],
                 ),
               ),
