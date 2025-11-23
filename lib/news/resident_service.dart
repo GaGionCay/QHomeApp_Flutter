@@ -33,12 +33,15 @@ class ResidentService {
         queryParams['dateTo'] = dateTo.toIso8601String();
       }
 
-      print('🔍 [ResidentService] Gọi API với page=$page, size=$size, dateFrom=$dateFrom, dateTo=$dateTo');
+      print('🔍 [ResidentService] Gọi API với residentId=$residentId, page=$page, size=$size, dateFrom=$dateFrom, dateTo=$dateTo');
+      print('🔍 [ResidentService] Query params: $queryParams');
       final response = await _publicDio.get(
         '/news/resident',
         queryParameters: queryParams,
       );
+      print('🔍 [ResidentService] Response status: ${response.statusCode}');
       print('🔍 [ResidentService] Response type: ${response.data.runtimeType}');
+      print('🔍 [ResidentService] Response data: ${response.data}');
 
       if (response.data is Map && response.data['content'] != null) {
         // Paginated response from backend

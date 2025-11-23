@@ -155,9 +155,12 @@ class NewsViewModel extends ChangeNotifier {
   Future<void> loadNews({bool refresh = false, int? page}) async {
     if (_residentId == null) {
       _error = 'Chưa có thông tin residentId';
+      debugPrint('❌ [NewsViewModel] loadNews: residentId is null');
       notifyListeners();
       return;
     }
+
+    debugPrint('🔍 [NewsViewModel] loadNews: residentId=$_residentId, page=$page, refresh=$refresh');
 
     if (refresh || page != null) {
       _currentPage = page ?? 0;
@@ -173,6 +176,7 @@ class NewsViewModel extends ChangeNotifier {
       final dateFrom = _filterDateFrom;
       final dateTo = _filterDateTo;
 
+      debugPrint('🔍 [NewsViewModel] Calling getResidentNewsPaged with residentId=$_residentId, page=$_currentPage, size=$_pageSize');
       final pagedResponse = await _residentService.getResidentNewsPaged(
         _residentId!,
         page: _currentPage,
@@ -180,6 +184,8 @@ class NewsViewModel extends ChangeNotifier {
         dateFrom: dateFrom,
         dateTo: dateTo,
       );
+      
+      debugPrint('✅ [NewsViewModel] Received ${pagedResponse.content.length} news items, totalElements=${pagedResponse.totalElements}');
 
       _news = pagedResponse.content;
       _currentPage = pagedResponse.currentPage;

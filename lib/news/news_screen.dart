@@ -74,9 +74,12 @@ class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
 
       _residentId = profile['residentId']?.toString();
 
+      debugPrint('🔍 [NewsScreen] Profile residentId: ${profile['residentId']}');
+
       if (_residentId != null && _residentId!.isNotEmpty) {
         await _loadReadState();
         _viewModel.setResidentId(_residentId!);
+        debugPrint('✅ [NewsScreen] Set residentId to viewModel: $_residentId');
         await _viewModel.loadNews(refresh: true);
         _updateReadStatus();
         return;
