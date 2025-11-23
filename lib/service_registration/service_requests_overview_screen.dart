@@ -42,7 +42,6 @@ class _ServiceRequestsOverviewScreenState
   final Set<String> _resendingMaintenanceRequestIds = {};
   final Set<String> _approvingResponseIds = {};
   final Set<String> _rejectingResponseIds = {};
-  Timer? _cleaningRequestRefreshTimer;
   MaintenanceRequestConfig? _maintenanceConfig;
   static const int _pageSize = 6;
 
@@ -56,7 +55,7 @@ class _ServiceRequestsOverviewScreenState
     _loadData();
     _loadMaintenanceConfig();
     _setupNotificationListeners();
-    _schedulePeriodicRefresh();
+    // Removed periodic refresh - user can manually refresh via pull-to-refresh
   }
 
   void _setupNotificationListeners() {
@@ -68,19 +67,8 @@ class _ServiceRequestsOverviewScreenState
     });
   }
 
-  void _schedulePeriodicRefresh() {
-    // Refresh every 1 minute to check for resendAlertSent updates
-    _cleaningRequestRefreshTimer = Timer.periodic(
-      const Duration(minutes: 1),
-      (timer) {
-        if (!mounted) {
-          timer.cancel();
-          return;
-        }
-        unawaited(_loadData());
-      },
-    );
-  }
+  // Removed _schedulePeriodicRefresh() - no longer auto-refreshing every minute
+  // Users can manually refresh via pull-to-refresh gesture
 
   Future<void> _loadMaintenanceConfig() async {
     try {
@@ -471,7 +459,6 @@ class _ServiceRequestsOverviewScreenState
 
   @override
   void dispose() {
-    _cleaningRequestRefreshTimer?.cancel();
     super.dispose();
   }
 
