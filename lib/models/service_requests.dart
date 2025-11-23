@@ -75,6 +75,10 @@ class MaintenanceRequestSummary {
     this.lastResentAt,
     this.resendAlertSent = false,
     this.callAlertSent = false,
+    this.adminResponse,
+    this.estimatedCost,
+    this.respondedAt,
+    this.responseStatus,
   });
 
   final String id;
@@ -88,6 +92,10 @@ class MaintenanceRequestSummary {
   final DateTime? lastResentAt;
   final bool resendAlertSent;
   final bool callAlertSent;
+  final String? adminResponse;
+  final double? estimatedCost;
+  final DateTime? respondedAt;
+  final String? responseStatus;
 
   factory MaintenanceRequestSummary.fromJson(Map<String, dynamic> json) {
     return MaintenanceRequestSummary(
@@ -102,8 +110,20 @@ class MaintenanceRequestSummary {
       lastResentAt: _parseDateTime(json['lastResentAt']),
       resendAlertSent: _parseBool(json['resendAlertSent']),
       callAlertSent: _parseBool(json['callAlertSent']),
+      adminResponse: json['adminResponse']?.toString(),
+      estimatedCost: json['estimatedCost'] != null
+          ? (json['estimatedCost'] is num
+              ? (json['estimatedCost'] as num).toDouble()
+              : double.tryParse(json['estimatedCost'].toString()))
+          : null,
+      respondedAt: _parseDateTime(json['respondedAt']),
+      responseStatus: json['responseStatus']?.toString(),
     );
   }
+
+  bool get hasPendingResponse =>
+      responseStatus != null &&
+      responseStatus!.toUpperCase() == 'PENDING_APPROVAL';
 }
 
 bool _parseBool(Object? value) {

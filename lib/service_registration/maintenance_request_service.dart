@@ -77,6 +77,36 @@ class MaintenanceRequestService {
     }
   }
 
+  Future<void> approveResponse(String requestId) async {
+    try {
+      await _dio.post('/maintenance-requests/$requestId/approve-response');
+    } on DioException catch (dioErr) {
+      final message = dioErr.response?.data is Map<String, dynamic>
+          ? (dioErr.response?.data['message'] as String?)
+          : dioErr.message;
+      throw Exception(
+        message?.isNotEmpty == true
+            ? message
+            : 'Không thể xác nhận phản hồi từ admin.',
+      );
+    }
+  }
+
+  Future<void> rejectResponse(String requestId) async {
+    try {
+      await _dio.post('/maintenance-requests/$requestId/reject-response');
+    } on DioException catch (dioErr) {
+      final message = dioErr.response?.data is Map<String, dynamic>
+          ? (dioErr.response?.data['message'] as String?)
+          : dioErr.message;
+      throw Exception(
+        message?.isNotEmpty == true
+            ? message
+            : 'Không thể từ chối phản hồi từ admin.',
+      );
+    }
+  }
+
   Future<void> cancelRequest(String requestId) async {
     try {
       await _dio.patch('/maintenance-requests/$requestId/cancel');

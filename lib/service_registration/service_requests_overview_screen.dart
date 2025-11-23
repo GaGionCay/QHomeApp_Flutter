@@ -40,6 +40,8 @@ class _ServiceRequestsOverviewScreenState
   final Set<String> _cancellingRequestIds = {};
   final Set<String> _resendingRequestIds = {};
   final Set<String> _resendingMaintenanceRequestIds = {};
+  final Set<String> _approvingResponseIds = {};
+  final Set<String> _rejectingResponseIds = {};
   Timer? _cleaningRequestRefreshTimer;
   MaintenanceRequestConfig? _maintenanceConfig;
   static const int _pageSize = 6;
@@ -160,9 +162,8 @@ class _ServiceRequestsOverviewScreenState
         ),
       );
     } finally {
-      if (mounted) {
-        setState(() => _loadingMoreCleaning = false);
-      }
+      if (!mounted) return;
+      setState(() => _loadingMoreCleaning = false);
     }
   }
 
@@ -188,9 +189,8 @@ class _ServiceRequestsOverviewScreenState
         ),
       );
     } finally {
-      if (mounted) {
-        setState(() => _loadingMoreMaintenance = false);
-      }
+      if (!mounted) return;
+      setState(() => _loadingMoreMaintenance = false);
     }
   }
 
@@ -331,6 +331,130 @@ class _ServiceRequestsOverviewScreenState
     }
   }
 
+  Future<void> _approveMaintenanceResponse(String requestId) async {
+    if (_approvingResponseIds.contains(requestId)) return;
+    setState(() => _approvingResponseIds.add(requestId));
+    try {
+      await _maintenanceService.approveResponse(requestId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã xác nhận phản hồi từ admin. Yêu cầu đang được xử lý.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+      await _loadData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể xác nhận phản hồi: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _approvingResponseIds.remove(requestId));
+      }
+    }
+  }
+
+  Future<void> _rejectMaintenanceResponse(String requestId) async {
+    if (_rejectingResponseIds.contains(requestId)) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xác nhận từ chối'),
+        content: const Text('Bạn có chắc chắn muốn từ chối phản hồi từ admin? Yêu cầu sẽ bị hủy.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.danger,
+            ),
+            child: const Text('Từ chối'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    
+    setState(() => _rejectingResponseIds.add(requestId));
+    try {
+      await _maintenanceService.rejectResponse(requestId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã từ chối phản hồi từ admin. Yêu cầu đã được hủy.'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+      await _loadData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể từ chối phản hồi: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _rejectingResponseIds.remove(requestId));
+      }
+    }
+  }
+
+  void _showMaintenanceRequestDetail(
+      BuildContext context, MaintenanceRequestSummary request) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.35),
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).maybePop(),
+                ),
+              ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () {},
+                  child: _MaintenanceRequestDetailSheet(
+                    request: request,
+                    onRefresh: _loadData,
+                    onApproveResponse: request.hasPendingResponse
+                        ? () => _approveMaintenanceResponse(request.id)
+                        : null,
+                    onRejectResponse: request.hasPendingResponse
+                        ? () => _rejectMaintenanceResponse(request.id)
+                        : null,
+                    onCancel: _isCancelable(request.status) && !request.hasPendingResponse
+                        ? () => _cancelMaintenanceRequest(request.id)
+                        : null,
+                    isApprovingResponse: _approvingResponseIds.contains(request.id),
+                    isRejectingResponse: _rejectingResponseIds.contains(request.id),
+                    isCanceling: _cancellingRequestIds.contains(request.id),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _callAdmin(String phoneNumber) async {
     final uri = Uri.parse('tel:$phoneNumber');
     if (await canLaunchUrl(uri)) {
@@ -461,6 +585,7 @@ class _ServiceRequestsOverviewScreenState
                 final canResend = _shouldShowResendButtonMaintenance(request);
                 final canCall = _shouldShowCallButtonMaintenance(request);
                 final adminPhone = _maintenanceConfig?.adminPhone ?? '0984000036';
+                final hasPendingResponse = request.hasPendingResponse;
                 return _RequestCard(
                   icon: Icons.handyman_outlined,
                   accent: AppColors.primaryBlue,
@@ -471,17 +596,30 @@ class _ServiceRequestsOverviewScreenState
                   status: request.status,
                   createdAt: request.createdAt,
                     lastResentAt: request.lastResentAt,
-                    onCancel: canCancel
+                    onCancel: canCancel && !hasPendingResponse
                         ? () => _cancelMaintenanceRequest(request.id)
                         : null,
                   isCanceling: _cancellingRequestIds.contains(request.id),
-                    onResend: canResend
+                    onResend: canResend && !hasPendingResponse
                         ? () => _resendMaintenanceRequest(request.id)
                         : null,
                     isResending: _resendingMaintenanceRequestIds.contains(request.id),
-                    onCall: canCall
+                    onCall: canCall && !hasPendingResponse
                         ? () => _callAdmin(adminPhone)
                         : null,
+                  adminResponse: request.adminResponse,
+                  estimatedCost: request.estimatedCost,
+                  respondedAt: request.respondedAt,
+                  hasPendingResponse: hasPendingResponse,
+                  onApproveResponse: hasPendingResponse
+                      ? () => _approveMaintenanceResponse(request.id)
+                      : null,
+                  onRejectResponse: hasPendingResponse
+                      ? () => _rejectMaintenanceResponse(request.id)
+                      : null,
+                  isApprovingResponse: _approvingResponseIds.contains(request.id),
+                  isRejectingResponse: _rejectingResponseIds.contains(request.id),
+                  onTap: () => _showMaintenanceRequestDetail(context, request),
                 );
                 }
                 return _buildLoadMoreTile(isCleaning: false);
@@ -533,6 +671,15 @@ class _RequestCard extends StatelessWidget {
     this.onResend,
     this.isResending = false,
     this.onCall,
+    this.adminResponse,
+    this.estimatedCost,
+    this.respondedAt,
+    this.hasPendingResponse = false,
+    this.onApproveResponse,
+    this.onRejectResponse,
+    this.isApprovingResponse = false,
+    this.isRejectingResponse = false,
+    this.onTap,
   });
 
   final IconData icon;
@@ -548,6 +695,15 @@ class _RequestCard extends StatelessWidget {
   final VoidCallback? onResend;
   final bool isResending;
   final VoidCallback? onCall;
+  final String? adminResponse;
+  final double? estimatedCost;
+  final DateTime? respondedAt;
+  final bool hasPendingResponse;
+  final VoidCallback? onApproveResponse;
+  final VoidCallback? onRejectResponse;
+  final bool isApprovingResponse;
+  final bool isRejectingResponse;
+  final VoidCallback? onTap;
 
   Color _statusColor(BuildContext context) {
     final normalized = status.toUpperCase();
@@ -571,11 +727,10 @@ class _RequestCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final createdAtText = DateFormat('dd/MM/yyyy HH:mm').format(createdAt);
-    return _HomeGlassContainer(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    final cardContent = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
             children: [
               Container(
                 height: 48,
@@ -623,32 +778,138 @@ class _RequestCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          if (note != null && note!.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        if (note != null && note!.isNotEmpty) ...[
             Text(
               note!,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.8),
               ),
             ),
-            const SizedBox(height: 12),
-          ],
-          Text(
+          const SizedBox(height: 12),
+        ],
+        if (hasPendingResponse && adminResponse != null) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppColors.primaryBlue.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 18,
+                        color: AppColors.primaryBlue,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Phản hồi từ admin',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: AppColors.primaryBlue,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (respondedAt != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Ngày phản hồi: ${DateFormat('dd/MM/yyyy HH:mm').format(respondedAt!)}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Text(
+                    adminResponse!,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.9),
+                    ),
+                  ),
+                  if (estimatedCost != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Chi phí ước tính: ${NumberFormat.currency(locale: 'vi_VN', symbol: '').format(estimatedCost).replaceAll(',', '.')} VNĐ',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: AppColors.primaryBlue,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        Text(
             'Tạo lúc $createdAtText',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
-            ),
           ),
-          if (lastResentAt != null) ...[
+        ),
+        if (lastResentAt != null) ...[
             const SizedBox(height: 4),
             Text(
               'Gửi lại lúc: ${DateFormat('dd/MM/yyyy HH:mm').format(lastResentAt!)}',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.6),
               ),
+          ),
+        ],
+        if (hasPendingResponse && (onApproveResponse != null || onRejectResponse != null)) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (onApproveResponse != null)
+                  FilledButton.icon(
+                    onPressed: (isApprovingResponse || isRejectingResponse) ? null : onApproveResponse,
+                    icon: isApprovingResponse
+                        ? const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.check_circle_outline, size: 18),
+                    label: Text(
+                      isApprovingResponse ? 'Đang xác nhận...' : 'Xác nhận',
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.success,
+                    ),
+                  ),
+                if (onRejectResponse != null)
+                  OutlinedButton.icon(
+                    onPressed: (isApprovingResponse || isRejectingResponse) ? null : onRejectResponse,
+                    icon: isRejectingResponse
+                        ? const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.cancel_outlined, size: 18),
+                    label: Text(
+                      isRejectingResponse ? 'Đang từ chối...' : 'Từ chối',
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.danger,
+                      side: BorderSide(color: AppColors.danger),
+                    ),
+                  ),
+              ],
             ),
-          ],
-          if (onResend != null || onCall != null || onCancel != null) ...[
+        ],
+        if (!hasPendingResponse && (onResend != null || onCall != null || onCancel != null)) ...[
             const SizedBox(height: 8),
             Wrap(
               alignment: WrapAlignment.end,
@@ -695,10 +956,19 @@ class _RequestCard extends StatelessWidget {
               ),
               ],
             ),
-          ],
         ],
-      ),
+      ],
     );
+
+    if (onTap != null) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: _HomeGlassContainer(child: cardContent),
+      );
+    }
+
+    return _HomeGlassContainer(child: cardContent);
   }
 
   String _friendlyStatus(String raw) {
@@ -794,6 +1064,386 @@ class _ErrorState extends StatelessWidget {
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
               label: const Text('Thử lại'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MaintenanceRequestDetailSheet extends StatelessWidget {
+  _MaintenanceRequestDetailSheet({
+    required this.request,
+    required this.onRefresh,
+    this.onApproveResponse,
+    this.onRejectResponse,
+    this.onCancel,
+    this.isApprovingResponse = false,
+    this.isRejectingResponse = false,
+    this.isCanceling = false,
+  });
+
+  final MaintenanceRequestSummary request;
+  final VoidCallback onRefresh;
+  final VoidCallback? onApproveResponse;
+  final VoidCallback? onRejectResponse;
+  final VoidCallback? onCancel;
+  final bool isApprovingResponse;
+  final bool isRejectingResponse;
+  final bool isCanceling;
+
+  late final DateFormat _dateTimeFmt = DateFormat('dd/MM/yyyy HH:mm');
+  late final DateFormat _dateFmt = DateFormat('dd/MM/yyyy');
+  late final DateFormat _timeFmt = DateFormat('HH:mm');
+
+  Color _statusColor(BuildContext context) {
+    final normalized = request.status.toUpperCase();
+    if (normalized.contains('APPROVED') ||
+        normalized.contains('COMPLETED') ||
+        normalized.contains('DONE')) {
+      return AppColors.success;
+    }
+    if (normalized.contains('PENDING') ||
+        normalized.contains('PROCESSING') ||
+        normalized.contains('IN_PROGRESS')) {
+      return AppColors.primaryBlue;
+    }
+    if (normalized.contains('CANCEL') || normalized.contains('REJECT')) {
+      return AppColors.danger;
+    }
+    return Theme.of(context).colorScheme.outline;
+  }
+
+  String _friendlyStatus(String status) {
+    final normalized = status.toUpperCase();
+    if (normalized.contains('PENDING')) return 'Chờ xử lý';
+    if (normalized.contains('IN_PROGRESS')) return 'Đang xử lý';
+    if (normalized.contains('DONE') || normalized.contains('COMPLETED')) return 'Hoàn thành';
+    if (normalized.contains('CANCEL')) return 'Đã hủy';
+    if (normalized.contains('REJECT')) return 'Bị từ chối';
+    return status;
+  }
+
+  Widget _buildDetailRow(ThemeData theme, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasPendingResponse = request.hasPendingResponse;
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.7,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) => Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Content
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.all(20),
+                children: [
+                  // Title
+                  Text(
+                    request.title,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Status chip
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _statusColor(context).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      _friendlyStatus(request.status),
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: _statusColor(context),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Details
+                  _buildDetailRow(theme, 'Mã yêu cầu', request.id),
+                  _buildDetailRow(theme, 'Danh mục', request.category),
+                  _buildDetailRow(theme, 'Vị trí', request.location),
+                  if (request.preferredDatetime != null)
+                    _buildDetailRow(
+                      theme,
+                      'Thời gian mong muốn',
+                      '${_dateFmt.format(request.preferredDatetime!)} • ${_timeFmt.format(request.preferredDatetime!)}',
+                    ),
+                  _buildDetailRow(
+                    theme,
+                    'Ngày tạo',
+                    _dateTimeFmt.format(request.createdAt.toLocal()),
+                  ),
+                  if (request.lastResentAt != null)
+                    _buildDetailRow(
+                      theme,
+                      'Gửi lại lúc',
+                      _dateTimeFmt.format(request.lastResentAt!.toLocal()),
+                    ),
+
+                  // Admin Response Section
+                  if (request.adminResponse != null) ...[
+                    const SizedBox(height: 24),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.primaryBlue.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                size: 20,
+                                color: AppColors.primaryBlue,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Phản hồi từ admin',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  color: AppColors.primaryBlue,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (request.respondedAt != null) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              'Ngày phản hồi: ${_dateTimeFmt.format(request.respondedAt!.toLocal())}',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 12),
+                          Text(
+                            request.adminResponse!,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                            ),
+                          ),
+                          if (request.estimatedCost != null) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryBlue.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.attach_money,
+                                    size: 20,
+                                    color: AppColors.primaryBlue,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Chi phí ước tính: ${NumberFormat.currency(locale: 'vi_VN', symbol: '').format(request.estimatedCost).replaceAll(',', '.')} VNĐ',
+                                    style: theme.textTheme.titleMedium?.copyWith(
+                                      color: AppColors.primaryBlue,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  if (request.note != null && request.note!.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    _buildDetailRow(theme, 'Ghi chú', request.note!),
+                  ],
+
+                  const SizedBox(height: 24),
+
+                  // Action buttons
+                  if (hasPendingResponse && (onApproveResponse != null || onRejectResponse != null)) ...[
+                    if (onApproveResponse != null)
+                      FilledButton.icon(
+                        onPressed: (isApprovingResponse || isRejectingResponse) ? null : onApproveResponse,
+                        icon: isApprovingResponse
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.check_circle_outline),
+                        label: Text(
+                          isApprovingResponse ? 'Đang xác nhận...' : 'Xác nhận phản hồi',
+                        ),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          backgroundColor: AppColors.success,
+                        ),
+                      ),
+                    if (onApproveResponse != null && onRejectResponse != null)
+                      const SizedBox(height: 12),
+                    if (onRejectResponse != null)
+                      OutlinedButton.icon(
+                        onPressed: (isApprovingResponse || isRejectingResponse) ? null : onRejectResponse,
+                        icon: isRejectingResponse
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.cancel_outlined),
+                        label: Text(
+                          isRejectingResponse ? 'Đang từ chối...' : 'Từ chối phản hồi',
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          foregroundColor: AppColors.danger,
+                          side: const BorderSide(color: AppColors.danger),
+                        ),
+                      ),
+                    if (onRejectResponse != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              size: 20,
+                              color: theme.colorScheme.error,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Nếu bạn từ chối phản hồi, yêu cầu sẽ bị hủy và không thể tiếp tục xử lý.',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+
+                  if (onCancel != null && !hasPendingResponse) ...[
+                    const SizedBox(height: 18),
+                    OutlinedButton.icon(
+                      onPressed: isCanceling ? null : onCancel,
+                      icon: isCanceling
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.cancel_outlined, color: Colors.red),
+                      label: Text(
+                        isCanceling ? 'Đang hủy...' : 'Hủy yêu cầu',
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        side: const BorderSide(color: Colors.red),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 20,
+                            color: theme.colorScheme.error,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Sau khi hủy, yêu cầu này sẽ không thể tiếp tục xử lý.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ],
         ),
