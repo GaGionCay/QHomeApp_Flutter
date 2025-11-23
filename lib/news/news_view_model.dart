@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
 import '../models/resident_news.dart';
+import '../models/news_paged_response.dart';
 import '../news/resident_service.dart';
 import '../notifications/widgets/notification_read_status_filter.dart';
 
@@ -23,9 +24,19 @@ class NewsViewModel extends ChangeNotifier {
   int _currentPage = 0;
   int get currentPage => _currentPage;
 
-  final int _limit = 20;
-  bool _hasMore = true;
-  bool get hasMore => _hasMore;
+  final int _pageSize = 7; // Fixed page size as per requirement
+  int _totalPages = 0;
+  int get totalPages => _totalPages;
+  int _totalElements = 0;
+  int get totalElements => _totalElements;
+  bool _hasNext = false;
+  bool get hasNext => _hasNext;
+  bool _hasPrevious = false;
+  bool get hasPrevious => _hasPrevious;
+  bool _isFirst = true;
+  bool get isFirst => _isFirst;
+  bool _isLast = true;
+  bool get isLast => _isLast;
 
   String? _residentId;
   Set<String> _readIds = {};
@@ -141,25 +152,20 @@ class NewsViewModel extends ChangeNotifier {
     return sortedGrouped;
   }
 
-  Future<void> loadNews({bool refresh = false}) async {
+  Future<void> loadNews({bool refresh = false, int? page}) async {
     if (_residentId == null) {
       _error = 'Chưa có thông tin residentId';
       notifyListeners();
       return;
     }
 
-    if (refresh) {
-      _currentPage = 0;
-      _hasMore = true;
+    if (refresh || page != null) {
+      _currentPage = page ?? 0;
       _news.clear();
     }
 
-    if (!_hasMore && !refresh) {
-      return;
-    }
-
-    _isLoading = refresh;
-    _isLoadingMore = !refresh;
+    _isLoading = refresh || page != null;
+    _isLoadingMore = !refresh && page == null;
     _error = null;
     notifyListeners();
 
@@ -167,24 +173,22 @@ class NewsViewModel extends ChangeNotifier {
       final dateFrom = _filterDateFrom;
       final dateTo = _filterDateTo;
 
-      final fetched = await _residentService.getResidentNews(
+      final pagedResponse = await _residentService.getResidentNewsPaged(
         _residentId!,
         page: _currentPage,
-        size: _limit,
+        size: _pageSize,
         dateFrom: dateFrom,
         dateTo: dateTo,
       );
 
-      if (refresh) {
-        _news = fetched;
-      } else {
-        _news.addAll(fetched);
-      }
-
-      _hasMore = fetched.length == _limit;
-      if (_hasMore) {
-        _currentPage++;
-      }
+      _news = pagedResponse.content;
+      _currentPage = pagedResponse.currentPage;
+      _totalPages = pagedResponse.totalPages;
+      _totalElements = pagedResponse.totalElements;
+      _hasNext = pagedResponse.hasNext;
+      _hasPrevious = pagedResponse.hasPrevious;
+      _isFirst = pagedResponse.isFirst;
+      _isLast = pagedResponse.isLast;
 
       _error = null;
     } catch (e) {
@@ -197,18 +201,29 @@ class NewsViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> loadMore() async {
-    if (_isLoadingMore || !_hasMore) {
+  Future<void> goToPage(int page) async {
+    if (page < 0 || page >= _totalPages) {
       return;
     }
-    await loadNews(refresh: false);
+    await loadNews(page: page);
+  }
+
+  Future<void> nextPage() async {
+    if (_hasNext) {
+      await loadNews(page: _currentPage + 1);
+    }
+  }
+
+  Future<void> previousPage() async {
+    if (_hasPrevious) {
+      await loadNews(page: _currentPage - 1);
+    }
   }
 
   void setDateFilter(DateTime? dateFrom, DateTime? dateTo) {
     _filterDateFrom = dateFrom;
     _filterDateTo = dateTo;
     _currentPage = 0;
-    _hasMore = true;
     notifyListeners();
   }
 
@@ -216,7 +231,6 @@ class NewsViewModel extends ChangeNotifier {
     _filterDateFrom = null;
     _filterDateTo = null;
     _currentPage = 0;
-    _hasMore = true;
     notifyListeners();
   }
 

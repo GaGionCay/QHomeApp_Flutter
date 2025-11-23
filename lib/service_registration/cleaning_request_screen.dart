@@ -41,8 +41,9 @@ class _CleaningRequestScreenState extends State<CleaningRequestScreen> {
   String? _timeError;
 
   static const _selectedUnitPrefsKey = 'selected_unit_id';
-  static const TimeOfDay _workingStart = TimeOfDay(hour: 8, minute: 0);
-  static const TimeOfDay _workingEnd = TimeOfDay(hour: 18, minute: 0);
+  // TEST MODE: Extended working hours for testing (6:00 AM - 23:30 PM)
+  static const TimeOfDay _workingStart = TimeOfDay(hour: 6, minute: 0);
+  static const TimeOfDay _workingEnd = TimeOfDay(hour: 23, minute: 30);
 
   final NumberFormat _currencyFormatter =
       NumberFormat.currency(locale: 'vi_VN', symbol: 'đ', decimalDigits: 0);
@@ -578,7 +579,7 @@ class _CleaningRequestScreenState extends State<CleaningRequestScreen> {
   Widget _buildScheduleSection() {
     return _buildSection(
       title: 'Lịch dọn dẹp',
-      subtitle: 'Ngày không trước hiện tại, khung giờ hành chính',
+      subtitle: 'Ngày không trước hiện tại, khung giờ hỗ trợ 06:00 - 23:30',
       child: Column(
         children: [
           _buildPickerRow(

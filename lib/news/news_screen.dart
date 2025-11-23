@@ -31,7 +31,6 @@ class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
   String? _residentId;
   Set<String> _readIds = {};
   bool _filtersCollapsed = true;
-  double _lastScrollOffset = 0;
 
   @override
   void initState() {
@@ -41,7 +40,8 @@ class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
     _viewModel = NewsViewModel();
     _residentId = null;
 
-    _scrollController.addListener(_onScroll);
+    // Remove infinite scroll listener since we're using pagination now
+    // _scrollController.addListener(_onScroll);
     _bus.on('news_update', (data) async {
       if (!mounted) return;
       if (_residentId != null) {
@@ -66,25 +66,6 @@ class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent * 0.8) {
-      if (_viewModel.hasMore && !_viewModel.isLoadingMore) {
-        _viewModel.loadMore();
-      }
-    }
-
-    final currentOffset = _scrollController.position.pixels;
-    final delta = currentOffset - _lastScrollOffset;
-    const threshold = 12;
-    if (delta > threshold &&
-        currentOffset > 24 &&
-        !_filtersCollapsed &&
-        _viewModel.news.isNotEmpty) {
-      setState(() => _filtersCollapsed = true);
-    }
-    _lastScrollOffset = currentOffset;
-  }
 
   Future<void> _loadResidentIdAndFetch() async {
     try {
@@ -207,7 +188,12 @@ class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
                   child: RefreshIndicator(
                     color: Theme.of(context).colorScheme.primary,
                     onRefresh: () => viewModel.loadNews(refresh: true),
-                    child: _buildBody(context, viewModel),
+                    child: Column(
+                      children: [
+                        Expanded(child: _buildBody(context, viewModel)),
+                        _buildPaginationControls(context, viewModel),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -259,14 +245,8 @@ class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
       controller: _scrollController,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      itemCount: grouped.length * 2 + (viewModel.isLoadingMore ? 1 : 0),
+      itemCount: grouped.length * 2,
       itemBuilder: (context, index) {
-        if (index == grouped.length * 2 && viewModel.isLoadingMore) {
-          return const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
 
         if (index.isOdd) {
           final groupIndex = (index - 1) ~/ 2;
@@ -429,5 +409,119 @@ class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
 
   void _toggleFilters() {
     setState(() => _filtersCollapsed = !_filtersCollapsed);
+  }
+
+  Widget _buildPaginationControls(BuildContext context, NewsViewModel viewModel) {
+    if (viewModel.totalPages <= 1) {
+      return const SizedBox.shrink();
+    }
+
+    final theme = Theme.of(context);
+    final currentPage = viewModel.currentPage;
+    final totalPages = viewModel.totalPages;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border(
+          top: BorderSide(
+            color: theme.colorScheme.outline.withValues(alpha: 0.12),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Previous button
+          IconButton(
+            icon: const Icon(Icons.chevron_left_rounded),
+            onPressed: viewModel.hasPrevious && !viewModel.isLoading
+                ? () => viewModel.previousPage()
+                : null,
+            tooltip: 'Trang trước',
+          ),
+          const SizedBox(width: 8),
+          
+          // Page numbers - centered
+          Flexible(
+            child: Center(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(totalPages, (index) {
+                    final pageNumber = index;
+                    final isCurrentPage = pageNumber == currentPage;
+                    
+                    // Show first page, last page, current page, and pages around current
+                    final shouldShow = 
+                        pageNumber == 0 ||
+                        pageNumber == totalPages - 1 ||
+                        (pageNumber >= currentPage - 1 && pageNumber <= currentPage + 1);
+                    
+                    if (!shouldShow) {
+                      // Show ellipsis
+                      if (pageNumber == currentPage - 2 || pageNumber == currentPage + 2) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: Text(
+                            '...',
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    }
+                    
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: InkWell(
+                        onTap: viewModel.isLoading
+                            ? null
+                            : () => viewModel.goToPage(pageNumber),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isCurrentPage
+                                ? theme.colorScheme.primary
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${pageNumber + 1}',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: isCurrentPage
+                                  ? theme.colorScheme.onPrimary
+                                  : theme.colorScheme.onSurface,
+                              fontWeight: isCurrentPage
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          
+          // Next button
+          IconButton(
+            icon: const Icon(Icons.chevron_right_rounded),
+            onPressed: viewModel.hasNext && !viewModel.isLoading
+                ? () => viewModel.nextPage()
+                : null,
+            tooltip: 'Trang sau',
+          ),
+        ],
+      ),
+    );
   }
 }

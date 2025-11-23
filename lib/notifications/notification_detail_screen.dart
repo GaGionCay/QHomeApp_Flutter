@@ -7,7 +7,11 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/notification_detail_response.dart';
 import '../news/resident_service.dart';
 import '../theme/app_colors.dart';
+import '../contracts/contract_service.dart';
+import '../models/unit_info.dart';
 import 'notification_read_store.dart';
+import 'package:provider/provider.dart';
+import '../auth/auth_provider.dart';
 
 class NotificationDetailScreen extends StatefulWidget {
   final String notificationId;
@@ -28,17 +32,59 @@ class NotificationDetailScreen extends StatefulWidget {
 
 class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
   final ResidentService _residentService = ResidentService();
+  ContractService? _contractService;
   NotificationDetailResponse? _notification;
   bool _loading = true;
   String? _error;
   bool _isMarking = false;
   bool _marked = false;
+  List<UnitInfo>? _units;
 
   @override
   void initState() {
     super.initState();
+    _initContractService();
     _markAsRead();
     _loadNotificationDetail();
+    _loadUnits();
+  }
+
+  void _initContractService() {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final apiClient = authProvider.apiClient;
+    if (apiClient != null) {
+      _contractService = ContractService(apiClient);
+    }
+  }
+
+  Future<void> _loadUnits() async {
+    final contractService = _contractService;
+    if (contractService == null) return;
+    try {
+      final units = await contractService.getMyUnits();
+      setState(() {
+        _units = units;
+      });
+    } catch (e) {
+      debugPrint('⚠️ Không thể tải danh sách căn hộ: $e');
+    }
+  }
+
+  String? _getBuildingName(String? targetBuildingId) {
+    if (targetBuildingId == null || _units == null) {
+      return null;
+    }
+    
+    // Try to find building name from user's units
+    for (final unit in _units!) {
+      final unitBuildingId = unit.buildingId?.toString().toLowerCase();
+      if (unitBuildingId == targetBuildingId.toLowerCase()) {
+        return unit.buildingName ?? unit.buildingCode;
+      }
+    }
+    
+    // If not found, return null (will display UUID as fallback)
+    return null;
   }
 
   Future<void> _loadNotificationDetail() async {
@@ -396,7 +442,8 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                             _buildMetaRow(
                               icon: CupertinoIcons.building_2_fill,
                               label: 'Tòa nhà',
-                              value: notification.targetBuildingId!,
+                              value: _getBuildingName(notification.targetBuildingId) ?? 
+                                     notification.targetBuildingId!,
                             ),
                           ],
                         ],

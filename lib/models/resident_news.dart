@@ -39,7 +39,9 @@ class ResidentNews {
       title: json['title'] ?? '',
       summary: json['summary'] ?? '',
       bodyHtml: json['bodyHtml'] ?? '',
-      coverImageUrl: json['coverImageUrl'],
+      coverImageUrl: json['coverImageUrl']?.toString().trim().isEmpty == true 
+          ? null 
+          : json['coverImageUrl']?.toString(),
       status: json['status'] ?? '',
       publishAt: json['publishAt'] != null 
           ? DateTime.parse(json['publishAt']) 

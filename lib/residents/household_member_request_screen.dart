@@ -5,7 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
+import 'dart:async';
+
 import '../auth/api_client.dart';
+import '../auth/email_verification_service.dart';
 import '../models/household.dart';
 import '../models/unit_info.dart';
 import 'household_member_request_service.dart';
@@ -26,6 +29,7 @@ class HouseholdMemberRequestScreen extends StatefulWidget {
 class _HouseholdMemberRequestScreenState
     extends State<HouseholdMemberRequestScreen> {
   late final HouseholdMemberRequestService _service;
+  late final EmailVerificationService _emailVerificationService;
   final _formKey = GlobalKey<FormState>();
   final _fullNameFieldKey = GlobalKey<FormFieldState<String>>();
   final _relationFieldKey = GlobalKey<FormFieldState<String>>();
@@ -39,6 +43,7 @@ class _HouseholdMemberRequestScreenState
   final _nationalIdCtrl = TextEditingController();
   final _relationCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
+  final _otpCtrl = TextEditingController();
 
   final _fullNameFocus = FocusNode();
   final _relationFocus = FocusNode();
@@ -50,6 +55,14 @@ class _HouseholdMemberRequestScreenState
   Household? _currentHousehold;
   bool _loadingHousehold = false;
   String? _householdError;
+
+  // Email verification state
+  bool _emailVerified = false;
+  bool _sendingOtp = false;
+  bool _verifyingOtp = false;
+  String? _otpError;
+  int _otpResendCooldown = 0;
+  Timer? _otpTimer;
 
   // Tối đa 2 ảnh minh chứng
   final List<Uint8List> _proofImages = [];
@@ -72,18 +85,36 @@ class _HouseholdMemberRequestScreenState
   @override
   void initState() {
     super.initState();
-    _service = HouseholdMemberRequestService(ApiClient());
+    final apiClient = ApiClient();
+    _service = HouseholdMemberRequestService(apiClient);
+    _emailVerificationService = EmailVerificationService(apiClient);
     _loadHousehold(widget.unit.id);
+    
+    // Reset email verified state when email changes and trigger rebuild for OTP button
+    _emailCtrl.addListener(() {
+      if (_emailVerified) {
+        setState(() {
+          _emailVerified = false;
+          _otpCtrl.clear();
+          _otpError = null;
+        });
+      } else {
+        // Trigger rebuild to show/hide OTP button when email is entered/cleared
+        setState(() {});
+      }
+    });
   }
 
   @override
   void dispose() {
+    _otpTimer?.cancel();
     _fullNameCtrl.dispose();
     _phoneCtrl.dispose();
     _emailCtrl.dispose();
     _nationalIdCtrl.dispose();
     _relationCtrl.dispose();
     _noteCtrl.dispose();
+    _otpCtrl.dispose();
     _fullNameFocus.dispose();
     _relationFocus.dispose();
     _phoneFocus.dispose();
@@ -158,6 +189,145 @@ class _HouseholdMemberRequestScreenState
     });
   }
 
+  Future<void> _checkEmailAndSendOtp() async {
+    final email = _emailCtrl.text.trim();
+    
+    print('🔍 [HouseholdMemberRequest] Bắt đầu gửi OTP cho email: $email');
+    
+    // Validate email format manually (don't use form validator which checks _emailVerified)
+    if (email.isEmpty) {
+      setState(() {
+        _otpError = 'Vui lòng nhập email.';
+      });
+      _emailFieldKey.currentState?.validate();
+      return;
+    }
+    
+    final emailRegex = RegExp(
+        r'^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$');
+    if (!emailRegex.hasMatch(email)) {
+      setState(() {
+        _otpError = 'Email không hợp lệ.';
+      });
+      _emailFieldKey.currentState?.validate();
+      return;
+    }
+    
+    if (email.length > 100) {
+      setState(() {
+        _otpError = 'Email không được quá 100 ký tự.';
+      });
+      _emailFieldKey.currentState?.validate();
+      return;
+    }
+    
+    setState(() {
+      _sendingOtp = true;
+      _otpError = null;
+    });
+    
+    try {
+      print('🔍 [HouseholdMemberRequest] Kiểm tra email đã tồn tại chưa...');
+      // Check if email exists
+      final emailExists = await _emailVerificationService.checkEmailExists(email);
+      print('🔍 [HouseholdMemberRequest] Email exists: $emailExists');
+      
+      if (emailExists) {
+        setState(() {
+          _sendingOtp = false;
+          _otpError = 'Email này đã được sử dụng. Vui lòng sử dụng email khác.';
+        });
+        _emailFieldKey.currentState?.validate();
+        return;
+      }
+      
+      print('🔍 [HouseholdMemberRequest] Gửi OTP...');
+      // Send OTP
+      await _emailVerificationService.requestOtp(email);
+      print('✅ [HouseholdMemberRequest] OTP đã được gửi thành công');
+      
+      setState(() {
+        _sendingOtp = false;
+        _emailVerified = false;
+        _otpResendCooldown = 60; // 60 seconds cooldown
+      });
+      
+      // Start countdown timer
+      _startOtpResendTimer();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Mã OTP đã được gửi đến email của bạn. Vui lòng kiểm tra hộp thư.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e, stackTrace) {
+      print('❌ [HouseholdMemberRequest] Lỗi khi gửi OTP: $e');
+      print('❌ [HouseholdMemberRequest] Stack trace: $stackTrace');
+      setState(() {
+        _sendingOtp = false;
+        _otpError = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+  
+  Future<void> _verifyOtp() async {
+    final email = _emailCtrl.text.trim();
+    final otp = _otpCtrl.text.trim();
+    
+    if (otp.length != 6) {
+      setState(() {
+        _otpError = 'Mã OTP phải có 6 ký tự';
+      });
+      return;
+    }
+    
+    setState(() {
+      _verifyingOtp = true;
+      _otpError = null;
+    });
+    
+    try {
+      final verified = await _emailVerificationService.verifyOtp(email, otp);
+      
+      if (verified) {
+        setState(() {
+          _emailVerified = true;
+          _verifyingOtp = false;
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Email đã được xác thực thành công'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _verifyingOtp = false;
+        _otpError = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+  
+  void _startOtpResendTimer() {
+    _otpTimer?.cancel();
+    _otpTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_otpResendCooldown > 0) {
+        setState(() {
+          _otpResendCooldown--;
+        });
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
   Future<void> _selectDob() async {
     final now = DateTime.now();
     final initial = _dob ?? DateTime(now.year - 18, now.month, now.day);
@@ -186,6 +356,19 @@ class _HouseholdMemberRequestScreenState
     if (_submitting) return;
     final form = _formKey.currentState;
     if (form == null || !form.validate()) return;
+    
+    // Double check email is verified
+    final email = _emailCtrl.text.trim();
+    if (email.isNotEmpty && !_emailVerified) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng xác thực email trước khi gửi yêu cầu'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+    
     if (_currentHousehold == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -429,10 +612,91 @@ class _HouseholdMemberRequestScreenState
                       if (!emailRegex.hasMatch(v)) {
                         return 'Email không hợp lệ.';
                       }
+                      // Don't check _emailVerified here - that's only checked on form submit
+                      // User needs to send OTP first before verifying
                       return null;
                     },
                   ),
                 ),
+                // OTP section - only show if email is entered and not verified
+                if (_emailCtrl.text.trim().isNotEmpty && !_emailVerified) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _sendingOtp || _otpResendCooldown > 0
+                              ? null
+                              : _checkEmailAndSendOtp,
+                          icon: _sendingOtp
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.email_outlined),
+                          label: Text(
+                            _otpResendCooldown > 0
+                                ? 'Gửi lại mã OTP (${_otpResendCooldown}s)'
+                                : 'Gửi mã OTP',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _otpCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Mã OTP',
+                      hintText: 'Nhập 6 ký tự',
+                      helperText: 'Mã OTP có hiệu lực trong 1 phút',
+                    ),
+                    keyboardType: TextInputType.text,
+                    maxLength: 6,
+                    enabled: !_verifyingOtp && !_emailVerified,
+                    textCapitalization: TextCapitalization.characters,
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _verifyingOtp || _emailVerified
+                          ? null
+                          : _verifyOtp,
+                      child: _verifyingOtp
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Xác nhận OTP'),
+                    ),
+                  ),
+                  if (_otpError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _otpError!,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  ],
+                ],
+                if (_emailVerified) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Icon(Icons.check_circle, color: Colors.green, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Email đã được xác thực',
+                        style: TextStyle(
+                          color: Colors.green,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 16),
                 Focus(
                   onFocusChange: (hasFocus) {
@@ -453,8 +717,8 @@ class _HouseholdMemberRequestScreenState
                       if (!RegExp(r'^[0-9]+$').hasMatch(v)) {
                         return 'CMND/CCCD chỉ gồm chữ số, không có khoảng trắng/ký tự đặc biệt.';
                       }
-                      if (!(v.length == 9 || v.length == 12)) {
-                        return 'CMND 9 số hoặc CCCD 12 số.';
+                      if (v.length != 13) {
+                        return 'CCCD phải có đúng 13 số.';
                       }
                       return null;
                     },

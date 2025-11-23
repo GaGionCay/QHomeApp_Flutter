@@ -61,8 +61,9 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
 
   static const _selectedUnitPrefsKey = 'selected_unit_id';
   static const _maxAttachments = 5;
-  static const TimeOfDay _workingStart = TimeOfDay(hour: 8, minute: 0);
-  static const TimeOfDay _workingEnd = TimeOfDay(hour: 18, minute: 0);
+  // TEST MODE: Extended working hours for testing (6:00 AM - 23:30 PM)
+  static const TimeOfDay _workingStart = TimeOfDay(hour: 6, minute: 0);
+  static const TimeOfDay _workingEnd = TimeOfDay(hour: 23, minute: 30);
 
   final DateFormat _dateFormatter = DateFormat('dd/MM/yyyy');
 
@@ -573,7 +574,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
 
     return _buildSection(
       title: 'Thời gian mong muốn',
-      subtitle: 'Khung giờ hỗ trợ 08:00 - 18:00 hằng ngày',
+      subtitle: 'Khung giờ hỗ trợ 06:00 - 23:30 hằng ngày',
       errorText: _preferredTimeError,
       child: Column(
         children: [

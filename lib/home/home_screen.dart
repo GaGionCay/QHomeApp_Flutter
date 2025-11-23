@@ -442,14 +442,52 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     try {
-      final notifications = await _residentService.getResidentNotifications(
+      // Get total count of all notifications (not just page 0)
+      final totalCount = await _residentService.getResidentNotificationsCount(
         residentId,
         targetBuildingId,
       );
+      
+      // Get read IDs from local storage
       final readIds = await NotificationReadStore.load(residentId);
-      final unread = notifications
-          .where((notification) => !readIds.contains(notification.id))
-          .length;
+      
+      // Fetch all notifications across all pages to get accurate unread count
+      // Limit to reasonable number to avoid performance issues
+      int unread;
+      if (totalCount <= 200) {
+        // Fetch all notifications if count is reasonable
+        final allNotifications = await _residentService.getAllResidentNotifications(
+          residentId,
+          targetBuildingId,
+        );
+        
+        unread = allNotifications
+            .where((notification) => !readIds.contains(notification.id))
+            .length;
+        
+        debugPrint('✅ [HomeScreen] Total notifications: $totalCount, Fetched: ${allNotifications.length}, Unread: $unread');
+      } else {
+        // For very large counts (>200), fetch first 200 and estimate
+        // This assumes notifications are sorted by createdAt DESC (newest first)
+        final sampleNotifications = await _residentService.getAllResidentNotifications(
+          residentId,
+          targetBuildingId,
+          maxPages: 29, // 29 pages * 7 = ~200 notifications
+        );
+        
+        final unreadInSample = sampleNotifications
+            .where((notification) => !readIds.contains(notification.id))
+            .length;
+        
+        // Estimate: assume the ratio of unread in sample applies to total
+        final unreadRatio = sampleNotifications.isNotEmpty
+            ? unreadInSample / sampleNotifications.length
+            : 0.0;
+        unread = (totalCount * unreadRatio).round();
+        
+        debugPrint('✅ [HomeScreen] Total: $totalCount, Sample: ${sampleNotifications.length}, Unread in sample: $unreadInSample, Estimated unread: $unread');
+      }
+      
       if (mounted) {
         setState(() {
           _unreadNotificationCount = unread;

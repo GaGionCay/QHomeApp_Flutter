@@ -1,8 +1,4 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../auth/api_client.dart';
 import '../models/resident_without_account.dart';
@@ -28,7 +24,6 @@ class _HouseholdMemberRegistrationScreenState
   List<ResidentWithoutAccount> _members = [];
   bool _loading = true;
   String? _error;
-  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
@@ -70,66 +65,11 @@ class _HouseholdMemberRegistrationScreenState
     final passwordCtrl = TextEditingController();
     bool submitting = false;
     String? errorText;
-    final List<_ProofImage> proofImages = [];
 
     await showDialog<void>(
       context: context,
       builder: (context) {
         return StatefulBuilder(builder: (context, setStateDialog) {
-          Future<void> pickImages() async {
-            final remaining = 6 - proofImages.length;
-            if (remaining <= 0) {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Chỉ được chọn tối đa 6 ảnh minh chứng.'),
-                  ),
-                );
-              }
-              return;
-            }
-            final pickedFiles = await _picker.pickMultiImage(imageQuality: 80);
-            if (pickedFiles.isEmpty) return;
-            for (final file in pickedFiles.take(remaining)) {
-              final bytes = await file.readAsBytes();
-              setStateDialog(() {
-                proofImages.add(
-                  _ProofImage(
-                    bytes: bytes,
-                    mimeType: _inferMimeType(file.path),
-                  ),
-                );
-              });
-            }
-          }
-
-          Future<void> takePhoto() async {
-            if (proofImages.length >= 6) {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Chỉ được chụp tối đa 6 ảnh minh chứng.'),
-                  ),
-                );
-              }
-              return;
-            }
-            final photo = await _picker.pickImage(
-              source: ImageSource.camera,
-              imageQuality: 85,
-            );
-            if (photo == null) return;
-            final bytes = await photo.readAsBytes();
-            setStateDialog(() {
-              proofImages.add(
-                _ProofImage(
-                  bytes: bytes,
-                  mimeType: _inferMimeType(photo.path),
-                ),
-              );
-            });
-          }
-
           Future<void> submit() async {
             if (!autoGenerate) {
               if (usernameCtrl.text.trim().length < 3) {
@@ -155,9 +95,7 @@ class _HouseholdMemberRegistrationScreenState
                 autoGenerate: autoGenerate,
                 username: autoGenerate ? null : usernameCtrl.text.trim(),
                 password: autoGenerate ? null : passwordCtrl.text.trim(),
-                proofOfRelationImages: proofImages
-                    .map((image) => image.dataUri)
-                    .toList(growable: false),
+                proofOfRelationImages: [], // Không cần ảnh minh chứng
               );
               if (!mounted) return;
               // ignore: use_build_context_synchronously
@@ -228,76 +166,6 @@ class _HouseholdMemberRegistrationScreenState
                     ),
                     const SizedBox(height: 12),
                   ],
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: submitting ? null : pickImages,
-                          icon: const Icon(Icons.photo_library_outlined),
-                          label: Text('Chọn ảnh (${proofImages.length}/6)'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: submitting ? null : takePhoto,
-                          icon: const Icon(Icons.camera_alt_outlined),
-                          label: const Text('Chụp ảnh'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  if (proofImages.isNotEmpty)
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: proofImages
-                          .asMap()
-                          .entries
-                          .map(
-                            (entry) => Stack(
-                              alignment: Alignment.topRight,
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Image.memory(
-                                    entry.value.bytes,
-                                    width: 80,
-                                    height: 80,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                                Positioned(
-                                  right: 4,
-                                  top: 4,
-                                  child: GestureDetector(
-                                    onTap: submitting
-                                        ? null
-                                        : () {
-                                            setStateDialog(() {
-                                              proofImages.removeAt(entry.key);
-                                            });
-                                          },
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withValues(alpha: 0.6),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      padding: const EdgeInsets.all(4),
-                                      child: const Icon(
-                                        Icons.close,
-                                        size: 14,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                          .toList(),
-                    ),
                   if (errorText != null) ...[
                     const SizedBox(height: 12),
                     Text(
@@ -598,25 +466,6 @@ class _HouseholdMemberRegistrationScreenState
     );
   }
 
-  String _inferMimeType(String path) {
-    final lower = path.toLowerCase();
-    if (lower.endsWith('.png')) return 'image/png';
-    if (lower.endsWith('.gif')) return 'image/gif';
-    if (lower.endsWith('.webp')) return 'image/webp';
-    return 'image/jpeg';
-  }
-}
-
-class _ProofImage {
-  _ProofImage({
-    required this.bytes,
-    required this.mimeType,
-  });
-
-  final Uint8List bytes;
-  final String mimeType;
-
-  String get dataUri => 'data:$mimeType;base64,${base64Encode(bytes)}';
 }
 
 

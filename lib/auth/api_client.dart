@@ -196,7 +196,14 @@ class ApiClient {
           final refreshToken = await _storage.readRefreshToken();
 
           if (refreshToken == null || isRefreshing) {
-            await _storage.deleteAll();
+            // Only auto-logout if no refresh token or already refreshing
+            // This prevents logout during payment callback when token might be temporarily expired
+            if (refreshToken == null) {
+              print('⚠️ No refresh token available. User will need to login again.');
+              await _storage.deleteAll();
+            } else {
+              print('⚠️ Token refresh already in progress. Retrying request...');
+            }
             return handler.next(err);
           }
 
@@ -211,8 +218,13 @@ class ApiClient {
               return handler.resolve(clonedResponse);
             }
           } on DioException catch (e) {
-            print('🔥 REFRESH FAILED: Token will be deleted.');
-            await _storage.deleteAll();
+            // Don't auto-logout immediately on refresh failure
+            // Token might be temporarily expired during payment callback
+            // User can continue using app, and will be logged out naturally on next critical request
+            print('⚠️ REFRESH FAILED: ${e.message}');
+            print('⚠️ User session may be expired. Will retry on next request.');
+            // Don't delete tokens immediately - allow user to continue
+            // Tokens will be cleared naturally if refresh continues to fail
             return handler.next(e);
           } finally {
             isRefreshing = false;

@@ -719,6 +719,14 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       if (paymentStatus != 'PAID') {
         debugPrint('⚠️ paymentStatus chưa cập nhật: $paymentStatus');
       }
+    } on DioException catch (e) {
+      // Handle 401 gracefully - don't auto-logout after payment
+      if (e.response?.statusCode == 401) {
+        debugPrint('⚠️ Token expired during payment sync. Status will update automatically.');
+        // Don't throw - allow user to continue using app
+        return;
+      }
+      debugPrint('⚠️ Không thể đồng bộ trạng thái đăng ký $registrationId: $e');
     } catch (e) {
       debugPrint('⚠️ Không thể đồng bộ trạng thái đăng ký $registrationId: $e');
     }
@@ -1224,8 +1232,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
                         if (!RegExp(r'^[0-9]+$').hasMatch(trimmed)) {
                           return 'Căn cước công dân chỉ được chứa số';
                         }
-                        if (trimmed.length != 9 && trimmed.length != 12) {
-                          return 'Căn cước công dân phải có 9 số (CMND) hoặc 12 số (CCCD)';
+                        if (trimmed.length != 13) {
+                          return 'CCCD phải có đúng 13 số.';
                         }
                         if (trimmed.length > 20) {
                           return 'Căn cước công dân không được vượt quá 20 ký tự';

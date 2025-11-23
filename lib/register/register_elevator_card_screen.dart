@@ -540,6 +540,14 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       if (paymentStatus != 'PAID') {
         debugPrint('⚠️ paymentStatus chưa cập nhật: $paymentStatus');
       }
+    } on DioException catch (e) {
+      // Handle 401 gracefully - don't auto-logout after payment
+      if (e.response?.statusCode == 401) {
+        debugPrint('⚠️ Token expired during payment sync. Status will update automatically.');
+        // Don't throw - allow user to continue using app
+        return;
+      }
+      debugPrint('⚠️ Không thể đồng bộ trạng thái đăng ký $registrationId: $e');
     } catch (e) {
       debugPrint('⚠️ Không thể đồng bộ trạng thái đăng ký $registrationId: $e');
     }

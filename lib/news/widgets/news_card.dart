@@ -1,4 +1,5 @@
 import 'package:animations/animations.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -226,7 +227,9 @@ class _NewsCoverHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (url == null || url!.isEmpty) {
+    // Check for null, empty string, or whitespace-only string
+    final isValidUrl = url != null && url!.trim().isNotEmpty;
+    if (!isValidUrl) {
       return _CoverImage(
         url: null,
         placeholder: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
@@ -236,7 +239,7 @@ class _NewsCoverHero extends StatelessWidget {
     return Hero(
       tag: 'news-cover-$id',
       child: _CoverImage(
-        url: url,
+        url: url!.trim(),
         placeholder: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
       ),
     );
@@ -249,6 +252,33 @@ class _CoverImage extends StatelessWidget {
   final String? url;
   final Color placeholder;
 
+  /// Get image URL - if URL is already a full URL (starts with http/https), 
+  /// check if it contains localhost and replace with actual host IP if needed.
+  /// Otherwise, use ApiClient.fileUrl() to construct the full URL
+  String _getImageUrl(String url) {
+    // If URL already starts with http:// or https://
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      // If URL contains localhost or 127.0.0.1, use ApiClient.fileUrl() to replace with actual IP
+      if (url.contains('localhost') || url.contains('127.0.0.1')) {
+        return ApiClient.fileUrl(url);
+      }
+      // External URL (like https://i.ibb.co/...) - use directly
+      return url;
+    }
+    // Relative path - use ApiClient.fileUrl() to construct the full URL
+    return ApiClient.fileUrl(url);
+  }
+
+  /// Check if URL is a valid image URL
+  bool _isValidImageUrl(String url) {
+    if (url.isEmpty) return false;
+    
+    // Check if URL has image extension
+    final imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+    final lowerUrl = url.toLowerCase();
+    return imageExtensions.any((ext) => lowerUrl.contains(ext));
+  }
+
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
@@ -256,7 +286,7 @@ class _CoverImage extends StatelessWidget {
       child: SizedBox(
         width: 110,
         height: 72,
-        child: url == null
+        child: (url == null || url!.trim().isEmpty)
             ? Container(
                 color: placeholder,
                 child: Icon(
@@ -265,15 +295,110 @@ class _CoverImage extends StatelessWidget {
                 ),
               )
             : Image.network(
-                ApiClient.fileUrl(url!),
+                _getImageUrl(url!.trim()),
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  color: placeholder,
-                  child: Icon(
-                    Icons.broken_image_outlined,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
+                headers: const {
+                  'Accept': 'image/*',
+                },
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(
+                    color: placeholder,
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        value: loadingProgress.expectedTotalBytes != null
+                            ? loadingProgress.cumulativeBytesLoaded /
+                                loadingProgress.expectedTotalBytes!
+                            : null,
+                        strokeWidth: 2,
+                      ),
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  final imageUrl = _getImageUrl(url!.trim());
+                  
+                  // Determine error type for better logging
+                  String errorType = 'Unknown';
+                  String errorMessage = error.toString();
+                  bool isImageLoadError = false;
+                  
+                  // Check error type from error string
+                  final errorString = error.toString().toLowerCase();
+                  
+                  if (errorString.contains('404') || errorString.contains('not found')) {
+                    errorType = 'HTTP 404';
+                    errorMessage = 'File not found';
+                    isImageLoadError = true;
+                  } else if (errorString.contains('403') || errorString.contains('forbidden')) {
+                    errorType = 'HTTP 403';
+                    errorMessage = 'Access forbidden';
+                    isImageLoadError = true;
+                  } else if (errorString.contains('500') || errorString.contains('server error')) {
+                    errorType = 'HTTP 500';
+                    errorMessage = 'Server error';
+                    isImageLoadError = true;
+                  } else if (errorString.contains('socketexception') || 
+                             errorString.contains('connection')) {
+                    errorType = 'Connection Error';
+                    errorMessage = 'Cannot connect to server';
+                    isImageLoadError = true;
+                  } else if (errorString.contains('timeout')) {
+                    errorType = 'Timeout';
+                    errorMessage = 'Request timeout';
+                    isImageLoadError = true;
+                  } else if (errorString.contains('failed host lookup')) {
+                    errorType = 'DNS Error';
+                    errorMessage = 'Cannot resolve host';
+                    isImageLoadError = true;
+                  } else if (errorString.contains('format') || 
+                             errorString.contains('invalid image') ||
+                             errorString.contains('not a valid image')) {
+                    errorType = 'Invalid Image Format';
+                    errorMessage = 'URL is not a valid image';
+                    isImageLoadError = true;
+                  }
+                  
+                  // Check if URL is not a valid image URL
+                  final isValidImageUrl = _isValidImageUrl(url!);
+                  
+                  // Only log errors in debug mode to avoid spam in production
+                  if (kDebugMode) {
+                    debugPrint('❌ Error loading news cover image');
+                    debugPrint('   Original URL: $url');
+                    debugPrint('   Processed URL: $imageUrl');
+                    debugPrint('   Error Type: $errorType');
+                    debugPrint('   Error Message: $errorMessage');
+                    debugPrint('   Is Valid Image URL: $isValidImageUrl');
+                    debugPrint('   Is Image Load Error: $isImageLoadError');
+                    if (stackTrace != null) {
+                      debugPrint('   StackTrace: $stackTrace');
+                    }
+                  }
+                  
+                  // If image cannot be loaded or URL is not a valid image URL,
+                  // show the same placeholder as when there's no URL (article icon)
+                  // instead of broken image icon
+                  if (isImageLoadError || !isValidImageUrl) {
+                    return Container(
+                      color: placeholder,
+                      child: Icon(
+                        Icons.article_outlined,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    );
+                  }
+                  
+                  // For other errors, show broken image icon
+                  return Container(
+                    color: placeholder,
+                    child: Icon(
+                      Icons.broken_image_outlined,
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                      size: 32,
+                    ),
+                  );
+                },
               ),
       ),
     );

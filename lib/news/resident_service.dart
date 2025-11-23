@@ -2,18 +2,20 @@ import 'package:dio/dio.dart';
 
 import '../auth/admin_api_client.dart';
 import '../models/resident_news.dart';
+import '../models/news_paged_response.dart';
 import '../models/resident_notification.dart';
 import '../models/notification_detail_response.dart';
+import '../models/notification_paged_response.dart';
 
 class ResidentService {
   final _publicDio = AdminApiClient.createPublicDio();
 
   ResidentService();
 
-  Future<List<ResidentNews>> getResidentNews(
+  Future<NewsPagedResponse> getResidentNewsPaged(
     String residentId, {
     int page = 0,
-    int size = 10,
+    int size = 7,
     DateTime? dateFrom,
     DateTime? dateTo,
   }) async {
@@ -39,12 +41,12 @@ class ResidentService {
       print('🔍 [ResidentService] Response type: ${response.data.runtimeType}');
 
       if (response.data is Map && response.data['content'] != null) {
-        final items = (response.data['content'] as List)
-            .map((json) => ResidentNews.fromJson(json))
-            .toList();
-        print('✅ [ResidentService] Paginated response: ${items.length} items');
-        return items;
+        // Paginated response from backend
+        final pagedResponse = NewsPagedResponse.fromJson(response.data as Map<String, dynamic>);
+        print('✅ [ResidentService] Paginated response: ${pagedResponse.content.length} items, page ${pagedResponse.currentPage + 1}/${pagedResponse.totalPages}');
+        return pagedResponse;
       } else if (response.data is List) {
+        // Legacy list response - convert to paged response
         var allItems = (response.data as List)
             .map((json) => ResidentNews.fromJson(json))
             .toList();
@@ -70,35 +72,84 @@ class ResidentService {
           }).toList();
         }
 
-        print('ℹ️ [ResidentService] API trả về ${allItems.length} items sau filter');
-        if (size >= 1000) {
-          return allItems;
-        }
-
+        final totalElements = allItems.length;
+        final totalPages = (totalElements / size).ceil();
         final startIndex = page * size;
         final endIndex = (startIndex + size).clamp(0, allItems.length);
-        if (startIndex >= allItems.length) {
-          print(
-              '⚠️ [ResidentService] Start index $startIndex vượt quá tổng số items ${allItems.length}');
-          return [];
-        }
+        final paginatedItems = startIndex < allItems.length 
+            ? allItems.sublist(startIndex, endIndex)
+            : <ResidentNews>[];
 
-        final paginatedItems = allItems.sublist(startIndex, endIndex);
-        print(
-            '✅ [ResidentService] Paginated ở client: trang $page = ${paginatedItems.length} items (từ $startIndex đến $endIndex)');
-        return paginatedItems;
+        return NewsPagedResponse(
+          content: paginatedItems,
+          currentPage: page,
+          pageSize: size,
+          totalElements: totalElements,
+          totalPages: totalPages,
+          hasNext: page < totalPages - 1,
+          hasPrevious: page > 0,
+          isFirst: page == 0,
+          isLast: page >= totalPages - 1 || totalPages == 0,
+        );
       }
 
-      print(
-          '⚠️ [ResidentService] Response format không hỗ trợ, trả về empty list');
-      return [];
+      print('⚠️ [ResidentService] Response format không hỗ trợ, trả về empty paged response');
+      return NewsPagedResponse(
+        content: [],
+        currentPage: page,
+        pageSize: size,
+        totalElements: 0,
+        totalPages: 0,
+        hasNext: false,
+        hasPrevious: false,
+        isFirst: true,
+        isLast: true,
+      );
     } on DioException catch (e) {
       print('❌ Lỗi lấy resident news: ${e.message}');
-      return [];
+      return NewsPagedResponse(
+        content: [],
+        currentPage: page,
+        pageSize: size,
+        totalElements: 0,
+        totalPages: 0,
+        hasNext: false,
+        hasPrevious: false,
+        isFirst: true,
+        isLast: true,
+      );
     } catch (e) {
       print('❌ Lỗi lấy resident news: $e');
-      return [];
+      return NewsPagedResponse(
+        content: [],
+        currentPage: page,
+        pageSize: size,
+        totalElements: 0,
+        totalPages: 0,
+        hasNext: false,
+        hasPrevious: false,
+        isFirst: true,
+        isLast: true,
+      );
     }
+  }
+
+  // Backward compatibility method
+  Future<List<ResidentNews>> getResidentNews(
+    String residentId, {
+    int page = 0,
+    int size = 10,
+    DateTime? dateFrom,
+    DateTime? dateTo,
+  }) async {
+    final pagedResponse = await getResidentNewsPaged(
+      residentId,
+      page: page,
+      size: size,
+      dateFrom: dateFrom,
+      dateTo: dateTo,
+    );
+    return pagedResponse.content;
   }
 
   /// Get total count of news items (for pagination)
@@ -153,12 +204,66 @@ class ResidentService {
     DateTime? dateFrom,
     DateTime? dateTo,
   }) async {
+    final pagedResponse = await getResidentNotificationsPaged(
+      residentId,
+      buildingId,
+      page: page,
+      size: limit,
+      dateFrom: dateFrom,
+      dateTo: dateTo,
+    );
+    return pagedResponse.content;
+  }
+
+  /// Fetch all notifications across all pages (for counting unread)
+  Future<List<ResidentNotification>> getAllResidentNotifications(
+    String residentId,
+    String buildingId, {
+    DateTime? dateFrom,
+    DateTime? dateTo,
+    int maxPages = 100, // Limit to prevent infinite loops
+  }) async {
+    List<ResidentNotification> allNotifications = [];
+    int currentPage = 0;
+    bool hasMore = true;
+
+    while (hasMore && currentPage < maxPages) {
+      final pagedResponse = await getResidentNotificationsPaged(
+        residentId,
+        buildingId,
+        page: currentPage,
+        size: 7,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+      );
+
+      allNotifications.addAll(pagedResponse.content);
+
+      if (pagedResponse.hasNext && pagedResponse.content.isNotEmpty) {
+        currentPage++;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    print('✅ [ResidentService] Fetched ${allNotifications.length} notifications across ${currentPage + 1} pages');
+    return allNotifications;
+  }
+
+  Future<NotificationPagedResponse> getResidentNotificationsPaged(
+    String residentId,
+    String buildingId, {
+    int page = 0,
+    int size = 7, // Fixed size as per requirement
+    DateTime? dateFrom,
+    DateTime? dateTo,
+  }) async {
     try {
       final queryParams = <String, dynamic>{
         'residentId': residentId,
         'buildingId': buildingId,
         'page': page,
-        'limit': limit,
+        'size': size,
       };
 
       if (dateFrom != null) {
@@ -168,74 +273,36 @@ class ResidentService {
         queryParams['dateTo'] = dateTo.toIso8601String();
       }
 
-      print(
-          '🔍 [ResidentService] Gọi API notifications với residentId=$residentId, buildingId=$buildingId, page=$page, limit=$limit, dateFrom=$dateFrom, dateTo=$dateTo');
+      print('🔍 [ResidentService] Gọi API notifications/resident với page=$page, size=$size, dateFrom=$dateFrom, dateTo=$dateTo');
       final response = await _publicDio.get(
         '/notifications/resident',
         queryParameters: queryParams,
       );
 
-      print('🔍 [ResidentService] Response status: ${response.statusCode}');
-      print(
-          '🔍 [ResidentService] Response data type: ${response.data.runtimeType}');
-      print('🔍 [ResidentService] Response data: ${response.data}');
+      print('🔍 [ResidentService] Response type: ${response.data.runtimeType}');
 
-      if (response.data is Map && response.data['content'] != null) {
-        final list = (response.data['content'] as List)
-            .map((json) => ResidentNotification.fromJson(json))
-            .toList();
-        print('✅ [ResidentService] Parsed ${list.length} notifications từ paginated response');
-        return list;
+      if (response.data is Map) {
+        final pagedResponse = NotificationPagedResponse.fromJson(response.data);
+        print('✅ [ResidentService] Paginated response: ${pagedResponse.content.length} items, totalPages: ${pagedResponse.totalPages}');
+        return pagedResponse;
       }
 
-      if (response.data is List) {
-        final list = (response.data as List)
-            .map((json) => ResidentNotification.fromJson(json))
-            .toList();
-        
-        if (dateFrom != null || dateTo != null || page > 0) {
-          var filtered = list;
-          
-          if (dateFrom != null) {
-            filtered = filtered.where((n) => 
-              n.createdAt.isAfter(dateFrom.subtract(const Duration(days: 1))) || 
-              n.createdAt.isAtSameMomentAs(dateFrom)
-            ).toList();
-          }
-          
-          if (dateTo != null) {
-            final endDate = dateTo.add(const Duration(days: 1));
-            filtered = filtered.where((n) => 
-              n.createdAt.isBefore(endDate) || 
-              n.createdAt.isAtSameMomentAs(dateTo)
-            ).toList();
-          }
-          
-          if (page > 0 || limit < 1000) {
-            final startIndex = page * limit;
-            final endIndex = (startIndex + limit).clamp(0, filtered.length);
-            if (startIndex < filtered.length) {
-              filtered = filtered.sublist(startIndex, endIndex);
-            } else {
-              filtered = [];
-            }
-          }
-          
-          print('✅ [ResidentService] Parsed ${filtered.length} notifications sau filter/pagination');
-          return filtered;
-        }
-        
-        print('✅ [ResidentService] Parsed ${list.length} notifications');
-        return list;
-      }
-
-      print('⚠️ [ResidentService] Response không phải List/Map, trả về empty list');
-      return [];
+      print('⚠️ [ResidentService] Response format không hỗ trợ, trả về empty NotificationPagedResponse');
+      return NotificationPagedResponse(
+        content: [],
+        currentPage: 0,
+        pageSize: size,
+        totalElements: 0,
+        totalPages: 0,
+        hasNext: false,
+        hasPrevious: false,
+        isFirst: true,
+        isLast: true,
+      );
     } catch (e) {
       print('❌ [ResidentService] Lỗi lấy resident notifications: $e');
       if (e is DioException) {
-        print(
-            '❌ [ResidentService] DioException status: ${e.response?.statusCode}');
+        print('❌ [ResidentService] DioException status: ${e.response?.statusCode}');
         print('❌ [ResidentService] DioException data: ${e.response?.data}');
       }
       rethrow;
@@ -249,55 +316,62 @@ class ResidentService {
     DateTime? dateTo,
   }) async {
     try {
-      final queryParams = <String, dynamic>{
-        'residentId': residentId,
-        'buildingId': buildingId,
-      };
+      // Try the new count endpoint first
+      try {
+        final queryParams = <String, dynamic>{
+          'residentId': residentId,
+          'buildingId': buildingId,
+        };
 
-      if (dateFrom != null) {
-        queryParams['dateFrom'] = dateFrom.toIso8601String();
-      }
-      if (dateTo != null) {
-        queryParams['dateTo'] = dateTo.toIso8601String();
+        final response = await _publicDio.get(
+          '/notifications/resident/count',
+          queryParameters: queryParams,
+        );
+
+        if (response.data is Map && response.data['totalCount'] != null) {
+          final total = response.data['totalCount'] as int;
+          print('✅ [ResidentService] Total notifications count from count endpoint: $total');
+          
+          // If date filters are provided, we need to get the full list and filter
+          if (dateFrom != null || dateTo != null) {
+            final allNotifications = await getAllResidentNotifications(
+              residentId,
+              buildingId,
+              dateFrom: dateFrom,
+              dateTo: dateTo,
+            );
+            return allNotifications.length;
+          }
+          
+          return total;
+        }
+      } catch (countError) {
+        print('⚠️ [ResidentService] Count endpoint failed, using paginated endpoint as fallback: $countError');
       }
 
-      final response = await _publicDio.get(
-        '/notifications/resident',
-        queryParameters: queryParams,
+      // Fallback: use paginated endpoint to get totalElements
+      final pagedResponse = await getResidentNotificationsPaged(
+        residentId,
+        buildingId,
+        page: 0,
+        size: 7,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
       );
-
-      if (response.data is Map && response.data['totalElements'] != null) {
-        final total = response.data['totalElements'] as int;
-        print('✅ [ResidentService] Total notifications: $total');
-        return total;
+      
+      if (dateFrom != null || dateTo != null) {
+        // If date filters are provided, we need to get all notifications
+        final allNotifications = await getAllResidentNotifications(
+          residentId,
+          buildingId,
+          dateFrom: dateFrom,
+          dateTo: dateTo,
+        );
+        return allNotifications.length;
       }
-
-      if (response.data is List) {
-        var list = (response.data as List)
-            .map((json) => ResidentNotification.fromJson(json))
-            .toList();
-        
-        if (dateFrom != null) {
-          list = list.where((n) => 
-            n.createdAt.isAfter(dateFrom.subtract(const Duration(days: 1))) || 
-            n.createdAt.isAtSameMomentAs(dateFrom)
-          ).toList();
-        }
-        
-        if (dateTo != null) {
-          final endDate = dateTo.add(const Duration(days: 1));
-          list = list.where((n) => 
-            n.createdAt.isBefore(endDate) || 
-            n.createdAt.isAtSameMomentAs(dateTo)
-          ).toList();
-        }
-        
-        final total = list.length;
-        print('✅ [ResidentService] Total notifications (calculated): $total');
-        return total;
-      }
-
-      return 0;
+      
+      print('✅ [ResidentService] Total notifications count from paginated endpoint: ${pagedResponse.totalElements}');
+      return pagedResponse.totalElements;
     } catch (e) {
       print('❌ [ResidentService] Lỗi lấy count: $e');
       return 0;

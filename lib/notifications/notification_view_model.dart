@@ -24,9 +24,23 @@ class NotificationViewModel extends ChangeNotifier {
   int _currentPage = 0;
   int get currentPage => _currentPage;
 
-  final int _limit = 20;
-  bool _hasMore = true;
-  bool get hasMore => _hasMore;
+  int _totalPages = 0;
+  int get totalPages => _totalPages;
+
+  int _totalElements = 0;
+  int get totalElements => _totalElements;
+
+  bool _hasNext = false;
+  bool get hasNext => _hasNext;
+
+  bool _hasPrevious = false;
+  bool get hasPrevious => _hasPrevious;
+
+  bool _isFirst = true;
+  bool get isFirst => _isFirst;
+
+  bool _isLast = true;
+  bool get isLast => _isLast;
 
   String? _residentId;
   String? _buildingId;
@@ -136,7 +150,7 @@ class NotificationViewModel extends ChangeNotifier {
     return sortedGrouped;
   }
 
-  Future<void> loadNotifications({bool refresh = false}) async {
+  Future<void> loadNotifications({bool refresh = false, int? page}) async {
     if (_residentId == null || _buildingId == null) {
       _error = 'Chưa có thông tin residentId hoặc buildingId';
       notifyListeners();
@@ -145,12 +159,9 @@ class NotificationViewModel extends ChangeNotifier {
 
     if (refresh) {
       _currentPage = 0;
-      _hasMore = true;
       _notifications.clear();
-    }
-
-    if (!_hasMore && !refresh) {
-      return;
+    } else if (page != null) {
+      _currentPage = page;
     }
 
     _isLoading = refresh;
@@ -162,25 +173,23 @@ class NotificationViewModel extends ChangeNotifier {
       final dateFrom = _filterDateFrom;
       final dateTo = _filterDateTo;
 
-      final fetched = await _residentService.getResidentNotifications(
+      final pagedResponse = await _residentService.getResidentNotificationsPaged(
         _residentId!,
         _buildingId!,
         page: _currentPage,
-        limit: _limit,
+        size: 7, // Fixed size as per requirement
         dateFrom: dateFrom,
         dateTo: dateTo,
       );
 
-      if (refresh) {
-        _notifications = fetched;
-      } else {
-        _notifications.addAll(fetched);
-      }
-
-      _hasMore = fetched.length == _limit;
-      if (_hasMore) {
-        _currentPage++;
-      }
+      _notifications = pagedResponse.content;
+      _currentPage = pagedResponse.currentPage;
+      _totalPages = pagedResponse.totalPages;
+      _totalElements = pagedResponse.totalElements;
+      _hasNext = pagedResponse.hasNext;
+      _hasPrevious = pagedResponse.hasPrevious;
+      _isFirst = pagedResponse.isFirst;
+      _isLast = pagedResponse.isLast;
 
       _error = null;
     } catch (e) {
@@ -193,18 +202,27 @@ class NotificationViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> loadMore() async {
-    if (_isLoadingMore || !_hasMore) {
-      return;
+  Future<void> goToPage(int page) async {
+    if (page < 0 || page >= _totalPages) return;
+    await loadNotifications(page: page);
+  }
+
+  Future<void> nextPage() async {
+    if (_hasNext && !_isLoading) {
+      await loadNotifications(page: _currentPage + 1);
     }
-    await loadNotifications(refresh: false);
+  }
+
+  Future<void> previousPage() async {
+    if (_hasPrevious && !_isLoading) {
+      await loadNotifications(page: _currentPage - 1);
+    }
   }
 
   void setDateFilter(DateTime? dateFrom, DateTime? dateTo) {
     _filterDateFrom = dateFrom;
     _filterDateTo = dateTo;
     _currentPage = 0;
-    _hasMore = true;
     notifyListeners();
   }
 
@@ -213,7 +231,6 @@ class NotificationViewModel extends ChangeNotifier {
     _filterDateTo = null;
     _typeFilter = NotificationTypeFilter.all;
     _currentPage = 0;
-    _hasMore = true;
     notifyListeners();
   }
 

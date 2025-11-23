@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:app_links/app_links.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -132,9 +133,19 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
 
     final unitId = _selectedUnitId!;
     debugPrint('🧾 [InvoiceList] Gọi API unpaid-by-category (unitId=$unitId)');
-    final result = await _service.getUnpaidInvoicesByCategory(unitId: unitId);
-    debugPrint('🧾 [InvoiceList] API trả về ${result.length} nhóm');
-    return result;
+    try {
+      final result = await _service.getUnpaidInvoicesByCategory(unitId: unitId);
+      debugPrint('🧾 [InvoiceList] API trả về ${result.length} nhóm');
+      return result;
+    } on DioException catch (e) {
+      // Handle 401 gracefully - don't auto-logout after payment
+      if (e.response?.statusCode == 401) {
+        debugPrint('⚠️ [InvoiceList] Token expired during load. Will retry on next refresh.');
+        // Return empty list to prevent crash, data will refresh on next manual refresh
+        return [];
+      }
+      rethrow;
+    }
   }
 
   Future<String?> _getSavedUnitId() async {
@@ -156,7 +167,19 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
         return;
       }
 
-      final invoices = await _service.getMyInvoices(unitId: unitId);
+      List<InvoiceLineResponseDto> invoices;
+      try {
+        invoices = await _service.getMyInvoices(unitId: unitId);
+      } on DioException catch (e) {
+        // Handle 401 gracefully - don't auto-logout after payment
+        if (e.response?.statusCode == 401) {
+          debugPrint('⚠️ [InvoiceList] Token expired during payment check. Status will update automatically.');
+          // Don't throw - allow user to continue using app
+          return;
+        }
+        rethrow;
+      }
+      
       final invoice = invoices.firstWhere(
         (inv) => inv.invoiceId == pendingInvoiceId,
         orElse: () => throw Exception('Invoice not found'),
@@ -245,9 +268,15 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
             ),
           );
           if (!mounted) return;
-          setState(() {
-            _futureCategories = _loadCategories();
-          });
+          // Reload data with error handling to prevent auto-logout
+          try {
+            setState(() {
+              _futureCategories = _loadCategories();
+            });
+          } catch (e) {
+            debugPrint('⚠️ [InvoiceList] Error reloading after payment: $e');
+            // Don't throw - allow user to continue using app
+          }
         } else {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
