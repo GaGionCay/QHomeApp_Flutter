@@ -232,8 +232,8 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       return;
     }
     
-    // Hiển thị dialog chọn app payment/banking
-    await _showBankSelectionDialog(bankData, installedApps, qrCodeString: qrCodeString);
+    // Hiển thị Android system chooser để chọn app payment/banking
+    await _showBankAppChooser(bankData, installedApps, qrCodeString: qrCodeString);
   }
 
   /// Xử lý URL QR: Quét browser apps → Hiển thị dialog chọn trình duyệt
@@ -316,198 +316,99 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       return;
     }
     
-    // Hiển thị dialog chọn trình duyệt
-    await _showBrowserSelectionDialog(url, installedBrowsers);
+    // Hiển thị Android system chooser để chọn trình duyệt
+    await _showBrowserChooser(url, installedBrowsers);
   }
 
   /// ============================================
-  /// UI: Dialog chọn trình duyệt để mở URL
+  /// UI: Hiển thị Android system chooser để chọn trình duyệt
   /// ============================================
-  Future<void> _showBrowserSelectionDialog(Uri url, List<BankInfo> availableBrowsers) async {
+  Future<void> _showBrowserChooser(Uri url, List<BankInfo> availableBrowsers) async {
     if (!mounted) return;
     
-    if (!mounted) return;
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.link, size: 20),
-            SizedBox(width: 8),
-            Expanded(child: Text('Mã QR URL')),
-          ],
-        ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
-        content: ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 500),
-          child: SizedBox(
-            width: double.maxFinite,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Phần thông tin URL - có thể scroll nếu cần
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'URL đã quét:',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        SelectableText(
-                          url.toString(),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.blue,
-                            decoration: TextDecoration.underline,
-                          ),
-                          maxLines: 5,
-                        ),
-                        const SizedBox(height: 16),
-                        const Divider(),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Chọn trình duyệt để mở URL:',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // Danh sách trình duyệt
-                SizedBox(
-                  height: 250,
-                  child: ListView.builder(
-                    itemCount: availableBrowsers.length,
-                    itemBuilder: (context, index) {
-                      final browser = availableBrowsers[index];
-                      
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
-                        leading: const CircleAvatar(
-                          backgroundColor: Colors.blue,
-                          child: Icon(
-                            Icons.language,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ),
-                        title: Text(browser.name),
-                        subtitle: const Text(
-                          'Trình duyệt',
-                          style: TextStyle(fontSize: 11, color: Colors.grey),
-                        ),
-                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                        onTap: () {
-                          Navigator.of(context).pop(browser.packageName);
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: url.toString()));
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Đã sao chép URL'),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-              Navigator.of(context).pop();
-            },
-            icon: const Icon(Icons.copy, size: 18),
-            label: const Text('Sao chép URL'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-            },
-            child: const Text('Huỷ'),
-          ),
-        ],
-      ),
-    );
+    log('🌐 Showing Android chooser for URL: $url');
+    log('   Available browsers: ${availableBrowsers.length}');
     
-    // Xử lý kết quả: Mở URL bằng browser đã chọn
-    if (result != null && result.isNotEmpty) {
-      final browserInfo = availableBrowsers.firstWhere(
-        (browser) => browser.packageName == result,
-        orElse: () => availableBrowsers.first,
+    try {
+      // Lấy danh sách package names
+      final packageNames = availableBrowsers.map((browser) => browser.packageName).toList();
+      
+      // Gọi platform channel để hiển thị Android chooser
+      const channel = MethodChannel('com.qhome.resident/app_launcher');
+      final shown = await channel.invokeMethod<bool>(
+        'showAppChooser',
+        {
+          'url': url.toString(),
+          'packageNames': packageNames,
+          'title': 'Chọn trình duyệt để mở URL',
+        },
       );
       
-      log('🚀 Opening URL with browser: ${browserInfo.name} (${browserInfo.packageName})');
-      
-      try {
-        // Thử mở URL bằng browser cụ thể qua Platform Channel
+      if (shown == true) {
+        log('✅ Successfully showed Android chooser');
+        // Đóng QR scanner sau khi hiển thị chooser
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) {
+            Navigator.of(context).pop();
+          }
+        });
+      } else {
+        log('⚠️ Failed to show Android chooser, falling back to system chooser');
+        // Fallback: Sử dụng system chooser
         try {
-          const channel = MethodChannel('com.qhome.resident/app_launcher');
-          final opened = await channel.invokeMethod<bool>(
-            'openUrlWithBrowser',
-            {
-              'url': url.toString(),
-              'packageName': browserInfo.packageName,
-            },
-          );
-          
-          if (opened == true) {
-            log('✅ Successfully opened URL with ${browserInfo.name}');
-            // Đóng QR scanner sau khi mở URL thành công
+          final canLaunch = await canLaunchUrl(url);
+          if (canLaunch) {
+            await launchUrl(url, mode: LaunchMode.externalApplication);
             if (mounted) {
               Navigator.of(context).pop();
             }
-            return;
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Không thể mở URL này'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
           }
-        } on PlatformException catch (e) {
-          log('⚠️ Platform channel error: ${e.code} - ${e.message}');
-          // Tiếp tục thử cách khác
         } catch (e) {
-          log('⚠️ Error using platform channel: $e');
-          // Tiếp tục thử cách khác
-        }
-        
-        // Nếu platform channel không thành công, hiển thị thông báo lỗi
-        // Không fallback về system chooser vì user đã chọn browser cụ thể
-        log('❌ Failed to open URL with ${browserInfo.name} via platform channel');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Không thể mở URL với ${browserInfo.name}'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-        return;
-      } catch (e, stackTrace) {
-        log('❌ Error opening URL with browser: $e');
-        log('   Stack trace: $stackTrace');
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Lỗi khi mở URL: $e'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
+          log('❌ Error in fallback: $e');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Lỗi khi mở URL: $e'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
         }
       }
-    } else {
-      // Người dùng chọn huỷ, reset scanner
+    } on PlatformException catch (e) {
+      log('⚠️ Platform channel error: ${e.code} - ${e.message}');
+      // Fallback: Sử dụng system chooser
+      try {
+        final canLaunch = await canLaunchUrl(url);
+        if (canLaunch) {
+          await launchUrl(url, mode: LaunchMode.externalApplication);
+          if (mounted) {
+            Navigator.of(context).pop();
+          }
+        }
+      } catch (e2) {
+        log('❌ Error in fallback: $e2');
+      }
+    } catch (e, stackTrace) {
+      log('❌ Error showing browser chooser: $e');
+      log('   Stack trace: $stackTrace');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi hiển thị danh sách trình duyệt: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
       _resetScanner();
     }
   }
@@ -632,271 +533,49 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
   }
 
   /// ============================================
-  /// UI: Dialog chọn ngân hàng để mở app
+  /// UI: Hiển thị Android system chooser để chọn app ngân hàng
   /// ============================================
-  /// 
-  /// Hiển thị danh sách các ngân hàng đã cài đặt để user chọn
-  /// Khi user chọn → Mở app ngân hàng bằng intent URL
-  /// Lưu ý: App ngân hàng chỉ chấp nhận quét QR từ camera bên trong app
-  /// Không thể truyền dữ liệu QR vào app bằng deep link
-  Future<void> _showBankSelectionDialog(BankQRData qrData, List<BankInfo> availableBanks, {String? qrCodeString}) async {
+  Future<void> _showBankAppChooser(BankQRData qrData, List<BankInfo> availableBanks, {String? qrCodeString}) async {
     if (!mounted) return;
     
-    // Thông tin ngân hàng được phát hiện từ QR (nếu có)
-    // ⚠️ LƯU Ý: detectedBank có thể có package name cũ (từ mapping hardcode)
-    // Chúng ta sẽ ưu tiên package name từ availableBanks (app đã cài) sau
-    // ✅ Sử dụng async getBankInfo để lấy package name từ dynamic mapping (nếu có)
-    BankInfo? detectedBank;
-    if (qrData.bin != null) {
+    log('💰 Showing Android chooser for bank apps');
+    log('   Available banks: ${availableBanks.length}');
+    
+    // Copy QR code to clipboard first
+    final qrCode = qrCodeString ?? _lastScannedQRString;
+    if (qrCode != null) {
       try {
-        detectedBank = await BankQRParser.getBankInfo(qrData.bin!);
+        await Clipboard.setData(ClipboardData(text: qrCode));
+        log('✅ Copied QR code to clipboard');
       } catch (e) {
-        log('⚠️ Error getting bank info: $e');
-        // detectedBank remains null if async fails
+        log('⚠️ Error copying QR to clipboard: $e');
       }
     }
-    final accountNumber = qrData.accountNumber ?? '';
-    final amount = qrData.amount;
-    final addInfo = qrData.addInfo;
     
-    if (!mounted) return;
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.account_balance, size: 20),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                detectedBank != null 
-                  ? 'Mã QR ${detectedBank.name}' 
-                  : 'Mã QR chuyển tiền',
-                style: const TextStyle(fontSize: 18),
-              ),
-            ),
-          ],
-        ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
-        content: ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 500),
-          child: SizedBox(
-            width: double.maxFinite,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Phần thông tin QR - có thể scroll nếu cần
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Thông tin QR đã parse
-                        if (accountNumber.isNotEmpty)
-                          _buildInfoRow('Số tài khoản:', accountNumber),
-                        if (qrData.bin != null)
-                          _buildInfoRow('BIN:', qrData.bin!),
-                        if (qrData.merchantName != null)
-                          _buildInfoRow('Tên người nhận:', qrData.merchantName!),
-                        if (amount != null && amount > 0)
-                          _buildInfoRow(
-                            'Số tiền:', 
-                            '${_formatAmount(amount)} VNĐ',
-                            isHighlight: true,
-                          ),
-                        if (addInfo != null && addInfo.isNotEmpty)
-                          _buildInfoRow('Nội dung:', addInfo),
-                        _buildInfoRow(
-                          'Loại QR:', 
-                          qrData.isDynamic ? 'QR động' : 'QR tĩnh',
-                        ),
-                        const SizedBox(height: 16),
-                        const Divider(),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Chọn app để thực hiện chuyển tiền:',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.shade50,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: Colors.blue.shade200,
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.info_outline,
-                                    size: 16,
-                                    color: Colors.blue.shade700,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Hướng dẫn:',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.blue,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                '• QR code đã được sao chép vào clipboard\n'
-                                '• Sau khi đăng nhập vào app ngân hàng, dán QR code vào ô tìm kiếm',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.blue,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // Danh sách ngân hàng - hiển thị tất cả, ưu tiên ngân hàng được phát hiện
-                SizedBox(
-                  height: 250,
-                  child: ListView.builder(
-                    itemCount: availableBanks.length,
-                    itemBuilder: (context, index) {
-                      final app = availableBanks[index];
-                      // ✅ Kiểm tra match theo BIN (ưu tiên), không phải package name
-                      // Vì package name có thể khác nhau (app mới cài có package name mới)
-                      final isDetectedBank = qrData.bin != null && app.bin == qrData.bin;
-                      
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.blue.shade100,
-                          child: const Icon(
-                            Icons.account_balance,
-                            color: Colors.blue,
-                            size: 20,
-                          ),
-                        ),
-                        title: Text(
-                          app.name,
-                          style: TextStyle(
-                            fontWeight: isDetectedBank ? FontWeight.bold : FontWeight.normal,
-                          ),
-                        ),
-                        subtitle: const Text(
-                          'App ngân hàng',
-                          style: TextStyle(fontSize: 11, color: Colors.grey),
-                        ),
-                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                        onTap: () {
-                          Navigator.of(context).pop(app.packageName);
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          if (detectedBank != null)
-            FilledButton.icon(
-              onPressed: () {
-                // Tìm app đã cài trong availableBanks (ưu tiên package name đã cài)
-                final installedDetectedBank = availableBanks.firstWhere(
-                  (bank) => bank.bin != null && detectedBank != null && bank.bin == detectedBank.bin,
-                  orElse: () => detectedBank ?? availableBanks.first, // Fallback về detectedBank nếu không tìm thấy
-                );
-                Navigator.of(context).pop(installedDetectedBank.packageName);
-              },
-              icon: const Icon(Icons.account_balance_wallet, size: 18),
-              label: Text('Mở ${detectedBank.name}'),
-            ),
-          TextButton.icon(
-            onPressed: () {
-              if (accountNumber.isNotEmpty) {
-                Clipboard.setData(ClipboardData(text: accountNumber));
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Đã sao chép số tài khoản'),
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                }
-              }
-            },
-            icon: const Icon(Icons.copy, size: 18),
-            label: const Text('Sao chép STK'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-            },
-            child: const Text('Huỷ'),
-          ),
-        ],
-      ),
-    );
-    
-    // Xử lý kết quả: Mở app ngân hàng
-    if (result != null && result.isNotEmpty) {
-      // Tìm app trong availableBanks theo package name
-      BankInfo? bankInfo = availableBanks.firstWhere(
-        (bank) => bank.packageName == result,
-        orElse: () => BankInfo(name: 'Unknown', packageName: result, bin: null),
+    try {
+      // Lấy danh sách package names
+      final packageNames = availableBanks.map((bank) => bank.packageName).toList();
+      
+      // Gọi platform channel để hiển thị Android chooser
+      const channel = MethodChannel('com.qhome.resident/app_launcher');
+      final shown = await channel.invokeMethod<bool>(
+        'showBankAppChooser',
+        {
+          'packageNames': packageNames,
+          'qrCode': qrCode,
+          'title': 'Chọn ứng dụng ngân hàng',
+        },
       );
       
-      // Nếu không tìm thấy trong availableBanks, có thể là detectedBank.packageName (cũ)
-      // Trong trường hợp này, tìm app có cùng BIN trong availableBanks
-      if (bankInfo.bin == null && detectedBank != null) {
-        final detectedBin = detectedBank.bin;
-        if (detectedBin != null) {
-          final detectedName = detectedBank.name;
-          final foundBank = availableBanks.firstWhere(
-            (bank) => bank.bin != null && bank.bin == detectedBin,
-            orElse: () => BankInfo(
-              name: detectedName, 
-              packageName: result, 
-              bin: detectedBin,
-            ),
-          );
-          bankInfo = foundBank;
-          log('⚠️ Package name $result not found in installed apps, using installed app with same BIN: ${bankInfo.packageName}');
-        }
-      }
-      
-      log('🚀 Opening bank app: ${bankInfo.name} (${bankInfo.packageName})');
-      
-      final success = await BankAppLauncher.openBankApp(
-        bankInfo.packageName,
-        playStoreId: bankInfo.playStoreId,
-        bankQRData: qrData,
-        qrCodeString: qrCodeString ?? _lastScannedQRString,
-      );
-      
-      if (success) {
+      if (shown == true) {
+        log('✅ Successfully showed Android bank app chooser');
+        // Hiển thị thông báo hướng dẫn
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                '✅ Đã mở app và sao chép QR code vào clipboard\n'
-                'Sau khi đăng nhập, dán QR code vào ô tìm kiếm',
+                '✅ QR code đã được sao chép vào clipboard\n'
+                'Sau khi đăng nhập vào app ngân hàng, dán QR code vào ô tìm kiếm',
                 style: TextStyle(fontSize: 13),
               ),
               duration: Duration(seconds: 4),
@@ -904,78 +583,49 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
             ),
           );
         }
-        
-        // Đóng QR scanner sau khi mở app thành công
-        Future.delayed(const Duration(milliseconds: 500), () {
+        // Đóng QR scanner sau khi hiển thị chooser
+        Future.delayed(const Duration(milliseconds: 300), () {
           if (mounted) {
             Navigator.of(context).pop();
           }
         });
       } else {
+        log('⚠️ Failed to show Android bank app chooser');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Không thể mở app ${bankInfo.name}'),
+            const SnackBar(
+              content: Text('Không thể hiển thị danh sách ứng dụng ngân hàng'),
               behavior: SnackBarBehavior.floating,
-              action: SnackBarAction(
-                label: 'Thử lại',
-                onPressed: () {
-                  // Re-detect installed banks and show dialog again
-                  _handleBankQR(qrData, qrCodeString: _lastScannedQRString);
-                },
-              ),
             ),
           );
         }
+        _resetScanner();
       }
-    } else {
-      // Người dùng chọn huỷ, reset scanner
+    } on PlatformException catch (e) {
+      log('⚠️ Platform channel error: ${e.code} - ${e.message}');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi hiển thị danh sách ứng dụng: ${e.message}'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      _resetScanner();
+    } catch (e, stackTrace) {
+      log('❌ Error showing bank app chooser: $e');
+      log('   Stack trace: $stackTrace');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi hiển thị danh sách ứng dụng: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
       _resetScanner();
     }
   }
-
-
-  Widget _buildInfoRow(String label, String value, {bool isHighlight = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 100,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: isHighlight ? FontWeight.bold : FontWeight.normal,
-                color: isHighlight ? Colors.blue : Colors.black87,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatAmount(double amount) {
-    // Format số tiền với dấu phẩy ngăn cách hàng nghìn
-    final formatter = amount.toStringAsFixed(0);
-    return formatter.replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    );
-  }
-
 
   Future<void> _showAppChooserDialog(String code) async {
     if (!mounted) return;

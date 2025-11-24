@@ -176,7 +176,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
   String _formatDate(DateTime? date) {
     if (date == null) return 'Chưa có';
     try {
-      return DateFormat('dd/MM/yyyy HH:mm').format(date);
+      return DateFormat('dd/MM/yyyy').format(date);
     } catch (_) {
       return 'Không hợp lệ';
     }

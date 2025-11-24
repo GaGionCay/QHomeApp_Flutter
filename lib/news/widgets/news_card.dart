@@ -208,14 +208,14 @@ class _NewsCardState extends State<NewsCard> {
 
     try {
       if (newsDate.isAtSameMomentAs(today)) {
-        return DateFormat('HH:mm').format(date);
+        return 'Hôm nay';
       } else if (newsDate.isAtSameMomentAs(yesterday)) {
-        return 'Hôm qua, ${DateFormat('HH:mm').format(date)}';
+        return 'Hôm qua';
       } else {
-        return DateFormat('dd/MM/yyyy, HH:mm').format(date);
+        return DateFormat('dd/MM/yyyy').format(date);
       }
     } catch (e) {
-      return DateFormat('dd/MM/yyyy HH:mm').format(date);
+      return DateFormat('dd/MM/yyyy').format(date);
     }
   }
 }
