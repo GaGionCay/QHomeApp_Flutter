@@ -4,11 +4,12 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'api_client.dart';
 
 class IamApiClient {
-  static const int iamApiPort = 8088;
+  // All requests go through API Gateway (port 8989)
+  // Gateway routes /api/iam/** to IAM service (8088)
   static const int timeoutSeconds = 10;
 
   static String get baseUrl =>
-      ApiClient.buildServiceBase(port: iamApiPort, path: '/api');
+      ApiClient.buildServiceBase(path: '/api/iam');
 
   static Dio createPublicDio() {
     assert(

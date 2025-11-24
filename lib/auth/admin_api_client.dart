@@ -9,8 +9,9 @@ class AdminApiClient {
   static const int apiPort = 8086;
   static const int timeoutSeconds = 10;
 
+  // Note: buildServiceBase() already includes /api in the base URL
   static String get baseUrl =>
-      ApiClient.buildServiceBase(port: apiPort, path: '/api');
+      ApiClient.buildServiceBase();
 
   static Dio createPublicDio() {
     assert(
@@ -82,6 +83,13 @@ class AdminApiClient {
         if (token != null) options.headers['Authorization'] = 'Bearer $token';
         final deviceId = await _storage.readDeviceId();
         if (deviceId != null) options.headers['X-Device-Id'] = deviceId;
+        
+        // Add ngrok-skip-browser-warning header for ngrok URLs
+        final uri = options.uri;
+        if (uri.host.contains('ngrok') || uri.host.contains('ngrok-free.app')) {
+          options.headers['ngrok-skip-browser-warning'] = 'true';
+        }
+        
         return handler.next(options);
       },
       onError: (err, handler) async {
@@ -113,6 +121,7 @@ class AdminApiClient {
   String fileUrl(String? path) {
     if (path == null || path.isEmpty) return '';
     if (path.startsWith('http://') || path.startsWith('https://')) return path;
-    return '${ApiClient.buildServiceBase(port: apiPort)}$path';
+    // Note: buildServiceBase() already includes /api in the base URL
+    return '${ApiClient.buildServiceBase()}$path';
   }
 }

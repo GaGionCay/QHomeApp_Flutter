@@ -4,10 +4,10 @@ import 'auth_service.dart';
 import 'token_storage.dart';
 
 class CustomerInteractionApiClient {
-  static const int apiPort = 8086;
+  // All requests go through API Gateway (port 8989)
+  // Gateway routes /api/customer-interaction/** to customer-interaction-service (8086)
 
   static String get baseUrl => ApiClient.buildServiceBase(
-        port: apiPort,
         path: '/api/customer-interaction',
       );
 

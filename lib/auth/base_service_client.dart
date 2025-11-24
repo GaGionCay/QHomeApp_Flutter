@@ -7,11 +7,13 @@ import 'iam_api_client.dart';
 import 'token_storage.dart';
 
 class BaseServiceClient {
-  static const int baseServicePort = 8081;
+  // Note: All requests go through API Gateway (port 8989)
+  // API Gateway routes /api/** to base-service (8081)
   static const int timeoutSeconds = 10;
 
+  // Note: buildServiceBase() already includes /api in the base URL
   static String get baseUrl =>
-      ApiClient.buildServiceBase(port: baseServicePort, path: '/api');
+      ApiClient.buildServiceBase();
 
   static Dio createPublicDio() {
     assert(
@@ -112,6 +114,7 @@ class BaseServiceClient {
   String fileUrl(String? path) {
     if (path == null || path.isEmpty) return '';
     if (path.startsWith('http://') || path.startsWith('https://')) return path;
-    return '${ApiClient.buildServiceBase(port: baseServicePort)}$path';
+    // All requests go through API Gateway
+    return '${ApiClient.buildServiceBase()}$path';
   }
 }

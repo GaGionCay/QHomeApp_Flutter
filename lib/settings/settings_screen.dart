@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../auth/auth_provider.dart';
 import '../auth/api_client.dart';
+import '../auth/backend_discovery_service.dart';
 import '../common/layout_insets.dart';
 import '../contracts/contract_service.dart';
 import '../core/event_bus.dart';
@@ -63,6 +64,8 @@ class SettingsScreen extends StatelessWidget {
           padding: EdgeInsets.fromLTRB(20, 24, 20, bottomInset),
           children: const [
             _ThemeModeSection(),
+            SizedBox(height: 24),
+            _BackendUrlSection(),
             SizedBox(height: 24),
             _FingerprintSettingsSection(),
             SizedBox(height: 24),
@@ -783,6 +786,270 @@ class _UnitSwitcherSectionState extends State<_UnitSwitcherSection> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// Backend URL Configuration Section
+class _BackendUrlSection extends StatefulWidget {
+  const _BackendUrlSection();
+
+  @override
+  State<_BackendUrlSection> createState() => _BackendUrlSectionState();
+}
+
+class _BackendUrlSectionState extends State<_BackendUrlSection> {
+  late BackendDiscoveryService _discoveryService;
+  String? _currentUrl;
+  bool _loading = false;
+  bool _saving = false;
+  final TextEditingController _urlController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _discoveryService = BackendDiscoveryService();
+    _loadCurrentUrl();
+  }
+
+  Future<void> _loadCurrentUrl() async {
+    await _discoveryService.initialize();
+    setState(() {
+      _currentUrl = _discoveryService.getManualBackendUrl();
+      _urlController.text = _currentUrl ?? '';
+    });
+  }
+
+  Future<void> _saveUrl() async {
+    final url = _urlController.text.trim();
+    
+    if (url.isEmpty) {
+      // Clear manual URL and use auto-discovery
+      setState(() => _saving = true);
+      await _discoveryService.clearManualBackendUrl();
+      await _discoveryService.initialize();
+      
+      // Re-discover backend
+      try {
+        await ApiClient.ensureInitialized();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Đã xóa URL thủ công. App sẽ tự động phát hiện backend.'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi: $e'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+      
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _currentUrl = null;
+        });
+      }
+      return;
+    }
+
+    // Validate URL format
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('URL phải bắt đầu bằng http:// hoặc https://'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _saving = true);
+
+    final success = await _discoveryService.setManualBackendUrl(url);
+    
+    if (!mounted) return;
+
+    if (success) {
+      setState(() {
+        _currentUrl = url;
+        _saving = false;
+      });
+      
+      // Re-initialize API client with new URL
+      try {
+        await ApiClient.ensureInitialized();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Đã lưu backend URL thành công!'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.green,
+          ),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⚠️ Đã lưu nhưng có lỗi khi kết nối: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } else {
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Không thể kết nối đến backend URL này. Vui lòng kiểm tra lại.'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    if (_loading) {
+      return const SizedBox.shrink();
+    }
+
+    return _SettingsGlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                height: 44,
+                width: 44,
+                decoration: BoxDecoration(
+                  gradient: AppColors.primaryGradient(),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: AppColors.subtleShadow,
+                ),
+                child: const Icon(
+                  Icons.cloud,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Backend Server URL',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Cấu hình URL backend (ngrok/public IP)',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurface.withValues(alpha: 0.68),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: _urlController,
+            enabled: !_saving,
+            decoration: InputDecoration(
+              labelText: 'Backend URL',
+              hintText: 'https://xxx.ngrok.io hoặc http://public-ip:8081',
+              helperText: _currentUrl != null
+                  ? 'Đang sử dụng URL thủ công'
+                  : 'Để trống để tự động phát hiện',
+              prefixIcon: const Icon(Icons.link),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            keyboardType: TextInputType.url,
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _saving ? null : () {
+                    _urlController.clear();
+                    _saveUrl();
+                  },
+                  icon: const Icon(Icons.auto_awesome),
+                  label: const Text('Tự động phát hiện'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _saving ? null : _saveUrl,
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.save),
+                  label: Text(_saving ? 'Đang lưu...' : 'Lưu URL'),
+                ),
+              ),
+            ],
+          ),
+          if (_currentUrl != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: colorScheme.primary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Đang dùng: $_currentUrl',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

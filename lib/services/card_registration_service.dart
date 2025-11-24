@@ -5,7 +5,8 @@ import '../auth/api_client.dart';
 import '../models/card_registration_summary.dart';
 
 class CardRegistrationService {
-  static const int _servicePort = 8083;
+  // All requests go through API Gateway (port 8989)
+  // Gateway routes /api/card-registrations/** to services-card-service (8083)
 
   final ApiClient apiClient;
   final Dio? _overriddenClient;
@@ -16,7 +17,9 @@ class CardRegistrationService {
     if (_overriddenClient != null) {
       return _overriddenClient!;
     }
-    final baseUrl = ApiClient.buildServiceBase(port: _servicePort);
+    // Use API Gateway - routes /api/card-registrations/** to services-card-service
+    // Note: buildServiceBase() already includes /api in the base URL
+    final baseUrl = ApiClient.buildServiceBase();
     final dio = Dio(BaseOptions(
       baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
@@ -46,7 +49,7 @@ class CardRegistrationService {
     }
 
     final response = await client.get(
-      '/api/card-registrations',
+      '/card-registrations',
       queryParameters: {
         'residentId': residentId,
         'unitId': unitId,

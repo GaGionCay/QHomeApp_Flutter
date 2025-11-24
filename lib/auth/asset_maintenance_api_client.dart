@@ -42,10 +42,10 @@ class AssetMaintenanceApiClient {
   final AuthService _authService;
   bool _isRefreshing = false;
 
-  static const int _apiPort = 8084;
+  // All requests go through API Gateway (port 8989)
+  // Gateway routes /api/asset-maintenance/** to asset-maintenance-service (8084)
   static String get _baseUrl =>
       ApiClient.buildServiceBase(
-        port: _apiPort,
         path: '/api/asset-maintenance',
       );
 

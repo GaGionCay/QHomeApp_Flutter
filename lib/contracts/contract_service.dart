@@ -16,7 +16,10 @@ class ContractService {
     if (contractsDio != null) {
       return contractsDio!;
     }
-    final baseUrl = ApiClient.buildServiceBase(port: 8082, path: '/api');
+    // All requests go through API Gateway (port 8989)
+    // Gateway routes /api/data-docs/** to data-docs-service (8082)
+    // Note: buildServiceBase() already includes /api in the base URL
+    final baseUrl = ApiClient.buildServiceBase();
     return Dio(BaseOptions(
       baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),

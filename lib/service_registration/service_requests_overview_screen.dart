@@ -150,8 +150,9 @@ class _ServiceRequestsOverviewScreenState
         ),
       );
     } finally {
-      if (!mounted) return;
-      setState(() => _loadingMoreCleaning = false);
+      if (mounted) {
+        setState(() => _loadingMoreCleaning = false);
+      }
     }
   }
 
@@ -177,8 +178,9 @@ class _ServiceRequestsOverviewScreenState
         ),
       );
     } finally {
-      if (!mounted) return;
-      setState(() => _loadingMoreMaintenance = false);
+      if (mounted) {
+        setState(() => _loadingMoreMaintenance = false);
+      }
     }
   }
 

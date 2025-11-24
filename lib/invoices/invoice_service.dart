@@ -15,8 +15,10 @@ class InvoiceService {
 
   Dio _financeBillingClient() {
     if (financeBillingDio != null) return financeBillingDio!;
-    // Create finance-billing-service client (port 8085)
-    final baseUrl = ApiClient.buildServiceBase(port: 8085);
+    // All requests go through API Gateway (port 8989)
+    // Gateway routes /api/invoices/** to finance-billing-service (8085)
+    // Note: buildServiceBase() already includes /api in the base URL
+    final baseUrl = ApiClient.buildServiceBase();
     final dio = Dio(BaseOptions(
       baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
@@ -59,7 +61,7 @@ class InvoiceService {
         queryParameters['cycleId'] = cycleId;
       }
       final res = await client.get(
-        '/api/invoices/me',
+        '/invoices/me',
         queryParameters: queryParameters,
       );
       
@@ -102,7 +104,7 @@ class InvoiceService {
         queryParameters['cycleId'] = cycleId;
       }
       final res = await client.get(
-        '/api/invoices/me/unpaid-by-category',
+        '/invoices/me/unpaid-by-category',
         queryParameters: queryParameters,
       );
 
@@ -146,7 +148,7 @@ class InvoiceService {
         queryParameters['cycleId'] = cycleId;
       }
       final res = await client.get(
-        '/api/invoices/me/paid-by-category',
+        '/invoices/me/paid-by-category',
         queryParameters: queryParameters,
       );
 
@@ -213,7 +215,7 @@ class InvoiceService {
       log('💳 [InvoiceService] Tạo VNPAY URL cho invoice: $invoiceId');
       final client = await _prepareFinanceClient();
       final res = await client.post(
-        '/api/invoices/$invoiceId/vnpay-url',
+        '/invoices/$invoiceId/vnpay-url',
         queryParameters: unitId != null ? {'unitId': unitId} : null,
       );
       
@@ -259,7 +261,7 @@ class InvoiceService {
       log('📊 [InvoiceService] Lấy dữ liệu tiền điện theo tháng');
       final client = await _prepareFinanceClient();
       final res = await client.get(
-        '/api/invoices/electricity/monthly',
+        '/invoices/electricity/monthly',
         queryParameters: unitId != null ? {'unitId': unitId} : null,
       );
       
