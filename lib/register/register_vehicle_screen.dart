@@ -34,8 +34,8 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   final ApiClient api = ApiClient();
   Dio? _servicesCardDio;
   final _formKey = GlobalKey<FormState>();
-  final _storageKey = 'register_service_draft';
-  final _pendingPaymentKey = 'pending_registration_payment';
+  static const _storageKey = 'register_service_draft';
+  static const _pendingPaymentKey = 'pending_registration_payment';
   
   // Card pricing
   double _registrationFee = 30000.0; // Default fallback

@@ -167,12 +167,13 @@ class BackendDiscoveryService {
     }
 
     // Priority 5: Try cached backend info
-    final cachedInfo = _getCachedBackendInfo();
-    if (cachedInfo != null && await _isBackendReachable(cachedInfo)) {
+    // Store cached info for potential use in fallback
+    BackendInfo? cachedBackendInfo = _getCachedBackendInfo();
+    if (cachedBackendInfo != null && await _isBackendReachable(cachedBackendInfo)) {
       if (kDebugMode) {
-        print('✅ Using cached backend: ${cachedInfo.hostname}:${cachedInfo.port}');
+        print('✅ Using cached backend: ${cachedBackendInfo.hostname}:${cachedBackendInfo.port}');
       }
-      return cachedInfo;
+      return cachedBackendInfo;
     }
 
     // Priority 6: Try mDNS hostname discovery (local network only)
@@ -251,18 +252,30 @@ class BackendDiscoveryService {
       }
     }
 
+    // Before falling back to localhost/emulator IP, try cached backend one more time
+    // This handles cases where backend might be temporarily unreachable but cached IP is still valid
+    if (cachedBackendInfo != null) {
+      if (kDebugMode) {
+        print('⚠️ All discovery methods failed, but found cached backend: ${cachedBackendInfo.hostname}:${cachedBackendInfo.port}');
+        print('   Will use cached backend (may retry connection later)');
+      }
+      // Use cached backend even if reachability check failed
+      // The retry logic in ApiClient will handle connection failures
+      return cachedBackendInfo;
+    }
+
     // Fall back to localhost variants (works on web/desktop/emulator, not physical mobile)
     if (kDebugMode) {
-      print('⚠️ All discovery methods failed');
+      print('⚠️ All discovery methods failed, no cached backend found');
       if (kIsWeb) {
         print('⚠️ Using fallback: localhost:$_defaultBackendPort');
       } else if (Platform.isAndroid) {
         print('⚠️ Using fallback: 10.0.2.2:$_defaultBackendPort (Android emulator)');
-        print('   For physical Android device, set backend IP in Settings → Backend Server');
+        print('   For physical Android device, ensure backend is running and on same network');
         print('   Example: http://192.168.1.100:8989 (IP of your backend machine)');
       } else if (Platform.isIOS) {
         print('⚠️ Using fallback: localhost:$_defaultBackendPort (iOS simulator)');
-        print('   For physical iOS device, set backend IP in Settings → Backend Server');
+        print('   For physical iOS device, ensure backend is running and on same network');
         print('   Example: http://192.168.1.100:8989 (IP of your backend machine)');
       } else {
         print('⚠️ Using fallback: localhost:$_defaultBackendPort');

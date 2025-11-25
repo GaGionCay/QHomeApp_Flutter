@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
@@ -195,6 +196,30 @@ class ApiClient {
 
     dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
+        // Check network connectivity before making request
+        if (!kIsWeb) {
+          try {
+            final connectivity = Connectivity();
+            final connectivityResult = await connectivity.checkConnectivity();
+            
+            // If no network connectivity, fail immediately with clear error
+            if (connectivityResult.contains(ConnectivityResult.none)) {
+              print('❌ No network connectivity available. Cannot connect to backend.');
+              print('   Please check your WiFi/mobile data connection.');
+              return handler.reject(
+                DioException(
+                  requestOptions: options,
+                  error: 'No network connectivity available. Please check your WiFi/mobile data connection.',
+                  type: DioExceptionType.connectionError,
+                ),
+              );
+            }
+          } catch (e) {
+            // If connectivity check fails, continue anyway (might be temporary issue)
+            print('⚠️ Failed to check network connectivity: $e');
+          }
+        }
+        
         // Periodically check for ngrok URL from backend (if not using ngrok already)
         // This ensures we automatically switch to ngrok URL when it becomes available
         if (!kIsWeb && _isInitialized) {
@@ -300,6 +325,19 @@ class ApiClient {
               }
             } catch (discoveryErr) {
               print('⚠️ Re-discovery failed: $discoveryErr');
+              
+              // If we've tried multiple times and still getting "Network is unreachable",
+              // clear the cached backend to force fresh discovery
+              if (retryCount >= 3 && err.error.toString().contains('Network is unreachable')) {
+                print('🗑️ Cached backend unreachable after multiple attempts, clearing cache...');
+                try {
+                  await _discoveryService.clearCache();
+                  print('✅ Cleared cached backend, will try fresh discovery on next attempt');
+                } catch (clearErr) {
+                  print('⚠️ Failed to clear cache: $clearErr');
+                }
+              }
+              
               // If discovery fails, still retry (might be temporary issue)
               if (retryCount + 1 < maxRetries) {
                 options.extra['retryCount'] = retryCount + 1;

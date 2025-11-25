@@ -1019,7 +1019,7 @@ class BankQRParser {
             }
             
             if (browserInfo == null) {
-              final browserPatterns = [
+              const browserPatterns = [
                 'browser', 'chrome', 'firefox', 'edge', 'opera', 'safari',
                 'webview', 'web', 'internet', 'explorer', 'navigator',
                 'surf', 'navigate', 'view', 'link', 'url', 'html', 'http',

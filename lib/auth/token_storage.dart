@@ -1,7 +1,7 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class TokenStorage {
-  final _storage = const FlutterSecureStorage();
+  static final _storage = FlutterSecureStorage();
 
   Future<void> writeAccessToken(dynamic token) async =>
       _storage.write(key: 'accessToken', value: token?.toString());

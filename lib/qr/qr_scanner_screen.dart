@@ -4,6 +4,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:device_apps/device_apps.dart';
+import 'dart:io' show Platform;
 import '../theme/app_colors.dart';
 import 'bank_qr_parser.dart';
 
@@ -42,11 +44,20 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
   @override
   void dispose() {
     // Properly stop and dispose camera
+    // Stop camera synchronously but handle errors gracefully
     if (_isScannerStarted) {
-      _controller.stop();
+      try {
+        _controller.stop();
+      } catch (e) {
+        log('⚠️ Error stopping camera in dispose: $e');
+      }
       _isScannerStarted = false;
     }
-    _controller.dispose();
+    try {
+      _controller.dispose();
+    } catch (e) {
+      log('⚠️ Error disposing camera controller: $e');
+    }
     super.dispose();
   }
 
@@ -68,11 +79,9 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     log('📱 QR Code scanned: $code');
     _isProcessing = true;
 
-    // Stop scanner
-    if (_isScannerStarted) {
-      _controller.stop();
-      _isScannerStarted = false;
-    }
+    // Don't stop camera immediately - let it finish processing current frame
+    // Camera will be stopped later when navigating away or in dispose
+    // This prevents "BufferQueue has been abandoned" errors
 
     // Validate and navigate
     _handleScannedCode(code);
@@ -139,213 +148,148 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     }
   }
 
-  /// Xử lý Bank QR: Kiểm tra app đã cài → Hiển thị dialog chọn ngân hàng
+  /// Xử lý Bank QR: Flutter quét bank apps, sau đó truyền cho Android chooser
+  /// Android chooser chỉ hiển thị những bank apps đã quét được
   Future<void> _handleBankQR(BankQRData bankData, {String? qrCodeString}) async {
     if (!mounted) return;
     
     log('💰 Handling Bank QR: BIN=${bankData.bin}, Account=${bankData.accountNumber}');
     
-    // Hiển thị loading dialog trong khi kiểm tra app đã cài
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const AlertDialog(
-        content: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(width: 16),
-            Expanded(
-              child: Text(
-                'Đang kiểm tra ứng dụng ngân hàng...',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-    
-    // Kiểm tra TẤT CẢ app payment/banking đã cài đặt (bao gồm cả MoMo, ZaloPay...)
-    List<BankInfo> installedApps;
-    try {
-      log('🔍 Detecting installed payment/banking apps...');
-      installedApps = await BankQRParser.detectInstalledPaymentApps();
-      log('✅ Found ${installedApps.length} installed payment/banking apps');
-    } catch (e, stackTrace) {
-      log('❌ Error detecting installed apps: $e');
-      log('   Stack trace: $stackTrace');
-      // Fallback: Hiển thị tất cả (nếu có)
-      installedApps = [];
-    } finally {
-      // Đóng loading dialog
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-    }
-    
-    // Lấy thông tin ngân hàng được phát hiện từ QR (nếu có)
-    // ✅ Sử dụng async getBankInfo để lấy package name từ dynamic mapping (nếu có)
-    BankInfo? detectedBank;
-    if (bankData.bin != null) {
-      try {
-        detectedBank = await BankQRParser.getBankInfo(bankData.bin!);
-      } catch (e) {
-        log('⚠️ Error getting bank info: $e');
-        // detectedBank remains null if async fails
-      }
-    }
-    
-    // Ưu tiên hiển thị ngân hàng được phát hiện ở đầu danh sách (nếu có và đã cài)
-    if (detectedBank != null) {
-      // Thêm ngân hàng được phát hiện vào danh sách nếu chưa có
-      if (!installedApps.any((app) => 
-        app.bin != null && detectedBank != null && 
-        app.bin == detectedBank.bin && 
-        app.packageName == detectedBank.packageName)) {
-        installedApps.insert(0, detectedBank);
-        log('✅ Added detected bank to list: ${detectedBank.name}');
-      } else {
-        // Di chuyển ngân hàng được phát hiện lên đầu
-        installedApps.removeWhere((app) => 
-          app.bin != null && detectedBank != null && 
-          app.bin == detectedBank.bin && 
-          app.packageName == detectedBank.packageName);
-        installedApps.insert(0, detectedBank);
-      }
-    }
-    
-    // Nếu không có app nào được cài, thông báo cho user
-    if (installedApps.isEmpty) {
-      log('⚠️ No payment/banking apps installed');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Không tìm thấy app thanh toán/ngân hàng nào đã cài đặt'),
-            behavior: SnackBarBehavior.floating,
-            duration: Duration(seconds: 3),
-          ),
-        );
-        _resetScanner();
-      }
+    final qrCode = qrCodeString ?? _lastScannedQRString ?? '';
+    if (qrCode.isEmpty) {
+      log('⚠️ QR code string is empty');
+      _resetScanner();
       return;
     }
     
-    // Hiển thị Android system chooser để chọn app payment/banking
-    await _showBankAppChooser(bankData, installedApps, qrCodeString: qrCodeString);
+    // Copy QR code vào clipboard (silent, không thông báo)
+    try {
+      await Clipboard.setData(ClipboardData(text: qrCode));
+      log('✅ Copied QR code to clipboard (silent)');
+    } catch (e) {
+      log('⚠️ Error copying QR to clipboard: $e');
+    }
+    
+    // Flutter quét bank apps đã cài đặt (silent, không hiển thị thông báo)
+    log('🔍 Scanning bank apps (silent)...');
+    final installedApps = await _quickCheckBankApps();
+    log('✅ Found ${installedApps.length} installed bank apps');
+    
+    if (installedApps.isEmpty) {
+      log('⚠️ No bank apps found, using text chooser as fallback');
+      // Nếu không có bank app nào, fallback về text chooser
+      await _showBankQRChooser(qrCode);
+      return;
+    }
+    
+    // Truyền danh sách bank apps cho Android chooser
+    // Android chooser sẽ chỉ hiển thị những app này
+    await _showBankAppChooserWithList(installedApps, qrCode);
+  }
+  
+  /// Quick check bank apps - chỉ check package names đã biết, không quét tất cả apps
+  Future<List<String>> _quickCheckBankApps() async {
+    final installedPackages = <String>[];
+    
+    if (!Platform.isAndroid) {
+      return installedPackages;
+    }
+    
+    try {
+      // Lấy danh sách tất cả package names của bank apps từ BankQRParser
+      final allBankPackages = BankQRParser.getAllSupportedBanks()
+          .map((bank) => bank.packageName)
+          .toList();
+      
+      // Thêm payment apps
+      allBankPackages.addAll([
+        'com.mservice.momotransfer',
+        'vn.zalo.pay',
+        'com.shopeemobile.omc',
+        'com.viettelpay',
+        'com.vnpay.wallet',
+      ]);
+      
+      // Quick check từng package (nhanh hơn quét tất cả apps)
+      for (final packageName in allBankPackages) {
+        try {
+          // Sử dụng DeviceApps.getApp để check nhanh
+          final app = await DeviceApps.getApp(packageName, true);
+          if (app != null) {
+            installedPackages.add(packageName);
+            log('✅ Found installed: $packageName');
+          }
+        } catch (e) {
+          // Ignore errors for individual packages
+        }
+      }
+    } catch (e) {
+      log('⚠️ Error checking bank apps: $e');
+    }
+    
+    return installedPackages;
+  }
+  
+  /// Hiển thị Android chooser với danh sách bank apps đã quét được
+  /// Android chooser sẽ chỉ hiển thị những app này
+  Future<void> _showBankAppChooserWithList(List<String> packageNames, String qrCode) async {
+    if (!mounted) return;
+    
+    log('💰 Showing Android chooser with ${packageNames.length} bank apps');
+    
+    try {
+      const channel = MethodChannel('com.qhome.resident/app_launcher');
+      final shown = await channel.invokeMethod<bool>(
+        'showBankAppChooser',
+        {
+          'packageNames': packageNames,
+          'qrCode': qrCode,
+          'title': 'Chọn ứng dụng ngân hàng',
+        },
+      );
+      
+      if (shown == true) {
+        log('✅ Successfully showed Android chooser with bank apps');
+        // Đóng QR scanner ngay sau khi hiển thị chooser (không hiển thị thông báo)
+        Future.delayed(const Duration(milliseconds: 200), () {
+          if (mounted) {
+            Navigator.of(context).pop();
+          }
+        });
+      } else {
+        log('⚠️ Failed to show Android chooser, using text chooser as fallback');
+        // Fallback: Dùng text chooser
+        await _showBankQRChooser(qrCode);
+      }
+    } on PlatformException catch (e) {
+      log('⚠️ Platform channel error: ${e.code} - ${e.message}');
+      // Fallback: Dùng text chooser
+      await _showBankQRChooser(qrCode);
+    } catch (e, stackTrace) {
+      log('❌ Error showing bank app chooser: $e');
+      log('   Stack trace: $stackTrace');
+      // Fallback: Dùng text chooser
+      await _showBankQRChooser(qrCode);
+    }
   }
 
-  /// Xử lý URL QR: Quét browser apps → Hiển thị dialog chọn trình duyệt
+  /// Xử lý URL QR: Sử dụng Android system chooser để chọn trình duyệt
   Future<void> _handleUrlQR(Uri url) async {
     if (!mounted) return;
     
     log('🌐 Handling URL QR: $url');
     
-    // Hiển thị loading dialog
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        content: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Text(
-                'Đang tìm trình duyệt...',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-    
-    // Kiểm tra TẤT CẢ app trình duyệt đã cài đặt
-    List<BankInfo> installedBrowsers;
     try {
-      log('🔍 Detecting installed browser apps...');
-      installedBrowsers = await BankQRParser.detectInstalledBrowserApps();
-      log('✅ Found ${installedBrowsers.length} installed browser apps');
-    } catch (e, stackTrace) {
-      log('❌ Error detecting installed browsers: $e');
-      log('   Stack trace: $stackTrace');
-      installedBrowsers = [];
-    } finally {
-      // Đóng loading dialog
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-    }
-    
-    // Nếu không có browser nào, fallback mở URL trực tiếp
-    if (installedBrowsers.isEmpty) {
-      log('⚠️ No browser apps installed, opening URL directly...');
-      try {
-        final canLaunch = await canLaunchUrl(url);
-        if (canLaunch) {
-          await launchUrl(url, mode: LaunchMode.platformDefault);
-          log('✅ Successfully opened URL');
-          if (mounted) {
-            Navigator.of(context).pop(); // Đóng QR scanner
-          }
-        } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Không thể mở URL này'),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          }
-        }
-      } catch (e) {
-        log('❌ Error opening URL: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Lỗi khi mở URL: $e'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-      }
-      return;
-    }
-    
-    // Hiển thị Android system chooser để chọn trình duyệt
-    await _showBrowserChooser(url, installedBrowsers);
-  }
-
-  /// ============================================
-  /// UI: Hiển thị Android system chooser để chọn trình duyệt
-  /// ============================================
-  Future<void> _showBrowserChooser(Uri url, List<BankInfo> availableBrowsers) async {
-    if (!mounted) return;
-    
-    log('🌐 Showing Android chooser for URL: $url');
-    log('   Available browsers: ${availableBrowsers.length}');
-    
-    try {
-      // Lấy danh sách package names
-      final packageNames = availableBrowsers.map((browser) => browser.packageName).toList();
-      
-      // Gọi platform channel để hiển thị Android chooser
-      const channel = MethodChannel('com.qhome.resident/app_launcher');
-      final shown = await channel.invokeMethod<bool>(
-        'showAppChooser',
-        {
-          'url': url.toString(),
-          'packageNames': packageNames,
-          'title': 'Chọn trình duyệt để mở URL',
-        },
-      );
-      
-      if (shown == true) {
-        log('✅ Successfully showed Android chooser');
+      // Sử dụng launchUrl với LaunchMode.platformDefault
+      // Android sẽ tự động hiển thị chooser với tất cả app có thể mở URL này
+      final canLaunch = await canLaunchUrl(url);
+      if (canLaunch) {
+        log('✅ Launching URL with Android system chooser');
+        await launchUrl(
+          url,
+          mode: LaunchMode.platformDefault, // Hiển thị Android chooser
+        );
+        log('✅ Successfully showed Android chooser for URL');
         // Đóng QR scanner sau khi hiển thị chooser
         Future.delayed(const Duration(milliseconds: 300), () {
           if (mounted) {
@@ -353,58 +297,24 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
           }
         });
       } else {
-        log('⚠️ Failed to show Android chooser, falling back to system chooser');
-        // Fallback: Sử dụng system chooser
-        try {
-          final canLaunch = await canLaunchUrl(url);
-          if (canLaunch) {
-            await launchUrl(url, mode: LaunchMode.externalApplication);
-            if (mounted) {
-              Navigator.of(context).pop();
-            }
-          } else {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Không thể mở URL này'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            }
-          }
-        } catch (e) {
-          log('❌ Error in fallback: $e');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Lỗi khi mở URL: $e'),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          }
+        log('⚠️ Cannot launch URL: $url');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Không thể mở URL này'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
         }
-      }
-    } on PlatformException catch (e) {
-      log('⚠️ Platform channel error: ${e.code} - ${e.message}');
-      // Fallback: Sử dụng system chooser
-      try {
-        final canLaunch = await canLaunchUrl(url);
-        if (canLaunch) {
-          await launchUrl(url, mode: LaunchMode.externalApplication);
-          if (mounted) {
-            Navigator.of(context).pop();
-          }
-        }
-      } catch (e2) {
-        log('❌ Error in fallback: $e2');
+        _resetScanner();
       }
     } catch (e, stackTrace) {
-      log('❌ Error showing browser chooser: $e');
+      log('❌ Error opening URL: $e');
       log('   Stack trace: $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lỗi khi hiển thị danh sách trình duyệt: $e'),
+            content: Text('Lỗi khi mở URL: $e'),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -413,14 +323,135 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     }
   }
 
-  /// Xử lý Unknown QR: Hiển thị dialog xử lý generic
+  /// Hiển thị Android system chooser cho Bank QR code
+  /// Android sẽ tự động nhận diện và hiển thị các app tương ứng
+  Future<void> _showBankQRChooser(String qrCode) async {
+    if (!mounted) return;
+    
+    log('💰 Showing Android chooser for Bank QR code');
+    
+    try {
+      // Sử dụng platform channel để hiển thị Android chooser với Intent.ACTION_SEND
+      // Android sẽ tự động nhận diện và hiển thị tất cả app có thể xử lý text/plain
+      // (bao gồm bank apps, note apps, messaging apps, v.v.)
+      const channel = MethodChannel('com.qhome.resident/app_launcher');
+      final shown = await channel.invokeMethod<bool>(
+        'showTextChooser',
+        {
+          'text': qrCode,
+          'title': 'Chọn ứng dụng để xử lý mã QR ngân hàng',
+          'hint': 'QR code đã được sao chép vào clipboard',
+        },
+      );
+      
+      if (shown == true) {
+        log('✅ Successfully showed Android chooser for Bank QR');
+        // Đóng QR scanner ngay sau khi hiển thị chooser (không hiển thị thông báo)
+        Future.delayed(const Duration(milliseconds: 200), () {
+          if (mounted) {
+            Navigator.of(context).pop();
+          }
+        });
+      } else {
+        log('⚠️ Failed to show Android chooser');
+        // Đóng QR scanner nếu không thể hiển thị chooser
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
+      }
+    } on PlatformException catch (e) {
+      log('⚠️ Platform channel error: ${e.code} - ${e.message}');
+      // Đóng QR scanner nếu có lỗi
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } catch (e, stackTrace) {
+      log('❌ Error showing Bank QR chooser: $e');
+      log('   Stack trace: $stackTrace');
+      // Đóng QR scanner nếu có lỗi
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+  }
+
+  /// Xử lý Unknown QR: Sử dụng Android system chooser
   Future<void> _handleUnknownQR(String code) async {
     if (!mounted) return;
     
     log('❓ Handling Unknown QR');
     
-    // Hiển thị dialog xử lý generic
-    await _showAppChooserDialog(code);
+    // Copy QR code vào clipboard
+    try {
+      await Clipboard.setData(ClipboardData(text: code));
+      log('✅ Copied QR code to clipboard');
+    } catch (e) {
+      log('⚠️ Error copying QR to clipboard: $e');
+    }
+    
+    // Sử dụng Android system chooser để chọn app
+    await _showUnknownQRChooser(code);
+  }
+  
+  /// Hiển thị Android system chooser cho Unknown QR code
+  Future<void> _showUnknownQRChooser(String code) async {
+    if (!mounted) return;
+    
+    log('❓ Showing Android chooser for Unknown QR code');
+    
+    try {
+      // Thử parse như URL trước
+      final uri = Uri.tryParse(code);
+      if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+        // Nếu là URL, dùng launchUrl với chooser
+        final canLaunch = await canLaunchUrl(uri);
+        if (canLaunch) {
+          await launchUrl(uri, mode: LaunchMode.platformDefault);
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (mounted) {
+              Navigator.of(context).pop();
+            }
+          });
+          return;
+        }
+      }
+      
+      // Nếu không phải URL, dùng platform channel để hiển thị chooser với text
+      const channel = MethodChannel('com.qhome.resident/app_launcher');
+      final shown = await channel.invokeMethod<bool>(
+        'showTextChooser',
+        {
+          'text': code,
+          'title': 'Chọn ứng dụng để xử lý mã QR',
+          'hint': 'QR code đã được sao chép vào clipboard',
+        },
+      );
+      
+      if (shown == true) {
+        log('✅ Successfully showed Android chooser for Unknown QR');
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) {
+            Navigator.of(context).pop();
+          }
+        });
+      } else {
+        log('⚠️ Failed to show Android chooser, showing info dialog');
+        if (mounted) {
+          _showAppChooserDialog(code);
+        }
+      }
+    } on PlatformException catch (e) {
+      log('⚠️ Platform channel error: ${e.code} - ${e.message}');
+      if (mounted) {
+        _showAppChooserDialog(code);
+      }
+    } catch (e, stackTrace) {
+      log('❌ Error showing Unknown QR chooser: $e');
+      log('   Stack trace: $stackTrace');
+      if (mounted) {
+        _showAppChooserDialog(code);
+      }
+    }
   }
 
   void _showParsingErrorDialog(String code, String error, String stackTrace) {
@@ -532,100 +563,6 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     );
   }
 
-  /// ============================================
-  /// UI: Hiển thị Android system chooser để chọn app ngân hàng
-  /// ============================================
-  Future<void> _showBankAppChooser(BankQRData qrData, List<BankInfo> availableBanks, {String? qrCodeString}) async {
-    if (!mounted) return;
-    
-    log('💰 Showing Android chooser for bank apps');
-    log('   Available banks: ${availableBanks.length}');
-    
-    // Copy QR code to clipboard first
-    final qrCode = qrCodeString ?? _lastScannedQRString;
-    if (qrCode != null) {
-      try {
-        await Clipboard.setData(ClipboardData(text: qrCode));
-        log('✅ Copied QR code to clipboard');
-      } catch (e) {
-        log('⚠️ Error copying QR to clipboard: $e');
-      }
-    }
-    
-    try {
-      // Lấy danh sách package names
-      final packageNames = availableBanks.map((bank) => bank.packageName).toList();
-      
-      // Gọi platform channel để hiển thị Android chooser
-      const channel = MethodChannel('com.qhome.resident/app_launcher');
-      final shown = await channel.invokeMethod<bool>(
-        'showBankAppChooser',
-        {
-          'packageNames': packageNames,
-          'qrCode': qrCode,
-          'title': 'Chọn ứng dụng ngân hàng',
-        },
-      );
-      
-      if (shown == true) {
-        log('✅ Successfully showed Android bank app chooser');
-        // Hiển thị thông báo hướng dẫn
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                '✅ QR code đã được sao chép vào clipboard\n'
-                'Sau khi đăng nhập vào app ngân hàng, dán QR code vào ô tìm kiếm',
-                style: TextStyle(fontSize: 13),
-              ),
-              duration: Duration(seconds: 4),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-        // Đóng QR scanner sau khi hiển thị chooser
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (mounted) {
-            Navigator.of(context).pop();
-          }
-        });
-      } else {
-        log('⚠️ Failed to show Android bank app chooser');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Không thể hiển thị danh sách ứng dụng ngân hàng'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-        _resetScanner();
-      }
-    } on PlatformException catch (e) {
-      log('⚠️ Platform channel error: ${e.code} - ${e.message}');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Lỗi khi hiển thị danh sách ứng dụng: ${e.message}'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-      _resetScanner();
-    } catch (e, stackTrace) {
-      log('❌ Error showing bank app chooser: $e');
-      log('   Stack trace: $stackTrace');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Lỗi khi hiển thị danh sách ứng dụng: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-      _resetScanner();
-    }
-  }
 
   Future<void> _showAppChooserDialog(String code) async {
     if (!mounted) return;
@@ -919,34 +856,9 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       _isProcessing = false;
       _lastScannedCode = null;
     });
-    // Stop scanner first, then restart after a delay
-    if (_isScannerStarted) {
-      _controller.stop();
-      _isScannerStarted = false;
-    }
-    // Restart scanner after a short delay to allow camera resources to be released
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted && !_hasError && !_isScannerStarted) {
-        try {
-          _controller.start();
-          _isScannerStarted = true;
-        } catch (e) {
-          log('❌ Error starting scanner: $e');
-          // If start fails, reset flag and try again later
-          _isScannerStarted = false;
-          Future.delayed(const Duration(milliseconds: 300), () {
-            if (mounted && !_isScannerStarted) {
-              try {
-                _controller.start();
-                _isScannerStarted = true;
-              } catch (e2) {
-                log('❌ Error restarting scanner: $e2');
-              }
-            }
-          });
-        }
-      }
-    });
+    // Don't stop/restart camera if it's already running
+    // Just reset the processing state to allow new scans
+    // Camera will continue running smoothly
   }
 
   @override
@@ -1208,4 +1120,5 @@ class _ScannerOverlayPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+
 

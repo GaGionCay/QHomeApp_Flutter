@@ -275,7 +275,7 @@ class _CoverImage extends StatelessWidget {
     if (url.isEmpty) return false;
     
     // Check if URL has image extension
-    final imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
     final lowerUrl = url.toLowerCase();
     return imageExtensions.any((ext) => lowerUrl.contains(ext));
   }

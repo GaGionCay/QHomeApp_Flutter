@@ -15,7 +15,7 @@ class AuthService {
   Future<void> ensureDeviceId() async {
     final d = await storage.readDeviceId();
     if (d == null) {
-      final id = const Uuid().v4();
+      final id = Uuid().v4();
       await storage.writeDeviceId(id);
     }
   }

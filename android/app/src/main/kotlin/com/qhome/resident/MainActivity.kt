@@ -57,6 +57,39 @@ class MainActivity : FlutterFragmentActivity() {
                         result.error("INVALID_ARGUMENT", "Text is null", null)
                     }
                 }
+                "showAppChooser" -> {
+                    val url = call.argument<String>("url")
+                    val packageNames = call.argument<List<String>>("packageNames")
+                    val title = call.argument<String>("title") ?: "Chọn ứng dụng"
+                    if (url != null && packageNames != null) {
+                        val shown = showAppChooser(url, packageNames, title)
+                        result.success(shown)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "URL or package names is null", null)
+                    }
+                }
+                "showBankAppChooser" -> {
+                    val packageNames = call.argument<List<String>>("packageNames")
+                    val qrCode = call.argument<String>("qrCode")
+                    val title = call.argument<String>("title") ?: "Chọn ứng dụng ngân hàng"
+                    if (packageNames != null) {
+                        val shown = showBankAppChooser(packageNames, qrCode, title)
+                        result.success(shown)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "Package names is null", null)
+                    }
+                }
+                "showTextChooser" -> {
+                    val text = call.argument<String>("text")
+                    val title = call.argument<String>("title") ?: "Chọn ứng dụng"
+                    val hint = call.argument<String>("hint")
+                    if (text != null) {
+                        val shown = showTextChooser(text, title, hint)
+                        result.success(shown)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "Text is null", null)
+                    }
+                }
                 else -> {
                     result.notImplemented()
                 }
@@ -288,6 +321,160 @@ class MainActivity : FlutterFragmentActivity() {
         } catch (e: Exception) {
             Log.e("MainActivity", "Error copying to clipboard: ${e.message}", e)
             throw e
+        }
+    }
+    
+    private fun showAppChooser(url: String, packageNames: List<String>, title: String): Boolean {
+        return try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            
+            // Tạo danh sách các intent cho các app có thể xử lý URL
+            val chooserIntents = mutableListOf<Intent>()
+            
+            for (packageName in packageNames) {
+                try {
+                    // Kiểm tra xem app có được cài đặt không
+                    packageManager.getPackageInfo(packageName, 0)
+                    
+                    // Tạo intent cho app cụ thể
+                    val specificIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                    specificIntent.setPackage(packageName)
+                    specificIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    
+                    // Kiểm tra xem app có thể xử lý intent này không
+                    val resolveInfo = packageManager.resolveActivity(specificIntent, 0)
+                    if (resolveInfo != null) {
+                        chooserIntents.add(specificIntent)
+                        Log.d("MainActivity", "✅ Added app to chooser: $packageName")
+                    }
+                } catch (e: Exception) {
+                    Log.d("MainActivity", "⚠️ App $packageName not installed or cannot handle URL: ${e.message}")
+                }
+            }
+            
+            if (chooserIntents.isEmpty()) {
+                Log.w("MainActivity", "No apps available for chooser")
+                // Fallback: Sử dụng system chooser với intent gốc
+                val chooser = Intent.createChooser(intent, title)
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(chooser)
+                return true
+            }
+            
+            // Tạo chooser với danh sách các app cụ thể
+            val mainIntent = chooserIntents[0]
+            chooserIntents.removeAt(0)
+            
+            val chooser = Intent.createChooser(mainIntent, title)
+            chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, chooserIntents.toTypedArray())
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            
+            startActivity(chooser)
+            Log.d("MainActivity", "✅ Successfully showed app chooser with ${chooserIntents.size + 1} apps")
+            true
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error showing app chooser: ${e.message}", e)
+            false
+        }
+    }
+    
+    private fun showBankAppChooser(packageNames: List<String>, qrCode: String?, title: String): Boolean {
+        return try {
+            // Copy QR code to clipboard first
+            if (qrCode != null) {
+                try {
+                    copyToClipboard(qrCode)
+                    Log.d("MainActivity", "✅ Copied QR code to clipboard")
+                } catch (e: Exception) {
+                    Log.w("MainActivity", "⚠️ Error copying QR to clipboard: ${e.message}")
+                }
+            }
+            
+            // Tạo danh sách các intent cho các bank apps
+            val chooserIntents = mutableListOf<Intent>()
+            
+            for (packageName in packageNames) {
+                try {
+                    // Kiểm tra xem app có được cài đặt không
+                    packageManager.getPackageInfo(packageName, 0)
+                    
+                    // Tạo launch intent cho app
+                    val intent = packageManager.getLaunchIntentForPackage(packageName)
+                    if (intent != null) {
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        
+                        // Thêm QR code vào extras nếu có
+                        if (qrCode != null) {
+                            intent.putExtra("qr_code", qrCode)
+                            intent.putExtra("QR_CODE", qrCode)
+                            intent.putExtra("qrcode", qrCode)
+                        }
+                        
+                        chooserIntents.add(intent)
+                        Log.d("MainActivity", "✅ Added bank app to chooser: $packageName")
+                    }
+                } catch (e: Exception) {
+                    Log.d("MainActivity", "⚠️ Bank app $packageName not installed: ${e.message}")
+                }
+            }
+            
+            if (chooserIntents.isEmpty()) {
+                Log.w("MainActivity", "No bank apps available for chooser")
+                return false
+            }
+            
+            // Tạo chooser với danh sách các app
+            val mainIntent = chooserIntents[0]
+            chooserIntents.removeAt(0)
+            
+            val chooser = Intent.createChooser(mainIntent, title)
+            if (chooserIntents.isNotEmpty()) {
+                chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, chooserIntents.toTypedArray())
+            }
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            
+            startActivity(chooser)
+            Log.d("MainActivity", "✅ Successfully showed bank app chooser with ${chooserIntents.size + 1} apps")
+            true
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error showing bank app chooser: ${e.message}", e)
+            false
+        }
+    }
+    
+    private fun showTextChooser(text: String, title: String, hint: String?): Boolean {
+        return try {
+            // Copy text to clipboard first
+            try {
+                copyToClipboard(text)
+                Log.d("MainActivity", "✅ Copied text to clipboard")
+            } catch (e: Exception) {
+                Log.w("MainActivity", "⚠️ Error copying text to clipboard: ${e.message}")
+            }
+            
+            // Tạo Intent với ACTION_SEND và type text/plain
+            // Android sẽ tự động hiển thị tất cả app có thể xử lý text
+            val intent = Intent(Intent.ACTION_SEND)
+            intent.type = "text/plain"
+            intent.putExtra(Intent.EXTRA_TEXT, text)
+            
+            // Thêm hint nếu có
+            if (hint != null) {
+                intent.putExtra(Intent.EXTRA_SUBJECT, hint)
+            }
+            
+            // Tạo chooser - Android sẽ tự động hiển thị tất cả app có thể xử lý text/plain
+            val chooser = Intent.createChooser(intent, title)
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            
+            startActivity(chooser)
+            Log.d("MainActivity", "✅ Successfully showed text chooser")
+            true
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error showing text chooser: ${e.message}", e)
+            false
         }
     }
 }

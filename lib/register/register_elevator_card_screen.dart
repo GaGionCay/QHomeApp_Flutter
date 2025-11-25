@@ -34,8 +34,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
     with WidgetsBindingObserver {
   final ApiClient api = ApiClient();
   final _formKey = GlobalKey<FormState>();
-  final _storageKey = 'register_elevator_card_draft';
-  final _pendingPaymentKey = 'pending_elevator_card_payment';
+  static const _storageKey = 'register_elevator_card_draft';
+  static const _pendingPaymentKey = 'pending_elevator_card_payment';
   
   // Card pricing
   double _registrationFee = 30000.0; // Default fallback
