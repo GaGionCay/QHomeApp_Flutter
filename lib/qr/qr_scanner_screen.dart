@@ -273,52 +273,175 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     }
   }
 
-  /// Xử lý URL QR: Sử dụng Android system chooser để chọn trình duyệt
+  /// Xử lý URL QR: Flutter quét browser apps, sau đó truyền cho Android chooser
+  /// Android chooser chỉ hiển thị những browser apps đã quét được
   Future<void> _handleUrlQR(Uri url) async {
     if (!mounted) return;
     
     log('🌐 Handling URL QR: $url');
     
+    // Flutter quét browser apps đã cài đặt (silent, không hiển thị thông báo)
+    log('🔍 Scanning browser apps (silent)...');
+    final installedBrowsers = await _quickCheckBrowserApps();
+    log('✅ Found ${installedBrowsers.length} installed browser apps');
+    
+    if (installedBrowsers.isEmpty) {
+      log('⚠️ No browser apps found, using system chooser as fallback');
+      // Nếu không có browser app nào, fallback về system chooser
+      try {
+        final canLaunch = await canLaunchUrl(url);
+        if (canLaunch) {
+          await launchUrl(
+            url,
+            mode: LaunchMode.externalApplication, // Mở app bên ngoài, không phải webview
+          );
+          Future.delayed(const Duration(milliseconds: 200), () {
+            if (mounted) {
+              Navigator.of(context).pop();
+            }
+          });
+        } else {
+          _resetScanner();
+        }
+      } catch (e) {
+        log('❌ Error opening URL: $e');
+        _resetScanner();
+      }
+      return;
+    }
+    
+    // Truyền danh sách browser apps cho Android chooser
+    // Android chooser sẽ chỉ hiển thị những app này
+    await _showBrowserChooserWithList(url, installedBrowsers);
+  }
+  
+  /// Quick check browser apps - chỉ check package names đã biết, không quét tất cả apps
+  Future<List<String>> _quickCheckBrowserApps() async {
+    final installedPackages = <String>[];
+    
+    if (!Platform.isAndroid) {
+      return installedPackages;
+    }
+    
     try {
-      // Sử dụng launchUrl với LaunchMode.platformDefault
-      // Android sẽ tự động hiển thị chooser với tất cả app có thể mở URL này
-      final canLaunch = await canLaunchUrl(url);
-      if (canLaunch) {
-        log('✅ Launching URL with Android system chooser');
-        await launchUrl(
-          url,
-          mode: LaunchMode.platformDefault, // Hiển thị Android chooser
-        );
-        log('✅ Successfully showed Android chooser for URL');
-        // Đóng QR scanner sau khi hiển thị chooser
-        Future.delayed(const Duration(milliseconds: 300), () {
+      // Lấy danh sách browser package names từ BankQRParser
+      final allBrowserPackages = [
+        'com.android.chrome',
+        'com.chrome.beta',
+        'com.chrome.dev',
+        'com.chrome.canary',
+        'org.mozilla.firefox',
+        'org.mozilla.firefox_beta',
+        'org.mozilla.fennec_fdroid',
+        'com.microsoft.emmx',
+        'com.opera.browser',
+        'com.opera.mini.native',
+        'com.brave.browser',
+        'com.vivaldi.browser',
+        'com.duckduckgo.mobile.android',
+        'com.uc.browser.en',
+        'com.samsung.android.sbrowser',
+        'com.mi.globalbrowser',
+        'com.huawei.browser',
+        'com.sec.android.app.sbrowser',
+        'com.browser2345',
+        'com.tencent.mtt',
+      ];
+      
+      // Quick check từng package (nhanh hơn quét tất cả apps)
+      for (final packageName in allBrowserPackages) {
+        try {
+          // Sử dụng DeviceApps.getApp để check nhanh
+          final app = await DeviceApps.getApp(packageName, true);
+          if (app != null) {
+            installedPackages.add(packageName);
+            log('✅ Found installed browser: $packageName');
+          }
+        } catch (e) {
+          // Ignore errors for individual packages
+        }
+      }
+    } catch (e) {
+      log('⚠️ Error checking browser apps: $e');
+    }
+    
+    return installedPackages;
+  }
+  
+  /// Hiển thị Android chooser với danh sách browser apps đã quét được
+  /// Android chooser sẽ chỉ hiển thị những app này
+  Future<void> _showBrowserChooserWithList(Uri url, List<String> packageNames) async {
+    if (!mounted) return;
+    
+    log('🌐 Showing Android chooser with ${packageNames.length} browser apps');
+    
+    try {
+      const channel = MethodChannel('com.qhome.resident/app_launcher');
+      final shown = await channel.invokeMethod<bool>(
+        'showAppChooser',
+        {
+          'url': url.toString(),
+          'packageNames': packageNames,
+          'title': 'Chọn trình duyệt để mở URL',
+        },
+      );
+      
+      if (shown == true) {
+        log('✅ Successfully showed Android chooser with browser apps');
+        // Đóng QR scanner ngay sau khi hiển thị chooser (không hiển thị thông báo)
+        Future.delayed(const Duration(milliseconds: 200), () {
           if (mounted) {
             Navigator.of(context).pop();
           }
         });
       } else {
-        log('⚠️ Cannot launch URL: $url');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Không thể mở URL này'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
+        log('⚠️ Failed to show Android chooser, using system chooser as fallback');
+        // Fallback: Dùng system chooser
+        try {
+          final canLaunch = await canLaunchUrl(url);
+          if (canLaunch) {
+            await launchUrl(
+              url,
+              mode: LaunchMode.externalApplication, // Mở app bên ngoài, không phải webview
+            );
+            Future.delayed(const Duration(milliseconds: 200), () {
+              if (mounted) {
+                Navigator.of(context).pop();
+              }
+            });
+          } else {
+            _resetScanner();
+          }
+        } catch (e) {
+          log('❌ Error in fallback: $e');
+          _resetScanner();
         }
+      }
+    } on PlatformException catch (e) {
+      log('⚠️ Platform channel error: ${e.code} - ${e.message}');
+      // Fallback: Dùng system chooser
+      try {
+        final canLaunch = await canLaunchUrl(url);
+        if (canLaunch) {
+          await launchUrl(
+            url,
+            mode: LaunchMode.externalApplication, // Mở app bên ngoài, không phải webview
+          );
+          Future.delayed(const Duration(milliseconds: 200), () {
+            if (mounted) {
+              Navigator.of(context).pop();
+            }
+          });
+        } else {
+          _resetScanner();
+        }
+      } catch (e2) {
+        log('❌ Error in fallback: $e2');
         _resetScanner();
       }
     } catch (e, stackTrace) {
-      log('❌ Error opening URL: $e');
+      log('❌ Error showing browser chooser: $e');
       log('   Stack trace: $stackTrace');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Lỗi khi mở URL: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
       _resetScanner();
     }
   }
