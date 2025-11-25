@@ -162,14 +162,6 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       return;
     }
     
-    // Copy QR code vào clipboard (silent, không thông báo)
-    try {
-      await Clipboard.setData(ClipboardData(text: qrCode));
-      log('✅ Copied QR code to clipboard (silent)');
-    } catch (e) {
-      log('⚠️ Error copying QR to clipboard: $e');
-    }
-    
     // Flutter quét bank apps đã cài đặt (silent, không hiển thị thông báo)
     log('🔍 Scanning bank apps (silent)...');
     final installedApps = await _quickCheckBankApps();
@@ -463,7 +455,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
         {
           'text': qrCode,
           'title': 'Chọn ứng dụng để xử lý mã QR ngân hàng',
-          'hint': 'QR code đã được sao chép vào clipboard',
+          'hint': null,
         },
       );
       

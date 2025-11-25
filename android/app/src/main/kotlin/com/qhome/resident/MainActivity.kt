@@ -152,16 +152,6 @@ class MainActivity : FlutterFragmentActivity() {
     
     private fun launchAppWithQR(packageName: String, qrCode: String?, qrData: Map<*, *>?): Boolean {
         return try {
-            // Copy QR code to clipboard first (fallback)
-            if (qrCode != null) {
-                try {
-                    copyToClipboard(qrCode)
-                    Log.d("MainActivity", "✅ Copied QR code to clipboard as fallback")
-                } catch (e: Exception) {
-                    Log.w("MainActivity", "⚠️ Error copying QR to clipboard: ${e.message}")
-                }
-            }
-            
             // Strategy 1: Try deep link with VietQR format
             if (qrCode != null) {
                 val deepLinkSchemes = listOf(
@@ -300,7 +290,6 @@ class MainActivity : FlutterFragmentActivity() {
                 
                 startActivity(intent)
                 Log.d("MainActivity", "✅ Successfully launched app with QR extras: $packageName")
-                Log.d("MainActivity", "   QR code copied to clipboard - user can paste if needed")
                 return true
             } else {
                 Log.w("MainActivity", "No launch intent found for package: $packageName")
@@ -381,16 +370,6 @@ class MainActivity : FlutterFragmentActivity() {
     
     private fun showBankAppChooser(packageNames: List<String>, qrCode: String?, title: String): Boolean {
         return try {
-            // Copy QR code to clipboard first
-            if (qrCode != null) {
-                try {
-                    copyToClipboard(qrCode)
-                    Log.d("MainActivity", "✅ Copied QR code to clipboard")
-                } catch (e: Exception) {
-                    Log.w("MainActivity", "⚠️ Error copying QR to clipboard: ${e.message}")
-                }
-            }
-            
             // Tạo danh sách các intent cho các bank apps
             val chooserIntents = mutableListOf<Intent>()
             
@@ -446,12 +425,15 @@ class MainActivity : FlutterFragmentActivity() {
     
     private fun showTextChooser(text: String, title: String, hint: String?): Boolean {
         return try {
-            // Copy text to clipboard first
-            try {
-                copyToClipboard(text)
-                Log.d("MainActivity", "✅ Copied text to clipboard")
-            } catch (e: Exception) {
-                Log.w("MainActivity", "⚠️ Error copying text to clipboard: ${e.message}")
+            // Chỉ copy vào clipboard nếu hint không null (tức là không phải Bank QR)
+            // Bank QR không cần copy vào clipboard
+            if (hint != null) {
+                try {
+                    copyToClipboard(text)
+                    Log.d("MainActivity", "✅ Copied text to clipboard")
+                } catch (e: Exception) {
+                    Log.w("MainActivity", "⚠️ Error copying text to clipboard: ${e.message}")
+                }
             }
             
             // Tạo Intent với ACTION_SEND và type text/plain
