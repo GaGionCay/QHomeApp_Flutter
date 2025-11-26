@@ -1214,6 +1214,10 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
   bool _isCancelling = false;
   bool _isRequestingReplacement = false;
   final DateFormat _dateTimeFmt = DateFormat('dd/MM/yyyy HH:mm');
+  
+  // Images for vehicle card
+  List<String>? _vehicleImages;
+  bool _isLoadingImages = false;
 
   bool _canResumePayment() {
     final paymentStatus = widget.card.paymentStatus?.trim().toUpperCase() ?? '';
@@ -1914,6 +1918,19 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
     }
   }
 
+  String _formatVnd(int amount) {
+    final digits = amount.toString();
+    final buffer = StringBuffer();
+    for (int i = 0; i < digits.length; i++) {
+      buffer.write(digits[i]);
+      final remaining = digits.length - i - 1;
+      if (remaining % 3 == 0 && remaining != 0) {
+        buffer.write('.');
+      }
+    }
+    return '${buffer.toString()} VNĐ';
+  }
+
   Widget _buildDetailRow(ThemeData theme, String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -1944,12 +1961,56 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    // Fetch images for vehicle card
+    if (widget.card.cardType.toUpperCase().contains('VEHICLE')) {
+      _loadVehicleImages();
+    }
+  }
+
+  Future<void> _loadVehicleImages() async {
+    if (_isLoadingImages) return;
+    
+    setState(() => _isLoadingImages = true);
+    
+    try {
+      final client = await _getServicesCardClient();
+      final detailRes = await client.get('/register-service/${widget.card.id}');
+      
+      if (detailRes.statusCode == 200 && detailRes.data is Map) {
+        final detail = Map<String, dynamic>.from(detailRes.data as Map);
+        final images = (detail['images'] as List?)
+            ?.map((img) => (img as Map?)?['imageUrl']?.toString())
+            .whereType<String>()
+            .where((url) => url.isNotEmpty)
+            .toList();
+        
+        if (mounted) {
+          setState(() {
+            _vehicleImages = images;
+            _isLoadingImages = false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error loading vehicle images: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingImages = false;
+        });
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final canResume = _canResumePayment();
     final canRenew = _canRenewCard();
     final canRequestReplacement = _canRequestReplacement();
     final canCancel = _canCancelCard();
+    final isVehicleCard = widget.card.cardType.toUpperCase().contains('VEHICLE');
 
     return DraggableScrollableSheet(
       expand: false,
@@ -2024,7 +2085,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
                         theme, 'Tòa nhà', widget.card.buildingName!),
                   if (widget.card.paymentAmount != null)
                     _buildDetailRow(theme, 'Số tiền',
-                        '${widget.card.paymentAmount!.toStringAsFixed(0)} VNĐ'),
+                        _formatVnd(widget.card.paymentAmount!.toInt())),
                   if (widget.card.createdAt != null)
                     _buildDetailRow(theme, 'Ngày tạo',
                         _dateTimeFmt.format(widget.card.createdAt!.toLocal())),
@@ -2039,6 +2100,43 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
                         _dateTimeFmt.format(widget.card.approvedAt!.toLocal())),
                   if (widget.card.note != null && widget.card.note!.isNotEmpty)
                     _buildDetailRow(theme, 'Ghi chú', widget.card.note!),
+
+                  // Vehicle images section
+                  if (isVehicleCard) ...[
+                    const SizedBox(height: 24),
+                    Text(
+                      'Ảnh đăng ký',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (_isLoadingImages)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    else if (_vehicleImages != null && _vehicleImages!.isNotEmpty)
+                      _buildImageGrid(theme, _vehicleImages!)
+                    else
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'Không có ảnh',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
 
                   const SizedBox(height: 24),
 
@@ -2241,6 +2339,171 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildImageGrid(ThemeData theme, List<String> imageUrls) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 1.0,
+      ),
+      itemCount: imageUrls.length,
+      itemBuilder: (context, index) {
+        final imageUrl = imageUrls[index];
+        return GestureDetector(
+          onTap: () => _showImageFullScreen(context, imageUrl, imageUrls, index),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(
+              imageUrl,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return Container(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                          : null,
+                    ),
+                  ),
+                );
+              },
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  child: Icon(
+                    Icons.broken_image,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                    size: 40,
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showImageFullScreen(
+    BuildContext context,
+    String imageUrl,
+    List<String> allImages,
+    int initialIndex,
+  ) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _ImageFullScreenViewer(
+          images: allImages,
+          initialIndex: initialIndex,
+        ),
+      ),
+    );
+  }
+}
+
+class _ImageFullScreenViewer extends StatefulWidget {
+  final List<String> images;
+  final int initialIndex;
+
+  const _ImageFullScreenViewer({
+    required this.images,
+    required this.initialIndex,
+  });
+
+  @override
+  State<_ImageFullScreenViewer> createState() => _ImageFullScreenViewerState();
+}
+
+class _ImageFullScreenViewerState extends State<_ImageFullScreenViewer> {
+  late PageController _pageController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text(
+          '${_currentIndex + 1} / ${widget.images.length}',
+          style: const TextStyle(color: Colors.white),
+        ),
+      ),
+      body: PageView.builder(
+        controller: _pageController,
+        itemCount: widget.images.length,
+        onPageChanged: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        itemBuilder: (context, index) {
+          return Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 3.0,
+              child: Image.network(
+                widget.images[index],
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return const Center(
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.broken_image,
+                          color: Colors.white70,
+                          size: 64,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Không thể tải ảnh',
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
+        },
       ),
     );
   }

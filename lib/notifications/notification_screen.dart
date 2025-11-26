@@ -49,6 +49,12 @@ class _NotificationScreenState extends State<NotificationScreen>
     _contractService = ContractService(_api);
     _bus = AppEventBus();
     _viewModel = NotificationViewModel();
+    // Set callback to update read status after notifications are loaded
+    _viewModel.onNotificationsLoaded = () async {
+      if (mounted) {
+        await _updateReadStatus();
+      }
+    };
     _residentId = widget.initialResidentId;
     _buildingId = widget.initialBuildingId;
 
@@ -168,8 +174,18 @@ class _NotificationScreenState extends State<NotificationScreen>
         List<ResidentNotification>.from(_viewModel.notifications);
     bool updated = false;
     for (var i = 0; i < notifications.length; i++) {
-      if (_readIds.contains(notifications[i].id) && !notifications[i].isRead) {
-        notifications[i] = notifications[i].copyWith(isRead: true);
+      final notification = notifications[i];
+      final shouldBeRead = _readIds.contains(notification.id);
+      
+      // Update read status if it doesn't match local storage
+      if (shouldBeRead && !notification.isRead) {
+        notifications[i] = notification.copyWith(isRead: true);
+        updated = true;
+      } else if (!shouldBeRead && notification.isRead) {
+        // If notification is marked as read in UI but not in local storage, keep it as read
+        // (This shouldn't happen, but just in case)
+        // Actually, we should trust local storage - if it's not in _readIds, it should be unread
+        notifications[i] = notification.copyWith(isRead: false);
         updated = true;
       }
     }
@@ -608,7 +624,10 @@ class _NotificationScreenState extends State<NotificationScreen>
           IconButton(
             icon: const Icon(Icons.chevron_left_rounded),
             onPressed: viewModel.hasPrevious && !viewModel.isLoading
-                ? () => viewModel.previousPage()
+                ? () async {
+                    await viewModel.previousPage();
+                    await _updateReadStatus();
+                  }
                 : null,
             tooltip: 'Trang trước',
           ),
@@ -651,7 +670,10 @@ class _NotificationScreenState extends State<NotificationScreen>
                       child: InkWell(
                         onTap: viewModel.isLoading
                             ? null
-                            : () => viewModel.goToPage(pageNumber),
+                            : () async {
+                                await viewModel.goToPage(pageNumber);
+                                await _updateReadStatus();
+                              },
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -686,7 +708,10 @@ class _NotificationScreenState extends State<NotificationScreen>
           IconButton(
             icon: const Icon(Icons.chevron_right_rounded),
             onPressed: viewModel.hasNext && !viewModel.isLoading
-                ? () => viewModel.nextPage()
+                ? () async {
+                    await viewModel.nextPage();
+                    await _updateReadStatus();
+                  }
                 : null,
             tooltip: 'Trang sau',
           ),

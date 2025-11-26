@@ -416,18 +416,29 @@ class ApiClient {
 
   static String fileUrl(String path) {
     if (path.startsWith('http')) {
-      // Nếu URL chứa localhost, thay thế bằng IP đúng
+      // Nếu URL chứa localhost hoặc port 8082, thay thế bằng host đúng
       final url = path;
-      if (url.contains('localhost') || url.contains('127.0.0.1')) {
-        // Extract port và path từ URL gốc
-        final uri = Uri.tryParse(url);
-        if (uri != null) {
-          // Lấy port từ URL gốc hoặc dùng port mặc định
-          final port = uri.port != 0 ? uri.port : apiPort;
-          final host = _activeHostIp;
-          // Use active scheme (http/https)
-          final scheme = _activeScheme;
-          // Rebuild URL với IP đúng
+      final uri = Uri.tryParse(url);
+      if (uri != null && (url.contains('localhost') || url.contains('127.0.0.1') || uri.port == 8082)) {
+        final host = _activeHostIp;
+        final scheme = _activeScheme;
+        
+        // Check if this is an ngrok URL - ngrok URLs don't need explicit port
+        final isNgrokUrl = host.contains('ngrok') || 
+                         host.contains('ngrok-free.app') ||
+                         host.contains('ngrok.io');
+        
+        if (isNgrokUrl) {
+          // Ngrok URLs don't need port - they automatically route to the configured port
+          return Uri(
+            scheme: scheme,
+            host: host,
+            path: uri.path,
+            query: uri.query,
+          ).toString();
+        } else {
+          // For non-ngrok URLs, include port only if it's not a default port
+          final port = uri.port != 0 && uri.port != 80 && uri.port != 443 ? uri.port : null;
           return Uri(
             scheme: scheme,
             host: host,
@@ -437,8 +448,11 @@ class ApiClient {
           ).toString();
         }
       }
+      // If URL already has correct host, return as is
       return path;
     }
+    
+    // For relative paths, use activeFileBaseUrl (already handles ngrok correctly)
     return '$_activeFileBaseUrl$path';
   }
   

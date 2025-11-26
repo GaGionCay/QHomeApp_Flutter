@@ -60,11 +60,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     }
   }
 
-  String _formatCurrency(num value) {
-    final formatter = NumberFormat.currency(locale: 'vi_VN', symbol: '');
-    return formatter.format(value);
-  }
-
   String _bookingTypeLabel(String? bookingType) {
     switch (bookingType?.toUpperCase()) {
       case 'COMBO_BASED':
@@ -243,7 +238,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           ? null
           : Builder(
               builder: (context) {
-                final pricePerHour = _service?['pricePerHour'] as num?;
                 return Container(
                   decoration: BoxDecoration(
                     gradient: backgroundGradient,
@@ -258,63 +252,39 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                   child: SafeArea(
                     child: Padding(
                       padding: const EdgeInsets.all(20),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (pricePerHour != null && pricePerHour > 0) ...[
-                            // Hiển thị giá ở dòng riêng biệt, nổi bật
-                            Text(
-                              '${_formatCurrency(pricePerHour)} đ/...', // Giữ nguyên format như ảnh mẫu
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 24, // Tăng kích thước để nổi bật
-                                    color: colorScheme.primary,
-                                  ) ??
-                                  TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 24,
-                                    color: colorScheme.primary,
-                                  ),
-                            ),
-                            const SizedBox(height: 20), // Khoảng cách giữa giá và nút
-                          ],
-                          // Nút Đặt dịch vụ ở dòng riêng biệt
-                          FilledButton.icon(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => ServiceBookingScreen(
-                                    serviceId: widget.serviceId,
-                                    serviceName: widget.serviceName,
-                                    categoryCode: widget.categoryCode,
-                                    categoryName: widget.categoryName,
-                                  ),
-                                ),
-                              );
-                            },
-                            icon: const Icon(
-                              CupertinoIcons.calendar_badge_plus,
-                              size: 20,
-                            ),
-                            label: const Text(
-                              'Đặt dịch vụ',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ServiceBookingScreen(
+                                serviceId: widget.serviceId,
+                                serviceName: widget.serviceName,
+                                categoryCode: widget.categoryCode,
+                                categoryName: widget.categoryName,
                               ),
                             ),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: colorScheme.primary,
-                              foregroundColor: colorScheme.onPrimary,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                            ),
+                          );
+                        },
+                        icon: const Icon(
+                          CupertinoIcons.calendar_badge_plus,
+                          size: 20,
+                        ),
+                        label: const Text(
+                          'Đặt dịch vụ',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
                           ),
-                        ],
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: colorScheme.primary,
+                          foregroundColor: colorScheme.onPrimary,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -490,10 +460,12 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
 
     final description = service['description']?.toString();
     final location = service['location']?.toString();
+    final rules = service['rules']?.toString();
     final bookingType = service['bookingType']?.toString() ?? 'STANDARD';
+    final pricingType = service['pricingType']?.toString() ?? 'HOURLY';
     final maxCapacity = service['maxCapacity'];
     final minDurationHours = service['minDurationHours'];
-    final advanceBookingDays = service['advanceBookingDays'];
+    final availabilities = _parseList(service['availabilities']);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -575,8 +547,12 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           ],
         ),
 
+        // Price Section
+        const SizedBox(height: 24),
+        _buildPriceSection(service, pricingType, theme, colorScheme, isDark),
+
         if (description != null && description.isNotEmpty) ...[
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           Text(
             'Mô tả',
             style: theme.textTheme.titleMedium?.copyWith(
@@ -642,12 +618,38 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             value: '${minDurationHours.toString()} giờ',
           ),
         ],
-        if (advanceBookingDays != null) ...[
+        if (availabilities.isNotEmpty) ...[
           const SizedBox(height: 18),
-          _buildDetailRow(
-            icon: CupertinoIcons.calendar_badge_plus,
-            label: 'Đặt trước',
-            value: '${advanceBookingDays.toString()} ngày',
+          _buildAvailabilitySection(availabilities, theme, colorScheme, isDark),
+        ],
+        if (rules != null && rules.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          Text(
+            'Quy định',
+            style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: isDark ? Colors.white : AppColors.textPrimary,
+                ) ??
+                TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: isDark ? Colors.white : AppColors.textPrimary,
+                ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            rules,
+            style: theme.textTheme.bodyMedium?.copyWith(
+                  height: 1.6,
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.75)
+                      : AppColors.textSecondary,
+                ) ??
+                TextStyle(
+                  height: 1.6,
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.75)
+                      : AppColors.textSecondary,
+                ),
           ),
         ],
       ],
@@ -752,5 +754,424 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildPriceSection(
+    Map<String, dynamic> service,
+    String pricingType,
+    ThemeData theme,
+    ColorScheme colorScheme,
+    bool isDark,
+  ) {
+    final List<Widget> priceWidgets = [];
+    final NumberFormat currencyFormatter =
+        NumberFormat.currency(locale: 'vi_VN', symbol: '₫');
+
+    // Base price
+    if (pricingType == 'FREE') {
+      priceWidgets.add(
+        _buildPriceCard(
+          theme,
+          colorScheme,
+          isDark,
+          'Miễn phí cho cư dân',
+          CupertinoIcons.checkmark_circle_fill,
+          Colors.green,
+          isHighlight: true,
+        ),
+      );
+    } else {
+      final pricePerHour = service['pricePerHour'] as num?;
+      final pricePerSession = service['pricePerSession'] as num?;
+
+      if (pricingType == 'SESSION' && pricePerSession != null) {
+        priceWidgets.add(
+          _buildPriceCard(
+            theme,
+            colorScheme,
+            isDark,
+            '${currencyFormatter.format(pricePerSession)} / lượt',
+            CupertinoIcons.ticket_fill,
+            colorScheme.primary,
+            isHighlight: true,
+          ),
+        );
+      } else if (pricePerHour != null && pricePerHour > 0) {
+        priceWidgets.add(
+          _buildPriceCard(
+            theme,
+            colorScheme,
+            isDark,
+            '${currencyFormatter.format(pricePerHour)} / giờ',
+            CupertinoIcons.clock_fill,
+            colorScheme.primary,
+            isHighlight: true,
+          ),
+        );
+      }
+    }
+
+    // Combos
+    final combos = _parseList(service['combos']);
+    if (combos.isNotEmpty) {
+      priceWidgets.add(
+        _buildPriceListSection(
+          theme,
+          colorScheme,
+          isDark,
+          'Gói Combo',
+          CupertinoIcons.square_stack_3d_up_fill,
+          combos,
+          currencyFormatter,
+        ),
+      );
+    }
+
+    // Tickets
+    final tickets = _parseList(service['tickets']);
+    if (tickets.isNotEmpty) {
+      priceWidgets.add(
+        _buildPriceListSection(
+          theme,
+          colorScheme,
+          isDark,
+          'Loại Vé',
+          CupertinoIcons.ticket,
+          tickets,
+          currencyFormatter,
+        ),
+      );
+    }
+
+    // Options
+    final options = _parseList(service['options']);
+    if (options.isNotEmpty) {
+      priceWidgets.add(
+        _buildPriceListSection(
+          theme,
+          colorScheme,
+          isDark,
+          'Tùy chọn bổ sung',
+          CupertinoIcons.add_circled,
+          options,
+          currencyFormatter,
+        ),
+      );
+    }
+
+    if (priceWidgets.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Bảng giá',
+          style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: colorScheme.primary,
+              ) ??
+              TextStyle(
+                fontWeight: FontWeight.w700,
+                color: colorScheme.primary,
+                fontSize: 18,
+              ),
+        ),
+        const SizedBox(height: 16),
+        ...priceWidgets,
+      ],
+    );
+  }
+
+  Widget _buildPriceCard(
+    ThemeData theme,
+    ColorScheme colorScheme,
+    bool isDark,
+    String text,
+    IconData icon,
+    Color iconColor, {
+    bool isHighlight = false,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: isHighlight
+            ? iconColor.withValues(alpha: isDark ? 0.25 : 0.15)
+            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isHighlight
+              ? iconColor.withValues(alpha: 0.4)
+              : colorScheme.outline.withValues(alpha: 0.1),
+          width: isHighlight ? 2 : 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 24, color: iconColor),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              text,
+              style: theme.textTheme.titleLarge?.copyWith(
+                    color: isHighlight
+                        ? iconColor
+                        : (isDark ? Colors.white : AppColors.textPrimary),
+                    fontWeight: FontWeight.w700,
+                  ) ??
+                  TextStyle(
+                    fontSize: 18,
+                    color: isHighlight
+                        ? iconColor
+                        : (isDark ? Colors.white : AppColors.textPrimary),
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPriceListSection(
+    ThemeData theme,
+    ColorScheme colorScheme,
+    bool isDark,
+    String title,
+    IconData icon,
+    List<Map<String, dynamic>> items,
+    NumberFormat currencyFormatter,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colorScheme.outline.withValues(alpha: 0.1),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: colorScheme.primary,
+                    ) ??
+                    TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: colorScheme.primary,
+                      fontSize: 14,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...items.map((item) {
+            final name = item['name']?.toString() ?? 'N/A';
+            final price = item['price'] as num?;
+            final description = item['description']?.toString();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white : AppColors.textPrimary,
+                              ) ??
+                              TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white : AppColors.textPrimary,
+                              ),
+                        ),
+                        if (description != null && description.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            description,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                                  color: isDark
+                                      ? Colors.white70
+                                      : AppColors.textSecondary,
+                                ) ??
+                                TextStyle(
+                                  color: isDark
+                                      ? Colors.white70
+                                      : AppColors.textSecondary,
+                                  fontSize: 12,
+                                ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  if (price != null && price > 0)
+                    Text(
+                      currencyFormatter.format(price),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.primary,
+                          ) ??
+                          TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.primary,
+                            fontSize: 16,
+                          ),
+                    ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAvailabilitySection(
+    List<Map<String, dynamic>> availabilities,
+    ThemeData theme,
+    ColorScheme colorScheme,
+    bool isDark,
+  ) {
+    final dayFullNames = [
+      'Chủ nhật',
+      'Thứ 2',
+      'Thứ 3',
+      'Thứ 4',
+      'Thứ 5',
+      'Thứ 6',
+      'Thứ 7'
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              CupertinoIcons.calendar,
+              size: 20,
+              color: colorScheme.primary,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Khung giờ hoạt động',
+              style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.primary,
+                  ) ??
+                  TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.primary,
+                    fontSize: 14,
+                  ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: availabilities.map((avail) {
+            final dayOfWeek = avail['dayOfWeek'] as int?;
+            final startTime = avail['startTime']?.toString() ?? '';
+            final endTime = avail['endTime']?.toString() ?? '';
+            final isAvailable = avail['isAvailable'] as bool? ?? true;
+
+            if (dayOfWeek == null || !isAvailable) {
+              return const SizedBox.shrink();
+            }
+
+            final dayFullName = dayOfWeek >= 1 && dayOfWeek <= 7
+                ? dayFullNames[dayOfWeek - 1]
+                : 'N/A';
+
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: colorScheme.primary.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    dayFullName,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.primary,
+                        ) ??
+                        TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.primary,
+                          fontSize: 12,
+                        ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${_formatTime(startTime)} - ${_formatTime(endTime)}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                          color: isDark ? Colors.white70 : AppColors.textSecondary,
+                        ) ??
+                        TextStyle(
+                          color: isDark ? Colors.white70 : AppColors.textSecondary,
+                          fontSize: 12,
+                        ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  String _formatTime(String timeStr) {
+    if (timeStr.isEmpty) return '';
+    final parts = timeStr.split(':');
+    if (parts.length >= 2) {
+      return '${parts[0]}:${parts[1]}';
+    }
+    return timeStr;
+  }
+
+  List<Map<String, dynamic>> _parseList(dynamic value) {
+    if (value is List) {
+      return value
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    }
+    return const [];
   }
 }

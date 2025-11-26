@@ -181,7 +181,6 @@ class _ProfileInfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final phone = profile['phoneNumber'] ?? profile['phone'] ?? '—';
-    final gender = profile['gender'] ?? '—';
     final dob = profile['dateOfBirth'] ?? profile['birthDate'] ?? '—';
     final citizenId = profile['citizenId'] ?? profile['identityNumber'] ?? '—';
     final residentId = profile['residentId'] ?? profile['residentCode'] ?? '—';
@@ -190,7 +189,6 @@ class _ProfileInfoCard extends StatelessWidget {
       _InfoItem(Icons.badge_outlined, 'Mã cư dân', residentId),
       _InfoItem(Icons.phone_outlined, 'Số điện thoại', phone),
       _InfoItem(Icons.credit_card_outlined, 'CMND/CCCD', citizenId),
-      _InfoItem(Icons.person_outline, 'Giới tính', gender),
       _InfoItem(Icons.cake_outlined, 'Ngày sinh', dob),
     ];
 

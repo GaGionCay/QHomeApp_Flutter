@@ -1,8 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
+import 'package:dio/dio.dart';
 
 import '../auth/api_client.dart';
 import '../core/event_bus.dart';
@@ -1143,6 +1150,215 @@ class _MaintenanceRequestDetailSheet extends StatelessWidget {
     );
   }
 
+  bool _isDataUri(String url) {
+    return url.startsWith('data:');
+  }
+
+  bool _isVideoUrl(String url) {
+    if (_isDataUri(url)) {
+      // Check data URI mime type
+      return url.toLowerCase().contains('video/');
+    }
+    final lowerUrl = url.toLowerCase();
+    return lowerUrl.contains('.mp4') ||
+        lowerUrl.contains('.mov') ||
+        lowerUrl.contains('.avi') ||
+        lowerUrl.contains('.mkv') ||
+        lowerUrl.contains('.webm') ||
+        lowerUrl.contains('video');
+  }
+
+  Widget _buildAttachmentsGrid(BuildContext context, ThemeData theme, List<String> attachments) {
+    // Separate images and videos
+    final images = <String>[];
+    final videos = <String>[];
+    
+    for (final attachment in attachments) {
+      if (_isVideoUrl(attachment)) {
+        videos.add(attachment);
+      } else {
+        images.add(attachment);
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (images.isNotEmpty) ...[
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1.0,
+            ),
+            itemCount: images.length,
+            itemBuilder: (context, index) {
+              final imageData = images[index];
+              return GestureDetector(
+                onTap: () => _showImageFullScreen(context, images, index),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: _isDataUri(imageData)
+                      ? Image.memory(
+                          _decodeBase64DataUri(imageData),
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              Container(
+                            color: theme.colorScheme.errorContainer,
+                            child: Icon(
+                              Icons.broken_image,
+                              color: theme.colorScheme.onError,
+                            ),
+                          ),
+                        )
+                      : CachedNetworkImage(
+                          imageUrl: _buildFullUrl(imageData),
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => Container(
+                            color: theme.colorScheme.surfaceContainerHighest,
+                            child: const Center(
+                                child: CircularProgressIndicator()),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            color: theme.colorScheme.errorContainer,
+                            child: Icon(
+                              Icons.broken_image,
+                              color: theme.colorScheme.onError,
+                            ),
+                          ),
+                        ),
+                ),
+              );
+            },
+          ),
+        ],
+        if (videos.isNotEmpty) ...[
+          if (images.isNotEmpty) const SizedBox(height: 12),
+          ...videos.map((videoData) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: ListTile(
+                    leading: Icon(
+                      Icons.videocam,
+                      color: theme.colorScheme.primary,
+                    ),
+                    title: Text(
+                      'Video đính kèm',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    trailing: Icon(
+                      Icons.play_circle_outline,
+                      color: theme.colorScheme.primary,
+                    ),
+                    onTap: () => _openVideo(context, videoData),
+                  ),
+                ),
+              )),
+        ],
+      ],
+    );
+  }
+
+  Uint8List _decodeBase64DataUri(String dataUri) {
+    try {
+      // Extract base64 part from data URI
+      // Format: data:image/jpeg;base64,/9j/4QOPRXhpZgAATU0AKgAAAAgACAEAAAQAAAABAAAJkAEQAAIAAAAKAAAAbgEBAAQAAAABAAAMwAEPAAIAAAAHAAAAeIdpAAQAAAABAAAAkwESAAMAAAABAAAAAAEyAAIAAAAUAAAAf4glAAQAAAABAAACRgAAAAAyMTEyMTIxMEcAWGlhb21pADIwMjU6MTE6MjYgMjI6NDk6NDYAABiQAAACAAAABQAAAbmSAgAFAAAAAQAAAb6SBAAKAAAAAQAAAcaIJwADAAAAAQH5AACSBQAFAAAAAQAAAc6kBQADAAAAAQAAAACSkgACAAAABwAAAdaQAwACAAAAFAAAAd2gAAACAAAABQAAAfGSkQACAAAABwAAAfakAwADAAAAAQAAAACgBQAEAAAAAQAAAxqQBAACAAAAFAAAAf2SAQAKAAAAAQAAAhGSBwADAAAAAQACAACSCgAFAAAAAQAAAhmCmgAFAAAAAQAAAiGQEAACAAAABwAAAimQEQACAAAABwAAAjCSCQADAAAAAQAQAACSkAACAAAABwAAAjeSCAADAAAAAQAVAACCnQAFAAAAAQAAAj6iFwADAAAAAQAAAAAAAAAAMDIyMAAAAAC3AAAAZAAAAAAAAA
+      final base64Index = dataUri.indexOf('base64,');
+      if (base64Index == -1) {
+        throw FormatException('Invalid data URI format');
+      }
+      final base64String = dataUri.substring(base64Index + 7);
+      return base64Decode(base64String);
+    } catch (e) {
+      throw FormatException('Failed to decode base64 data URI: $e');
+    }
+  }
+
+  String _buildFullUrl(String url) {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    // If relative URL, prepend base URL
+    return ApiClient.fileUrl(url);
+  }
+
+  void _showImageFullScreen(
+      BuildContext context, List<String> imageUrls, int initialIndex) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _AttachmentFullScreenViewer(
+          attachments: imageUrls,
+          initialIndex: initialIndex,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openVideo(BuildContext context, String videoData) async {
+    try {
+      String filePath;
+      
+      if (_isDataUri(videoData)) {
+        // Save base64 video to temporary file
+        final videoBytes = _decodeBase64DataUri(videoData);
+        final tempDir = await getTemporaryDirectory();
+        final fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+        filePath = '${tempDir.path}/$fileName';
+        
+        final file = File(filePath);
+        await file.writeAsBytes(videoBytes);
+      } else {
+        // Download video from URL to temporary file
+        final fullUrl = _buildFullUrl(videoData);
+        final tempDir = await getTemporaryDirectory();
+        final uri = Uri.parse(fullUrl);
+        final fileName = uri.pathSegments.last.isNotEmpty
+            ? uri.pathSegments.last
+            : 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+        filePath = '${tempDir.path}/$fileName';
+        
+        // Download using Dio
+        final apiClient = await ApiClient.create();
+        final dio = apiClient.dio;
+        await dio.download(
+          fullUrl,
+          filePath,
+          options: Options(
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          ),
+        );
+      }
+      
+      // Open file with system dialog
+      if (!context.mounted) return;
+      final result = await OpenFile.open(filePath);
+      if (result.type != ResultType.done) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể mở video: ${result.message}'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể mở video: $e'),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1309,6 +1525,19 @@ class _MaintenanceRequestDetailSheet extends StatelessWidget {
                     _buildDetailRow(theme, 'Ghi chú', request.note!),
                   ],
 
+                  // Attachments (Images/Videos) Section
+                  if (request.attachments.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    Text(
+                      'Ảnh/Video đính kèm',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildAttachmentsGrid(context, theme, request.attachments),
+                  ],
+
                   const SizedBox(height: 24),
 
                   // Action buttons
@@ -1436,6 +1665,120 @@ class _MaintenanceRequestDetailSheet extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AttachmentFullScreenViewer extends StatefulWidget {
+  final List<String> attachments;
+  final int initialIndex;
+
+  const _AttachmentFullScreenViewer({
+    required this.attachments,
+    required this.initialIndex,
+  });
+
+  @override
+  State<_AttachmentFullScreenViewer> createState() =>
+      _AttachmentFullScreenViewerState();
+}
+
+class _AttachmentFullScreenViewerState
+    extends State<_AttachmentFullScreenViewer> {
+  late PageController _pageController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: _currentIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  bool _isDataUri(String url) {
+    return url.startsWith('data:');
+  }
+
+  Uint8List _decodeBase64DataUri(String dataUri) {
+    try {
+      final base64Index = dataUri.indexOf('base64,');
+      if (base64Index == -1) {
+        throw FormatException('Invalid data URI format');
+      }
+      final base64String = dataUri.substring(base64Index + 7);
+      return base64Decode(base64String);
+    } catch (e) {
+      throw FormatException('Failed to decode base64 data URI: $e');
+    }
+  }
+
+  String _buildFullUrl(String url) {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    return ApiClient.fileUrl(url);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text(
+          'Ảnh ${_currentIndex + 1}/${widget.attachments.length}',
+          style: theme.textTheme.titleLarge?.copyWith(color: Colors.white),
+        ),
+      ),
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            itemCount: widget.attachments.length,
+            onPageChanged: (index) {
+              setState(() {
+                _currentIndex = index;
+              });
+            },
+            itemBuilder: (context, index) {
+              final imageData = widget.attachments[index];
+              return Center(
+                child: InteractiveViewer(
+                  panEnabled: true,
+                  minScale: 0.5,
+                  maxScale: 4.0,
+                  child: _isDataUri(imageData)
+                      ? Image.memory(
+                          _decodeBase64DataUri(imageData),
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Center(
+                            child: Icon(Icons.error, color: Colors.red, size: 50),
+                          ),
+                        )
+                      : CachedNetworkImage(
+                          imageUrl: _buildFullUrl(imageData),
+                          fit: BoxFit.contain,
+                          placeholder: (context, url) =>
+                              const Center(child: CircularProgressIndicator()),
+                          errorWidget: (context, url, error) => const Center(
+                            child: Icon(Icons.error, color: Colors.red, size: 50),
+                          ),
+                        ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }

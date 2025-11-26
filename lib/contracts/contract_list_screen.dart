@@ -4,9 +4,11 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../auth/api_client.dart';
+import 'package:dio/dio.dart';
 import '../models/contract.dart';
 import '../models/unit_info.dart';
 import '../theme/app_colors.dart';
@@ -470,6 +472,8 @@ class _ContractListScreenState extends State<ContractListScreen> {
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -477,30 +481,39 @@ class _ContractListScreenState extends State<ContractListScreen> {
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
                           ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                         ),
                       ],
                     ),
                   ),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(statusIcon, size: 16, color: statusColor),
-                        const SizedBox(width: 6),
-                        Text(
-                          contract.status.toUpperCase(),
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: statusColor,
-                            fontWeight: FontWeight.w700,
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(statusIcon, size: 16, color: statusColor),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              contract.status.toUpperCase(),
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: statusColor,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -574,6 +587,8 @@ class _ContractListScreenState extends State<ContractListScreen> {
           child: Text(
             value,
             style: theme.textTheme.bodySmall,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 2,
           ),
         ),
       ],
@@ -585,17 +600,51 @@ class _ContractListScreenState extends State<ContractListScreen> {
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: () async {
-        final url = ApiClient.fileUrl(file.fileUrl);
-        if (await canLaunchUrl(Uri.parse(url))) {
-          await launchUrl(Uri.parse(url));
-        } else {
+        try {
+          // Download file first, then open with system dialog
+          final url = ApiClient.fileUrl(file.fileUrl);
+          
+          // Get temporary directory
+          final tempDir = await getTemporaryDirectory();
+          final uri = Uri.parse(url);
+          final fileName = file.fileName.isNotEmpty 
+              ? file.fileName 
+              : uri.pathSegments.last.isNotEmpty 
+                  ? uri.pathSegments.last 
+                  : 'contract_file';
+          final filePath = '${tempDir.path}/$fileName';
+          
+          // Download file using Dio with authentication
+          final apiClient = await ApiClient.create();
+          final dio = apiClient.dio;
+          
+          await dio.download(
+            url,
+            filePath,
+            options: Options(
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            ),
+          );
+          
+          // Open file with system dialog
+          final result = await OpenFile.open(filePath);
+          if (result.type != ResultType.done) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Không thể mở tệp: ${result.message}')),
+            );
+          }
+        } catch (e) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Không thể mở tệp ${file.fileName}')),
+            SnackBar(content: Text('Lỗi khi mở tệp: $e')),
           );
         }
       },
       child: Container(
+        constraints: const BoxConstraints(maxWidth: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
@@ -609,10 +658,14 @@ class _ContractListScreenState extends State<ContractListScreen> {
           children: [
             const Icon(CupertinoIcons.doc_plaintext, size: 16),
             const SizedBox(width: 8),
-            Text(
-              file.fileName,
-              style: theme.textTheme.labelMedium?.copyWith(
-                fontWeight: FontWeight.w600,
+            Flexible(
+              child: Text(
+                file.fileName,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
             ),
           ],

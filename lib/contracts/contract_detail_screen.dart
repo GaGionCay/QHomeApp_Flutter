@@ -3,7 +3,9 @@ import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:dio/dio.dart';
 
 import '../auth/api_client.dart';
 import '../models/contract.dart';
@@ -765,15 +767,47 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
   }
 
   Future<void> _viewFile(ContractFileDto file) async {
-    final url = ApiClient.fileUrl(file.fileUrl);
-    if (await canLaunchUrl(Uri.parse(url))) {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    } else {
+    try {
+      // Download file first, then open with system dialog
+      final url = ApiClient.fileUrl(file.fileUrl);
+      
+      // Get temporary directory
+      final tempDir = await getTemporaryDirectory();
+      final uri = Uri.parse(url);
+      final fileName = file.originalFileName.isNotEmpty 
+          ? file.originalFileName 
+          : uri.pathSegments.last.isNotEmpty 
+              ? uri.pathSegments.last 
+              : 'contract_file';
+      final filePath = '${tempDir.path}/$fileName';
+      
+      // Download file using Dio with authentication
+      if (_contractService == null) return;
+      final apiClient = _contractService!.apiClient;
+      final dio = apiClient.dio;
+      
+      await dio.download(
+        url,
+        filePath,
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+      
+      // Open file with system dialog
+      final result = await OpenFile.open(filePath);
+      if (result.type != ResultType.done) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Không thể mở tệp: ${result.message}')),
+        );
+      }
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Không thể mở tệp ${file.originalFileName}'),
-        ),
+        SnackBar(content: Text('Lỗi khi mở tệp: $e')),
       );
     }
   }
@@ -817,13 +851,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
             action: SnackBarAction(
               label: 'Mở',
               textColor: Colors.white,
-              onPressed: () async {
-                // Try to open the file
-                final url = ApiClient.fileUrl(file.fileUrl);
-                if (await canLaunchUrl(Uri.parse(url))) {
-                  await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-                }
-              },
+              onPressed: () => _viewFile(file),
             ),
           ),
         );

@@ -165,14 +165,22 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
     }
   }
 
-  String _getScopeText(String scope) {
-    switch (scope.toUpperCase()) {
+  String _getScopeText(NotificationDetailResponse notification) {
+    // If notification has targetResidentId, it's PRIVATE (Riêng tư)
+    if (notification.targetResidentId != null && notification.targetResidentId!.isNotEmpty) {
+      return 'Riêng tư';
+    }
+    
+    // Otherwise, check scope
+    switch (notification.scope.toUpperCase()) {
       case 'EXTERNAL':
+        // If has targetBuildingId, it's public to that building
+        // If no targetBuildingId, it's public to all buildings
         return 'Công khai';
       case 'INTERNAL':
         return 'Nội bộ';
       default:
-        return scope;
+        return notification.scope;
     }
   }
 
@@ -403,7 +411,7 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                                     const SizedBox(height: 8),
                                     _buildStatusChip(
                                       context,
-                                      _getScopeText(notification.scope),
+                                      _getScopeText(notification),
                                       theme.colorScheme.primary,
                                     ),
                                   ],

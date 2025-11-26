@@ -360,8 +360,14 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final bookings = await _serviceBookingService.getUnpaidBookings();
       if (mounted) {
+        // Only count bookings that are not CANCELLED for home screen notification
+        // CANCELLED bookings are still shown in the list but don't trigger notifications
+        final activeUnpaidCount = bookings.where((booking) {
+          final status = booking['status']?.toString() ?? '';
+          return status.toUpperCase() != 'CANCELLED';
+        }).length;
         setState(() {
-          _unpaidBookingCount = bookings.length;
+          _unpaidBookingCount = activeUnpaidCount;
           _unpaidServicesError = null;
         });
       }

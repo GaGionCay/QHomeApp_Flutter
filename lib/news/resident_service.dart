@@ -262,9 +262,10 @@ class ResidentService {
     DateTime? dateTo,
   }) async {
     try {
+      // Backend now gets residentId from authenticated user, so we don't send it
       final queryParams = <String, dynamic>{
-        'residentId': residentId,
-        'buildingId': buildingId,
+        // 'residentId': residentId, // Removed - backend gets from authenticated user
+        if (buildingId.isNotEmpty) 'buildingId': buildingId,
         'page': page,
         'size': size,
       };
@@ -321,9 +322,10 @@ class ResidentService {
     try {
       // Try the new count endpoint first
       try {
+        // Backend now gets residentId from authenticated user, so we don't send it
         final queryParams = <String, dynamic>{
-          'residentId': residentId,
-          'buildingId': buildingId,
+          // 'residentId': residentId, // Removed - backend gets from authenticated user
+          if (buildingId.isNotEmpty) 'buildingId': buildingId,
         };
 
         final response = await _publicDio.get(

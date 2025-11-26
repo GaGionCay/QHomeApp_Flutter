@@ -281,6 +281,8 @@ class _UnpaidServiceBookingsScreenState
     final endTime = booking['endTime']?.toString();
     final purpose = booking['purpose']?.toString();
     final bookingId = booking['id']?.toString() ?? '';
+    final status = booking['status']?.toString() ?? '';
+    final isCancelled = status.toUpperCase() == 'CANCELLED';
 
     final formattedAmount = NumberFormat.currency(
       locale: 'vi_VN',
@@ -291,6 +293,7 @@ class _UnpaidServiceBookingsScreenState
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       elevation: 4,
+      color: isCancelled ? Colors.grey.shade100 : null,
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -298,15 +301,20 @@ class _UnpaidServiceBookingsScreenState
           children: [
             Row(
               children: [
-                Icon(Icons.pending_actions,
-                    color: AppColors.warning, size: 28),
+                Icon(
+                  isCancelled ? Icons.cancel_outlined : Icons.pending_actions,
+                  color: isCancelled ? Colors.grey : AppColors.warning,
+                  size: 28,
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     serviceName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
+                      color: isCancelled ? Colors.grey : null,
+                      decoration: isCancelled ? TextDecoration.lineThrough : null,
                     ),
                   ),
                 ),
@@ -314,13 +322,15 @@ class _UnpaidServiceBookingsScreenState
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: AppColors.warning.withValues(alpha: 0.16),
+                    color: isCancelled
+                        ? Colors.grey.withValues(alpha: 0.16)
+                        : AppColors.warning.withValues(alpha: 0.16),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Text(
-                    'Chờ thanh toán',
+                  child: Text(
+                    isCancelled ? 'Đã hủy' : 'Chờ thanh toán',
                     style: TextStyle(
-                      color: AppColors.warning,
+                      color: isCancelled ? Colors.grey : AppColors.warning,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -373,29 +383,55 @@ class _UnpaidServiceBookingsScreenState
                 ),
               ),
             const SizedBox(height: 18),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: bookingId.isEmpty
-                        ? null
-                        : () => _cancelBooking(bookingId),
-                    icon: const Icon(Icons.cancel_outlined),
-                    label: const Text('Hủy dịch vụ'),
-                  ),
+            if (isCancelled) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: bookingId.isEmpty
-                        ? null
-                        : () => _launchVnpayPayment(bookingId),
-                    icon: const Icon(Icons.payment),
-                    label: const Text('Thanh toán'),
-                  ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.grey.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Dịch vụ này đã bị hủy. Bạn không thể thực hiện bất kỳ hành động nào.',
+                        style: TextStyle(
+                          color: Colors.grey.shade700,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ] else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: bookingId.isEmpty
+                          ? null
+                          : () => _cancelBooking(bookingId),
+                      icon: const Icon(Icons.cancel_outlined),
+                      label: const Text('Hủy dịch vụ'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: bookingId.isEmpty
+                          ? null
+                          : () => _launchVnpayPayment(bookingId),
+                      icon: const Icon(Icons.payment),
+                      label: const Text('Thanh toán'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),

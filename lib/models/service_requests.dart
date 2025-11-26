@@ -79,6 +79,7 @@ class MaintenanceRequestSummary {
     this.estimatedCost,
     this.respondedAt,
     this.responseStatus,
+    this.attachments = const [],
   });
 
   final String id;
@@ -96,8 +97,19 @@ class MaintenanceRequestSummary {
   final double? estimatedCost;
   final DateTime? respondedAt;
   final String? responseStatus;
+  final List<String> attachments;
 
   factory MaintenanceRequestSummary.fromJson(Map<String, dynamic> json) {
+    List<String> attachments = [];
+    if (json['attachments'] != null) {
+      if (json['attachments'] is List) {
+        attachments = (json['attachments'] as List)
+            .map((item) => item?.toString() ?? '')
+            .where((url) => url.isNotEmpty)
+            .toList();
+      }
+    }
+    
     return MaintenanceRequestSummary(
       id: json['id']?.toString() ?? '',
       category: json['category']?.toString() ?? 'Khác',
@@ -118,6 +130,7 @@ class MaintenanceRequestSummary {
           : null,
       respondedAt: _parseDateTime(json['respondedAt']),
       responseStatus: json['responseStatus']?.toString(),
+      attachments: attachments,
     );
   }
 

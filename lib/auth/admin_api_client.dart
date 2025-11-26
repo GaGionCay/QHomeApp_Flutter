@@ -19,11 +19,37 @@ class AdminApiClient {
       'ApiClient.ensureInitialized() must be awaited before creating clients.',
     );
 
+    final storage = TokenStorage();
     final dio = Dio(BaseOptions(
       baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: timeoutSeconds),
       receiveTimeout: const Duration(seconds: timeoutSeconds),
     ));
+    
+    // Add authentication interceptor FIRST (before LogInterceptor) so headers are added before logging
+    dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) async {
+        final token = await storage.readAccessToken();
+        if (token != null) {
+          options.headers['Authorization'] = 'Bearer $token';
+          print('🔍 [AdminApiClient] Added Authorization header');
+        } else {
+          print('⚠️ [AdminApiClient] No access token found in storage');
+        }
+        final deviceId = await storage.readDeviceId();
+        if (deviceId != null) options.headers['X-Device-Id'] = deviceId;
+        
+        // Add ngrok-skip-browser-warning header for ngrok URLs
+        final uri = options.uri;
+        if (uri.host.contains('ngrok') || uri.host.contains('ngrok-free.app')) {
+          options.headers['ngrok-skip-browser-warning'] = 'true';
+        }
+        
+        return handler.next(options);
+      },
+    ));
+    
+    // Add LogInterceptor AFTER authentication interceptor so it logs the headers
     dio.interceptors.add(LogInterceptor(
       request: true,
       requestHeader: true,
@@ -33,6 +59,7 @@ class AdminApiClient {
       error: true,
       logPrint: (obj) => print('🔍 ADMIN PUBLIC API LOG: $obj'),
     ));
+    
     return dio;
   }
 

@@ -1654,8 +1654,47 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
       }
     } catch (e) {
       if (mounted) {
+        String errorMessage = 'Không thể đăng ký thẻ xe. Vui lòng thử lại.';
+        
+        if (e is DioException) {
+          final statusCode = e.response?.statusCode;
+          final errorData = e.response?.data;
+          
+          if (errorData is Map<String, dynamic>) {
+            // Try to get message from error response
+            if (errorData['message'] != null) {
+              errorMessage = errorData['message'].toString();
+            } else if (errorData['error'] != null) {
+              errorMessage = errorData['error'].toString();
+            }
+          } else if (errorData is String && errorData.isNotEmpty) {
+            errorMessage = errorData;
+          }
+          
+          // Handle specific error codes
+          if (statusCode == 400) {
+            // Bad request - validation error
+            // errorMessage already contains the backend message
+          } else if (statusCode == 409) {
+            errorMessage = 'Biển số xe đã được đăng ký trong hệ thống.';
+          } else if (statusCode == 500) {
+            errorMessage = 'Lỗi server. Vui lòng thử lại sau.';
+          } else if (e.type == DioExceptionType.connectionTimeout ||
+                     e.type == DioExceptionType.receiveTimeout) {
+            errorMessage = 'Kết nối timeout. Vui lòng kiểm tra kết nối mạng và thử lại.';
+          } else if (e.type == DioExceptionType.connectionError) {
+            errorMessage = 'Không thể kết nối tới server. Vui lòng kiểm tra kết nối mạng.';
+          }
+        } else if (e is Exception) {
+          errorMessage = e.toString().replaceFirst('Exception: ', '');
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi: $e')),
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
         );
 
         if (registrationId != null) {

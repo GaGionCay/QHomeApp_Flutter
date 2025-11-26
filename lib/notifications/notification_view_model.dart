@@ -199,8 +199,16 @@ class NotificationViewModel extends ChangeNotifier {
       _isLoading = false;
       _isLoadingMore = false;
       notifyListeners();
+      // Call callback after notifications are loaded to update read status
+      if (onNotificationsLoaded != null) {
+        onNotificationsLoaded!();
+      }
     }
   }
+
+  // Callback to be called after loadNotifications completes
+  // This allows the screen to update read status from local storage
+  Function()? onNotificationsLoaded;
 
   Future<void> goToPage(int page) async {
     if (page < 0 || page >= _totalPages) return;

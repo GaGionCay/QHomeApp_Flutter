@@ -145,7 +145,6 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   Widget _buildServiceCard(Map<String, dynamic> service) {
     final bookingType = (service['bookingType'] as String?) ?? 'STANDARD';
     final pricingType = (service['pricingType'] as String?) ?? 'HOURLY';
-    final priceText = _buildPriceText(service, pricingType);
     final capacity = service['maxCapacity'];
     final durationMin = service['minDurationHours'];
     final location = service['location']?.toString();
@@ -203,27 +202,14 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              priceText,
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                color: colorScheme.primary,
-                                fontWeight: FontWeight.w700,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          _buildBookingTypeChip(bookingType),
-                        ],
-                      ),
+                      _buildBookingTypeChip(bookingType),
                     ],
                   ),
                 ),
               ],
             ),
+            const SizedBox(height: 16),
+            _buildPriceSection(service, pricingType, theme, colorScheme),
             if (description != null && description.isNotEmpty) ...[
               const SizedBox(height: 14),
               Text(
@@ -276,13 +262,8 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                     value: '${durationMin.toString()} giờ',
                     icon: CupertinoIcons.timer,
                   ),
-                if (service['advanceBookingDays'] != null)
-                  _buildInfoChip(
-                    context: context,
-                    label: 'Đặt trước',
-                    value: '${service['advanceBookingDays'].toString()} ngày',
-                    icon: CupertinoIcons.calendar_badge_plus,
-                  ),
+                // Note: advanceBookingDays field was removed from backend
+                // Service booking is available up to 30 days in advance by default
               ],
             ),
             const SizedBox(height: 20),
@@ -476,26 +457,233 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     );
   }
 
+  Widget _buildPriceSection(
+    Map<String, dynamic> service,
+    String pricingType,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
+    final List<Widget> priceWidgets = [];
+
+    // Base price
+    if (pricingType == 'FREE') {
+      priceWidgets.add(
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.green.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(CupertinoIcons.checkmark_circle_fill,
+                  size: 16, color: Colors.green.shade700),
+              const SizedBox(width: 6),
+              Text(
+                'Miễn phí cho cư dân',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: Colors.green.shade700,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      final pricePerHour = service['pricePerHour'] as num?;
+      final pricePerSession = service['pricePerSession'] as num?;
+
+      if (pricingType == 'SESSION' && pricePerSession != null) {
+        priceWidgets.add(
+          _buildPriceChip(
+            theme,
+            colorScheme,
+            '${_currencyFormatter.format(pricePerSession)} / lượt',
+            CupertinoIcons.ticket_fill,
+          ),
+        );
+      } else if (pricePerHour != null && pricePerHour > 0) {
+        priceWidgets.add(
+          _buildPriceChip(
+            theme,
+            colorScheme,
+            '${_currencyFormatter.format(pricePerHour)} / giờ',
+            CupertinoIcons.clock_fill,
+          ),
+        );
+      }
+    }
+
+    // Combos
+    final combos = _parseList(service['combos']);
+    if (combos.isNotEmpty) {
+      final comboPrices = combos
+          .map((c) => (c['price'] as num?) ?? 0)
+          .where((p) => p > 0)
+          .toList()
+        ..sort();
+      if (comboPrices.isNotEmpty) {
+        final minCombo = comboPrices.first;
+        final maxCombo = comboPrices.last;
+        final comboText = comboPrices.length == 1
+            ? '${_currencyFormatter.format(minCombo)} / combo'
+            : '${_currencyFormatter.format(minCombo)} - ${_currencyFormatter.format(maxCombo)} / combo';
+        priceWidgets.add(
+          _buildPriceChip(
+            theme,
+            colorScheme,
+            comboText,
+            CupertinoIcons.square_stack_3d_up_fill,
+            isHighlight: true,
+          ),
+        );
+      }
+    }
+
+    // Tickets
+    final tickets = _parseList(service['tickets']);
+    if (tickets.isNotEmpty) {
+      final ticketPrices = tickets
+          .map((t) => (t['price'] as num?) ?? 0)
+          .where((p) => p > 0)
+          .toList()
+        ..sort();
+      if (ticketPrices.isNotEmpty) {
+        final minTicket = ticketPrices.first;
+        final maxTicket = ticketPrices.last;
+        final ticketText = ticketPrices.length == 1
+            ? '${_currencyFormatter.format(minTicket)} / vé'
+            : '${_currencyFormatter.format(minTicket)} - ${_currencyFormatter.format(maxTicket)} / vé';
+        priceWidgets.add(
+          _buildPriceChip(
+            theme,
+            colorScheme,
+            ticketText,
+            CupertinoIcons.ticket,
+            isHighlight: true,
+          ),
+        );
+      }
+    }
+
+    // Options
+    final options = _parseList(service['options']);
+    if (options.isNotEmpty) {
+      final optionPrices = options
+          .map((o) => (o['price'] as num?) ?? 0)
+          .where((p) => p > 0)
+          .toList()
+        ..sort();
+      if (optionPrices.isNotEmpty) {
+        final minOption = optionPrices.first;
+        final maxOption = optionPrices.last;
+        final optionText = optionPrices.length == 1
+            ? 'Tùy chọn: ${_currencyFormatter.format(minOption)}'
+            : 'Tùy chọn: ${_currencyFormatter.format(minOption)} - ${_currencyFormatter.format(maxOption)}';
+        priceWidgets.add(
+          _buildPriceChip(
+            theme,
+            colorScheme,
+            optionText,
+            CupertinoIcons.add_circled,
+          ),
+        );
+      }
+    }
+
+    if (priceWidgets.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Giá dịch vụ',
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: colorScheme.onSurface.withValues(alpha: 0.6),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: priceWidgets,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPriceChip(
+    ThemeData theme,
+    ColorScheme colorScheme,
+    String text,
+    IconData icon, {
+    bool isHighlight = false,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isHighlight
+            ? colorScheme.primaryContainer.withValues(alpha: 0.3)
+            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isHighlight
+              ? colorScheme.primary.withValues(alpha: 0.3)
+              : colorScheme.outline.withValues(alpha: 0.1),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 14,
+            color: isHighlight
+                ? colorScheme.primary
+                : colorScheme.onSurface.withValues(alpha: 0.7),
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              text,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: isHighlight
+                    ? colorScheme.primary
+                    : colorScheme.onSurface.withValues(alpha: 0.8),
+                fontWeight: FontWeight.w600,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> _parseList(dynamic value) {
+    if (value is List) {
+      return value
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    }
+    return const [];
+  }
+
   Widget _buildActionRow(
     BuildContext context,
     Map<String, dynamic> service,
   ) {
-    final priceText =
-        _buildPriceText(service, service['pricingType'] as String);
     return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        Flexible(
-          child: Text(
-            priceText,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.w700,
-                ),
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
-          ),
-        ),
-        const SizedBox(width: 12),
         FilledButton.icon(
           onPressed: () {
             Navigator.push(
@@ -543,20 +731,6 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     }
   }
 
-  String _buildPriceText(Map<String, dynamic> service, String pricingType) {
-    if (pricingType == 'FREE') {
-      return 'Miễn phí cho cư dân';
-    }
-    final pricePerSession = service['pricePerSession'] as num?;
-    final pricePerHour = service['pricePerHour'] as num?;
-    if (pricingType == 'SESSION' && pricePerSession != null) {
-      return '${_currencyFormatter.format(pricePerSession)} / lượt';
-    }
-    if (pricePerHour != null && pricePerHour > 0) {
-      return '${_currencyFormatter.format(pricePerHour)} / giờ';
-    }
-    return 'Liên hệ ban quản lý';
-  }
 
 }
 

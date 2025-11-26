@@ -4,6 +4,7 @@ class NotificationDetailResponse {
   final String message;
   final String scope;
   final String? targetBuildingId;
+  final String? targetResidentId;
   final String? actionUrl;
   final DateTime createdAt;
 
@@ -13,6 +14,7 @@ class NotificationDetailResponse {
     required this.message,
     required this.scope,
     this.targetBuildingId,
+    this.targetResidentId,
     this.actionUrl,
     required this.createdAt,
   });
@@ -24,6 +26,7 @@ class NotificationDetailResponse {
       message: json['message'] ?? '',
       scope: json['scope'] ?? '',
       targetBuildingId: json['targetBuildingId']?.toString(),
+      targetResidentId: json['targetResidentId']?.toString(),
       actionUrl: json['actionUrl'],
       createdAt: DateTime.parse(json['createdAt']),
     );
@@ -36,6 +39,7 @@ class NotificationDetailResponse {
       'message': message,
       'scope': scope,
       'targetBuildingId': targetBuildingId,
+      'targetResidentId': targetResidentId,
       'actionUrl': actionUrl,
       'createdAt': createdAt.toIso8601String(),
     };

@@ -2,12 +2,14 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:app_links/app_links.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../auth/asset_maintenance_api_client.dart';
+import '../theme/app_colors.dart';
 import 'service_booking_service.dart';
 import 'unpaid_service_bookings_screen.dart';
 
@@ -253,10 +255,8 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
   }
 
   int _advanceBookingDays(Map<String, dynamic> detail) {
-    final value = detail['advanceBookingDays'];
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return 14;
+    // Backend no longer has advanceBookingDays field, use default 30 days
+    return 30;
   }
 
   TimeOfDay? _parseTimeOfDay(dynamic value) {
@@ -300,6 +300,30 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
     final diff = endMinutes - startMinutes;
     if (diff <= 0) return null;
     return diff / 60.0;
+  }
+
+  void _validateTimeRange() {
+    if (_service == null || _startTime == null || _endTime == null) return;
+
+    final duration = _calculateDurationHours();
+    if (duration == null || duration <= 0) {
+      _showMessage('Khung giờ không hợp lệ.', isError: true);
+      return;
+    }
+
+    final minDuration = _service!['minDurationHours'] is num
+        ? (_service!['minDurationHours'] as num).toDouble()
+        : 1.0;
+
+    if (duration < minDuration) {
+      _showMessage(
+          'Thời lượng tối thiểu là ${minDuration.toStringAsFixed(1)} giờ. Vui lòng chọn lại khung giờ.',
+          isError: true);
+      setState(() {
+        // Auto-adjust end time to meet minimum duration
+        _endTime = _addDuration(_startTime!, minDuration);
+      });
+    }
   }
 
   num _calculateBaseAmount() {
@@ -422,9 +446,42 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
       _showMessage('Vui lòng chọn khung giờ sử dụng.');
       return;
     }
+    // Validate time is not in the past
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final isToday = _selectedDate!.year == today.year &&
+        _selectedDate!.month == today.month &&
+        _selectedDate!.day == today.day;
+
+    if (isToday) {
+      final nowTime = TimeOfDay.fromDateTime(now);
+      final startMinutes = _startTime!.hour * 60 + _startTime!.minute;
+      final nowMinutes = nowTime.hour * 60 + nowTime.minute;
+      if (startMinutes <= nowMinutes) {
+        _showMessage('Thời gian bắt đầu phải sau thời gian hiện tại.', isError: true);
+        return;
+      }
+      final endMinutes = _endTime!.hour * 60 + _endTime!.minute;
+      if (endMinutes <= nowMinutes) {
+        _showMessage('Thời gian kết thúc phải sau thời gian hiện tại.', isError: true);
+        return;
+      }
+    }
+
     final duration = _calculateDurationHours();
     if (duration == null || duration <= 0) {
       _showMessage('Khung giờ không hợp lệ.');
+      return;
+    }
+
+    // Validate min duration
+    final minDuration = _service!['minDurationHours'] is num
+        ? (_service!['minDurationHours'] as num).toDouble()
+        : 1.0;
+    if (duration < minDuration) {
+      _showMessage(
+          'Thời lượng tối thiểu là ${minDuration.toStringAsFixed(1)} giờ. Vui lòng chọn lại khung giờ.',
+          isError: true);
       return;
     }
     if (_bookingType == 'COMBO_BASED' && _selectedComboId == null) {
@@ -827,14 +884,44 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                       : 'Chọn giờ'),
                   trailing: const Icon(Icons.access_time),
                   onTap: () async {
+                    final now = TimeOfDay.now();
+                    final today = DateTime.now();
+                    final isToday = _selectedDate != null &&
+                        _selectedDate!.year == today.year &&
+                        _selectedDate!.month == today.month &&
+                        _selectedDate!.day == today.day;
+
                     final time = await showTimePicker(
                       context: context,
-                      initialTime: _startTime ?? TimeOfDay.now(),
+                      initialTime: _startTime ?? now,
                     );
                     if (time != null) {
+                      // Validate: if selected date is today, start time must be in the future
+                      if (isToday) {
+                        final timeMinutes = time.hour * 60 + time.minute;
+                        final nowMinutes = now.hour * 60 + now.minute;
+                        if (timeMinutes <= nowMinutes) {
+                          _showMessage('Thời gian bắt đầu phải sau thời gian hiện tại.', isError: true);
+                          return;
+                        }
+                      }
+
                       setState(() {
                         _startTime = time;
+                        // Reset end time if it's before new start time
+                        if (_endTime != null) {
+                          final startMinutes = time.hour * 60 + time.minute;
+                          final endMinutes = _endTime!.hour * 60 + _endTime!.minute;
+                          if (endMinutes <= startMinutes) {
+                            _endTime = null;
+                          }
+                        }
                       });
+
+                      // Validate min duration if end time is set
+                      if (_endTime != null) {
+                        _validateTimeRange();
+                      }
                     }
                   },
                 ),
@@ -852,18 +939,49 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                       : 'Chọn giờ'),
                   trailing: const Icon(Icons.timer_outlined),
                   onTap: () async {
+                    if (_startTime == null) {
+                      _showMessage('Vui lòng chọn thời gian bắt đầu trước.', isError: true);
+                      return;
+                    }
+
+                    final now = TimeOfDay.now();
+                    final today = DateTime.now();
+                    final isToday = _selectedDate != null &&
+                        _selectedDate!.year == today.year &&
+                        _selectedDate!.month == today.month &&
+                        _selectedDate!.day == today.day;
+
+                    final initialEndTime = _endTime ??
+                        (_addDuration(_startTime!, 1.0) ?? _startTime!);
+
                     final time = await showTimePicker(
                       context: context,
-                      initialTime: _endTime ??
-                          (_startTime != null
-                              ? _addDuration(_startTime!, 1.0) ??
-                                  TimeOfDay.now()
-                              : TimeOfDay.now()),
+                      initialTime: initialEndTime,
                     );
                     if (time != null) {
+                      // Validate: end time must be after start time
+                      final startMinutes = _startTime!.hour * 60 + _startTime!.minute;
+                      final endMinutes = time.hour * 60 + time.minute;
+                      if (endMinutes <= startMinutes) {
+                        _showMessage('Thời gian kết thúc phải sau thời gian bắt đầu.', isError: true);
+                        return;
+                      }
+
+                      // Validate: if selected date is today, end time must be in the future
+                      if (isToday) {
+                        final nowMinutes = now.hour * 60 + now.minute;
+                        if (endMinutes <= nowMinutes) {
+                          _showMessage('Thời gian kết thúc phải sau thời gian hiện tại.', isError: true);
+                          return;
+                        }
+                      }
+
                       setState(() {
                         _endTime = time;
                       });
+
+                      // Validate min duration
+                      _validateTimeRange();
                     }
                   },
                 ),
@@ -873,26 +991,214 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
         ),
         const SizedBox(height: 12),
         _buildBookedSlotsBanner(),
+        if (_bookedSlotsByDate.isNotEmpty && _selectedDate != null) ...[
+          const SizedBox(height: 12),
+          _buildAllBookedSlotsSummary(),
+        ],
       ],
     );
   }
 
+  Widget _buildAllBookedSlotsSummary() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    // Lấy tất cả các ngày có booked slots, sắp xếp theo thứ tự
+    final allDates = _bookedSlotsByDate.keys.toList()
+      ..sort((a, b) => a.compareTo(b));
+
+    if (allDates.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // Chỉ hiển thị tối đa 5 ngày gần nhất
+    final displayDates = allDates.take(5).toList();
+
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0,
+      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  CupertinoIcons.calendar_today,
+                  size: 18,
+                  color: colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Các ngày đã có đặt chỗ',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white : AppColors.textPrimary,
+                      ) ??
+                      TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white : AppColors.textPrimary,
+                        fontSize: 14,
+                      ),
+                ),
+                if (allDates.length > 5) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '+${allDates.length - 5}',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.primary,
+                          ) ??
+                          TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.primary,
+                            fontSize: 10,
+                          ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: displayDates.map((dateKey) {
+                final date = DateTime.parse(dateKey);
+                final slots = _bookedSlotsByDate[dateKey] ?? [];
+                final isSelected = _selectedDate != null &&
+                    DateFormat('yyyy-MM-dd').format(_selectedDate!) == dateKey;
+
+                return InkWell(
+                  onTap: () {
+                    setState(() {
+                      _selectedDate = date;
+                    });
+                    if (!_isWithinLoadedRange(date)) {
+                      _reloadBookedSlots(anchor: date);
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? colorScheme.primary.withValues(alpha: 0.2)
+                          : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isSelected
+                            ? colorScheme.primary
+                            : colorScheme.outline.withValues(alpha: 0.2),
+                        width: isSelected ? 2 : 1,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          DateFormat('dd/MM', 'vi_VN').format(date),
+                          style: theme.textTheme.labelMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: isSelected
+                                    ? colorScheme.primary
+                                    : (isDark ? Colors.white : AppColors.textPrimary),
+                              ) ??
+                              TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: isSelected
+                                    ? colorScheme.primary
+                                    : (isDark ? Colors.white : AppColors.textPrimary),
+                                fontSize: 12,
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              CupertinoIcons.clock,
+                              size: 12,
+                              color: isSelected
+                                  ? colorScheme.primary
+                                  : (isDark ? Colors.white70 : AppColors.textSecondary),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${slots.length} khung giờ',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                    color: isSelected
+                                        ? colorScheme.primary
+                                        : (isDark
+                                            ? Colors.white70
+                                            : AppColors.textSecondary),
+                                  ) ??
+                                  TextStyle(
+                                    color: isSelected
+                                        ? colorScheme.primary
+                                        : (isDark
+                                            ? Colors.white70
+                                            : AppColors.textSecondary),
+                                    fontSize: 10,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildBookedSlotsBanner() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     if (_bookedSlotsLoading) {
       return Card(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: const Padding(
-          padding: EdgeInsets.all(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
           child: Row(
             children: [
               SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: colorScheme.primary,
+                ),
               ),
-              SizedBox(width: 12),
+              const SizedBox(width: 12),
               Expanded(
-                child: Text('Đang tải các khung giờ đã được đặt...'),
+                child: Text(
+                  'Đang tải các khung giờ đã được đặt...',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                        color: isDark
+                            ? Colors.white70
+                            : AppColors.textSecondary,
+                      ) ??
+                      TextStyle(
+                        color: isDark ? Colors.white70 : AppColors.textSecondary,
+                      ),
+                ),
               ),
             ],
           ),
@@ -908,14 +1214,37 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Không thể tải các khung giờ đã đặt',
-                style: TextStyle(fontWeight: FontWeight.w600),
+              Row(
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 20,
+                    color: colorScheme.error,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Không thể tải các khung giờ đã đặt',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.error,
+                        ) ??
+                        TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.error,
+                        ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               Text(
                 _bookedSlotsError!,
-                style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+                style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.error.withValues(alpha: 0.8),
+                    ) ??
+                    TextStyle(
+                      color: colorScheme.error.withValues(alpha: 0.8),
+                      fontSize: 12,
+                    ),
               ),
               const SizedBox(height: 12),
               Align(
@@ -933,13 +1262,67 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
       );
     }
 
+    if (_bookedSlotsByDate.isEmpty) {
+      return Card(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Icon(
+                CupertinoIcons.calendar,
+                size: 20,
+                color: colorScheme.primary.withValues(alpha: 0.6),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Chưa có khung giờ nào được đặt trong khoảng thời gian này.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                        color: isDark
+                            ? Colors.white70
+                            : AppColors.textSecondary,
+                      ) ??
+                      TextStyle(
+                        color: isDark ? Colors.white70 : AppColors.textSecondary,
+                      ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final selected = _selectedDate;
     if (selected == null) {
       return Card(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: const Padding(
-          padding: EdgeInsets.all(16),
-          child: Text('Chọn ngày để xem những khung giờ đã được đặt trước.'),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Icon(
+                CupertinoIcons.calendar,
+                size: 20,
+                color: colorScheme.primary.withValues(alpha: 0.6),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Chọn ngày để xem những khung giờ đã được đặt trước.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                        color: isDark
+                            ? Colors.white70
+                            : AppColors.textSecondary,
+                      ) ??
+                      TextStyle(
+                        color: isDark ? Colors.white70 : AppColors.textSecondary,
+                      ),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -949,43 +1332,218 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
 
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0,
+      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: slots.isEmpty
-            ? const Text(
-                'Hiện chưa có ai đặt dịch vụ trong ngày này.',
-                style: TextStyle(color: Colors.black54),
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Khung giờ đã được giữ',
-                    style: TextStyle(fontWeight: FontWeight.w600),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  const SizedBox(height: 8),
-                  ...slots.map(
-                    (slot) => Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.lock_clock,
-                              size: 16, color: Colors.redAccent),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              '${_formatDisplayTime(slot.start)} - ${_formatDisplayTime(slot.end)} • ${_translateBookingStatus(slot.status)}',
-                              style: const TextStyle(fontSize: 13),
+                  child: Icon(
+                    CupertinoIcons.lock_circle_fill,
+                    size: 18,
+                    color: colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Khung giờ đã được đặt',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: isDark ? Colors.white : AppColors.textPrimary,
+                            ) ??
+                            TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: isDark ? Colors.white : AppColors.textPrimary,
+                              fontSize: 14,
                             ),
-                          ),
-                        ],
                       ),
+                      const SizedBox(height: 2),
+                      Text(
+                        DateFormat('EEEE, dd/MM/yyyy', 'vi_VN').format(selected),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                              color: isDark
+                                  ? Colors.white70
+                                  : AppColors.textSecondary,
+                            ) ??
+                            TextStyle(
+                              color: isDark
+                                  ? Colors.white70
+                                  : AppColors.textSecondary,
+                              fontSize: 12,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (slots.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '${slots.length}',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.primary,
+                          ) ??
+                          TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.primary,
+                            fontSize: 11,
+                          ),
                     ),
                   ),
-                ],
+              ],
+            ),
+            if (slots.isEmpty) ...[
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.only(left: 40),
+                child: Text(
+                  'Chưa có khung giờ nào được đặt trong ngày này.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                        color: isDark
+                            ? Colors.white60
+                            : AppColors.textSecondary,
+                      ) ??
+                      TextStyle(
+                        color: isDark ? Colors.white60 : AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                ),
               ),
+            ] else ...[
+              const SizedBox(height: 16),
+              ...slots.map(
+                (slot) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _buildBookedSlotItem(slot, theme, colorScheme, isDark),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
+  }
+
+  Widget _buildBookedSlotItem(
+    _BookedSlot slot,
+    ThemeData theme,
+    ColorScheme colorScheme,
+    bool isDark,
+  ) {
+    final statusColor = _getStatusColor(slot.status, colorScheme);
+    final statusLabel = _translateBookingStatus(slot.status);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: statusColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: statusColor.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 40,
+            decoration: BoxDecoration(
+              color: statusColor,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      CupertinoIcons.clock_fill,
+                      size: 16,
+                      color: statusColor,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${_formatDisplayTime(slot.start)} - ${_formatDisplayTime(slot.end)}',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? Colors.white : AppColors.textPrimary,
+                          ) ??
+                          TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? Colors.white : AppColors.textPrimary,
+                            fontSize: 14,
+                          ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        statusLabel,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: statusColor,
+                            ) ??
+                            TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: statusColor,
+                              fontSize: 11,
+                            ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getStatusColor(String status, ColorScheme colorScheme) {
+    switch (status.toUpperCase()) {
+      case 'PENDING':
+        return Colors.orange;
+      case 'APPROVED':
+        return Colors.blue;
+      case 'COMPLETED':
+        return Colors.green;
+      case 'PAID':
+        return Colors.teal;
+      default:
+        return colorScheme.primary;
+    }
   }
 
   Future<void> _reloadBookedSlots({DateTime? anchor}) async {
