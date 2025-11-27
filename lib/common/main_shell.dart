@@ -43,6 +43,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   StompClient? _stompClient;
   final Queue<String> _recentRealtimeKeys = Queue<String>();
   Set<String> _userBuildingIds = <String>{};
+  String? _userResidentId;
   StreamSubscription<RemoteMessage>? _pushSubscription;
 
   @override
@@ -110,6 +111,13 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
     final Set<String> buildingIds = <String>{};
     try {
       final profile = await ProfileService(_api.dio).getProfile();
+
+      // Get residentId for private notifications
+      final residentId = _asString(profile['residentId']);
+      if (residentId != null && residentId.isNotEmpty) {
+        _userResidentId = residentId;
+        debugPrint('ℹ️ ResidentId for realtime: $_userResidentId');
+      }
 
       final profileBuildingId = _asString(profile['buildingId']);
       if (profileBuildingId != null && profileBuildingId.isNotEmpty) {
@@ -181,6 +189,18 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
         callback: _handleNotificationFrame,
       );
       debugPrint('✅ Subscribed to /topic/notifications/building/$buildingId');
+    }
+
+    // Subscribe to resident-specific notifications (for private notifications like card approvals)
+    if (_userResidentId != null && _userResidentId!.isNotEmpty) {
+      _stompClient?.subscribe(
+        destination: '/topic/notifications/resident/$_userResidentId',
+        headers: {'id': 'notifications-resident-$_userResidentId'},
+        callback: _handleNotificationFrame,
+      );
+      debugPrint('✅ Subscribed to /topic/notifications/resident/$_userResidentId');
+    } else {
+      debugPrint('⚠️ Không có residentId, bỏ qua subscribe đến /topic/notifications/resident/{residentId}');
     }
   }
 
@@ -254,12 +274,16 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
         if (eventType == 'NOTIFICATION_DELETED') {
           AppEventBus().emit('notifications_update', data);
           AppEventBus().emit('notifications_refetch', data);
+          // Also emit notifications_incoming to update count (decrease)
+          AppEventBus().emit('notifications_incoming', data);
           return;
         }
 
         if (eventType == 'NOTIFICATION_UPDATED') {
           AppEventBus().emit('notifications_update', data);
           AppEventBus().emit('notifications_refetch', data);
+          // Also emit notifications_incoming to update count
+          AppEventBus().emit('notifications_incoming', data);
           return;
         }
 
@@ -270,6 +294,10 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
           AppEventBus().emit('notifications_update', data);
           AppEventBus().emit('notifications_incoming', data);
           debugPrint('✅ Emitted notifications_incoming event');
+        } else {
+          // For any other event type, still emit notifications_incoming to update count
+          AppEventBus().emit('notifications_incoming', data);
+          debugPrint('✅ Emitted notifications_incoming event for eventType: $eventType');
         }
       }
     } catch (e) {

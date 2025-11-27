@@ -125,15 +125,27 @@ class _HomeScreenState extends State<HomeScreen> {
       await _loadCleaningRequestState();
     });
     // Listen for new incoming notifications via WebSocket - update count immediately without API call
-    _eventBus.on('notifications_incoming', (_) {
+    _eventBus.on('notifications_incoming', (data) {
       debugPrint(
-          '🔔 HomeScreen nhận event notifications_incoming -> tăng unread count...');
+          '🔔 HomeScreen nhận event notifications_incoming -> cập nhật unread count...');
       if (mounted) {
+        // Check if this is a deletion event
+        final eventData = data is Map<String, dynamic> ? data : <String, dynamic>{};
+        final eventType = (eventData['eventType']?.toString() ?? '').toUpperCase();
+        
         setState(() {
-          _unreadNotificationCount = _unreadNotificationCount + 1;
+          if (eventType == 'NOTIFICATION_DELETED') {
+            // Decrease count when notification is deleted
+            if (_unreadNotificationCount > 0) {
+              _unreadNotificationCount = _unreadNotificationCount - 1;
+            }
+            debugPrint('✅ Đã giảm unread notification count: $_unreadNotificationCount');
+          } else {
+            // Increase count for new/updated notifications
+            _unreadNotificationCount = _unreadNotificationCount + 1;
+            debugPrint('✅ Đã tăng unread notification count: $_unreadNotificationCount');
+          }
         });
-        debugPrint(
-            '✅ Đã tăng unread notification count: $_unreadNotificationCount');
       }
       // Also refresh cleaning request state when new notification arrives
       unawaited(_loadCleaningRequestState());

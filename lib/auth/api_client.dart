@@ -24,7 +24,8 @@ class ApiClient {
   
   // Track last discovery check time to avoid checking too frequently
   static DateTime? _lastDiscoveryCheck;
-  static const _discoveryCheckInterval = Duration(seconds: 30); // Check every 30 seconds
+  static const _discoveryCheckInterval = Duration(seconds: 10); // Check every 10 seconds for ngrok URL
+  static Timer? _ngrokCheckTimer; // Periodic timer to check for ngrok URL
 
   static bool _isInitialized = false;
   static Future<void>? _initializing;
@@ -95,6 +96,12 @@ class ApiClient {
         
         // Start listening for network changes
         _discoveryService.startNetworkChangeListener(_onNetworkChanged);
+        
+        // Check for ngrok URL immediately on startup
+        _checkForNgrokUrlInBackground();
+        
+        // Start periodic check for ngrok URL (every 10 seconds)
+        _startPeriodicNgrokCheck();
       } catch (e) {
         print('⚠️ Backend discovery failed: $e');
         // Fallback to localhost if discovery fails
@@ -114,13 +121,29 @@ class ApiClient {
       final backendInfo = await _discoveryService.discoverBackend();
       print('✅ Re-discovered backend: ${backendInfo.hostname}:${backendInfo.port} (${backendInfo.discoveryMethod})');
       
+      // Check if new backend is ngrok URL and current is not (prefer ngrok)
+      final isNewNgrok = backendInfo.hostname.contains('ngrok') || 
+                         backendInfo.hostname.contains('ngrok-free.app');
+      final isCurrentNgrok = _activeHostIp.contains('ngrok') || 
+                            _activeHostIp.contains('ngrok-free.app');
+      
+      // Always update, but prioritize ngrok URL
+      if (isNewNgrok && !isCurrentNgrok) {
+        print('🔄 Switching to ngrok URL (preferred over IP address)');
+      }
+      
       _setActiveHost(backendInfo.hostname, backendInfo.port, backendInfo.isHttps);
       
       // Notify all existing clients to update their base URLs
       print('🔄 Updated active base URL to: $_activeBaseUrl');
+      
+      // Also check for ngrok URL in background (in case it wasn't discovered yet)
+      _checkForNgrokUrlInBackground();
     } catch (e) {
       print('⚠️ Re-discovery failed: $e');
       // Keep using current host if re-discovery fails
+      // Still try to check for ngrok URL
+      _checkForNgrokUrlInBackground();
     }
   }
 
@@ -234,6 +257,9 @@ class ApiClient {
           if (shouldCheck && !isCurrentlyUsingNgrok) {
             // Check for ngrok URL from backend discovery endpoint in background
             // Don't block the request - check asynchronously
+            _checkForNgrokUrlInBackground();
+          } else if (isCurrentlyUsingNgrok) {
+            // If using ngrok, verify it's still reachable
             _checkForNgrokUrlInBackground();
           }
         }
@@ -518,15 +544,26 @@ class ApiClient {
                 final ngrokResponse = await ngrokDio.get(ngrokHealthUrl).timeout(const Duration(seconds: 3));
                 
                 if (ngrokResponse.statusCode == 200) {
-                  // Ngrok URL is reachable - switch to it
-                  final backendInfo = await _discoveryService.discoverBackend();
-                  final isNgrokUrl = backendInfo.hostname.contains('ngrok') || 
-                                    backendInfo.hostname.contains('ngrok-free.app');
+                  // Ngrok URL is reachable - switch to it immediately
+                  print('🔄 Auto-discovered ngrok URL, switching from IP to ngrok...');
+                  print('   Ngrok URL: $publicUrl');
                   
-                  if (isNgrokUrl) {
-                    print('🔄 Auto-discovered ngrok URL, switching from IP to ngrok...');
-                    _setActiveHost(backendInfo.hostname, backendInfo.port, backendInfo.isHttps);
-                    print('✅ Switched to ngrok URL: ${backendInfo.hostname}');
+                  // Parse ngrok URL to extract hostname
+                  final ngrokUri = Uri.parse(publicUrl);
+                  final ngrokHostname = ngrokUri.host;
+                  final isHttps = ngrokUri.scheme == 'https';
+                  
+                  // Switch to ngrok URL immediately
+                  _setActiveHost(ngrokHostname, 0, isHttps); // Port 0 means no port in URL
+                  print('✅ Switched to ngrok URL: $ngrokHostname');
+                  print('   New base URL: $_activeBaseUrl');
+                  
+                  // Also save this ngrok URL to preferences for future use
+                  try {
+                    await _discoveryService.setManualBackendUrl(publicUrl);
+                    print('💾 Saved ngrok URL to preferences');
+                  } catch (e) {
+                    print('⚠️ Failed to save ngrok URL: $e');
                   }
                 }
               } catch (e) {
@@ -562,6 +599,34 @@ class ApiClient {
     } catch (e) {
       print('⚠️ Failed to switch to IP address: $e');
     }
+  }
+  
+  /// Start periodic check for ngrok URL
+  /// This checks every 10 seconds if ngrok URL is available
+  static void _startPeriodicNgrokCheck() {
+    if (kIsWeb) return;
+    
+    // Cancel existing timer if any
+    _ngrokCheckTimer?.cancel();
+    
+    // Start periodic check
+    _ngrokCheckTimer = Timer.periodic(_discoveryCheckInterval, (timer) {
+      if (!_isInitialized) {
+        timer.cancel();
+        return;
+      }
+      
+      // Only check if not currently using ngrok
+      final isCurrentlyUsingNgrok = _activeHostIp.contains('ngrok') || 
+                                   _activeHostIp.contains('ngrok-free.app');
+      
+      if (!isCurrentlyUsingNgrok) {
+        // Check for ngrok URL in background
+        _checkForNgrokUrlInBackground();
+      }
+    });
+    
+    print('🔄 Started periodic ngrok URL check (every ${_discoveryCheckInterval.inSeconds}s)');
   }
 }
 

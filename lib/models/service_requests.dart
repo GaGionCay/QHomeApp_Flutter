@@ -80,6 +80,7 @@ class MaintenanceRequestSummary {
     this.respondedAt,
     this.responseStatus,
     this.attachments = const [],
+    this.progressNotes,
   });
 
   final String id;
@@ -98,6 +99,7 @@ class MaintenanceRequestSummary {
   final DateTime? respondedAt;
   final String? responseStatus;
   final List<String> attachments;
+  final String? progressNotes;
 
   factory MaintenanceRequestSummary.fromJson(Map<String, dynamic> json) {
     List<String> attachments = [];
@@ -131,6 +133,7 @@ class MaintenanceRequestSummary {
       respondedAt: _parseDateTime(json['respondedAt']),
       responseStatus: json['responseStatus']?.toString(),
       attachments: attachments,
+      progressNotes: json['progressNotes']?.toString(),
     );
   }
 

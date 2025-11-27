@@ -1520,6 +1520,54 @@ class _MaintenanceRequestDetailSheet extends StatelessWidget {
                     ),
                   ],
 
+                  // Progress Notes Section (when status is IN_PROGRESS)
+                  if (request.status.toUpperCase() == 'IN_PROGRESS' && 
+                      request.progressNotes != null && 
+                      request.progressNotes!.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.success.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.success.withValues(alpha: 0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.construction,
+                                size: 20,
+                                color: AppColors.success,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Ghi chú tiến độ sửa chữa',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: AppColors.success,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            request.progressNotes!,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                              height: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
                   if (request.note != null && request.note!.isNotEmpty) ...[
                     const SizedBox(height: 24),
                     _buildDetailRow(theme, 'Ghi chú', request.note!),

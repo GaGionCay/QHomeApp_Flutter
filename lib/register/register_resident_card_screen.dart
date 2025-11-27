@@ -58,15 +58,13 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   final AppLinks _appLinks = AppLinks();
   late final ContractService _contractService;
   String? _selectedUnitId;
-  UnitInfo? _currentUnit;
-  String? _residentId;
   
   Dio? _servicesCardDio;
 
-  String? _defaultFullName;
-  String? _defaultCitizenId;
   String? _defaultPhoneNumber;
   
+  // Danh sách cư dân đã chọn
+  List<Map<String, dynamic>> _selectedResidents = [];
   List<Map<String, dynamic>> _householdMembers = [];
   bool _loadingHouseholdMembers = false;
 
@@ -217,8 +215,6 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   }
 
   void _setupAutoSave() {
-    _fullNameCtrl.addListener(_markUnsaved);
-    _citizenIdCtrl.addListener(_markUnsaved);
     _phoneNumberCtrl.addListener(_markUnsaved);
     _noteCtrl.addListener(_markUnsaved);
   }
@@ -238,13 +234,10 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     try {
       final prefs = await SharedPreferences.getInstance();
       final data = {
-        'fullName': _fullNameCtrl.text,
         'apartmentNumber': _apartmentNumberCtrl.text,
         'buildingName': _buildingNameCtrl.text,
-        'citizenId': _citizenIdCtrl.text,
         'phoneNumber': _phoneNumberCtrl.text,
         'note': _noteCtrl.text,
-        'residentId': _residentId,
         'unitId': _selectedUnitId,
       };
       await prefs.setString(_storageKey, jsonEncode(data));
@@ -262,9 +255,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       final data = jsonDecode(saved) as Map<String, dynamic>;
       setState(() {
         // Chỉ load các field không phải thông tin cá nhân
-        // Không tự động điền: fullName, apartmentNumber, buildingName, citizenId, phoneNumber
+        // Không tự động điền: apartmentNumber, buildingName, phoneNumber
         _noteCtrl.text = data['note'] ?? _noteCtrl.text;
-        _residentId = data['residentId']?.toString() ?? _residentId;
         _selectedUnitId = data['unitId']?.toString() ?? _selectedUnitId;
       });
     } catch (e) {
@@ -290,7 +282,6 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
 
       if (!mounted) {
         _selectedUnitId = selectedUnit?.id;
-        _currentUnit = selectedUnit;
         if (selectedUnit != null) {
           _applyUnitContext(selectedUnit);
         }
@@ -299,14 +290,13 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
 
       setState(() {
         _selectedUnitId = selectedUnit?.id;
-        _currentUnit = selectedUnit;
       });
 
       if (selectedUnit != null) {
         _applyUnitContext(selectedUnit);
         await prefs.setString(_selectedUnitPrefsKey, selectedUnit.id);
         // Load danh sách thành viên khi có unit
-        _loadHouseholdMembers();
+        await _loadHouseholdMembers();
       }
     } catch (e) {
       debugPrint('❌ Lỗi tải thông tin căn hộ: $e');
@@ -314,17 +304,12 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   }
 
   void _applyUnitContext(UnitInfo unit) {
-    // Không tự động fill nữa, chỉ lưu thông tin unit
-    _hasUnsavedChanges = false;
-  }
-  
-  void _fillUnitContext(UnitInfo unit) {
     _apartmentNumberCtrl.text = unit.code;
     final building = (unit.buildingName?.isNotEmpty ?? false)
         ? unit.buildingName!
         : (unit.buildingCode ?? '');
     _buildingNameCtrl.text = building;
-    _hasUnsavedChanges = true;
+    _hasUnsavedChanges = false;
   }
 
   // Chỉ load data, không auto-fill
@@ -333,35 +318,16 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       final profileService = ProfileService(api.dio);
       final profile = await profileService.getProfile();
 
-      final candidateResidentId = profile['residentId']?.toString();
-      final profileFullName =
-          profile['fullName']?.toString() ?? profile['name']?.toString();
-      final profileCitizenId = profile['citizenId']?.toString() ??
-          profile['identityNumber']?.toString();
       final profilePhone =
           profile['phoneNumber']?.toString() ?? profile['phone']?.toString();
 
       setState(() {
-        _defaultFullName = profileFullName;
-        _defaultCitizenId = profileCitizenId;
         _defaultPhoneNumber = profilePhone;
-        if (_residentId == null || _residentId!.isEmpty) {
-          _residentId = candidateResidentId;
+        if ((_phoneNumberCtrl.text.isEmpty) &&
+            (_defaultPhoneNumber?.isNotEmpty ?? false)) {
+          _phoneNumberCtrl.text = _defaultPhoneNumber!;
         }
       });
-
-      if (_residentId == null || _residentId!.isEmpty) {
-        final units = await _contractService.getMyUnits();
-        for (final unit in units) {
-          final candidate = unit.primaryResidentId?.toString();
-          if (candidate != null && candidate.isNotEmpty) {
-            setState(() {
-              _residentId = candidate;
-            });
-            break;
-          }
-        }
-      }
     } catch (e) {
       debugPrint('❌ Lỗi tải thông tin cư dân: $e');
     }
@@ -405,208 +371,151 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     }
   }
 
-  // Fill thông tin khi user click button
-  Future<void> _fillPersonalInfo() async {
+  // Hiển thị dialog chọn cư dân (cho phép chọn nhiều)
+  Future<void> _showSelectResidentsDialog() async {
     // Nếu chưa có danh sách thành viên, load trước
     if (_householdMembers.isEmpty && _selectedUnitId != null) {
       await _loadHouseholdMembers();
       if (!mounted) return;
     }
     
-    // Nếu vẫn không có thành viên hoặc không có unitId, chỉ điền thông tin của user hiện tại
-    if (_householdMembers.isEmpty || _selectedUnitId == null) {
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Điền thông tin cá nhân'),
-          content: const Text(
-            'Bạn có muốn tự động điền thông tin cá nhân của tài khoản đang đăng nhập vào các trường không?\n\n'
-            'Các thông tin sẽ được điền vào:\n'
-            '- Họ và tên\n'
-            '- Số căn hộ\n'
-            '- Tòa nhà\n'
-            '- Số CCCD/CMND\n'
-            '- Số điện thoại',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Hủy'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Điền thông tin', style: TextStyle(color: Colors.teal)),
-            ),
-          ],
+    // Nếu vẫn không có thành viên
+    if (_householdMembers.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không có thành viên nào trong căn hộ'),
+          backgroundColor: Colors.orange,
         ),
       );
-
-      if (confirm == true) {
-        _fillCurrentUserInfo();
-      }
       return;
     }
     
-    // Hiển thị dialog chọn thành viên
-    final selectedMember = await showDialog<Map<String, dynamic>>(
+    // Tạo Set để track các cư dân đã chọn
+    final Set<String> selectedResidentIds = _selectedResidents
+        .map((r) => r['residentId']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    
+    if (!mounted) return;
+    final List<Map<String, dynamic>>? result = await showDialog<List<Map<String, dynamic>>>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Chọn thành viên'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: _loadingHouseholdMembers
-              ? const Center(child: CircularProgressIndicator())
-              : _householdMembers.isEmpty
-                  ? const Text('Không có thành viên nào trong căn hộ')
-                  : ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: _householdMembers.length,
-                      itemBuilder: (context, index) {
-                        final member = _householdMembers[index];
-                        final name = member['fullName']?.toString() ?? 'Không có tên';
-                        final citizenId = member['citizenId']?.toString() ?? '';
-                        final hasApprovedCard = member['hasApprovedCard'] == true;
-                        final waitingApproval =
-                            member['waitingForApproval'] == true;
-                        final disabled = hasApprovedCard || waitingApproval;
-                        return ListTile(
-                          title: Text(name),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (citizenId.isNotEmpty) Text('CCCD: $citizenId'),
-                              if (hasApprovedCard)
-                                const Text(
-                                  'Đã có thẻ được duyệt',
-                                  style: TextStyle(
-                                    color: Colors.orange,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              if (!hasApprovedCard && waitingApproval)
-                                const Text(
-                                  'Đợi ban quản lý duyệt',
-                                  style: TextStyle(
-                                    color: Colors.blueGrey,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                            ],
-                          ),
-                          enabled: !disabled,
-                          onTap: disabled ? null : () => Navigator.pop(context, member),
-                        );
-                      },
-                    ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Hủy'),
-          ),
-        ],
+      builder: (_) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Chọn cư dân đăng ký thẻ'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: _loadingHouseholdMembers
+                  ? const Center(child: CircularProgressIndicator())
+                  : _householdMembers.isEmpty
+                      ? const Text('Không có thành viên nào trong căn hộ')
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Chọn các cư dân cần đăng ký thẻ cư dân:',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            const SizedBox(height: 12),
+                            Flexible(
+                              child: ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: _householdMembers.length,
+                                itemBuilder: (context, index) {
+                                  final member = _householdMembers[index];
+                                  final residentId = member['residentId']?.toString() ?? '';
+                                  final name = member['fullName']?.toString() ?? 'Không có tên';
+                                  final citizenId = member['citizenId']?.toString() ?? '';
+                                  final hasApprovedCard = member['hasApprovedCard'] == true;
+                                  final waitingApproval = member['waitingForApproval'] == true;
+                                  final isSelected = selectedResidentIds.contains(residentId);
+                                  final disabled = hasApprovedCard || waitingApproval;
+                                  
+                                  return CheckboxListTile(
+                                    title: Text(name),
+                                    subtitle: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        if (citizenId.isNotEmpty) Text('CCCD: $citizenId'),
+                                        if (hasApprovedCard)
+                                          const Text(
+                                            'Đã có thẻ được duyệt',
+                                            style: TextStyle(
+                                              color: Colors.orange,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        if (!hasApprovedCard && waitingApproval)
+                                          const Text(
+                                            'Đợi ban quản lý duyệt',
+                                            style: TextStyle(
+                                              color: Colors.blueGrey,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    value: isSelected,
+                                    enabled: !disabled,
+                                    onChanged: disabled
+                                        ? null
+                                        : (bool? value) {
+                                            setDialogState(() {
+                                              if (value == true) {
+                                                selectedResidentIds.add(residentId);
+                                              } else {
+                                                selectedResidentIds.remove(residentId);
+                                              }
+                                            });
+                                          },
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Hủy'),
+              ),
+              TextButton(
+                onPressed: () {
+                  final selected = _householdMembers
+                      .where((member) => selectedResidentIds.contains(
+                          member['residentId']?.toString() ?? ''))
+                      .toList();
+                  Navigator.pop(context, selected);
+                },
+                child: const Text('Xác nhận', style: TextStyle(color: Colors.teal)),
+              ),
+            ],
+          );
+        },
       ),
     );
 
     if (!mounted) return;
-    if (selectedMember != null) {
-      // Hiển thị popup xác nhận
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Điền thông tin cá nhân'),
-          content: Text(
-            'Bạn có muốn tự động điền thông tin của ${selectedMember['fullName'] ?? 'thành viên này'} vào các trường không?\n\n'
-            'Các thông tin sẽ được điền vào:\n'
-            '- Họ và tên\n'
-            '- Số căn hộ\n'
-            '- Tòa nhà\n'
-            '- Số CCCD/CMND\n'
-            '- Số điện thoại',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Hủy'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Điền thông tin', style: TextStyle(color: Colors.teal)),
-            ),
-          ],
-        ),
-      );
-
-      if (!mounted) return;
-      if (confirm == true) {
-        _fillMemberInfo(selectedMember);
-      }
-    }
-  }
-  
-  void _fillCurrentUserInfo() {
-    setState(() {
-      if (_defaultFullName?.isNotEmpty ?? false) {
-        _fullNameCtrl.text = _defaultFullName!;
-      }
-      if (_defaultCitizenId?.isNotEmpty ?? false) {
-        _citizenIdCtrl.text = _defaultCitizenId!;
-      }
-      if (_defaultPhoneNumber?.isNotEmpty ?? false) {
-        _phoneNumberCtrl.text = _defaultPhoneNumber!;
-      }
-      if (_currentUnit != null) {
-        _fillUnitContext(_currentUnit!);
-      }
-      _hasUnsavedChanges = true;
-    });
-    _autoSave();
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ Đã điền thông tin cá nhân'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-  
-  void _fillMemberInfo(Map<String, dynamic> member) {
-    setState(() {
-      final fullName = member['fullName']?.toString();
-      final citizenId = member['citizenId']?.toString();
-      final phoneNumber = member['phoneNumber']?.toString();
-      final residentId = member['residentId']?.toString();
+    if (result != null) {
+      setState(() {
+        _selectedResidents = result;
+        _hasUnsavedChanges = true;
+      });
+      _autoSave();
       
-      if (fullName?.isNotEmpty ?? false) {
-        _fullNameCtrl.text = fullName!;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đã chọn ${result.length} cư dân'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
-      if (citizenId?.isNotEmpty ?? false) {
-        _citizenIdCtrl.text = citizenId!;
-      }
-      if (phoneNumber?.isNotEmpty ?? false) {
-        _phoneNumberCtrl.text = phoneNumber!;
-      }
-      if (residentId?.isNotEmpty ?? false) {
-        _residentId = residentId;
-      }
-      if (_currentUnit != null) {
-        _fillUnitContext(_currentUnit!);
-      }
-      _hasUnsavedChanges = true;
-    });
-    _autoSave();
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('✅ Đã điền thông tin của ${member['fullName'] ?? 'thành viên'}'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
     }
   }
+  
 
   Future<void> _clearSavedData() async {
     try {
@@ -786,15 +695,15 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     return error.toString();
   }
 
-  Map<String, dynamic> _collectPayload() => {
-        'fullName': _fullNameCtrl.text,
+  Map<String, dynamic> _collectPayload(Map<String, dynamic> resident) => {
+        'fullName': resident['fullName']?.toString() ?? '',
         'apartmentNumber': _apartmentNumberCtrl.text,
         'buildingName': _buildingNameCtrl.text,
-        'citizenId': _citizenIdCtrl.text,
+        'citizenId': resident['citizenId']?.toString() ?? '',
         'phoneNumber': _phoneNumberCtrl.text,
         'note': _noteCtrl.text.isNotEmpty ? _noteCtrl.text : null,
         'unitId': _selectedUnitId,
-        'residentId': _residentId,
+        'residentId': resident['residentId']?.toString(),
       };
 
   Future<void> _handleRegisterPressed() async {
@@ -813,12 +722,12 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       return;
     }
 
-    if (_residentId == null || _residentId!.isEmpty) {
+    // Kiểm tra đã chọn cư dân chưa
+    if (_selectedResidents.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-              'Không tìm thấy thông tin cư dân. Vui lòng thử lại sau hoặc liên hệ quản trị.'),
+          content: Text('Vui lòng chọn ít nhất một cư dân để đăng ký thẻ'),
           backgroundColor: Colors.red,
         ),
       );
@@ -992,30 +901,76 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   Future<void> _saveAndPay() async {
     setState(() => _submitting = true);
     String? registrationId;
+    List<String> registrationIds = [];
+    String? paymentUrl;
 
     try {
-      final payload = _collectPayload();
       final client = await _servicesCardClient();
-      final res = await client.post('/resident-card/vnpay-url', data: payload);
+      
+      // Nếu chỉ có 1 cư dân, sử dụng flow cũ (tạo và thanh toán ngay)
+      if (_selectedResidents.length == 1) {
+        final resident = _selectedResidents[0];
+        final residentId = resident['residentId']?.toString();
+        
+        if (residentId == null || residentId.isEmpty) {
+          throw Exception('Thiếu thông tin cư dân');
+        }
+        
+        final payload = _collectPayload(resident);
+        final res = await client.post('/resident-card/vnpay-url', data: payload);
+        registrationId = res.data['registrationId']?.toString();
+        paymentUrl = res.data['paymentUrl']?.toString();
+        
+        if (registrationId == null || paymentUrl == null) {
+          throw Exception('Không thể tạo đăng ký thẻ');
+        }
+      } else {
+        // Nếu có nhiều cư dân, tạo registrations trước, sau đó gọi batch payment
+        for (int i = 0; i < _selectedResidents.length; i++) {
+          final resident = _selectedResidents[i];
+          final residentId = resident['residentId']?.toString();
+          
+          if (residentId == null || residentId.isEmpty) {
+            continue;
+          }
+          
+          final payload = _collectPayload(resident);
+          
+          // Tạo registration trước (sử dụng endpoint vnpay-url nhưng sẽ gọi batch payment sau)
+          final res = await client.post('/resident-card/vnpay-url', data: payload);
+          final regId = res.data['registrationId']?.toString();
+          
+          if (regId != null) {
+            registrationIds.add(regId);
+            if (i == 0) {
+              registrationId = regId;
+            }
+          }
+        }
 
-      final data = res.data;
-      if (data is! Map<String, dynamic>) {
-        throw Exception('Phản hồi không hợp lệ từ máy chủ');
-      }
+        if (registrationIds.isEmpty || _selectedUnitId == null) {
+          throw Exception('Không thể tạo đăng ký thẻ');
+        }
 
-      registrationId = data['registrationId']?.toString();
-      final paymentUrl = data['paymentUrl']?.toString();
-
-      if (registrationId == null || registrationId.isEmpty) {
-        throw Exception('Không nhận được mã đăng ký từ hệ thống');
-      }
-      if (paymentUrl == null || paymentUrl.isEmpty) {
-        throw Exception('Không nhận được URL thanh toán');
+        // Gọi batch payment với tất cả registration IDs
+        final batchPayload = {
+          'unitId': _selectedUnitId,
+          'registrationIds': registrationIds,
+        };
+        
+        final batchRes = await client.post('/resident-card/batch-payment', data: batchPayload);
+        paymentUrl = batchRes.data['paymentUrl']?.toString();
+        
+        if (paymentUrl == null || paymentUrl.isEmpty) {
+          throw Exception('Không thể tạo URL thanh toán');
+        }
       }
 
       if (mounted) {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_pendingPaymentKey, registrationId);
+        if (registrationId != null) {
+          await prefs.setString(_pendingPaymentKey, registrationId);
+        }
         _clearForm();
 
         final uri = Uri.parse(paymentUrl);
@@ -1086,13 +1041,12 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
 
   void _clearForm() {
     setState(() {
-      _fullNameCtrl.clear();
-      _citizenIdCtrl.clear();
       _phoneNumberCtrl.clear();
       _noteCtrl.clear();
       _confirmed = false;
       _editingField = null;
       _hasEditedAfterConfirm = false;
+      _selectedResidents = [];
     });
     _clearSavedData();
     // Không tự động apply unit context và fill thông tin nữa
@@ -1190,29 +1144,12 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
                   children: [
                     _buildFeeInfoCard(),
                     const SizedBox(height: 20),
-                    _buildAutoFillButton(),
+                    _buildSelectResidentsButton(),
+                    if (_selectedResidents.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      _buildSelectedResidentsList(),
+                    ],
                     const SizedBox(height: 20),
-                    _buildTextField(
-                      controller: _fullNameCtrl,
-                      label: 'Họ tên cư dân',
-                      hint: 'Nhập họ tên cư dân',
-                      fieldKey: 'fullName',
-                      icon: Icons.person_outline,
-                      validator: (v) {
-                        if (v == null || v.isEmpty) {
-                          return 'Vui lòng nhập họ tên cư dân';
-                        }
-                        final trimmed = v.trim();
-                        if (trimmed.isEmpty) {
-                          return 'Họ tên cư dân không được chỉ chứa khoảng trắng';
-                        }
-                        if (trimmed.length > 100) {
-                          return 'Họ tên cư dân không được vượt quá 100 ký tự';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 18),
                     _buildTextField(
                       controller: _apartmentNumberCtrl,
                       label: 'Số căn hộ',
@@ -1233,38 +1170,6 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
                       validator: (v) => v == null || v.isEmpty
                           ? 'Vui lòng kiểm tra lại tòa nhà'
                           : null,
-                    ),
-                    const SizedBox(height: 18),
-                    _buildTextField(
-                      controller: _citizenIdCtrl,
-                      label: 'Căn cước công dân',
-                      hint: 'Nhập số căn cước công dân (12 số)',
-                      fieldKey: 'citizenId',
-                      icon: Icons.badge_outlined,
-                      keyboardType: TextInputType.number,
-                      validator: (v) {
-                        if (v == null || v.isEmpty) {
-                          return 'Vui lòng nhập căn cước công dân';
-                        }
-                        // Không cho phép dấu cách
-                        if (RegExp(r'\s').hasMatch(v)) {
-                          return 'Căn cước công dân không được chứa dấu cách';
-                        }
-                        final trimmed = v.trim().replaceAll(RegExp(r'[\s-]'), '');
-                        if (trimmed.isEmpty) {
-                          return 'Căn cước công dân không được chỉ chứa khoảng trắng hoặc dấu gạch ngang';
-                        }
-                        if (!RegExp(r'^[0-9]+$').hasMatch(trimmed)) {
-                          return 'Căn cước công dân chỉ được chứa số';
-                        }
-                        if (trimmed.length != 13) {
-                          return 'CCCD phải có đúng 13 số.';
-                        }
-                        if (trimmed.length > 20) {
-                          return 'Căn cước công dân không được vượt quá 20 ký tự';
-                        }
-                        return null;
-                      },
                     ),
                     const SizedBox(height: 18),
                     _buildTextField(
@@ -1351,25 +1256,136 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     );
   }
 
-  Widget _buildAutoFillButton() {
+  Widget _buildSelectResidentsButton() {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    return OutlinedButton.icon(
-      onPressed: _fillPersonalInfo,
-      icon: Icon(Icons.auto_fix_high, color: colorScheme.primary),
-      label: Text(
-        'Điền thông tin cá nhân',
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: colorScheme.primary,
-          fontWeight: FontWeight.w600,
-        ),
+    return RegisterGlassPanel(
+      padding: const EdgeInsets.all(22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.people_outline,
+                color: colorScheme.primary,
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Chọn cư dân đăng ký thẻ',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: _showSelectResidentsDialog,
+            icon: Icon(Icons.person_add_outlined, color: colorScheme.primary),
+            label: Text(
+              _selectedResidents.isEmpty
+                  ? 'Chọn cư dân'
+                  : 'Đã chọn ${_selectedResidents.length} cư dân',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+              side: BorderSide(color: colorScheme.primary.withValues(alpha: 0.5)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+        ],
       ),
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-        side: BorderSide(color: colorScheme.primary.withValues(alpha: 0.5)),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+    );
+  }
+
+  Widget _buildSelectedResidentsList() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    
+    return RegisterGlassPanel(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Danh sách cư dân đã chọn:',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ..._selectedResidents.map((resident) {
+            final name = resident['fullName']?.toString() ?? 'Không có tên';
+            final citizenId = resident['citizenId']?.toString() ?? '';
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.person,
+                    size: 20,
+                    color: colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        if (citizenId.isNotEmpty)
+                          Text(
+                            'CCCD: $citizenId',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurface.withValues(alpha: 0.68),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 8),
+          Divider(
+            height: 1,
+            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Tổng tiền:',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                _formatVnd((_registrationFee * _selectedResidents.length).toInt()),
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -1377,69 +1393,97 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   Widget _buildFeeInfoCard() {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final totalAmount = _selectedResidents.isEmpty
+        ? _registrationFee
+        : _registrationFee * _selectedResidents.length;
+    
     return RegisterGlassPanel(
       padding: const EdgeInsets.all(22),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            height: 56,
-            width: 56,
-            decoration: BoxDecoration(
-              gradient: AppColors.primaryGradient(),
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x1A0B4F6C),
-                  blurRadius: 18,
-                  offset: Offset(0, 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                height: 56,
+                width: 56,
+                decoration: BoxDecoration(
+                  gradient: AppColors.primaryGradient(),
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x1A0B4F6C),
+                      blurRadius: 18,
+                      offset: Offset(0, 8),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: const Icon(
-              Icons.payments_outlined,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(width: 18),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Phí đăng ký thẻ cư dân',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: const Icon(
+                  Icons.payments_outlined,
+                  color: Colors.white,
                 ),
-                const SizedBox(height: 4),
-                _loadingPrice
-                    ? SizedBox(
-                        height: 24,
-                        width: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            colorScheme.primary,
-                          ),
-                        ),
-                      )
-                    : Text(
-                        _formatVnd(_registrationFee.toInt()),
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: colorScheme.primary,
-                        ),
+              ),
+              const SizedBox(width: 18),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Phí đăng ký thẻ cư dân',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
                       ),
-                const SizedBox(height: 8),
-                Text(
-                  'Sau khi gửi yêu cầu, bạn sẽ được chuyển tới cổng thanh toán VNPAY để hoàn tất thanh toán.',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurface.withValues(alpha: 0.68),
-                    height: 1.45,
-                  ),
+                    ),
+                    const SizedBox(height: 6),
+                    _loadingPrice
+                        ? SizedBox(
+                            height: 24,
+                            width: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                colorScheme.primary,
+                              ),
+                            ),
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (_selectedResidents.isNotEmpty) ...[
+                                Text(
+                                  '${_formatVnd(_registrationFee.toInt())} × ${_selectedResidents.length} thẻ',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: colorScheme.onSurface.withValues(alpha: 0.68),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                              ],
+                              Text(
+                                _formatVnd(totalAmount.toInt()),
+                                style: theme.textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ],
                 ),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Divider(
+            height: 1,
+            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Sau khi gửi yêu cầu, bạn sẽ được chuyển tới cổng thanh toán VNPAY để hoàn tất thanh toán.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurface.withValues(alpha: 0.68),
+              height: 1.45,
             ),
           ),
         ],
