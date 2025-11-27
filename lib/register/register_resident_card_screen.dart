@@ -692,19 +692,41 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         return error.message!;
       }
     }
+    // Handle Exception with message
+    if (error is Exception) {
+      final message = error.toString();
+      // Remove "Exception: " prefix if present
+      if (message.startsWith('Exception: ')) {
+        return message.substring(11);
+      }
+      return message;
+    }
     return error.toString();
   }
 
-  Map<String, dynamic> _collectPayload(Map<String, dynamic> resident) => {
-        'fullName': resident['fullName']?.toString() ?? '',
-        'apartmentNumber': _apartmentNumberCtrl.text,
-        'buildingName': _buildingNameCtrl.text,
-        'citizenId': resident['citizenId']?.toString() ?? '',
-        'phoneNumber': _phoneNumberCtrl.text,
-        'note': _noteCtrl.text.isNotEmpty ? _noteCtrl.text : null,
-        'unitId': _selectedUnitId,
-        'residentId': resident['residentId']?.toString(),
-      };
+  Map<String, dynamic> _collectPayload(Map<String, dynamic> resident) {
+    final citizenId = resident['citizenId']?.toString() ?? '';
+    
+    // Validate CCCD: phải có ít nhất 12 số
+    if (citizenId.isNotEmpty) {
+      // Normalize: loại bỏ tất cả ký tự không phải số
+      final normalizedCitizenId = citizenId.replaceAll(RegExp(r'[^0-9]'), '');
+      if (normalizedCitizenId.length < 12) {
+        throw Exception('CCCD/CMND phải có ít nhất 12 số');
+      }
+    }
+    
+    return {
+      'fullName': resident['fullName']?.toString() ?? '',
+      'apartmentNumber': _apartmentNumberCtrl.text,
+      'buildingName': _buildingNameCtrl.text,
+      'citizenId': citizenId,
+      'phoneNumber': _phoneNumberCtrl.text,
+      'note': _noteCtrl.text.isNotEmpty ? _noteCtrl.text : null,
+      'unitId': _selectedUnitId,
+      'residentId': resident['residentId']?.toString(),
+    };
+  }
 
   Future<void> _handleRegisterPressed() async {
     FocusScope.of(context).unfocus();
@@ -925,7 +947,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
           throw Exception('Không thể tạo đăng ký thẻ');
         }
       } else {
-        // Nếu có nhiều cư dân, tạo registrations trước, sau đó gọi batch payment
+        // Nếu có nhiều cư dân, tạo registrations trước (không thanh toán), sau đó gọi batch payment
         for (int i = 0; i < _selectedResidents.length; i++) {
           final resident = _selectedResidents[i];
           final residentId = resident['residentId']?.toString();
@@ -936,9 +958,9 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
           
           final payload = _collectPayload(resident);
           
-          // Tạo registration trước (sử dụng endpoint vnpay-url nhưng sẽ gọi batch payment sau)
-          final res = await client.post('/resident-card/vnpay-url', data: payload);
-          final regId = res.data['registrationId']?.toString();
+          // Tạo registration trước (không thanh toán)
+          final res = await client.post('/resident-card', data: payload);
+          final regId = res.data['id']?.toString();
           
           if (regId != null) {
             registrationIds.add(regId);
