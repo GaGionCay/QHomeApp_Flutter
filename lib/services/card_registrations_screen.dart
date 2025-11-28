@@ -1976,15 +1976,96 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
     
     try {
       final client = await _getServicesCardClient();
+      debugPrint('🖼️ [CardDetail] Loading vehicle images for card: ${widget.card.id}');
       final detailRes = await client.get('/register-service/${widget.card.id}');
+      
+      debugPrint('🖼️ [CardDetail] Response status: ${detailRes.statusCode}');
       
       if (detailRes.statusCode == 200 && detailRes.data is Map) {
         final detail = Map<String, dynamic>.from(detailRes.data as Map);
-        final images = (detail['images'] as List?)
-            ?.map((img) => (img as Map?)?['imageUrl']?.toString())
-            .whereType<String>()
-            .where((url) => url.isNotEmpty)
-            .toList();
+        debugPrint('🖼️ [CardDetail] Response keys: ${detail.keys.toList()}');
+        debugPrint('🖼️ [CardDetail] imageUrls: ${detail['imageUrls']}');
+        debugPrint('🖼️ [CardDetail] images: ${detail['images']}');
+        
+        List<String>? images;
+        
+        // Try to get images from 'imageUrls' field first (List<String>)
+        if (detail['imageUrls'] is List) {
+          final imageUrlsList = detail['imageUrls'] as List;
+          debugPrint('🖼️ [CardDetail] Found imageUrls list with ${imageUrlsList.length} items');
+          
+          images = imageUrlsList
+              .map((url) {
+                final urlStr = url?.toString();
+                if (urlStr == null || urlStr.isEmpty) return null;
+                
+                // If URL is already absolute (starts with http:// or https://), use as is
+                if (urlStr.startsWith('http://') || urlStr.startsWith('https://')) {
+                  return urlStr;
+                }
+                
+                // Use ApiClient.fileUrl to convert relative path to full URL
+                // Note: For vehicle images, path is /uploads/vehicle/... which needs /api prefix
+                // API Gateway rewrites /api/uploads/** to /uploads/** before forwarding
+                final resolvedUrl = ApiClient.fileUrl(urlStr);
+                // If URL doesn't contain /api and starts with /uploads, add /api prefix
+                if (!resolvedUrl.contains('/api') && urlStr.startsWith('/uploads')) {
+                  final baseUrl = ApiClient.buildServiceBase(port: 8083, path: '/api');
+                  return '$baseUrl$urlStr';
+                }
+                return resolvedUrl;
+              })
+              .whereType<String>()
+              .where((url) => url.isNotEmpty)
+              .toList();
+          debugPrint('🖼️ [CardDetail] Parsed ${images.length} image URLs from imageUrls');
+          if (images.isNotEmpty) {
+            debugPrint('🖼️ [CardDetail] First image URL: ${images.first}');
+          }
+        }
+        // Fallback: try to get from 'images' field (List<Map> with 'imageUrl')
+        else if (detail['images'] is List) {
+          final imagesList = detail['images'] as List;
+          debugPrint('🖼️ [CardDetail] Found images list with ${imagesList.length} items');
+          images = imagesList
+              .map((img) {
+                String? urlStr;
+                if (img is Map) {
+                  urlStr = img['imageUrl']?.toString();
+                } else if (img is String) {
+                  urlStr = img;
+                }
+                
+                if (urlStr == null || urlStr.isEmpty) return null;
+                
+                // If URL is already absolute, use as is
+                if (urlStr.startsWith('http://') || urlStr.startsWith('https://')) {
+                  return urlStr;
+                }
+                
+                // Use ApiClient.fileUrl to convert relative path to full URL
+                // Note: For vehicle images, path is /uploads/vehicle/... which needs /api prefix
+                // API Gateway rewrites /api/uploads/** to /uploads/** before forwarding
+                final resolvedUrl = ApiClient.fileUrl(urlStr);
+                // If URL doesn't contain /api and starts with /uploads, add /api prefix
+                if (!resolvedUrl.contains('/api') && urlStr.startsWith('/uploads')) {
+                  final baseUrl = ApiClient.buildServiceBase(port: 8083, path: '/api');
+                  return '$baseUrl$urlStr';
+                }
+                return resolvedUrl;
+              })
+              .whereType<String>()
+              .where((url) => url.isNotEmpty)
+              .toList();
+          debugPrint('🖼️ [CardDetail] Parsed ${images.length} image URLs from images');
+          if (images.isNotEmpty) {
+            debugPrint('🖼️ [CardDetail] First image URL: ${images.first}');
+          }
+        } else {
+          debugPrint('🖼️ [CardDetail] No imageUrls or images field found in response');
+        }
+        
+        debugPrint('🖼️ [CardDetail] Final images list: $images');
         
         if (mounted) {
           setState(() {
@@ -1992,9 +2073,17 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
             _isLoadingImages = false;
           });
         }
+      } else {
+        debugPrint('🖼️ [CardDetail] Invalid response: status=${detailRes.statusCode}, data type=${detailRes.data.runtimeType}');
+        if (mounted) {
+          setState(() {
+            _isLoadingImages = false;
+          });
+        }
       }
-    } catch (e) {
-      debugPrint('⚠️ Error loading vehicle images: $e');
+    } catch (e, stackTrace) {
+      debugPrint('⚠️ [CardDetail] Error loading vehicle images: $e');
+      debugPrint('⚠️ [CardDetail] Stack trace: $stackTrace');
       if (mounted) {
         setState(() {
           _isLoadingImages = false;
@@ -2118,8 +2207,14 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
                           child: CircularProgressIndicator(),
                         ),
                       )
-                    else if (_vehicleImages != null && _vehicleImages!.isNotEmpty)
-                      _buildImageGrid(theme, _vehicleImages!)
+                    else if (_vehicleImages != null && _vehicleImages!.isNotEmpty) ...[
+                      Builder(
+                        builder: (context) {
+                          debugPrint('🖼️ [CardDetail] Rendering image grid with ${_vehicleImages!.length} images');
+                          return _buildImageGrid(theme, _vehicleImages!);
+                        },
+                      ),
+                    ]
                     else
                       Container(
                         padding: const EdgeInsets.all(16),
@@ -2363,6 +2458,9 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
             child: Image.network(
               imageUrl,
               fit: BoxFit.cover,
+              headers: imageUrl.contains('ngrok') || imageUrl.contains('ngrok-free.app')
+                  ? {'ngrok-skip-browser-warning': 'true'}
+                  : null,
               loadingBuilder: (context, child, loadingProgress) {
                 if (loadingProgress == null) return child;
                 return Container(
@@ -2378,12 +2476,30 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
                 );
               },
               errorBuilder: (context, error, stackTrace) {
+                debugPrint('⚠️ [CardDetail] Error loading image: $imageUrl');
+                debugPrint('⚠️ [CardDetail] Error: $error');
                 return Container(
                   color: theme.colorScheme.surfaceContainerHighest,
-                  child: Icon(
-                    Icons.broken_image,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
-                    size: 40,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.broken_image,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                        size: 40,
+                      ),
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Text(
+                          'Không thể tải ảnh',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
                   ),
                 );
               },
@@ -2471,6 +2587,9 @@ class _ImageFullScreenViewerState extends State<_ImageFullScreenViewer> {
               child: Image.network(
                 widget.images[index],
                 fit: BoxFit.contain,
+                headers: widget.images[index].contains('ngrok') || widget.images[index].contains('ngrok-free.app')
+                    ? {'ngrok-skip-browser-warning': 'true'}
+                    : null,
                 loadingBuilder: (context, child, loadingProgress) {
                   if (loadingProgress == null) return child;
                   return const Center(
@@ -2480,6 +2599,8 @@ class _ImageFullScreenViewerState extends State<_ImageFullScreenViewer> {
                   );
                 },
                 errorBuilder: (context, error, stackTrace) {
+                  debugPrint('⚠️ [CardDetail] Error loading fullscreen image: ${widget.images[index]}');
+                  debugPrint('⚠️ [CardDetail] Error: $error');
                   return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
