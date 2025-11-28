@@ -11,6 +11,7 @@ import '../auth/api_client.dart';
 import '../auth/email_verification_service.dart';
 import '../models/household.dart';
 import '../models/unit_info.dart';
+import '../services/cccd_ocr_service.dart';
 import 'household_member_request_service.dart';
 
 class HouseholdMemberRequestScreen extends StatefulWidget {
@@ -68,9 +69,17 @@ class _HouseholdMemberRequestScreenState
   final List<Uint8List> _proofImages = [];
   final List<String> _proofImageMimeTypes = [];
 
+  // Ảnh CCCD (mặt trước và mặt sau)
+  Uint8List? _cccdFrontImage;
+  Uint8List? _cccdBackImage;
+  String? _cccdFrontMimeType;
+  String? _cccdBackMimeType;
+  bool _scanningCccd = false;
+
   bool _submitting = false;
 
   final _picker = ImagePicker();
+  late final CccdOcrService _cccdOcrService;
 
   static const _relationSuggestions = [
     'Vợ/Chồng',
@@ -88,6 +97,7 @@ class _HouseholdMemberRequestScreenState
     final apiClient = ApiClient();
     _service = HouseholdMemberRequestService(apiClient);
     _emailVerificationService = EmailVerificationService();
+    _cccdOcrService = CccdOcrService();
     _loadHousehold(widget.unit.id);
     
     // Reset email verified state when email changes and trigger rebuild for OTP button
@@ -108,6 +118,7 @@ class _HouseholdMemberRequestScreenState
   @override
   void dispose() {
     _otpTimer?.cancel();
+    _cccdOcrService.dispose();
     _fullNameCtrl.dispose();
     _phoneCtrl.dispose();
     _emailCtrl.dispose();
@@ -187,6 +198,158 @@ class _HouseholdMemberRequestScreenState
       _proofImages.add(bytes);
       _proofImageMimeTypes.add(_inferMimeType(picked.path));
     });
+  }
+
+  /// Chụp/chọn ảnh CCCD mặt trước
+  Future<void> _pickCccdFront() async {
+    final source = await _showImageSourceDialog('CCCD mặt trước');
+    if (source == null) return;
+
+    final picked = await _picker.pickImage(
+      source: source,
+      imageQuality: 90,
+    );
+    if (picked == null) return;
+
+    final bytes = await picked.readAsBytes();
+    if (!mounted) return;
+
+    setState(() {
+      _cccdFrontImage = bytes;
+      _cccdFrontMimeType = _inferMimeType(picked.path);
+    });
+
+    // Tự động quét CCCD sau khi chọn ảnh
+    await _scanCccdImage(bytes, isFront: true);
+  }
+
+  /// Chụp/chọn ảnh CCCD mặt sau
+  Future<void> _pickCccdBack() async {
+    final source = await _showImageSourceDialog('CCCD mặt sau');
+    if (source == null) return;
+
+    final picked = await _picker.pickImage(
+      source: source,
+      imageQuality: 90,
+    );
+    if (picked == null) return;
+
+    final bytes = await picked.readAsBytes();
+    if (!mounted) return;
+
+    setState(() {
+      _cccdBackImage = bytes;
+      _cccdBackMimeType = _inferMimeType(picked.path);
+    });
+
+    // Tự động quét CCCD sau khi chọn ảnh
+    await _scanCccdImage(bytes, isFront: false);
+  }
+
+  /// Hiển thị dialog chọn nguồn ảnh
+  Future<ImageSource?> _showImageSourceDialog(String title) async {
+    return showDialog<ImageSource>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Chọn $title'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Chụp ảnh'),
+              onTap: () => Navigator.of(context).pop(ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Chọn từ thư viện'),
+              onTap: () => Navigator.of(context).pop(ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Quét ảnh CCCD và tự động điền thông tin
+  Future<void> _scanCccdImage(Uint8List imageBytes, {required bool isFront}) async {
+    if (!mounted) return;
+
+    setState(() {
+      _scanningCccd = true;
+    });
+
+    try {
+      final cccdInfo = await _cccdOcrService.scanCccdImage(imageBytes);
+
+      if (!mounted) return;
+
+      if (cccdInfo == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Không thể đọc thông tin từ ảnh CCCD. Vui lòng thử lại với ảnh rõ hơn.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        setState(() {
+          _scanningCccd = false;
+        });
+        return;
+      }
+
+      // Tự động điền thông tin vào form
+      bool hasNewInfo = false;
+
+      if (cccdInfo.fullName != null &&
+          cccdInfo.fullName!.isNotEmpty &&
+          _fullNameCtrl.text.trim().isEmpty) {
+        _fullNameCtrl.text = cccdInfo.fullName!;
+        hasNewInfo = true;
+      }
+
+      if (cccdInfo.nationalId != null &&
+          cccdInfo.nationalId!.isNotEmpty &&
+          _nationalIdCtrl.text.trim().isEmpty) {
+        _nationalIdCtrl.text = cccdInfo.nationalId!;
+        hasNewInfo = true;
+      }
+
+      if (cccdInfo.dateOfBirth != null && _dob == null) {
+        _dob = cccdInfo.dateOfBirth;
+        hasNewInfo = true;
+      }
+
+      setState(() {
+        _scanningCccd = false;
+      });
+
+      if (hasNewInfo) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Đã tự động điền thông tin từ CCCD'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Không tìm thấy thông tin mới để điền. Vui lòng kiểm tra lại ảnh.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _scanningCccd = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi khi quét CCCD: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _checkEmailAndSendOtp() async {
@@ -725,6 +888,9 @@ class _HouseholdMemberRequestScreenState
                   ),
                 ),
                 const SizedBox(height: 16),
+                // Section quét CCCD
+                _buildCccdSection(),
+                const SizedBox(height: 16),
                 _buildDobField(),
                 const SizedBox(height: 16),
                 TextFormField(
@@ -997,6 +1163,187 @@ class _HouseholdMemberRequestScreenState
     if (lower.endsWith('.gif')) return 'image/gif';
     if (lower.endsWith('.webp')) return 'image/webp';
     return 'image/jpeg';
+  }
+
+  /// Widget hiển thị section quét CCCD
+  Widget _buildCccdSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(
+              alpha: Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.4,
+            ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.credit_card,
+                color: Theme.of(context).colorScheme.primary,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Quét CCCD để tự động điền thông tin',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Chụp hoặc chọn ảnh CCCD để tự động điền họ tên, số CCCD và ngày sinh',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 16),
+          // CCCD mặt trước
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Mặt trước',
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    if (_cccdFrontImage != null)
+                      Stack(
+                        alignment: Alignment.topRight,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.memory(
+                              _cccdFrontImage!,
+                              height: 120,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 18),
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.black.withValues(alpha: 0.6),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.all(4),
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _cccdFrontImage = null;
+                                _cccdFrontMimeType = null;
+                              });
+                            },
+                          ),
+                        ],
+                      )
+                    else
+                      OutlinedButton.icon(
+                        onPressed: _scanningCccd ? null : _pickCccdFront,
+                        icon: _scanningCccd
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.camera_alt_outlined, size: 18),
+                        label: const Text('Chụp/Chọn'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 48),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              // CCCD mặt sau
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Mặt sau',
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    if (_cccdBackImage != null)
+                      Stack(
+                        alignment: Alignment.topRight,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.memory(
+                              _cccdBackImage!,
+                              height: 120,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 18),
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.black.withValues(alpha: 0.6),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.all(4),
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _cccdBackImage = null;
+                                _cccdBackMimeType = null;
+                              });
+                            },
+                          ),
+                        ],
+                      )
+                    else
+                      OutlinedButton.icon(
+                        onPressed: _scanningCccd ? null : _pickCccdBack,
+                        icon: _scanningCccd
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.camera_alt_outlined, size: 18),
+                        label: const Text('Chụp/Chọn'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 48),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (_scanningCccd) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Đang quét CCCD...',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 
