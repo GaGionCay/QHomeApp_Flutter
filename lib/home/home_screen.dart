@@ -220,7 +220,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initRealTime() async {
-    debugPrint('ℹ️ WebSocket connection temporarily disabled');
+    // WebSocket connection is handled in MainShell
+    // This method is kept for compatibility but does nothing
   }
 
   Future<void> _loadAllData() async {
