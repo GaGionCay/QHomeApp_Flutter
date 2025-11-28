@@ -15,6 +15,8 @@ import '../contracts/contract_service.dart';
 import '../news/news_detail_screen.dart';
 import '../notifications/realtime_notification_banner.dart';
 import '../notifications/notification_screen.dart';
+import '../notifications/notification_router.dart';
+import '../models/resident_notification.dart';
 import '../core/push_notification_service.dart';
 import '../profile/profile_service.dart';
 import 'service_category_screen.dart';
@@ -374,10 +376,12 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
     return value.toString();
   }
 
-  void _handleNotificationTap(Map<String, dynamic> data) {
+  void _handleNotificationTap(Map<String, dynamic> data) async {
+    RealtimeNotificationBanner.dismiss();
+
+    // Kiểm tra nếu là news notification
     final newsId = data['newsUuid'] ?? data['newsId'];
     if (newsId != null) {
-      RealtimeNotificationBanner.dismiss();
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -387,13 +391,66 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
       return;
     }
 
-    RealtimeNotificationBanner.dismiss();
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const NotificationScreen(),
-      ),
-    );
+    // Parse notification từ data
+    try {
+      final notificationId = data['notificationId']?.toString() ?? 
+                             data['id']?.toString() ?? 
+                             data['notification_id']?.toString();
+      
+      if (notificationId == null || notificationId.isEmpty) {
+        // Nếu không có notification ID, mở notification screen
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const NotificationScreen(),
+          ),
+        );
+        return;
+      }
+
+      // Tạo ResidentNotification từ data
+      final createdAt = data['createdAt']?.toString() ?? 
+                        DateTime.now().toUtc().toIso8601String();
+      final updatedAt = data['updatedAt']?.toString() ?? createdAt;
+
+      final notification = ResidentNotification(
+        id: notificationId,
+        type: (data['notificationType'] ?? data['type'] ?? 'SYSTEM').toString(),
+        title: data['title']?.toString() ?? 'Thông báo',
+        message: data['message']?.toString() ?? 
+                 data['body']?.toString() ?? 
+                 '',
+        scope: (data['scope'] ?? 'EXTERNAL').toString(),
+        targetRole: data['targetRole']?.toString(),
+        targetBuildingId: data['targetBuildingId']?.toString(),
+        referenceId: data['referenceId']?.toString(),
+        referenceType: data['referenceType']?.toString(),
+        actionUrl: data['actionUrl']?.toString(),
+        iconUrl: data['iconUrl']?.toString(),
+        createdAt: DateTime.parse(createdAt),
+        updatedAt: DateTime.parse(updatedAt),
+        isRead: false,
+        readAt: null,
+      );
+
+      // Sử dụng router để điều hướng
+      await NotificationRouter.navigateToNotificationScreen(
+        context: context,
+        notification: notification,
+        residentId: _userResidentId,
+      );
+    } catch (e) {
+      debugPrint('⚠️ Lỗi khi xử lý notification tap: $e');
+      // Fallback: mở notification screen
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const NotificationScreen(),
+          ),
+        );
+      }
+    }
   }
 
   void _onItemTapped(int index) {

@@ -125,7 +125,7 @@ class _NotificationCardState extends State<NotificationCard>
                     }
                   },
                   child: Stack(
-                    children: [
+                children: [
                       Container(
                         margin: const EdgeInsets.only(bottom: 14),
                         padding: const EdgeInsets.symmetric(
