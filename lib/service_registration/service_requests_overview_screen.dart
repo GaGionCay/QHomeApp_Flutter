@@ -201,57 +201,6 @@ class _ServiceRequestsOverviewScreenState
         normalized.contains('PROCESSING');
   }
 
-  Future<void> _cancelCleaningRequest(String requestId) async {
-    // Show confirmation dialog first
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Xác nhận hủy yêu cầu'),
-        content: const Text('Bạn có chắc chắn muốn hủy yêu cầu dọn dẹp này?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Không'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.danger,
-            ),
-            child: const Text('Có, hủy yêu cầu'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return; // User cancelled the confirmation
-
-    if (_cancellingRequestIds.contains(requestId)) return;
-    setState(() => _cancellingRequestIds.add(requestId));
-    try {
-      await _cleaningService.cancelRequest(requestId);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Đã hủy yêu cầu dọn dẹp.'),
-          backgroundColor: AppColors.success,
-        ),
-      );
-      await _loadData();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Không thể hủy yêu cầu dọn dẹp: $e'),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _cancellingRequestIds.remove(requestId));
-      }
-    }
-  }
-
   Future<void> _cancelMaintenanceRequest(String requestId, {bool closeDetailSheet = false}) async {
     // Show confirmation dialog first
     final confirmed = await showDialog<bool>(
@@ -462,6 +411,7 @@ class _ServiceRequestsOverviewScreenState
           ),
         );
       } else {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Đã mở cổng thanh toán VNPay. Vui lòng hoàn tất thanh toán.'),

@@ -201,7 +201,7 @@ class ApiClient {
       return '$_activeScheme://$_activeHostIp$normalizedPath';
     } else {
       // For local/other URLs, use API Gateway port (8989)
-      final gatewayPort = apiPort; // 8989
+      const gatewayPort = apiPort; // 8989
       return '$_activeScheme://$_activeHostIp:$gatewayPort$normalizedPath';
     }
   }

@@ -227,7 +227,9 @@ class CccdOcrService {
       
       // Bỏ qua nếu chứa từ khóa loại trừ
       if (excludeKeywords.any((keyword) => 
-          blockTextUpper.contains(keyword))) continue;
+          blockTextUpper.contains(keyword))) {
+        continue;
+      }
       
       // Bỏ qua nếu không match pattern tên tiếng Việt
       if (!vietnameseNamePattern.hasMatch(normalizedBlockText)) continue;

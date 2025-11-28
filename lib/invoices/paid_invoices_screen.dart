@@ -209,12 +209,10 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
               type = PaidItemType.electricity;
               icon = Icons.bolt;
               iconColor = const Color(0xFFFFD700);
-              break;
             case 'WATER':
               type = PaidItemType.water;
               icon = Icons.water_drop;
               iconColor = const Color(0xFF4A90E2);
-              break;
             default:
               type = PaidItemType.utility;
               icon = Icons.home;
@@ -592,7 +590,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
                               '$typeName: ${NumberFormat.currency(locale: 'vi_VN', symbol: '₫').format(entry.value).replaceAll('.', ',')}',
                               style: theme.textTheme.bodySmall,
                             ),
-                            backgroundColor: _getTypeColor(entry.key).withOpacity(0.1),
+                            backgroundColor: _getTypeColor(entry.key).withValues(alpha: 0.1),
                             labelStyle: TextStyle(
                               color: _getTypeColor(entry.key),
                               fontSize: 12,
@@ -762,7 +760,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: item.iconColor.withOpacity(0.15),
+                  color: item.iconColor.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
@@ -775,7 +773,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: AppColors.success.withOpacity(0.15),
+                    color: AppColors.success.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(

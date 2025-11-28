@@ -844,7 +844,7 @@ class BackendDiscoveryService {
       
       // Try each potential backend to get ngrok URL (with parallel requests for speed)
       // But limit concurrent requests to avoid overwhelming the network
-      final batchSize = 10;
+      const batchSize = 10;
       for (int i = 0; i < potentialBackends.length; i += batchSize) {
         final batch = potentialBackends.skip(i).take(batchSize).toList();
         

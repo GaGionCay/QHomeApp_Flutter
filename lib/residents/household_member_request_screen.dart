@@ -71,7 +71,6 @@ class _HouseholdMemberRequestScreenState
 
   // Ảnh CCCD (mặt trước)
   Uint8List? _cccdFrontImage;
-  String? _cccdFrontMimeType;
   bool _scanningCccd = false;
 
   bool _submitting = false;
@@ -79,7 +78,7 @@ class _HouseholdMemberRequestScreenState
   final _picker = ImagePicker();
   late final CccdOcrService _cccdOcrService;
 
-  static const _relationSuggestions = [
+  static const List<String> _relationSuggestions = [
     'Vợ/Chồng',
     'Con',
     'Bố',
@@ -214,7 +213,6 @@ class _HouseholdMemberRequestScreenState
 
     setState(() {
       _cccdFrontImage = bytes;
-      _cccdFrontMimeType = _inferMimeType(picked.path);
     });
 
     // Tự động quét CCCD sau khi chọn ảnh
@@ -385,6 +383,7 @@ class _HouseholdMemberRequestScreenState
       await _emailVerificationService.requestOtp(email);
       print('✅ [HouseholdMemberRequest] OTP đã được gửi thành công');
       
+      if (!mounted) return;
       setState(() {
         _sendingOtp = false;
         _emailVerified = false;
@@ -430,6 +429,8 @@ class _HouseholdMemberRequestScreenState
     
     try {
       final verified = await _emailVerificationService.verifyOtp(email, otp);
+      
+      if (!mounted) return;
       
       if (verified) {
         setState(() {
@@ -548,7 +549,7 @@ class _HouseholdMemberRequestScreenState
         proofOfRelationImageUrl: proofImageDataUri,
       );
 
-      if (!mounted) return;
+      if (!mounted) {return;}
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Đã gửi yêu cầu đăng ký thành viên thành công.'),
@@ -1071,8 +1072,8 @@ class _HouseholdMemberRequestScreenState
 
   Widget _buildHouseholdInfo() {
     if (_loadingHousehold) {
-      return Row(
-        children: const [
+      return const Row(
+        children: [
           SizedBox(
             height: 20,
             width: 20,
@@ -1216,7 +1217,6 @@ class _HouseholdMemberRequestScreenState
                       onPressed: () {
                         setState(() {
                           _cccdFrontImage = null;
-                          _cccdFrontMimeType = null;
                         });
                       },
                     ),
