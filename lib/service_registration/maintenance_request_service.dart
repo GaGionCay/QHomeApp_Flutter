@@ -92,6 +92,26 @@ class MaintenanceRequestService {
     }
   }
 
+  Future<String> createVnpayUrl(String requestId) async {
+    try {
+      final response = await _dio.post('/maintenance-requests/$requestId/vnpay-url');
+      final paymentUrl = response.data['paymentUrl']?.toString();
+      if (paymentUrl == null || paymentUrl.isEmpty) {
+        throw Exception('Không thể tạo URL thanh toán VNPay');
+      }
+      return paymentUrl;
+    } on DioException catch (dioErr) {
+      final message = dioErr.response?.data is Map<String, dynamic>
+          ? (dioErr.response?.data['message'] as String?)
+          : dioErr.message;
+      throw Exception(
+        message?.isNotEmpty == true
+            ? message
+            : 'Không thể tạo URL thanh toán VNPay.',
+      );
+    }
+  }
+
   Future<void> rejectResponse(String requestId) async {
     try {
       await _dio.post('/maintenance-requests/$requestId/reject-response');

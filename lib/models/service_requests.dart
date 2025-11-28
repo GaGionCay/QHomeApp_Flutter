@@ -81,6 +81,9 @@ class MaintenanceRequestSummary {
     this.responseStatus,
     this.attachments = const [],
     this.progressNotes,
+    this.paymentStatus,
+    this.paymentAmount,
+    this.paymentGateway,
   });
 
   final String id;
@@ -100,6 +103,9 @@ class MaintenanceRequestSummary {
   final String? responseStatus;
   final List<String> attachments;
   final String? progressNotes;
+  final String? paymentStatus;
+  final double? paymentAmount;
+  final String? paymentGateway;
 
   factory MaintenanceRequestSummary.fromJson(Map<String, dynamic> json) {
     List<String> attachments = [];
@@ -134,6 +140,13 @@ class MaintenanceRequestSummary {
       responseStatus: json['responseStatus']?.toString(),
       attachments: attachments,
       progressNotes: json['progressNotes']?.toString(),
+      paymentStatus: json['paymentStatus']?.toString(),
+      paymentAmount: json['paymentAmount'] != null
+          ? (json['paymentAmount'] is num
+              ? (json['paymentAmount'] as num).toDouble()
+              : double.tryParse(json['paymentAmount'].toString()))
+          : null,
+      paymentGateway: json['paymentGateway']?.toString(),
     );
   }
 

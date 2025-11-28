@@ -125,7 +125,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await _loadCleaningRequestState();
     });
     // Listen for new incoming notifications via WebSocket - update count immediately without API call
-    _eventBus.on('notifications_incoming', (data) {
+    _eventBus.on('notifications_incoming', (data) async {
       debugPrint(
           '🔔 HomeScreen nhận event notifications_incoming -> cập nhật unread count...');
       if (mounted) {
@@ -141,9 +141,28 @@ class _HomeScreenState extends State<HomeScreen> {
             }
             debugPrint('✅ Đã giảm unread notification count: $_unreadNotificationCount');
           } else {
-            // Increase count for new/updated notifications
-            _unreadNotificationCount = _unreadNotificationCount + 1;
-            debugPrint('✅ Đã tăng unread notification count: $_unreadNotificationCount');
+            // For NOTIFICATION_CREATED or NOTIFICATION_UPDATED, check if notification is unread
+            // Only increase count if notification is not read
+            // Note: Read status is tracked client-side via NotificationReadStore
+            // New notifications from WebSocket are always unread (isRead = false or null)
+            final isRead = eventData['isRead'] as bool?;
+            final readAt = eventData['readAt'];
+            
+            // Check if notification is unread:
+            // - isRead is null or false
+            // - readAt is null or empty
+            // - For NOTIFICATION_CREATED, always consider as unread (new notification)
+            final isUnread = (isRead == null || !isRead) && 
+                            (readAt == null || readAt.toString().isEmpty) &&
+                            (eventType == 'NOTIFICATION_CREATED' || eventType.isEmpty);
+            
+            if (isUnread) {
+              // Increase count for new unread notifications
+              _unreadNotificationCount = _unreadNotificationCount + 1;
+              debugPrint('✅ Đã tăng unread notification count: $_unreadNotificationCount (notification is unread, eventType: $eventType)');
+            } else {
+              debugPrint('ℹ️ Notification đã được đọc hoặc không phải NOTIFICATION_CREATED, không tăng count. isRead: $isRead, readAt: $readAt, eventType: $eventType');
+            }
           }
         });
       }

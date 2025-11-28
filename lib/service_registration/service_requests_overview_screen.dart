@@ -4,12 +4,14 @@ import 'dart:typed_data';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'package:dio/dio.dart';
+import 'package:android_intent_plus/android_intent.dart';
 
 import '../auth/api_client.dart';
 import '../core/event_bus.dart';
@@ -193,12 +195,37 @@ class _ServiceRequestsOverviewScreenState
 
   bool _isCancelable(String status) {
     final normalized = status.toUpperCase();
-    return normalized.contains('PENDING') ||
+    return normalized == 'NEW' ||
+        normalized.contains('PENDING') ||
         normalized.contains('IN_PROGRESS') ||
         normalized.contains('PROCESSING');
   }
 
   Future<void> _cancelCleaningRequest(String requestId) async {
+    // Show confirmation dialog first
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xác nhận hủy yêu cầu'),
+        content: const Text('Bạn có chắc chắn muốn hủy yêu cầu dọn dẹp này?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Không'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.danger,
+            ),
+            child: const Text('Có, hủy yêu cầu'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return; // User cancelled the confirmation
+
     if (_cancellingRequestIds.contains(requestId)) return;
     setState(() => _cancellingRequestIds.add(requestId));
     try {
@@ -225,12 +252,42 @@ class _ServiceRequestsOverviewScreenState
     }
   }
 
-  Future<void> _cancelMaintenanceRequest(String requestId) async {
+  Future<void> _cancelMaintenanceRequest(String requestId, {bool closeDetailSheet = false}) async {
+    // Show confirmation dialog first
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xác nhận hủy yêu cầu'),
+        content: const Text('Bạn có chắc chắn muốn hủy yêu cầu sửa chữa này?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Không'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.danger,
+            ),
+            child: const Text('Có, hủy yêu cầu'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return; // User cancelled the confirmation
+
     if (_cancellingRequestIds.contains(requestId)) return;
     setState(() => _cancellingRequestIds.add(requestId));
     try {
       await _maintenanceService.cancelRequest(requestId);
       if (!mounted) return;
+      
+      // Close detail sheet if opened from detail view
+      if (closeDetailSheet) {
+        Navigator.of(context).pop();
+      }
+      
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Đã hủy yêu cầu sửa chữa.'),
@@ -328,12 +385,18 @@ class _ServiceRequestsOverviewScreenState
     }
   }
 
-  Future<void> _approveMaintenanceResponse(String requestId) async {
+  Future<void> _approveMaintenanceResponse(String requestId, {bool closeDetailSheet = false}) async {
     if (_approvingResponseIds.contains(requestId)) return;
     setState(() => _approvingResponseIds.add(requestId));
     try {
       await _maintenanceService.approveResponse(requestId);
       if (!mounted) return;
+      
+      // Close detail sheet if opened from detail view
+      if (closeDetailSheet) {
+        Navigator.of(context).pop();
+      }
+      
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Đã xác nhận phản hồi từ admin. Yêu cầu đang được xử lý.'),
@@ -355,7 +418,74 @@ class _ServiceRequestsOverviewScreenState
     }
   }
 
-  Future<void> _rejectMaintenanceResponse(String requestId) async {
+  Future<void> _payWithVnpay(String requestId, {bool closeDetailSheet = false}) async {
+    if (_approvingResponseIds.contains(requestId)) return;
+    setState(() => _approvingResponseIds.add(requestId));
+    try {
+      // Create VNPay URL and open browser
+      final paymentUrl = await _maintenanceService.createVnpayUrl(requestId);
+      
+      if (!mounted) return;
+      
+      // Close detail sheet if opened from detail view
+      if (closeDetailSheet) {
+        Navigator.of(context).pop();
+      }
+      
+      // Open VNPay payment URL
+      final uri = Uri.parse(paymentUrl);
+      bool launched = false;
+      if (!kIsWeb && Platform.isAndroid) {
+        try {
+          final intent = AndroidIntent(
+            action: 'action_view',
+            data: paymentUrl,
+          );
+          await intent.launchChooser('Chọn trình duyệt để thanh toán');
+          launched = true;
+        } catch (e) {
+          debugPrint('⚠️ Không thể mở chooser, fallback url_launcher: $e');
+        }
+      }
+      if (!launched) {
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          launched = true;
+        }
+      }
+      if (!launched) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Không thể mở trình duyệt thanh toán'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã mở cổng thanh toán VNPay. Vui lòng hoàn tất thanh toán.'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+      
+      await _loadData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể tạo URL thanh toán: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _approvingResponseIds.remove(requestId));
+      }
+    }
+  }
+
+  Future<void> _rejectMaintenanceResponse(String requestId, {bool closeDetailSheet = false}) async {
     if (_rejectingResponseIds.contains(requestId)) return;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -383,6 +513,12 @@ class _ServiceRequestsOverviewScreenState
     try {
       await _maintenanceService.rejectResponse(requestId);
       if (!mounted) return;
+      
+      // Close detail sheet if opened from detail view
+      if (closeDetailSheet) {
+        Navigator.of(context).pop();
+      }
+      
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Đã từ chối phản hồi từ admin. Yêu cầu đã được hủy.'),
@@ -431,13 +567,19 @@ class _ServiceRequestsOverviewScreenState
                     request: request,
                     onRefresh: _loadData,
                     onApproveResponse: request.hasPendingResponse
-                        ? () => _approveMaintenanceResponse(request.id)
+                        ? () => _approveMaintenanceResponse(request.id, closeDetailSheet: true)
                         : null,
                     onRejectResponse: request.hasPendingResponse
-                        ? () => _rejectMaintenanceResponse(request.id)
+                        ? () => _rejectMaintenanceResponse(request.id, closeDetailSheet: true)
                         : null,
                     onCancel: _isCancelable(request.status) && !request.hasPendingResponse
-                        ? () => _cancelMaintenanceRequest(request.id)
+                        ? () => _cancelMaintenanceRequest(request.id, closeDetailSheet: true)
+                        : null,
+                    onPayWithVnpay: (request.status.toUpperCase() == 'IN_PROGRESS' && 
+                                     request.estimatedCost != null && 
+                                     request.estimatedCost! > 0 &&
+                                     (request.paymentStatus == null || request.paymentStatus!.toUpperCase() != 'PAID'))
+                        ? () => _payWithVnpay(request.id, closeDetailSheet: true)
                         : null,
                     isApprovingResponse: _approvingResponseIds.contains(request.id),
                     isRejectingResponse: _rejectingResponseIds.contains(request.id),
@@ -531,8 +673,7 @@ class _ServiceRequestsOverviewScreenState
                 final extra = request.extraServices.isEmpty
                     ? null
                     : 'Bao gồm: ${request.extraServices.join(', ')}';
-                final canCancel = _isCancelable(request.status);
-                  final canResend = _shouldShowResendButton(request);
+                final canResend = _shouldShowResendButton(request);
                 return _RequestCard(
                   icon: Icons.cleaning_services_outlined,
                   accent: AppColors.primaryAqua,
@@ -542,9 +683,8 @@ class _ServiceRequestsOverviewScreenState
                   status: request.status,
                   createdAt: request.createdAt,
                     lastResentAt: request.lastResentAt,
-                    onCancel: canCancel
-                        ? () => _cancelCleaningRequest(request.id)
-                        : null,
+                    // Hide cancel button on card - only show in detail screen
+                    onCancel: null,
                   isCanceling: _cancellingRequestIds.contains(request.id),
                     onResend: canResend
                         ? () => _resendCleaningRequest(request.id)
@@ -577,7 +717,6 @@ class _ServiceRequestsOverviewScreenState
                 final preferred = request.preferredDatetime != null
                     ? '${_dateFormatter.format(request.preferredDatetime!)} • ${_timeFormatter.format(request.preferredDatetime!)}'
                     : 'Chưa xác định thời gian';
-                final canCancel = _isCancelable(request.status);
                 final canResend = _shouldShowResendButtonMaintenance(request);
                 final canCall = _shouldShowCallButtonMaintenance(request);
                 final adminPhone = _maintenanceConfig?.adminPhone ?? '0984000036';
@@ -592,9 +731,8 @@ class _ServiceRequestsOverviewScreenState
                   status: request.status,
                   createdAt: request.createdAt,
                     lastResentAt: request.lastResentAt,
-                    onCancel: canCancel && !hasPendingResponse
-                        ? () => _cancelMaintenanceRequest(request.id)
-                        : null,
+                    // Hide cancel button on card - only show in detail screen
+                    onCancel: null,
                   isCanceling: _cancellingRequestIds.contains(request.id),
                     onResend: canResend && !hasPendingResponse
                         ? () => _resendMaintenanceRequest(request.id)
@@ -969,20 +1107,23 @@ class _RequestCard extends StatelessWidget {
 
   String _friendlyStatus(String raw) {
     switch (raw.toUpperCase()) {
+      case 'NEW':
+        return 'Mới';
       case 'PENDING':
         return 'Chờ xử lý';
       case 'APPROVED':
         return 'Đã duyệt';
       case 'IN_PROGRESS':
       case 'PROCESSING':
-        return 'Đang xử lý';
+        return 'Chờ xử lý';
       case 'COMPLETED':
       case 'DONE':
         return 'Hoàn tất';
       case 'CANCELLED':
         return 'Đã hủy';
       case 'REJECTED':
-        return 'Từ chối';
+      case 'DENIED':
+        return 'Bị từ chối';
       default:
         return raw;
     }
@@ -1075,6 +1216,7 @@ class _MaintenanceRequestDetailSheet extends StatelessWidget {
     this.onApproveResponse,
     this.onRejectResponse,
     this.onCancel,
+    this.onPayWithVnpay,
     this.isApprovingResponse = false,
     this.isRejectingResponse = false,
     this.isCanceling = false,
@@ -1085,6 +1227,7 @@ class _MaintenanceRequestDetailSheet extends StatelessWidget {
   final VoidCallback? onApproveResponse;
   final VoidCallback? onRejectResponse;
   final VoidCallback? onCancel;
+  final VoidCallback? onPayWithVnpay;
   final bool isApprovingResponse;
   final bool isRejectingResponse;
   final bool isCanceling;
@@ -1113,11 +1256,12 @@ class _MaintenanceRequestDetailSheet extends StatelessWidget {
 
   String _friendlyStatus(String status) {
     final normalized = status.toUpperCase();
+    if (normalized == 'NEW') return 'Mới';
     if (normalized.contains('PENDING')) return 'Chờ xử lý';
-    if (normalized.contains('IN_PROGRESS')) return 'Đang xử lý';
+    if (normalized.contains('IN_PROGRESS')) return 'Chờ xử lý';
     if (normalized.contains('DONE') || normalized.contains('COMPLETED')) return 'Hoàn thành';
     if (normalized.contains('CANCEL')) return 'Đã hủy';
-    if (normalized.contains('REJECT')) return 'Bị từ chối';
+    if (normalized.contains('REJECT') || normalized.contains('DENIED')) return 'Bị từ chối';
     return status;
   }
 
@@ -1658,6 +1802,55 @@ class _MaintenanceRequestDetailSheet extends StatelessWidget {
                         ),
                       ),
                     ],
+                  ],
+
+                  // Payment button (when status is IN_PROGRESS and not paid yet)
+                  if (onPayWithVnpay != null && !hasPendingResponse) ...[
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: (isApprovingResponse || isRejectingResponse || isCanceling) ? null : onPayWithVnpay,
+                      icon: isApprovingResponse
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.payment),
+                      label: Text(
+                        isApprovingResponse ? 'Đang xử lý...' : 'Thanh toán bằng VNPay',
+                      ),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: AppColors.primaryBlue,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 20,
+                            color: AppColors.primaryBlue,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Sau khi thanh toán thành công, yêu cầu sẽ tự động chuyển sang trạng thái hoàn tất.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
 
                   if (onCancel != null && !hasPendingResponse) ...[
