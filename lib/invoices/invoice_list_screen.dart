@@ -4,12 +4,14 @@ import 'dart:ui';
 import 'package:app_links/app_links.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../auth/api_client.dart';
 import '../common/layout_insets.dart';
+import '../core/app_router.dart';
 import '../models/invoice_category.dart';
 import '../models/invoice_line.dart';
 import '../models/unit_info.dart';
@@ -83,6 +85,22 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
   static const _selectedUnitPrefsKey = 'selected_unit_id';
   List<UnitInfo> _units = [];
   String? _selectedUnitId;
+  bool _isNavigatingToMain = false;
+
+  void _navigateToServicesHome({String? snackMessage}) {
+    if (!mounted || _isNavigatingToMain) return;
+    _isNavigatingToMain = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.go(
+        AppRoute.main.path,
+        extra: MainShellArgs(
+          initialIndex: 1,
+          snackMessage: snackMessage,
+        ),
+      );
+    });
+  }
 
   @override
   void initState() {
@@ -260,23 +278,9 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
 
         if (responseCode == '00') {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('✅ $invoiceLabel đã được thanh toán thành công!'),
-              behavior: SnackBarBehavior.floating,
-              backgroundColor: Colors.green,
-            ),
+          _navigateToServicesHome(
+            snackMessage: '✅ $invoiceLabel đã được thanh toán thành công!',
           );
-          if (!mounted) return;
-          // Reload data with error handling to prevent auto-logout
-          try {
-            setState(() {
-              _futureCategories = _loadCategories();
-            });
-          } catch (e) {
-            debugPrint('⚠️ [InvoiceList] Error reloading after payment: $e');
-            // Don't throw - allow user to continue using app
-          }
         } else {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(

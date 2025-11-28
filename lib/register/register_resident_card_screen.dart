@@ -5,12 +5,12 @@ import 'dart:developer';
 import 'package:app_links/app_links.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show Platform;
 import 'package:android_intent_plus/android_intent.dart';
+import 'package:go_router/go_router.dart';
 
 import '../auth/api_client.dart';
 import '../contracts/contract_service.dart';
@@ -188,6 +188,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       final pendingId = prefs.getString(_pendingPaymentKey);
       if (pendingId == null) return;
 
+      debugPrint('🔍 [ResidentCard] Kiểm tra pending payment: $pendingId');
       final registrationId = pendingId;
       final client = await _servicesCardClient();
       final res = await client.get('/resident-card/$registrationId');
@@ -196,13 +197,19 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       final paymentStatus = data['paymentStatus']?.toString();
       final status = data['status']?.toString();
 
+      debugPrint('🔍 [ResidentCard] Payment status: $paymentStatus, status: $status');
+
       if (paymentStatus == 'PAID') {
         await prefs.remove(_pendingPaymentKey);
-        if (mounted) {
-          _navigateToServicesHome(
-            snackMessage: 'Đăng ký thẻ cư dân đã được thanh toán.',
-          );
-        }
+        await _clearSavedData();
+        
+        // Delay một chút để đảm bảo widget đã được rebuild nếu cần
+        await Future.delayed(const Duration(milliseconds: 300));
+        
+        debugPrint('✅ [ResidentCard] Đang navigate về màn hình chính từ _checkPendingPayment');
+        _navigateToServicesHome(
+          snackMessage: 'Đăng ký thẻ cư dân đã được thanh toán.',
+        );
         return;
       }
 
@@ -210,7 +217,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         await prefs.remove(_pendingPaymentKey);
       }
     } catch (e) {
-      debugPrint('❌ Lỗi kiểm tra thanh toán đang chờ: $e');
+      debugPrint('❌ [ResidentCard] Lỗi kiểm tra thanh toán đang chờ: $e');
+      // Không xóa pending payment nếu có lỗi, để có thể retry
     }
   }
 
@@ -556,114 +564,44 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   }
 
   void _listenForPaymentResult() {
-    // Check initial link when app is opened from deep link
-    _appLinks.getInitialLink().then((Uri? uri) {
-      if (uri != null &&
-          uri.scheme == 'qhomeapp' &&
-          uri.host == 'vnpay-resident-card-result') {
-        _handleDeepLinkPayment(uri);
-      }
-    }).catchError((err) {
-      debugPrint('❌ Lỗi khi lấy initial link: $err');
-    });
-
-    // Listen for subsequent deep links
     _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
       if (uri == null) return;
-      if (uri.scheme != 'qhomeapp' || uri.host != 'vnpay-resident-card-result') {
-        return;
+      debugPrint('🔗 [ResidentCard] Nhận deep link: $uri');
+
+      if (uri.scheme == 'qhomeapp' && uri.host == 'vnpay-resident-card-result') {
+        final responseCode = uri.queryParameters['responseCode'];
+        final successParam = uri.queryParameters['success'];
+        final message = uri.queryParameters['message'];
+
+        debugPrint('🔗 [ResidentCard] responseCode: $responseCode, success: $successParam');
+
+        if (responseCode == '00' || (successParam ?? '').toLowerCase() == 'true') {
+          await _clearSavedData();
+
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove(_pendingPaymentKey);
+          } catch (e) {
+            debugPrint('❌ [ResidentCard] Lỗi xóa pending payment: $e');
+          }
+
+          debugPrint('✅ [ResidentCard] Đang navigate về màn hình chính');
+          _navigateToServicesHome(
+            snackMessage: 'Đăng ký thẻ cư dân đã được thanh toán thành công!',
+          );
+        } else {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(message ?? '❌ Thanh toán thất bại. Vui lòng thử lại.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
-      await _handleDeepLinkPayment(uri);
     }, onError: (err) {
-      debugPrint('❌ Lỗi khi nhận deep link: $err');
+      debugPrint('❌ [ResidentCard] Lỗi khi nhận deep link: $err');
     });
-  }
-
-  Future<void> _handleDeepLinkPayment(Uri uri) async {
-    if (!mounted) return;
-
-    final registrationId = uri.queryParameters['registrationId'];
-    final responseCode = uri.queryParameters['responseCode'];
-    final successParam = uri.queryParameters['success'];
-    final message = uri.queryParameters['message'];
-
-    final success =
-        (successParam ?? '').toLowerCase() == 'true' || responseCode == '00';
-
-    if (success) {
-      await _finalizeSuccessfulPayment(registrationId);
-    } else {
-      await _handleFailedPayment(
-        registrationId,
-        message ?? 'Thanh toán thất bại. Vui lòng thử lại.',
-      );
-    }
-  }
-
-  Future<void> _finalizeSuccessfulPayment(String? registrationId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_pendingPaymentKey);
-      if (registrationId != null && registrationId.isNotEmpty) {
-        await _syncRegistrationStatus(registrationId);
-      }
-    } catch (e) {
-      debugPrint('⚠️ Lỗi khi xử lý thanh toán thành công: $e');
-    }
-
-    await _clearSavedData();
-
-    if (!mounted) return;
-    _navigateToServicesHome(
-      snackMessage: 'Đăng ký thẻ cư dân đã được thanh toán thành công!',
-    );
-  }
-
-  Future<void> _handleFailedPayment(
-      String? registrationId, String message) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_pendingPaymentKey);
-    } catch (e) {
-      debugPrint('⚠️ Lỗi khi xoá pending payment: $e');
-    }
-
-    if (registrationId != null && registrationId.isNotEmpty) {
-      await _cancelRegistration(registrationId);
-    }
-
-    if (!mounted) return;
-    final trimmed = message.trim();
-    final displayMessage = trimmed.startsWith('❌') ? trimmed : '❌ $trimmed';
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(displayMessage),
-        backgroundColor: Colors.red,
-      ),
-    );
-  }
-
-  Future<void> _syncRegistrationStatus(String registrationId) async {
-    try {
-      final client = await _servicesCardClient();
-      final res = await client.get('/resident-card/$registrationId');
-      final data = res.data;
-      if (data is! Map<String, dynamic>) return;
-      final paymentStatus = data['paymentStatus']?.toString();
-      if (paymentStatus != 'PAID') {
-        debugPrint('⚠️ paymentStatus chưa cập nhật: $paymentStatus');
-      }
-    } on DioException catch (e) {
-      // Handle 401 gracefully - don't auto-logout after payment
-      if (e.response?.statusCode == 401) {
-        debugPrint('⚠️ Token expired during payment sync. Status will update automatically.');
-        // Don't throw - allow user to continue using app
-        return;
-      }
-      debugPrint('⚠️ Không thể đồng bộ trạng thái đăng ký $registrationId: $e');
-    } catch (e) {
-      debugPrint('⚠️ Không thể đồng bộ trạng thái đăng ký $registrationId: $e');
-    }
   }
 
   String _resolveErrorMessage(Object error) {

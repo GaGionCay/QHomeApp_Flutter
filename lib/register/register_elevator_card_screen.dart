@@ -9,9 +9,9 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'dart:io' show Platform;
 import 'package:android_intent_plus/android_intent.dart';
-import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:go_router/go_router.dart';
 
 import '../auth/api_client.dart';
 import '../contracts/contract_service.dart';
@@ -190,6 +190,7 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       final pendingId = prefs.getString(_pendingPaymentKey);
       if (pendingId == null) return;
 
+      debugPrint('🔍 [ElevatorCard] Kiểm tra pending payment: $pendingId');
       final registrationId = pendingId;
       final client = await _servicesCardClient();
       final res = await client.get('/elevator-card/$registrationId');
@@ -198,13 +199,19 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       final paymentStatus = data['paymentStatus']?.toString();
       final status = data['status']?.toString();
 
+      debugPrint('🔍 [ElevatorCard] Payment status: $paymentStatus, status: $status');
+
       if (paymentStatus == 'PAID') {
         await prefs.remove(_pendingPaymentKey);
-        if (mounted) {
-          _navigateToServicesHome(
-            snackMessage: 'Đăng ký thẻ thang máy đã được thanh toán.',
-          );
-        }
+        await _clearSavedData();
+        
+        // Delay một chút để đảm bảo widget đã được rebuild nếu cần
+        await Future.delayed(const Duration(milliseconds: 300));
+        
+        debugPrint('✅ [ElevatorCard] Đang navigate về màn hình chính từ _checkPendingPayment');
+        _navigateToServicesHome(
+          snackMessage: 'Đăng ký thẻ thang máy đã được thanh toán.',
+        );
         return;
       }
 
@@ -212,7 +219,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
         await prefs.remove(_pendingPaymentKey);
       }
     } catch (e) {
-      debugPrint('❌ Lỗi kiểm tra thanh toán đang chờ: $e');
+      debugPrint('❌ [ElevatorCard] Lỗi kiểm tra thanh toán đang chờ: $e');
+      // Không xóa pending payment nếu có lỗi, để có thể retry
     }
   }
 
@@ -645,114 +653,44 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   }
 
   void _listenForPaymentResult() {
-    // Check initial link when app is opened from deep link
-    _appLinks.getInitialLink().then((Uri? uri) {
-      if (uri != null &&
-          uri.scheme == 'qhomeapp' &&
-          uri.host == 'vnpay-elevator-card-result') {
-        _handleDeepLinkPayment(uri);
-      }
-    }).catchError((err) {
-      debugPrint('❌ Lỗi khi lấy initial link: $err');
-    });
-
-    // Listen for subsequent deep links
     _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
       if (uri == null) return;
-      if (uri.scheme != 'qhomeapp' || uri.host != 'vnpay-elevator-card-result') {
-        return;
+      debugPrint('🔗 [ElevatorCard] Nhận deep link: $uri');
+
+      if (uri.scheme == 'qhomeapp' && uri.host == 'vnpay-elevator-card-result') {
+        final responseCode = uri.queryParameters['responseCode'];
+        final successParam = uri.queryParameters['success'];
+        final message = uri.queryParameters['message'];
+
+        debugPrint('🔗 [ElevatorCard] responseCode: $responseCode, success: $successParam');
+
+        if (responseCode == '00' || (successParam ?? '').toLowerCase() == 'true') {
+          await _clearSavedData();
+
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove(_pendingPaymentKey);
+          } catch (e) {
+            debugPrint('❌ [ElevatorCard] Lỗi xóa pending payment: $e');
+          }
+
+          debugPrint('✅ [ElevatorCard] Đang navigate về màn hình chính');
+          _navigateToServicesHome(
+            snackMessage: 'Đăng ký thẻ thang máy đã được thanh toán thành công!',
+          );
+        } else {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(message ?? '❌ Thanh toán thất bại. Vui lòng thử lại.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
-      await _handleDeepLinkPayment(uri);
     }, onError: (err) {
-      debugPrint('❌ Lỗi khi nhận deep link: $err');
+      debugPrint('❌ [ElevatorCard] Lỗi khi nhận deep link: $err');
     });
-  }
-
-  Future<void> _handleDeepLinkPayment(Uri uri) async {
-    if (!mounted) return;
-
-    final registrationId = uri.queryParameters['registrationId'];
-    final responseCode = uri.queryParameters['responseCode'];
-    final successParam = uri.queryParameters['success'];
-    final message = uri.queryParameters['message'];
-
-    final success =
-        (successParam ?? '').toLowerCase() == 'true' || responseCode == '00';
-
-    if (success) {
-      await _finalizeSuccessfulPayment(registrationId);
-    } else {
-      await _handleFailedPayment(
-        registrationId,
-        message ?? 'Thanh toán thất bại. Vui lòng thử lại.',
-      );
-    }
-  }
-
-  Future<void> _finalizeSuccessfulPayment(String? registrationId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_pendingPaymentKey);
-      if (registrationId != null) {
-        await _syncRegistrationStatus(registrationId);
-      }
-    } catch (e) {
-      debugPrint('⚠️ Lỗi khi xử lý thanh toán thành công: $e');
-    }
-
-    await _clearSavedData();
-
-    if (!mounted) return;
-    _navigateToServicesHome(
-      snackMessage: 'Đăng ký thẻ thang máy đã được thanh toán thành công!',
-    );
-  }
-
-  Future<void> _handleFailedPayment(
-      String? registrationId, String message) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_pendingPaymentKey);
-    } catch (e) {
-      debugPrint('⚠️ Lỗi khi xoá pending payment: $e');
-    }
-
-    if (registrationId != null) {
-      await _cancelRegistration(registrationId);
-    }
-
-    if (!mounted) return;
-    final trimmed = message.trim();
-    final displayMessage = trimmed.startsWith('❌') ? trimmed : '❌ $trimmed';
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(displayMessage),
-        backgroundColor: Colors.red,
-      ),
-    );
-  }
-
-  Future<void> _syncRegistrationStatus(String registrationId) async {
-    try {
-      final client = await _servicesCardClient();
-      final res = await client.get('/elevator-card/$registrationId');
-      final data = res.data;
-      if (data is! Map<String, dynamic>) return;
-      final paymentStatus = data['paymentStatus']?.toString();
-      if (paymentStatus != 'PAID') {
-        debugPrint('⚠️ paymentStatus chưa cập nhật: $paymentStatus');
-      }
-    } on DioException catch (e) {
-      // Handle 401 gracefully - don't auto-logout after payment
-      if (e.response?.statusCode == 401) {
-        debugPrint('⚠️ Token expired during payment sync. Status will update automatically.');
-        // Don't throw - allow user to continue using app
-        return;
-      }
-      debugPrint('⚠️ Không thể đồng bộ trạng thái đăng ký $registrationId: $e');
-    } catch (e) {
-      debugPrint('⚠️ Không thể đồng bộ trạng thái đăng ký $registrationId: $e');
-    }
   }
 
   String _resolveErrorMessage(Object error) {
@@ -1036,7 +974,7 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
           throw Exception('Không thể tạo đăng ký thẻ');
         }
       } else {
-        // Nếu có nhiều cư dân, tạo registrations trước, sau đó gọi batch payment
+        // Nếu có nhiều cư dân, tạo registrations trước (không thanh toán), sau đó gọi batch payment
         for (int i = 0; i < _selectedResidents.length; i++) {
           final resident = _selectedResidents[i];
           final residentId = resident['residentId']?.toString();
@@ -1048,9 +986,9 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
           // Gửi đầy đủ thông tin của từng cư dân đã chọn
           final payload = _collectPayload(resident);
           
-          // Tạo registration trước (sử dụng endpoint vnpay-url nhưng sẽ gọi batch payment sau)
-          final res = await client.post('/elevator-card/vnpay-url', data: payload);
-          final regId = res.data['registrationId']?.toString();
+          // Tạo registration trước (không thanh toán)
+          final res = await client.post('/elevator-card', data: payload);
+          final regId = res.data['id']?.toString();
           
           if (regId != null) {
             registrationIds.add(regId);
