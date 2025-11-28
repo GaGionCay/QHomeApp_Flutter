@@ -69,11 +69,9 @@ class _HouseholdMemberRequestScreenState
   final List<Uint8List> _proofImages = [];
   final List<String> _proofImageMimeTypes = [];
 
-  // Ảnh CCCD (mặt trước và mặt sau)
+  // Ảnh CCCD (mặt trước)
   Uint8List? _cccdFrontImage;
-  Uint8List? _cccdBackImage;
   String? _cccdFrontMimeType;
-  String? _cccdBackMimeType;
   bool _scanningCccd = false;
 
   bool _submitting = false;
@@ -223,28 +221,6 @@ class _HouseholdMemberRequestScreenState
     await _scanCccdImage(bytes, isFront: true);
   }
 
-  /// Chụp/chọn ảnh CCCD mặt sau
-  Future<void> _pickCccdBack() async {
-    final source = await _showImageSourceDialog('CCCD mặt sau');
-    if (source == null) return;
-
-    final picked = await _picker.pickImage(
-      source: source,
-      imageQuality: 90,
-    );
-    if (picked == null) return;
-
-    final bytes = await picked.readAsBytes();
-    if (!mounted) return;
-
-    setState(() {
-      _cccdBackImage = bytes;
-      _cccdBackMimeType = _inferMimeType(picked.path);
-    });
-
-    // Tự động quét CCCD sau khi chọn ảnh
-    await _scanCccdImage(bytes, isFront: false);
-  }
 
   /// Hiển thị dialog chọn nguồn ảnh
   Future<ImageSource?> _showImageSourceDialog(String title) async {
@@ -1189,11 +1165,14 @@ class _HouseholdMemberRequestScreenState
                 size: 20,
               ),
               const SizedBox(width: 8),
-              Text(
-                'Quét CCCD để tự động điền thông tin',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+              Expanded(
+                child: Text(
+                  'Quét CCCD để tự động điền thông tin',
+                  softWrap: true,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
               ),
             ],
           ),
@@ -1206,122 +1185,58 @@ class _HouseholdMemberRequestScreenState
           ),
           const SizedBox(height: 16),
           // CCCD mặt trước
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Mặt trước',
-                      style: Theme.of(context).textTheme.labelMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    if (_cccdFrontImage != null)
-                      Stack(
-                        alignment: Alignment.topRight,
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.memory(
-                              _cccdFrontImage!,
-                              height: 120,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.close, size: 18),
-                            style: IconButton.styleFrom(
-                              backgroundColor: Colors.black.withValues(alpha: 0.6),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.all(4),
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _cccdFrontImage = null;
-                                _cccdFrontMimeType = null;
-                              });
-                            },
-                          ),
-                        ],
-                      )
-                    else
-                      OutlinedButton.icon(
-                        onPressed: _scanningCccd ? null : _pickCccdFront,
-                        icon: _scanningCccd
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.camera_alt_outlined, size: 18),
-                        label: const Text('Chụp/Chọn'),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 48),
-                        ),
-                      ),
-                  ],
-                ),
+              Text(
+                'Mặt trước',
+                style: Theme.of(context).textTheme.labelMedium,
               ),
-              const SizedBox(width: 12),
-              // CCCD mặt sau
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(height: 8),
+              if (_cccdFrontImage != null)
+                Stack(
+                  alignment: Alignment.topRight,
                   children: [
-                    Text(
-                      'Mặt sau',
-                      style: Theme.of(context).textTheme.labelMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    if (_cccdBackImage != null)
-                      Stack(
-                        alignment: Alignment.topRight,
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.memory(
-                              _cccdBackImage!,
-                              height: 120,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.close, size: 18),
-                            style: IconButton.styleFrom(
-                              backgroundColor: Colors.black.withValues(alpha: 0.6),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.all(4),
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _cccdBackImage = null;
-                                _cccdBackMimeType = null;
-                              });
-                            },
-                          ),
-                        ],
-                      )
-                    else
-                      OutlinedButton.icon(
-                        onPressed: _scanningCccd ? null : _pickCccdBack,
-                        icon: _scanningCccd
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.camera_alt_outlined, size: 18),
-                        label: const Text('Chụp/Chọn'),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 48),
-                        ),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.memory(
+                        _cccdFrontImage!,
+                        height: 120,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
                       ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black.withValues(alpha: 0.6),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.all(4),
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _cccdFrontImage = null;
+                          _cccdFrontMimeType = null;
+                        });
+                      },
+                    ),
                   ],
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: _scanningCccd ? null : _pickCccdFront,
+                  icon: _scanningCccd
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.camera_alt_outlined, size: 18),
+                  label: const Text('Chụp/Chọn'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 48),
+                  ),
                 ),
-              ),
             ],
           ),
           if (_scanningCccd) ...[

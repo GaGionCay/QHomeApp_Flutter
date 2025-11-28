@@ -1660,23 +1660,21 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
           final statusCode = e.response?.statusCode;
           final errorData = e.response?.data;
           
-          if (errorData is Map<String, dynamic>) {
-            // Try to get message from error response
-            if (errorData['message'] != null) {
-              errorMessage = errorData['message'].toString();
-            } else if (errorData['error'] != null) {
-              errorMessage = errorData['error'].toString();
-            }
-          } else if (errorData is String && errorData.isNotEmpty) {
-            errorMessage = errorData;
-          }
-          
-          // Handle specific error codes
-          if (statusCode == 400) {
+          // Handle specific error codes first (priority)
+          if (statusCode == 409) {
+            // Conflict - biển số đã tồn tại
+            errorMessage = 'Đã có biển số được đăng ký trong hệ thống.';
+          } else if (statusCode == 400) {
             // Bad request - validation error
-            // errorMessage already contains the backend message
-          } else if (statusCode == 409) {
-            errorMessage = 'Biển số xe đã được đăng ký trong hệ thống.';
+            if (errorData is Map<String, dynamic>) {
+              if (errorData['message'] != null) {
+                errorMessage = errorData['message'].toString();
+              } else if (errorData['error'] != null) {
+                errorMessage = errorData['error'].toString();
+              }
+            } else if (errorData is String && errorData.isNotEmpty) {
+              errorMessage = errorData;
+            }
           } else if (statusCode == 500) {
             errorMessage = 'Lỗi server. Vui lòng thử lại sau.';
           } else if (e.type == DioExceptionType.connectionTimeout ||
