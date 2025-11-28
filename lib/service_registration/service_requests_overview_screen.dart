@@ -1648,11 +1648,14 @@ class _MaintenanceRequestDetailSheet extends StatelessWidget {
                                     color: AppColors.primaryBlue,
                                   ),
                                   const SizedBox(width: 8),
-                                  Text(
-                                    'Chi phí ước tính: ${NumberFormat.currency(locale: 'vi_VN', symbol: '').format(request.estimatedCost).replaceAll(',', '.')} VNĐ',
-                                    style: theme.textTheme.titleMedium?.copyWith(
-                                      color: AppColors.primaryBlue,
-                                      fontWeight: FontWeight.w700,
+                                  Expanded(
+                                    child: Text(
+                                      'Chi phí ước tính: ${NumberFormat.currency(locale: 'vi_VN', symbol: '').format(request.estimatedCost).replaceAll(',', '.')} VNĐ',
+                                      softWrap: true,
+                                      style: theme.textTheme.titleMedium?.copyWith(
+                                        color: AppColors.primaryBlue,
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
                                   ),
                                 ],

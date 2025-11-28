@@ -597,52 +597,19 @@ class _ContractListScreenState extends State<ContractListScreen> {
 
   Widget _buildFileChip(ContractFileDto file) {
     final theme = Theme.of(context);
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () async {
-        try {
-          // Download file first, then open with system dialog
-          final url = ApiClient.fileUrl(file.fileUrl);
-          
-          // Get temporary directory
-          final tempDir = await getTemporaryDirectory();
-          final uri = Uri.parse(url);
-          final fileName = file.fileName.isNotEmpty 
-              ? file.fileName 
-              : uri.pathSegments.last.isNotEmpty 
-                  ? uri.pathSegments.last 
-                  : 'contract_file';
-          final filePath = '${tempDir.path}/$fileName';
-          
-          // Download file using Dio with authentication
-          final apiClient = await ApiClient.create();
-          final dio = apiClient.dio;
-          
-          await dio.download(
-            url,
-            filePath,
-            options: Options(
-              headers: {
-                'Content-Type': 'application/json',
-              },
-            ),
-          );
-          
-          // Open file with system dialog
-          final result = await OpenFile.open(filePath);
-          if (result.type != ResultType.done) {
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Không thể mở tệp: ${result.message}')),
-            );
-          }
-        } catch (e) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Lỗi khi mở tệp: $e')),
-          );
-        }
-      },
+    final isImage = file.contentType.toLowerCase().startsWith('image/');
+    final isWord = file.contentType.toLowerCase().contains('word') || 
+                  file.originalFileName.toLowerCase().endsWith('.doc') ||
+                  file.originalFileName.toLowerCase().endsWith('.docx');
+    
+    IconData fileIcon = CupertinoIcons.doc_plaintext;
+    if (isImage) {
+      fileIcon = CupertinoIcons.photo;
+    } else if (isWord) {
+      fileIcon = CupertinoIcons.doc_text_fill;
+    }
+
+    return PopupMenuButton<String>(
       child: Container(
         constraints: const BoxConstraints(maxWidth: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -656,11 +623,11 @@ class _ContractListScreenState extends State<ContractListScreen> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(CupertinoIcons.doc_plaintext, size: 16),
+            Icon(fileIcon, size: 16),
             const SizedBox(width: 8),
             Flexible(
               child: Text(
-                file.fileName,
+                file.originalFileName.isNotEmpty ? file.originalFileName : file.fileName,
                 style: theme.textTheme.labelMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
@@ -671,7 +638,151 @@ class _ContractListScreenState extends State<ContractListScreen> {
           ],
         ),
       ),
+      onSelected: (value) async {
+        if (value == 'view') {
+          await _viewFile(file);
+        } else if (value == 'download') {
+          await _downloadFile(file);
+        }
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: 'view',
+          child: Row(
+            children: [
+              Icon(CupertinoIcons.eye, size: 18),
+              SizedBox(width: 8),
+              Text('Xem'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'download',
+          child: Row(
+            children: [
+              Icon(CupertinoIcons.arrow_down_circle, size: 18),
+              SizedBox(width: 8),
+              Text('Tải về'),
+            ],
+          ),
+        ),
+      ],
     );
+  }
+
+  Future<void> _viewFile(ContractFileDto file) async {
+    try {
+      // Download file first, then open with system dialog
+      final url = ApiClient.fileUrl(file.fileUrl);
+      
+      // Get temporary directory
+      final tempDir = await getTemporaryDirectory();
+      final uri = Uri.parse(url);
+      final fileName = file.originalFileName.isNotEmpty 
+          ? file.originalFileName 
+          : file.fileName.isNotEmpty
+              ? file.fileName
+              : uri.pathSegments.last.isNotEmpty 
+                  ? uri.pathSegments.last 
+                  : 'contract_file';
+      final filePath = '${tempDir.path}/$fileName';
+      
+      // Download file using Dio with authentication
+      final apiClient = await ApiClient.create();
+      final dio = apiClient.dio;
+      
+      await dio.download(
+        url,
+        filePath,
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+      
+      // Open file with system dialog
+      final result = await OpenFile.open(filePath);
+      if (result.type != ResultType.done) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Không thể mở tệp: ${result.message}')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi khi mở tệp: $e')),
+      );
+    }
+  }
+
+  Future<void> _downloadFile(ContractFileDto file) async {
+    if (_contractService == null) return;
+
+    try {
+      // Find contract ID from the file
+      final contract = _contracts.firstWhere(
+        (c) => c.files.any((f) => f.id == file.id),
+        orElse: () => _contracts.first,
+      );
+
+      final filePath = await _contractService!.downloadContractFile(
+        contract.id,
+        file.id,
+        file.originalFileName.isNotEmpty ? file.originalFileName : file.fileName,
+        null, // No progress callback for list screen
+      );
+
+      if (!mounted) return;
+
+      if (filePath != null) {
+        final isImage = file.contentType.toLowerCase().startsWith('image/');
+        final isWord = file.contentType.toLowerCase().contains('word') || 
+                      file.originalFileName.toLowerCase().endsWith('.doc') ||
+                      file.originalFileName.toLowerCase().endsWith('.docx');
+        
+        String fileTypeText = 'tài liệu';
+        if (isImage) {
+          fileTypeText = 'ảnh';
+        } else if (isWord) {
+          fileTypeText = 'file Word';
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đã tải xuống $fileTypeText: ${file.originalFileName.isNotEmpty ? file.originalFileName : file.fileName}'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+            action: SnackBarAction(
+              label: 'Mở',
+              textColor: Colors.white,
+              onPressed: () => _viewFile(file),
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể tải xuống: ${file.originalFileName.isNotEmpty ? file.originalFileName : file.fileName}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      String errorMessage = 'Lỗi tải xuống: $e';
+      if (e.toString().contains('quyền')) {
+        errorMessage = 'Cần cấp quyền truy cập bộ nhớ để tải file. Vui lòng cấp quyền trong Cài đặt.';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
   }
 }
 

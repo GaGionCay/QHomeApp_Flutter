@@ -5,6 +5,10 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <!-- Android 13+ media permissions -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.USE_FINGERPRINT" />
     <uses-permission android:name="android.permission.CAMERA" />
@@ -75,45 +79,4 @@
             android:value="2" />
     </application>
 
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT" />
-            <data android:mimeType="text/plain" />
-        </intent>
-        <!-- Khai báo các package ngân hàng để query (Android 11+) -->
-        <package android:name="com.vietcombank.mobile" />
-        <package android:name="com.vietcombank" />
-        <package android:name="vn.com.mbmobile" />
-        <package android:name="com.mbmobile" />
-        <package android:name="com.tpb.mb.gprsandroid" />
-        <package android:name="com.tpb.mobile" />
-        <package android:name="com.techcombank" />
-        <package android:name="com.sacombank" />
-        <package android:name="com.bidv.smartbanking" />
-        <package android:name="com.bidv" />
-        <package android:name="com.vnpay.bidv" />
-        <package android:name="com.agribank.mb" />
-        <package android:name="com.agribank" />
-        <package android:name="com.vnpay.Agribank3g" />
-        <package android:name="com.vpbank.online" />
-        <package android:name="com.vpbank.mobile" />
-        <package android:name="com.vietinbank.vpb" />
-        <package android:name="com.vietinbank.ipay" />
-        <!-- Khai báo các package app payment (Android 11+) -->
-        <package android:name="com.mservice.momotransfer" />
-        <package android:name="vn.zalo.pay" />
-        <package android:name="com.shopeemobile.omc" />
-        <package android:name="com.viettelpay" />
-        <package android:name="com.vnpay.wallet" />
-        <!-- Khai báo các package trình duyệt (Android 11+) -->
-        <package android:name="com.android.chrome" />
-        <package android:name="org.mozilla.firefox" />
-        <package android:name="com.microsoft.emmx" />
-        <package android:name="com.opera.browser" />
-        <package android:name="com.brave.browser" />
-        <package android:name="com.vivaldi.browser" />
-        <package android:name="com.samsung.android.sbrowser" />
-        <package android:name="com.huawei.browser" />
-        <package android:name="com.mi.globalbrowser" />
-    </queries>
 </manifest>

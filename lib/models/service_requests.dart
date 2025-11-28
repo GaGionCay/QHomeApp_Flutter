@@ -84,6 +84,7 @@ class MaintenanceRequestSummary {
     this.paymentStatus,
     this.paymentAmount,
     this.paymentGateway,
+    this.paymentDate,
   });
 
   final String id;
@@ -106,6 +107,7 @@ class MaintenanceRequestSummary {
   final String? paymentStatus;
   final double? paymentAmount;
   final String? paymentGateway;
+  final DateTime? paymentDate;
 
   factory MaintenanceRequestSummary.fromJson(Map<String, dynamic> json) {
     List<String> attachments = [];
@@ -147,6 +149,7 @@ class MaintenanceRequestSummary {
               : double.tryParse(json['paymentAmount'].toString()))
           : null,
       paymentGateway: json['paymentGateway']?.toString(),
+      paymentDate: _parseDateTime(json['paymentDate']),
     );
   }
 

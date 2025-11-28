@@ -76,6 +76,29 @@ class CleaningRequestService {
     }
   }
 
+  Future<List<CleaningRequestSummary>> getPaidRequests() async {
+    try {
+      final response = await _dio.get('/cleaning-requests/my/paid');
+      final data = response.data;
+      if (data is List) {
+        return data
+            .map((json) => CleaningRequestSummary.fromJson(
+                Map<String, dynamic>.from(json)))
+            .toList();
+      }
+      return [];
+    } on DioException catch (dioErr) {
+      final message = dioErr.response?.data is Map<String, dynamic>
+          ? (dioErr.response?.data['message'] as String?)
+          : dioErr.message;
+      throw Exception(
+        message?.isNotEmpty == true
+            ? message
+            : 'Không thể tải danh sách yêu cầu dọn dẹp đã thanh toán.',
+      );
+    }
+  }
+
   Future<void> cancelRequest(String requestId) async {
     try {
       await _dio.patch('/cleaning-requests/$requestId/cancel');

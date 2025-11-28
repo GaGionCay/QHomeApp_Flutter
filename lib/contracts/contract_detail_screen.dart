@@ -844,10 +844,24 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
           _downloadProgress[file.id] = 100;
         });
 
+        // Determine file type for better message
+        final isImage = file.contentType.toLowerCase().startsWith('image/');
+        final isWord = file.contentType.toLowerCase().contains('word') || 
+                      file.originalFileName.toLowerCase().endsWith('.doc') ||
+                      file.originalFileName.toLowerCase().endsWith('.docx');
+        
+        String fileTypeText = 'tài liệu';
+        if (isImage) {
+          fileTypeText = 'ảnh';
+        } else if (isWord) {
+          fileTypeText = 'file Word';
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Đã tải xuống: ${file.originalFileName}'),
+            content: Text('Đã tải xuống $fileTypeText: ${file.originalFileName}'),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
             action: SnackBarAction(
               label: 'Mở',
               textColor: Colors.white,
@@ -884,10 +898,16 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
         _downloadProgress.remove(file.id);
       });
 
+      String errorMessage = 'Lỗi tải xuống: $e';
+      if (e.toString().contains('quyền')) {
+        errorMessage = 'Cần cấp quyền truy cập bộ nhớ để tải file. Vui lòng cấp quyền trong Cài đặt.';
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Lỗi tải xuống: $e'),
+          content: Text(errorMessage),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
         ),
       );
     }

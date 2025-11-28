@@ -77,6 +77,29 @@ class MaintenanceRequestService {
     }
   }
 
+  Future<List<MaintenanceRequestSummary>> getPaidRequests() async {
+    try {
+      final response = await _dio.get('/maintenance-requests/my/paid');
+      final data = response.data;
+      if (data is List) {
+        return data
+            .map((json) => MaintenanceRequestSummary.fromJson(
+                Map<String, dynamic>.from(json)))
+            .toList();
+      }
+      return [];
+    } on DioException catch (dioErr) {
+      final message = dioErr.response?.data is Map<String, dynamic>
+          ? (dioErr.response?.data['message'] as String?)
+          : dioErr.message;
+      throw Exception(
+        message?.isNotEmpty == true
+            ? message
+            : 'Không thể tải danh sách yêu cầu sửa chữa đã thanh toán.',
+      );
+    }
+  }
+
   Future<void> approveResponse(String requestId) async {
     try {
       await _dio.post('/maintenance-requests/$requestId/approve-response');
