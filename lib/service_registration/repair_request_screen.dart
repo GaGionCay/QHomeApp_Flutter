@@ -11,6 +11,10 @@ import '../contracts/contract_service.dart';
 import '../models/unit_info.dart';
 import '../profile/profile_service.dart';
 import 'maintenance_request_service.dart';
+import 'video_recorder_screen.dart';
+import 'video_compression_service.dart';
+import 'package:video_player/video_player.dart';
+import 'dart:io';
 
 class RepairRequestScreen extends StatefulWidget {
   const RepairRequestScreen({super.key});
@@ -25,12 +29,27 @@ class _AttachmentFile {
     required this.mimeType,
     required this.fileName,
     required this.isVideo,
+    this.videoPath, // Đường dẫn file video để preview (chỉ cho video)
   });
 
   final List<int> bytes;
   final String mimeType;
   final String fileName;
   final bool isVideo;
+  final String? videoPath; // Đường dẫn file video để preview
+
+  /// Lấy kích thước file dưới dạng MB
+  double get sizeInMB => bytes.length / (1024 * 1024);
+
+  /// Lấy kích thước file dưới dạng chuỗi định dạng
+  String get sizeFormatted {
+    if (sizeInMB >= 1) {
+      return '${sizeInMB.toStringAsFixed(1)} MB';
+    } else {
+      final sizeKB = bytes.length / 1024;
+      return '${sizeKB.toStringAsFixed(1)} KB';
+    }
+  }
 }
 
 class _RepairRequestScreenState extends State<RepairRequestScreen> {
@@ -149,14 +168,116 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
       return;
     }
 
+    // Sử dụng VideoRecorderScreen tùy chỉnh khi quay video từ camera
+    if (isVideo && source == ImageSource.camera) {
+      final videoFile = await Navigator.push<XFile>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const VideoRecorderScreen(),
+        ),
+      );
+
+      if (videoFile == null) return;
+
+      // Tự động nén video sau khi quay xong (trước khi upload)
+      // Hiển thị progress dialog
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const _VideoCompressionDialog(),
+      );
+
+      String finalVideoPath = videoFile.path;
+      List<int> finalBytes;
+
+      try {
+        // Tự động nén video xuống 720p hoặc 480p
+        final compressedFile = await VideoCompressionService.instance.compressVideo(
+          videoPath: videoFile.path,
+          onProgress: (message) {
+            debugPrint(message);
+          },
+        );
+
+        if (compressedFile != null && await compressedFile.exists()) {
+          finalBytes = await compressedFile.readAsBytes();
+          finalVideoPath = compressedFile.path;
+          
+          // Xóa file gốc sau khi nén thành công
+          try {
+            final originalFile = File(videoFile.path);
+            if (await originalFile.exists()) {
+              await originalFile.delete();
+            }
+          } catch (e) {
+            debugPrint('⚠️ Không thể xóa file gốc: $e');
+          }
+        } else {
+          // Nếu nén thất bại, dùng file gốc
+          finalBytes = await videoFile.readAsBytes();
+        }
+      } catch (e) {
+        debugPrint('⚠️ Lỗi nén video: $e');
+        // Nếu có lỗi, dùng file gốc
+        finalBytes = await videoFile.readAsBytes();
+      } finally {
+        if (mounted) {
+          Navigator.pop(context); // Đóng progress dialog
+        }
+      }
+
+      final mime = _detectMimeType(finalVideoPath, isVideo: true);
+      
+      if (!mounted) return;
+      setState(() {
+        _attachments.add(
+          _AttachmentFile(
+            bytes: finalBytes,
+            mimeType: mime,
+            fileName: videoFile.name,
+            isVideo: true,
+            videoPath: finalVideoPath, // Lưu path để preview
+          ),
+        );
+      });
+      return;
+    }
+
+    // Sử dụng image_picker cho ảnh và video từ gallery
     final picker = ImagePicker();
     final pickedFile = isVideo
-        ? await picker.pickVideo(source: source, maxDuration: const Duration(minutes: 2))
+        ? await picker.pickVideo(
+            source: source,
+            maxDuration: const Duration(minutes: 2),
+          )
         : await picker.pickImage(source: source, imageQuality: 85);
 
     if (pickedFile == null) return;
 
     final bytes = await pickedFile.readAsBytes();
+    
+    // Kiểm tra kích thước file để cảnh báo nếu quá lớn (chỉ cho video từ gallery)
+    if (isVideo) {
+      final fileSizeMB = bytes.length / (1024 * 1024);
+      if (fileSizeMB > 50) {
+        // Nếu video từ gallery > 50MB, từ chối và yêu cầu chọn lại
+        _showMessage(
+          'Video có dung lượng ${fileSizeMB.toStringAsFixed(1)}MB, vượt quá giới hạn 50MB. '
+          'Vui lòng chọn video khác hoặc quay video mới (tối đa 2 phút).',
+          color: Colors.red,
+        );
+        return;
+      } else if (fileSizeMB > 40) {
+        // Cảnh báo nhẹ nếu video từ gallery > 40MB nhưng vẫn cho phép
+        _showMessage(
+          'Video có dung lượng ${fileSizeMB.toStringAsFixed(1)}MB, gần giới hạn 50MB. '
+          'Video sẽ được nén trước khi upload.',
+          color: Colors.orange,
+        );
+      }
+    }
+    
     final mime = _detectMimeType(pickedFile.path, isVideo: isVideo);
     setState(() {
       _attachments.add(
@@ -165,6 +286,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
           mimeType: mime,
           fileName: pickedFile.name,
           isVideo: isVideo,
+          videoPath: isVideo ? pickedFile.path : null, // Lưu path cho video để preview
         ),
       );
     });
@@ -672,7 +794,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
   Widget _buildAttachmentsSection(ThemeData theme) {
     return _buildSection(
       title: 'Hình ảnh / Video minh họa',
-      subtitle: 'Tùy chọn – tối đa $_maxAttachments tệp (ảnh hoặc video)',
+      subtitle: 'Tùy chọn – tối đa $_maxAttachments tệp (ảnh hoặc video). Video: tối đa 2 phút hoặc 50MB, có ghi âm. Video sẽ được nén xuống 720p/480p sau khi quay.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -692,7 +814,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
               ),
               _buildAttachmentAction(
                 icon: Icons.videocam_outlined,
-                label: 'Quay video',
+                label: 'Quay video (tối đa 2 phút)',
                 onTap: () => _pickMedia(isVideo: true, source: ImageSource.camera),
               ),
               _buildAttachmentAction(
@@ -762,12 +884,10 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
                   ),
           ),
           child: attachment.isVideo
-              ? Center(
-                  child: Icon(
-                    Icons.videocam_outlined,
-                    color: theme.colorScheme.primary,
-                    size: 32,
-                  ),
+              ? _VideoPreviewWidget(
+                  videoPath: attachment.videoPath,
+                  sizeFormatted: attachment.sizeFormatted,
+                  theme: theme,
                 )
               : null,
         ),
@@ -786,6 +906,29 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
             ),
           ),
         ),
+        // Hiển thị cảnh báo nếu file quá lớn
+        if (attachment.sizeInMB > 50)
+          Positioned(
+            bottom: 4,
+            left: 4,
+            right: 4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.9),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                'File lớn',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 9,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -808,4 +951,179 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
 
   String _formatTimeOfDay(TimeOfDay time) =>
       '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+}
+
+/// Widget để preview video trong attachment list
+class _VideoPreviewWidget extends StatefulWidget {
+  final String? videoPath;
+  final String sizeFormatted;
+  final ThemeData theme;
+
+  const _VideoPreviewWidget({
+    required this.videoPath,
+    required this.sizeFormatted,
+    required this.theme,
+  });
+
+  @override
+  State<_VideoPreviewWidget> createState() => _VideoPreviewWidgetState();
+}
+
+class _VideoPreviewWidgetState extends State<_VideoPreviewWidget> {
+  VideoPlayerController? _controller;
+  bool _isInitialized = false;
+  bool _isPlaying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.videoPath != null) {
+      _initializeVideo();
+    }
+  }
+
+  Future<void> _initializeVideo() async {
+    try {
+      final file = File(widget.videoPath!);
+      if (!await file.exists()) {
+        return;
+      }
+
+      _controller = VideoPlayerController.file(file);
+      await _controller!.initialize();
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ Lỗi khởi tạo video player: $e');
+    }
+  }
+
+  void _togglePlayPause() {
+    if (_controller == null || !_isInitialized) return;
+
+    setState(() {
+      if (_isPlaying) {
+        _controller!.pause();
+      } else {
+        _controller!.play();
+      }
+      _isPlaying = !_isPlaying;
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isInitialized || _controller == null) {
+      // Hiển thị icon nếu chưa khởi tạo được
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.videocam_outlined,
+              color: widget.theme.colorScheme.primary,
+              size: 32,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              widget.sizeFormatted,
+              style: widget.theme.textTheme.labelSmall?.copyWith(
+                color: widget.theme.colorScheme.primary,
+                fontWeight: FontWeight.w600,
+                fontSize: 10,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: _togglePlayPause,
+      child: Stack(
+        children: [
+          SizedBox.expand(
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: _controller!.value.size.width,
+                height: _controller!.value.size.height,
+                child: VideoPlayer(_controller!),
+              ),
+            ),
+          ),
+          // Overlay với play/pause button
+          Center(
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.black54,
+                shape: BoxShape.circle,
+              ),
+              padding: const EdgeInsets.all(8),
+              child: Icon(
+                _isPlaying ? Icons.pause : Icons.play_arrow,
+                color: Colors.white,
+                size: 24,
+              ),
+            ),
+          ),
+          // Size label
+          Positioned(
+            bottom: 4,
+            left: 4,
+            right: 4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                widget.sizeFormatted,
+                style: widget.theme.textTheme.labelSmall?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 9,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Dialog hiển thị tiến trình nén video
+class _VideoCompressionDialog extends StatelessWidget {
+  const _VideoCompressionDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return const AlertDialog(
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(),
+          SizedBox(height: 16),
+          Text('Đang nén video...'),
+          SizedBox(height: 8),
+          Text(
+            'Vui lòng đợi trong giây lát',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+        ],
+      ),
+    );
+  }
 }
