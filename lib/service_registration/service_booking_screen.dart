@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:ui';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/cupertino.dart';
@@ -565,7 +566,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
             onPressed: () => Navigator.pop(context),
             child: const Text('Để sau'),
           ),
-          ElevatedButton(
+          FilledButton(
             onPressed: () {
               Navigator.pop(context);
               Navigator.of(context).push(
@@ -594,98 +595,228 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    final backgroundGradient = isDark
+        ? const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF04101F),
+              Color(0xFF0A1D34),
+              Color(0xFF071225),
+            ],
+          )
+        : const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFEFF6FF),
+              Color(0xFFF8FBFF),
+              Colors.white,
+            ],
+          );
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F9),
-      appBar: AppBar(
-        title: Text(widget.serviceName),
-        backgroundColor: const Color(0xFF26A69A),
-        foregroundColor: Colors.white,
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
+      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.transparent,
+      body: DecoratedBox(
+        decoration: BoxDecoration(gradient: backgroundGradient),
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
+          slivers: [
+            SliverAppBar(
+              backgroundColor: Colors.transparent,
+              foregroundColor: colorScheme.onSurface,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              pinned: true,
+              stretch: true,
+              leadingWidth: 66,
+              expandedHeight: 120,
+              systemOverlayStyle: theme.appBarTheme.systemOverlayStyle,
+              title: Text(
+                'Đặt dịch vụ',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              centerTitle: true,
+              leading: Padding(
+                padding: const EdgeInsets.only(left: 12, top: 12, bottom: 12),
+                child: _buildFrostedIconButton(
+                  icon: CupertinoIcons.chevron_left,
+                  onTap: () => Navigator.of(context).maybePop(),
+                ),
+              ),
+              flexibleSpace: FlexibleSpaceBar(
+                collapseMode: CollapseMode.parallax,
+                background: Container(
+                  decoration: BoxDecoration(gradient: backgroundGradient),
+                  padding: const EdgeInsets.fromLTRB(24, 80, 24, 20),
+                  child: Align(
+                    alignment: Alignment.bottomLeft,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.error_outline,
-                            color: Colors.red.shade400, size: 48),
-                        const SizedBox(height: 12),
                         Text(
-                          _error ?? 'Đã xảy ra lỗi',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 16),
-                        ),
-                        const SizedBox(height: 12),
-                        ElevatedButton(
-                          onPressed: _loadService,
-                          child: const Text('Thử lại'),
+                          widget.serviceName,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                                  color: colorScheme.onSurface,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.2,
+                                ) ??
+                              TextStyle(
+                                color: colorScheme.onSurface,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                height: 1.2,
+                              ),
                         ),
                       ],
                     ),
                   ),
-                )
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildServiceInfoCard(),
-                      const SizedBox(height: 16),
-                      _buildDateSelector(),
-                      const SizedBox(height: 16),
-                      _buildTimeSelector(),
-                      const SizedBox(height: 16),
-                      if (_bookingType == 'COMBO_BASED') _buildCombosSection(),
-                      if (_bookingType == 'TICKET_BASED')
-                        _buildTicketsSection(),
-                      if (_bookingType == 'OPTION_BASED' ||
-                          _bookingType == 'STANDARD')
-                        _buildOptionsSection(),
-                      const SizedBox(height: 16),
-                      _buildPeopleSelector(),
-                      const SizedBox(height: 16),
-                      _buildPurposeField(),
-                      const SizedBox(height: 16),
-                      _buildPriceSummary(),
-                      const SizedBox(height: 24),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _submitting ? null : _submit,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF26A69A),
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: _loading
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(48.0),
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
+                  : _error != null
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.error_outline,
+                                  size: 64,
+                                  color: colorScheme.error,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  _error ?? 'Đã xảy ra lỗi',
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.titleMedium,
+                                ),
+                                const SizedBox(height: 16),
+                                FilledButton(
+                                  onPressed: _loadService,
+                                  child: const Text('Thử lại'),
+                                ),
+                              ],
                             ),
                           ),
-                          child: _submitting
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white,
+                        )
+                      : Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 100),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildServiceInfoCard(),
+                              const SizedBox(height: 16),
+                              _buildDateSelector(),
+                              const SizedBox(height: 16),
+                              _buildTimeSelector(),
+                              const SizedBox(height: 16),
+                              if (_bookingType == 'COMBO_BASED') _buildCombosSection(),
+                              if (_bookingType == 'TICKET_BASED')
+                                _buildTicketsSection(),
+                              if (_bookingType == 'OPTION_BASED' ||
+                                  _bookingType == 'STANDARD')
+                                _buildOptionsSection(),
+                              const SizedBox(height: 16),
+                              _buildPeopleSelector(),
+                              const SizedBox(height: 16),
+                              _buildPurposeField(),
+                              const SizedBox(height: 16),
+                              _buildPriceSummary(),
+                              const SizedBox(height: 24),
+                              SizedBox(
+                                width: double.infinity,
+                                child: FilledButton.icon(
+                                  onPressed: _submitting ? null : _submit,
+                                  icon: _submitting
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor: AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
+                                          ),
+                                        )
+                                      : const Icon(
+                                          CupertinoIcons.calendar_badge_plus,
+                                          size: 20,
+                                        ),
+                                  label: Text(
+                                    _submitting
+                                        ? 'Đang xử lý...'
+                                        : 'Gửi yêu cầu đặt dịch vụ',
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
-                                )
-                              : const Text(
-                                  'Gửi yêu cầu đặt dịch vụ',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: colorScheme.primary,
+                                    foregroundColor: colorScheme.onPrimary,
+                                    padding: const EdgeInsets.symmetric(vertical: 16),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
                                   ),
                                 ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFrostedIconButton({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Material(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.12)
+              : Colors.white.withValues(alpha: 0.75),
+          child: InkWell(
+            onTap: onTap,
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Icon(
+                icon,
+                size: 20,
+                color: isDark ? Colors.white : AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -693,77 +824,64 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
     final detail = _service;
     if (detail == null) return const SizedBox.shrink();
 
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.serviceName,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            if (detail['description'] != null &&
-                detail['description'].toString().isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                detail['description'].toString(),
-                style: TextStyle(color: Colors.grey.shade700),
-              ),
-            ],
-            if (detail['location'] != null &&
-                detail['location'].toString().isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(Icons.location_on,
-                      size: 16, color: Colors.blueGrey.shade400),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      detail['location'].toString(),
-                      style: TextStyle(color: Colors.grey.shade700),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Icon(Icons.receipt_long, size: 16, color: Colors.teal),
-                const SizedBox(width: 6),
-                Text(
-                  _bookingType == 'COMBO_BASED'
-                      ? 'Đặt theo combo'
-                      : _bookingType == 'TICKET_BASED'
-                          ? 'Đặt theo vé'
-                          : 'Giá theo giờ',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.teal,
-                  ),
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return _glassPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.serviceName,
+            style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: isDark ? Colors.white : AppColors.textPrimary,
+                ) ??
+                TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: isDark ? Colors.white : AppColors.textPrimary,
                 ),
-                if (_bookingType == 'OPTION_BASED' ||
-                    _bookingType == 'STANDARD') ...[
-                  const SizedBox(width: 12),
-                  Text(
-                    '${_formatCurrency((detail['pricePerHour'] as num?) ?? 0)} đ/giờ',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade700,
-                    ),
+          ),
+          if (detail['description'] != null &&
+              detail['description'].toString().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              detail['description'].toString(),
+              style: theme.textTheme.bodyLarge?.copyWith(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.82)
+                        : AppColors.textPrimary,
+                    height: 1.6,
+                  ) ??
+                  TextStyle(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.82)
+                        : AppColors.textPrimary,
+                    height: 1.6,
                   ),
-                ],
-              ],
             ),
           ],
-        ),
+          if (detail['location'] != null &&
+              detail['location'].toString().isNotEmpty) ...[
+            const SizedBox(height: 18),
+            _buildDetailRow(
+              icon: CupertinoIcons.location_fill,
+              label: 'Địa điểm',
+              value: detail['location'].toString(),
+            ),
+          ],
+          const SizedBox(height: 18),
+          _buildDetailRow(
+            icon: CupertinoIcons.tag_fill,
+            label: 'Loại đặt',
+            value: _bookingType == 'COMBO_BASED'
+                ? 'Đặt theo combo'
+                : _bookingType == 'TICKET_BASED'
+                    ? 'Đặt theo vé'
+                    : 'Giá theo giờ${_bookingType == 'OPTION_BASED' || _bookingType == 'STANDARD' ? ' - ${_formatCurrency((detail['pricePerHour'] as num?) ?? 0)} đ/giờ' : ''}',
+          ),
+        ],
       ),
     );
   }
@@ -781,15 +899,11 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
     final firstSelectable =
         _nextAllowedDate(detail, normalizedToday, lastDate, predicate);
     if (firstSelectable == null) {
-      return Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: const ListTile(
-          title: Text(
-            'Ngày sử dụng',
-            style: TextStyle(fontWeight: FontWeight.w600),
-          ),
-          subtitle: Text('Hiện không có ngày phù hợp để đặt lịch'),
-          trailing: Icon(Icons.calendar_today),
+      return _glassPanel(
+        child: _buildDetailRow(
+          icon: CupertinoIcons.calendar_today,
+          label: 'Ngày sử dụng',
+          value: 'Hiện không có ngày phù hợp để đặt lịch',
         ),
       );
     }
@@ -809,19 +923,8 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
       initialCandidate = fallback ?? firstSelectable;
     }
 
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ListTile(
-        title: const Text(
-          'Ngày sử dụng',
-          style: TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(
-          _selectedDate != null
-              ? DateFormat('dd/MM/yyyy').format(_selectedDate!)
-              : 'Chọn ngày',
-        ),
-        trailing: const Icon(Icons.calendar_today),
+    return _glassPanel(
+      child: InkWell(
         onTap: () async {
           final picked = await showDatePicker(
             context: context,
@@ -846,6 +949,14 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
             }
           }
         },
+        borderRadius: BorderRadius.circular(24),
+        child: _buildDetailRow(
+          icon: CupertinoIcons.calendar_today,
+          label: 'Ngày sử dụng',
+          value: _selectedDate != null
+              ? DateFormat('EEEE, dd/MM/yyyy', 'vi_VN').format(_selectedDate!)
+              : 'Chọn ngày',
+        ),
       ),
     );
   }
@@ -874,15 +985,8 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
         Row(
           children: [
             Expanded(
-              child: Card(
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-                child: ListTile(
-                  title: const Text('Bắt đầu'),
-                  subtitle: Text(_startTime != null
-                      ? _startTime!.format(context)
-                      : 'Chọn giờ'),
-                  trailing: const Icon(Icons.access_time),
+              child: _glassPanel(
+                child: InkWell(
                   onTap: () async {
                     final now = TimeOfDay.now();
                     final today = DateTime.now();
@@ -924,20 +1028,21 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                       }
                     }
                   },
+                  borderRadius: BorderRadius.circular(24),
+                  child: _buildDetailRow(
+                    icon: CupertinoIcons.clock,
+                    label: 'Bắt đầu',
+                    value: _startTime != null
+                        ? _startTime!.format(context)
+                        : 'Chọn giờ',
+                  ),
                 ),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Card(
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-                child: ListTile(
-                  title: const Text('Kết thúc'),
-                  subtitle: Text(_endTime != null
-                      ? _endTime!.format(context)
-                      : 'Chọn giờ'),
-                  trailing: const Icon(Icons.timer_outlined),
+              child: _glassPanel(
+                child: InkWell(
                   onTap: () async {
                     if (_startTime == null) {
                       _showMessage('Vui lòng chọn thời gian bắt đầu trước.', isError: true);
@@ -984,461 +1089,423 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                       _validateTimeRange();
                     }
                   },
+                  borderRadius: BorderRadius.circular(24),
+                  child: _buildDetailRow(
+                    icon: CupertinoIcons.timer,
+                    label: 'Kết thúc',
+                    value: _endTime != null
+                        ? _endTime!.format(context)
+                        : 'Chọn giờ',
+                  ),
                 ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        _buildBookedSlotsBanner(),
-        if (_bookedSlotsByDate.isNotEmpty && _selectedDate != null) ...[
-          const SizedBox(height: 12),
-          _buildAllBookedSlotsSummary(),
+        const SizedBox(height: 16),
+        _buildBookedSlotsSection(),
+      ],
+    );
+  }
+
+  Widget _buildBookedSlotsSection() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    // Loading state
+    if (_bookedSlotsLoading) {
+      return _glassPanel(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: colorScheme.primary,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  'Đang tải các khung giờ đã được đặt...',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.82)
+                            : AppColors.textPrimary,
+                      ) ??
+                      TextStyle(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.82)
+                            : AppColors.textPrimary,
+                      ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Error state
+    if (_bookedSlotsError != null) {
+      return _glassPanel(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildDetailRow(
+                icon: Icons.error_outline,
+                label: 'Lỗi',
+                value: 'Không thể tải các khung giờ đã đặt',
+                isError: true,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _bookedSlotsError!,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.75)
+                          : AppColors.textSecondary,
+                    ) ??
+                    TextStyle(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.75)
+                          : AppColors.textSecondary,
+                    ),
+              ),
+              const SizedBox(height: 20),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  onPressed: () => _reloadBookedSlots(
+                      anchor: _selectedDate ?? DateTime.now()),
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('Thử lại'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: colorScheme.primary,
+                    foregroundColor: colorScheme.onPrimary,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Empty state
+    if (_bookedSlotsByDate.isEmpty) {
+      return _glassPanel(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: _buildDetailRow(
+            icon: CupertinoIcons.calendar,
+            label: 'Thông tin',
+            value: 'Chưa có khung giờ nào được đặt trong khoảng thời gian này.',
+          ),
+        ),
+      );
+    }
+
+    // Get all dates with booked slots
+    final allDates = _bookedSlotsByDate.keys.toList()..sort();
+    final selected = _selectedDate;
+    final selectedKey = selected != null
+        ? DateFormat('yyyy-MM-dd').format(selected)
+        : null;
+    final selectedSlots = selectedKey != null
+        ? (_bookedSlotsByDate[selectedKey] ?? const [])
+        : const <_BookedSlot>[];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section header
+        const SizedBox(height: 28),
+        Text(
+          'Khung giờ đã được đặt',
+          style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: colorScheme.primary,
+              ) ??
+              TextStyle(
+                fontWeight: FontWeight.w700,
+                color: colorScheme.primary,
+                fontSize: 18,
+              ),
+        ),
+        const SizedBox(height: 18),
+
+        // Dates summary
+        if (allDates.isNotEmpty) ...[
+          _glassPanel(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildDetailRow(
+                    icon: CupertinoIcons.calendar_today,
+                    label: 'Các ngày đã có đặt chỗ',
+                    value: '${allDates.length} ngày có đặt chỗ',
+                  ),
+                  const SizedBox(height: 18),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: allDates.take(7).map((dateKey) {
+                      final date = DateTime.parse(dateKey);
+                      final slots = _bookedSlotsByDate[dateKey] ?? [];
+                      final isSelected = selectedKey == dateKey;
+
+                      return InkWell(
+                        onTap: () {
+                          setState(() {
+                            _selectedDate = date;
+                          });
+                          if (!_isWithinLoadedRange(date)) {
+                            _reloadBookedSlots(anchor: date);
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? colorScheme.primaryContainer.withValues(alpha: 0.3)
+                                : colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.3 : 0.5),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected
+                                  ? colorScheme.primary.withValues(alpha: 0.3)
+                                  : colorScheme.outline.withValues(alpha: 0.1),
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                DateFormat('dd/MM', 'vi_VN').format(date),
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: isSelected
+                                          ? colorScheme.primary
+                                          : (isDark ? Colors.white : AppColors.textPrimary),
+                                    ) ??
+                                    TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: isSelected
+                                          ? colorScheme.primary
+                                          : (isDark ? Colors.white : AppColors.textPrimary),
+                                      fontSize: 12,
+                                    ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    CupertinoIcons.clock,
+                                    size: 12,
+                                    color: isSelected
+                                        ? colorScheme.primary
+                                        : (isDark ? Colors.white70 : AppColors.textSecondary),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${slots.length}',
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                          color: isSelected
+                                              ? colorScheme.primary
+                                              : (isDark
+                                                  ? Colors.white70
+                                                  : AppColors.textSecondary),
+                                        ) ??
+                                        TextStyle(
+                                          color: isSelected
+                                              ? colorScheme.primary
+                                              : (isDark
+                                                  ? Colors.white70
+                                                  : AppColors.textSecondary),
+                                          fontSize: 11,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+        ],
+
+        // Selected date slots
+        if (selected != null && selectedSlots.isNotEmpty) ...[
+          _glassPanel(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildDetailRow(
+                    icon: CupertinoIcons.lock_circle_fill,
+                    label: 'Khung giờ đã được đặt',
+                    value: DateFormat('EEEE, dd/MM/yyyy', 'vi_VN').format(selected),
+                  ),
+                  const SizedBox(height: 20),
+                  ...selectedSlots.map(
+                    (slot) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _buildBookedSlotItem(slot, theme, colorScheme, isDark),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ] else if (selected != null && selectedSlots.isEmpty) ...[
+          _glassPanel(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: _buildDetailRow(
+                icon: CupertinoIcons.calendar,
+                label: 'Thông tin',
+                value: 'Chưa có khung giờ nào được đặt trong ngày ${DateFormat('dd/MM/yyyy', 'vi_VN').format(selected)}.',
+              ),
+            ),
+          ),
+        ] else ...[
+          _glassPanel(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: _buildDetailRow(
+                icon: CupertinoIcons.calendar,
+                label: 'Hướng dẫn',
+                value: 'Chọn ngày để xem những khung giờ đã được đặt trước.',
+              ),
+            ),
+          ),
         ],
       ],
     );
   }
 
-  Widget _buildAllBookedSlotsSummary() {
+  Widget _glassPanel({
+    required Widget child,
+    EdgeInsetsGeometry padding = const EdgeInsets.all(24),
+  }) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+    final gradient = isDark
+        ? AppColors.darkGlassLayerGradient()
+        : AppColors.glassLayerGradient();
+    final borderColor = (isDark ? AppColors.navyOutline : AppColors.neutralOutline)
+        .withValues(alpha: 0.45);
 
-    // Lấy tất cả các ngày có booked slots, sắp xếp theo thứ tự
-    final allDates = _bookedSlotsByDate.keys.toList()
-      ..sort((a, b) => a.compareTo(b));
-
-    if (allDates.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    // Chỉ hiển thị tối đa 5 ngày gần nhất
-    final displayDates = allDates.take(5).toList();
-
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      elevation: 0,
-      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  CupertinoIcons.calendar_today,
-                  size: 18,
-                  color: colorScheme.primary,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Các ngày đã có đặt chỗ',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: isDark ? Colors.white : AppColors.textPrimary,
-                      ) ??
-                      TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: isDark ? Colors.white : AppColors.textPrimary,
-                        fontSize: 14,
-                      ),
-                ),
-                if (allDates.length > 5) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      '+${allDates.length - 5}',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: colorScheme.primary,
-                          ) ??
-                          TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: colorScheme.primary,
-                            fontSize: 10,
-                          ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: displayDates.map((dateKey) {
-                final date = DateTime.parse(dateKey);
-                final slots = _bookedSlotsByDate[dateKey] ?? [];
-                final isSelected = _selectedDate != null &&
-                    DateFormat('yyyy-MM-dd').format(_selectedDate!) == dateKey;
-
-                return InkWell(
-                  onTap: () {
-                    setState(() {
-                      _selectedDate = date;
-                    });
-                    if (!_isWithinLoadedRange(date)) {
-                      _reloadBookedSlots(anchor: date);
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? colorScheme.primary.withValues(alpha: 0.2)
-                          : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: isSelected
-                            ? colorScheme.primary
-                            : colorScheme.outline.withValues(alpha: 0.2),
-                        width: isSelected ? 2 : 1,
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          DateFormat('dd/MM', 'vi_VN').format(date),
-                          style: theme.textTheme.labelMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: isSelected
-                                    ? colorScheme.primary
-                                    : (isDark ? Colors.white : AppColors.textPrimary),
-                              ) ??
-                              TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: isSelected
-                                    ? colorScheme.primary
-                                    : (isDark ? Colors.white : AppColors.textPrimary),
-                                fontSize: 12,
-                              ),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              CupertinoIcons.clock,
-                              size: 12,
-                              color: isSelected
-                                  ? colorScheme.primary
-                                  : (isDark ? Colors.white70 : AppColors.textSecondary),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${slots.length} khung giờ',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                    color: isSelected
-                                        ? colorScheme.primary
-                                        : (isDark
-                                            ? Colors.white70
-                                            : AppColors.textSecondary),
-                                  ) ??
-                                  TextStyle(
-                                    color: isSelected
-                                        ? colorScheme.primary
-                                        : (isDark
-                                            ? Colors.white70
-                                            : AppColors.textSecondary),
-                                    fontSize: 10,
-                                  ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ],
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: gradient,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: borderColor),
+            boxShadow: AppColors.subtleShadow,
+          ),
+          child: Padding(
+            padding: padding,
+            child: child,
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildBookedSlotsBanner() {
+  Widget _buildDetailRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    bool isError = false,
+  }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+    final iconColor = isError ? colorScheme.error : colorScheme.primary;
 
-    if (_bookedSlotsLoading) {
-      return Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: colorScheme.primary,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Đang tải các khung giờ đã được đặt...',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                        color: isDark
-                            ? Colors.white70
-                            : AppColors.textSecondary,
-                      ) ??
-                      TextStyle(
-                        color: isDark ? Colors.white70 : AppColors.textSecondary,
-                      ),
-                ),
-              ),
-            ],
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: iconColor.withValues(alpha: isDark ? 0.22 : 0.12),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: iconColor.withValues(alpha: 0.2),
+              width: 1,
+            ),
+          ),
+          child: Icon(
+            icon,
+            size: 22,
+            color: iconColor,
           ),
         ),
-      );
-    }
-
-    if (_bookedSlotsError != null) {
-      return Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
+        const SizedBox(width: 14),
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 20,
-                    color: colorScheme.error,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Không thể tải các khung giờ đã đặt',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: colorScheme.error,
-                        ) ??
-                        TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: colorScheme.error,
-                        ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
               Text(
-                _bookedSlotsError!,
-                style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.error.withValues(alpha: 0.8),
+                label,
+                style: theme.textTheme.labelMedium?.copyWith(
+                      color: isDark
+                          ? Colors.white70
+                          : AppColors.textSecondary,
+                      fontSize: 13,
                     ) ??
                     TextStyle(
-                      color: colorScheme.error.withValues(alpha: 0.8),
-                      fontSize: 12,
+                      color: isDark ? Colors.white70 : AppColors.textSecondary,
+                      fontSize: 13,
                     ),
               ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: () => _reloadBookedSlots(
-                      anchor: _selectedDate ?? DateTime.now()),
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Thử lại'),
-                ),
+              const SizedBox(height: 6),
+              Text(
+                value,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : AppColors.textPrimary,
+                      fontSize: 16,
+                    ) ??
+                    TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : AppColors.textPrimary,
+                      fontSize: 16,
+                    ),
               ),
             ],
           ),
         ),
-      );
-    }
-
-    if (_bookedSlotsByDate.isEmpty) {
-      return Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Icon(
-                CupertinoIcons.calendar,
-                size: 20,
-                color: colorScheme.primary.withValues(alpha: 0.6),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Chưa có khung giờ nào được đặt trong khoảng thời gian này.',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                        color: isDark
-                            ? Colors.white70
-                            : AppColors.textSecondary,
-                      ) ??
-                      TextStyle(
-                        color: isDark ? Colors.white70 : AppColors.textSecondary,
-                      ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final selected = _selectedDate;
-    if (selected == null) {
-      return Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Icon(
-                CupertinoIcons.calendar,
-                size: 20,
-                color: colorScheme.primary.withValues(alpha: 0.6),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Chọn ngày để xem những khung giờ đã được đặt trước.',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                        color: isDark
-                            ? Colors.white70
-                            : AppColors.textSecondary,
-                      ) ??
-                      TextStyle(
-                        color: isDark ? Colors.white70 : AppColors.textSecondary,
-                      ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final key = DateFormat('yyyy-MM-dd').format(selected);
-    final slots = _bookedSlotsByDate[key] ?? const [];
-
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      elevation: 0,
-      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    CupertinoIcons.lock_circle_fill,
-                    size: 18,
-                    color: colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Khung giờ đã được đặt',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: isDark ? Colors.white : AppColors.textPrimary,
-                            ) ??
-                            TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: isDark ? Colors.white : AppColors.textPrimary,
-                              fontSize: 14,
-                            ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        DateFormat('EEEE, dd/MM/yyyy', 'vi_VN').format(selected),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                              color: isDark
-                                  ? Colors.white70
-                                  : AppColors.textSecondary,
-                            ) ??
-                            TextStyle(
-                              color: isDark
-                                  ? Colors.white70
-                                  : AppColors.textSecondary,
-                              fontSize: 12,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (slots.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '${slots.length}',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: colorScheme.primary,
-                          ) ??
-                          TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: colorScheme.primary,
-                            fontSize: 11,
-                          ),
-                    ),
-                  ),
-              ],
-            ),
-            if (slots.isEmpty) ...[
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.only(left: 40),
-                child: Text(
-                  'Chưa có khung giờ nào được đặt trong ngày này.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                        color: isDark
-                            ? Colors.white60
-                            : AppColors.textSecondary,
-                      ) ??
-                      TextStyle(
-                        color: isDark ? Colors.white60 : AppColors.textSecondary,
-                        fontSize: 12,
-                      ),
-                ),
-              ),
-            ] else ...[
-              const SizedBox(height: 16),
-              ...slots.map(
-                (slot) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _buildBookedSlotItem(slot, theme, colorScheme, isDark),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
+      ],
     );
   }
 
@@ -1452,76 +1519,89 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
     final statusLabel = _translateBookingStatus(slot.status);
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: statusColor.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
+        color: statusColor.withValues(alpha: isDark ? 0.15 : 0.1),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: statusColor.withValues(alpha: 0.3),
-          width: 1,
+          color: statusColor.withValues(alpha: isDark ? 0.4 : 0.3),
+          width: 1.5,
         ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 4,
-            height: 40,
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: isDark ? 0.22 : 0.12),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: statusColor.withValues(alpha: 0.2),
+                width: 1,
+              ),
+            ),
+            child: Icon(
+              CupertinoIcons.clock_fill,
+              size: 22,
               color: statusColor,
-              borderRadius: BorderRadius.circular(2),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      CupertinoIcons.clock_fill,
-                      size: 16,
-                      color: statusColor,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      '${_formatDisplayTime(slot.start)} - ${_formatDisplayTime(slot.end)}',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: isDark ? Colors.white : AppColors.textPrimary,
-                          ) ??
-                          TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: isDark ? Colors.white : AppColors.textPrimary,
-                            fontSize: 14,
-                          ),
-                    ),
-                  ],
+                Text(
+                  'Khung giờ',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                        color: isDark
+                            ? Colors.white70
+                            : AppColors.textSecondary,
+                        fontSize: 13,
+                      ) ??
+                      TextStyle(
+                        color: isDark ? Colors.white70 : AppColors.textSecondary,
+                        fontSize: 13,
+                      ),
                 ),
                 const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(6),
+                Text(
+                  '${_formatDisplayTime(slot.start)} - ${_formatDisplayTime(slot.end)}',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : AppColors.textPrimary,
+                        fontSize: 16,
+                      ) ??
+                      TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : AppColors.textPrimary,
+                        fontSize: 16,
                       ),
-                      child: Text(
-                        statusLabel,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: statusColor,
-                            ) ??
-                            TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: statusColor,
-                              fontSize: 11,
-                            ),
-                      ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: isDark ? 0.28 : 0.16),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: statusColor.withValues(alpha: isDark ? 0.6 : 0.4),
                     ),
-                  ],
+                  ),
+                  child: Text(
+                    statusLabel,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: statusColor,
+                        ) ??
+                        TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: statusColor,
+                          fontSize: 12,
+                        ),
+                  ),
                 ),
               ],
             ),
@@ -1660,29 +1740,40 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
   }
 
   Widget _buildCombosSection() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     if (_combos.isEmpty) {
-      return Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: const Padding(
-          padding: EdgeInsets.all(16),
-          child: Text('Hiện chưa có gói combo khả dụng.'),
+      return _glassPanel(
+        child: _buildDetailRow(
+          icon: CupertinoIcons.square_grid_2x2_fill,
+          label: 'Gói combo',
+          value: 'Hiện chưa có gói combo khả dụng.',
         ),
       );
     }
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Chọn gói combo',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            ..._combos.map(
-              (combo) => RadioListTile<String>(
+    return _glassPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Chọn gói combo',
+            style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.primary,
+                ) ??
+                TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.primary,
+                  fontSize: 18,
+                ),
+          ),
+          const SizedBox(height: 18),
+          ..._combos.map(
+            (combo) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: RadioListTile<String>(
                 value: combo['id'].toString(),
                 groupValue: _selectedComboId, // ignore: deprecated_member_use
                 onChanged: (value) { // ignore: deprecated_member_use
@@ -1690,54 +1781,96 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                     _selectedComboId = value;
                   });
                 },
-                title: Text(combo['name']?.toString() ?? 'Combo'),
+                title: Text(
+                  combo['name']?.toString() ?? 'Combo',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : AppColors.textPrimary,
+                      ) ??
+                      TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : AppColors.textPrimary,
+                      ),
+                ),
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (combo['description'] != null &&
-                        combo['description'].toString().isNotEmpty)
-                      Text(combo['description'].toString()),
+                        combo['description'].toString().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        combo['description'].toString(),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                              color: isDark
+                                  ? Colors.white70
+                                  : AppColors.textSecondary,
+                            ) ??
+                            TextStyle(
+                              color: isDark
+                                  ? Colors.white70
+                                  : AppColors.textSecondary,
+                              fontSize: 12,
+                            ),
+                      ),
+                    ],
+                    const SizedBox(height: 4),
                     Text(
                       '${_formatCurrency((combo['price'] as num?) ?? 0)} đ / người',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: Colors.teal,
-                      ),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.primary,
+                          ) ??
+                          TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.primary,
+                            fontSize: 14,
+                          ),
                     ),
                   ],
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildTicketsSection() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     if (_tickets.isEmpty) {
-      return Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: const Padding(
-          padding: EdgeInsets.all(16),
-          child: Text('Hiện chưa có loại vé khả dụng.'),
+      return _glassPanel(
+        child: _buildDetailRow(
+          icon: CupertinoIcons.ticket_fill,
+          label: 'Loại vé',
+          value: 'Hiện chưa có loại vé khả dụng.',
         ),
       );
     }
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Chọn loại vé',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            ..._tickets.map(
-              (ticket) => RadioListTile<String>(
+    return _glassPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Chọn loại vé',
+            style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.primary,
+                ) ??
+                TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.primary,
+                  fontSize: 18,
+                ),
+          ),
+          const SizedBox(height: 18),
+          ..._tickets.map(
+            (ticket) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: RadioListTile<String>(
                 value: ticket['id'].toString(),
                 groupValue: _selectedTicketId, // ignore: deprecated_member_use
                 onChanged: (value) { // ignore: deprecated_member_use
@@ -1745,52 +1878,105 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                     _selectedTicketId = value;
                   });
                 },
-                title: Text(ticket['name']?.toString() ?? 'Vé'),
+                title: Text(
+                  ticket['name']?.toString() ?? 'Vé',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : AppColors.textPrimary,
+                      ) ??
+                      TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : AppColors.textPrimary,
+                      ),
+                ),
                 subtitle: Text(
                   '${_formatCurrency((ticket['price'] as num?) ?? 0)} đ / người',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.teal,
-                  ),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: colorScheme.primary,
+                      ) ??
+                      TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: colorScheme.primary,
+                        fontSize: 14,
+                      ),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildOptionsSection() {
     if (_options.isEmpty) return const SizedBox.shrink();
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Tùy chọn bổ sung',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            ..._options.map(
-              (option) {
-                final optionId = option['id'].toString();
-                final isSelected = _selectedOptions.containsKey(optionId);
-                final quantity = _selectedOptions[optionId] ?? 0;
-                return Card(
-                  margin: const EdgeInsets.symmetric(vertical: 6),
+
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    return _glassPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Tùy chọn bổ sung',
+            style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.primary,
+                ) ??
+                TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.primary,
+                  fontSize: 18,
+                ),
+          ),
+          const SizedBox(height: 18),
+          ..._options.map(
+            (option) {
+              final optionId = option['id'].toString();
+              final isSelected = _selectedOptions.containsKey(optionId);
+              final quantity = _selectedOptions[optionId] ?? 0;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? colorScheme.primaryContainer.withValues(alpha: 0.3)
+                        : colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.3 : 0.5),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isSelected
+                          ? colorScheme.primary.withValues(alpha: 0.3)
+                          : colorScheme.outline.withValues(alpha: 0.1),
+                    ),
+                  ),
                   child: CheckboxListTile(
                     value: isSelected,
-                    title: Text(option['name']?.toString() ?? 'Tùy chọn'),
+                    title: Text(
+                      option['name']?.toString() ?? 'Tùy chọn',
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : AppColors.textPrimary,
+                          ) ??
+                          TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : AppColors.textPrimary,
+                          ),
+                    ),
                     subtitle: Text(
                       '${_formatCurrency((option['price'] as num?) ?? 0)} đ',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: Colors.teal,
-                      ),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.primary,
+                          ) ??
+                          TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.primary,
+                            fontSize: 14,
+                          ),
                     ),
                     controlAffinity: ListTileControlAffinity.leading,
                     onChanged: (checked) {
@@ -1817,7 +2003,17 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                                       }
                                     : null,
                               ),
-                              Text('$quantity'),
+                              Text(
+                                '$quantity',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: isDark ? Colors.white : AppColors.textPrimary,
+                                    ) ??
+                                    TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: isDark ? Colors.white : AppColors.textPrimary,
+                                    ),
+                              ),
                               IconButton(
                                 icon: const Icon(Icons.add_circle_outline),
                                 onPressed: () {
@@ -1830,143 +2026,270 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                           )
                         : null,
                   ),
-                );
-              },
-            ),
-          ],
-        ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildPeopleSelector() {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Số người tham gia',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    return _glassPanel(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: _buildDetailRow(
+              icon: CupertinoIcons.person_3_fill,
+              label: 'Số người tham gia',
+              value: '$_numberOfPeople người',
             ),
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.remove_circle_outline),
-                  onPressed: _numberOfPeople > 1
-                      ? () => setState(() => _numberOfPeople--)
-                      : null,
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.remove_circle_outline),
+                onPressed: _numberOfPeople > 1
+                    ? () => setState(() => _numberOfPeople--)
+                    : null,
+                style: IconButton.styleFrom(
+                  foregroundColor: _numberOfPeople > 1
+                      ? colorScheme.primary
+                      : (isDark ? Colors.white38 : Colors.grey),
                 ),
-                Text(
-                  '$_numberOfPeople',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: colorScheme.primary.withValues(alpha: 0.3),
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.add_circle_outline),
-                  onPressed: _numberOfPeople < _maxCapacity
-                      ? () => setState(() => _numberOfPeople++)
-                      : null,
+                child: Text(
+                  '$_numberOfPeople',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: colorScheme.primary,
+                      ) ??
+                      TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: colorScheme.primary,
+                      ),
                 ),
-              ],
-            ),
-          ],
-        ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.add_circle_outline),
+                onPressed: _numberOfPeople < _maxCapacity
+                    ? () => setState(() => _numberOfPeople++)
+                    : null,
+                style: IconButton.styleFrom(
+                  foregroundColor: _numberOfPeople < _maxCapacity
+                      ? colorScheme.primary
+                      : (isDark ? Colors.white38 : Colors.grey),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildPurposeField() {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Ghi chú / mục đích (tuỳ chọn)',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _purposeController,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                hintText: 'Ví dụ: tổ chức sinh nhật gia đình...',
-                border: OutlineInputBorder(),
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    return _glassPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Ghi chú / mục đích (tuỳ chọn)',
+            style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: isDark ? Colors.white : AppColors.textPrimary,
+                ) ??
+                TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: isDark ? Colors.white : AppColors.textPrimary,
+                ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _purposeController,
+            maxLines: 3,
+            style: theme.textTheme.bodyLarge?.copyWith(
+                  color: isDark ? Colors.white : AppColors.textPrimary,
+                ) ??
+                TextStyle(
+                  color: isDark ? Colors.white : AppColors.textPrimary,
+                ),
+            decoration: InputDecoration(
+              hintText: 'Ví dụ: tổ chức sinh nhật gia đình...',
+              hintStyle: TextStyle(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.5)
+                    : AppColors.textSecondary,
+              ),
+              filled: true,
+              fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.3 : 0.5),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: colorScheme.outline.withValues(alpha: 0.2),
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: colorScheme.outline.withValues(alpha: 0.2),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: colorScheme.primary.withValues(alpha: 0.5),
+                  width: 2,
+                ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildPriceSummary() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final total = _calculateTotalAmount();
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Tổng chi phí dự kiến',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Chi phí cơ bản'),
-                Text(
-                  '${_formatCurrency(_calculateBaseAmount())} đ',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+
+    return _glassPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Tổng chi phí dự kiến',
+            style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.primary,
+                ) ??
+                TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.primary,
+                  fontSize: 18,
                 ),
-              ],
-            ),
-            if (_selectedOptions.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Tùy chọn bổ sung'),
-                  Text(
-                    '${_formatCurrency(_calculateOptionsAmount())} đ',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Chi phí cơ bản',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.75)
+                          : AppColors.textSecondary,
+                    ) ??
+                    TextStyle(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.75)
+                          : AppColors.textSecondary,
+                    ),
+              ),
+              Text(
+                '${_formatCurrency(_calculateBaseAmount())} đ',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : AppColors.textPrimary,
+                    ) ??
+                    TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : AppColors.textPrimary,
+                    ),
               ),
             ],
-            const Divider(height: 24),
+          ),
+          if (_selectedOptions.isNotEmpty) ...[
+            const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Tổng thanh toán',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
+                Text(
+                  'Tùy chọn bổ sung',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.75)
+                            : AppColors.textSecondary,
+                      ) ??
+                      TextStyle(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.75)
+                            : AppColors.textSecondary,
+                      ),
                 ),
                 Text(
-                  '${_formatCurrency(total)} đ',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.teal,
-                  ),
+                  '${_formatCurrency(_calculateOptionsAmount())} đ',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : AppColors.textPrimary,
+                      ) ??
+                      TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : AppColors.textPrimary,
+                      ),
                 ),
               ],
             ),
           ],
-        ),
+          const SizedBox(height: 18),
+          Divider(
+            height: 1,
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Tổng thanh toán',
+                style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? Colors.white : AppColors.textPrimary,
+                    ) ??
+                    TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? Colors.white : AppColors.textPrimary,
+                    ),
+              ),
+              Text(
+                '${_formatCurrency(total)} đ',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: colorScheme.primary,
+                    ) ??
+                    TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      color: colorScheme.primary,
+                    ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
