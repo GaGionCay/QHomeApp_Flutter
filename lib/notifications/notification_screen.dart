@@ -14,7 +14,6 @@ import 'widgets/notification_group_header.dart';
 import 'widgets/notification_list_skeleton.dart';
 import 'widgets/notification_search_bar.dart';
 import 'widgets/notification_read_status_filter.dart';
-import 'widgets/notification_type_filter.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({
@@ -170,6 +169,13 @@ class _NotificationScreenState extends State<NotificationScreen>
     // Reload read IDs from local storage to ensure we have the latest data
     _readIds = await NotificationReadStore.load(_residentId!);
 
+    // Update read status in _allNotifications if using client-side pagination
+    if (_viewModel.readStatusFilter != NotificationReadStatusFilter.all) {
+      // Update all notifications in _allNotifications based on read IDs
+      _viewModel.updateAllNotificationsReadStatus(_readIds);
+    }
+
+    // Also update current page notifications
     final notifications =
         List<ResidentNotification>.from(_viewModel.notifications);
     bool updated = false;
@@ -330,6 +336,8 @@ class _NotificationScreenState extends State<NotificationScreen>
       readAt: DateTime.now(),
     );
     _viewModel.updateNotifications(notifications);
+    // Also update read status in _allNotifications if using client-side pagination
+    _viewModel.updateNotificationReadStatus(notificationId, true);
     if (!alreadyRead && _residentId != null) {
       NotificationReadStore.markRead(_residentId!, notificationId);
     }
@@ -380,7 +388,9 @@ class _NotificationScreenState extends State<NotificationScreen>
   }
 
   Widget _buildBody(BuildContext context, NotificationViewModel viewModel) {
-    if (viewModel.isLoading && viewModel.notifications.isEmpty) {
+    // Show loading skeleton when loading (even if notifications is not empty, 
+    // because we might be loading all notifications for filtering)
+    if (viewModel.isLoading) {
       return NotificationListSkeleton(controller: _scrollController);
     }
 
@@ -415,7 +425,8 @@ class _NotificationScreenState extends State<NotificationScreen>
 
     final grouped = viewModel.groupedNotifications;
 
-    if (grouped.isEmpty) {
+    // Only show empty state if not loading and truly empty
+    if (grouped.isEmpty && !viewModel.isLoading) {
       return _buildEmptyState(context);
     }
 
@@ -560,14 +571,10 @@ class _NotificationScreenState extends State<NotificationScreen>
                       ),
                       NotificationReadStatusFilterWidget(
                         currentFilter: viewModel.readStatusFilter,
-                        onFilterChanged: (filter) {
+                        onFilterChanged: (filter) async {
                           viewModel.setReadStatusFilter(filter);
-                        },
-                      ),
-                      NotificationTypeFilterWidget(
-                        currentFilter: viewModel.typeFilter,
-                        onFilterChanged: (filter) {
-                          viewModel.setTypeFilter(filter);
+                          await viewModel.loadNotifications(refresh: true);
+                          await _updateReadStatus();
                         },
                       ),
                       NotificationDateFilter(

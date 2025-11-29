@@ -225,7 +225,7 @@ class _NotificationCardState extends State<NotificationCard>
                                               BorderRadius.circular(16),
                                         ),
                                         child: Text(
-                                          notification.type.toUpperCase(),
+                                          _getTypeDisplayName(notification.type),
                                           style: theme.textTheme.labelSmall
                                               ?.copyWith(
                                             fontWeight: FontWeight.w600,
@@ -276,12 +276,32 @@ class _NotificationCardState extends State<NotificationCard>
 
   Color _getTypeColor(String type) {
     switch (type.toUpperCase()) {
-      case 'SYSTEM':
-        return AppColors.primaryEmerald;
-      case 'PAYMENT':
+      case 'CARD_APPROVED':
+        return AppColors.success;
+      case 'CARD_REJECTED':
+        return AppColors.danger;
+      case 'CARD_PENDING':
+        return AppColors.warning;
+      case 'CARD_FEE_REMINDER':
         return AppColors.primaryBlue;
+      case 'REQUEST':
+        return AppColors.primaryEmerald;
+      case 'BILL':
+        return AppColors.primaryBlue;
+      case 'PAYMENT':
+        return AppColors.success;
+      case 'ELECTRICITY':
+        return AppColors.warning;
+      case 'WATER':
+        return const Color(0xFF2196F3);
+      case 'CONTRACT':
+        return AppColors.primaryEmerald;
       case 'SERVICE':
         return AppColors.warning;
+      case 'SYSTEM':
+        return AppColors.primaryEmerald;
+      case 'NEWS':
+        return AppColors.primaryBlue;
       default:
         return Colors.grey;
     }
@@ -295,8 +315,69 @@ class _NotificationCardState extends State<NotificationCard>
         return Icons.payment_rounded;
       case 'SERVICE':
         return Icons.room_service_rounded;
+      case 'CARD_APPROVED':
+      case 'CARD_REJECTED':
+      case 'CARD_PENDING':
+      case 'CARD_FEE_REMINDER':
+        return Icons.credit_card_rounded;
+      case 'REQUEST':
+        return Icons.request_quote_rounded;
+      case 'BILL':
+        return Icons.receipt_long_rounded;
+      case 'ELECTRICITY':
+        return Icons.bolt_rounded;
+      case 'WATER':
+        return Icons.water_drop_rounded;
+      case 'CONTRACT':
+        return Icons.description_rounded;
+      case 'NEWS':
+        return Icons.newspaper_rounded;
       default:
         return Icons.notifications_outlined;
+    }
+  }
+
+  /// Map notification type to Vietnamese display name (no accents, no underscores)
+  String _getTypeDisplayName(String type) {
+    switch (type.toUpperCase()) {
+      case 'CARD_APPROVED':
+        return 'The cu dan da duyet';
+      case 'CARD_REJECTED':
+        return 'The cu dan bi tu choi';
+      case 'CARD_PENDING':
+        return 'The cu dan dang cho';
+      case 'CARD_FEE_REMINDER':
+        return 'Nhac nho phi the';
+      case 'REQUEST':
+        return 'Yeu cau';
+      case 'BILL':
+        return 'Hoa don';
+      case 'PAYMENT':
+        return 'Thanh toan';
+      case 'ELECTRICITY':
+        return 'Tien dien';
+      case 'WATER':
+        return 'Tien nuoc';
+      case 'CONTRACT':
+        return 'Hop dong';
+      case 'SERVICE':
+        return 'Dich vu';
+      case 'SYSTEM':
+        return 'He thong';
+      case 'NEWS':
+        return 'Tin tuc';
+      default:
+        // Fallback: convert to Vietnamese without accents and replace underscores with spaces
+        return type
+            .toUpperCase()
+            .replaceAll('_', ' ')
+            .replaceAll('A', 'A')
+            .replaceAll('E', 'E')
+            .replaceAll('I', 'I')
+            .replaceAll('O', 'O')
+            .replaceAll('U', 'U')
+            .toLowerCase()
+            .replaceAll(' ', '');
     }
   }
 }

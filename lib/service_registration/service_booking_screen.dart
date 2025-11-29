@@ -5,11 +5,13 @@ import 'dart:ui';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../auth/asset_maintenance_api_client.dart';
+import '../core/app_router.dart';
 import '../theme/app_colors.dart';
 import 'service_booking_service.dart';
 import 'unpaid_service_bookings_screen.dart';
@@ -37,6 +39,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
   final AppLinks _appLinks = AppLinks();
   StreamSubscription<Uri?>? _paymentSub;
   static const String _pendingPaymentKey = 'pending_service_booking_payment';
+  bool _isNavigatingToMain = false;
 
   bool _loading = true;
   bool _submitting = false;
@@ -111,6 +114,21 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
     }
   }
 
+  void _navigateToServicesHome({String? snackMessage}) {
+    if (!mounted || _isNavigatingToMain) return;
+    _isNavigatingToMain = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.go(
+        AppRoute.main.path,
+        extra: MainShellArgs(
+          initialIndex: 1,
+          snackMessage: snackMessage,
+        ),
+      );
+    });
+  }
+
   void _listenForPaymentResult() {
     _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
       if (uri == null) return;
@@ -124,13 +142,9 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
         if (!mounted) return;
 
         if (success && responseCode == '00') {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ Thanh toán dịch vụ thành công!'),
-              backgroundColor: Colors.green,
-            ),
+          _navigateToServicesHome(
+            snackMessage: '✅ Thanh toán dịch vụ thành công!',
           );
-          Navigator.pop(context, true);
         } else {
           _showMessage('Thanh toán thất bại. Vui lòng thử lại.', isError: true);
         }

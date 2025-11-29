@@ -32,6 +32,7 @@ class PaidItem {
   final String? description;
   final IconData icon;
   final Color iconColor;
+  final String? unitId; // Store unitId for loading invoice details
 
   PaidItem({
     required this.id,
@@ -42,6 +43,7 @@ class PaidItem {
     this.description,
     required this.icon,
     required this.iconColor,
+    this.unitId,
   });
 }
 
@@ -209,10 +211,12 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
               type = PaidItemType.electricity;
               icon = Icons.bolt;
               iconColor = const Color(0xFFFFD700);
+              break;
             case 'WATER':
               type = PaidItemType.water;
               icon = Icons.water_drop;
               iconColor = const Color(0xFF4A90E2);
+              break;
             default:
               type = PaidItemType.utility;
               icon = Icons.home;
@@ -221,15 +225,22 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
 
           final paymentDate = _parsePaymentDate(invoice.serviceDate);
           if (paymentDate != null) {
+            // Map serviceCode to display name
+            final displayName = _mapServiceCodeToDisplayName(
+              invoice.serviceCode,
+              invoice.serviceCodeDisplay,
+            );
+            
             items.add(PaidItem(
               id: invoice.invoiceId,
               type: type,
-              name: invoice.serviceCodeDisplay,
+              name: displayName,
               amount: invoice.lineTotal,
               paymentDate: paymentDate,
               description: invoice.description,
               icon: icon,
               iconColor: iconColor,
+              unitId: unitIdForRequest.isNotEmpty ? unitIdForRequest : null,
             ));
           }
         }
@@ -240,16 +251,17 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
         if (request.status.toUpperCase() != 'DONE') continue;
         // Use createdAt as payment date if paymentDate is not available
         final paymentDate = request.createdAt;
-        items.add(PaidItem(
-          id: request.id,
-          type: PaidItemType.cleaning,
-          name: 'Dọn dẹp',
-          amount: 0.0, // Cleaning requests may not have payment amount
-          paymentDate: paymentDate,
-          description: request.cleaningType,
-          icon: Icons.cleaning_services,
-          iconColor: const Color(0xFF24D1C4),
-        ));
+          items.add(PaidItem(
+            id: request.id,
+            type: PaidItemType.cleaning,
+            name: 'Dọn dẹp',
+            amount: 0.0, // Cleaning requests may not have payment amount
+            paymentDate: paymentDate,
+            description: request.cleaningType,
+            icon: Icons.cleaning_services,
+            iconColor: const Color(0xFF24D1C4),
+            unitId: unitIdForRequest.isNotEmpty ? unitIdForRequest : null,
+          ));
       }
 
       // Process maintenance requests
@@ -265,6 +277,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
           description: request.title,
           icon: Icons.handyman,
           iconColor: const Color(0xFFFF6B6B),
+          unitId: unitIdForRequest.isNotEmpty ? unitIdForRequest : null,
         ));
       }
 
@@ -272,15 +285,31 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
       for (final booking in bookings) {
         final paymentDate = _parseBookingPaymentDate(booking);
         if (paymentDate != null) {
+          // Try multiple fields for amount
+          final amount = (booking['totalPrice'] as num?)?.toDouble() ??
+                        (booking['amount'] as num?)?.toDouble() ??
+                        (booking['totalAmount'] as num?)?.toDouble() ??
+                        (booking['price'] as num?)?.toDouble() ??
+                        (booking['paymentAmount'] as num?)?.toDouble() ??
+                        0.0;
+          
+          // Get service name and map serviceCode if available
+          String serviceName = booking['serviceName']?.toString() ?? 'Tiện ích';
+          final serviceCode = booking['serviceCode']?.toString();
+          if (serviceCode != null) {
+            serviceName = _mapServiceCodeToDisplayName(serviceCode, serviceName);
+          }
+          
           items.add(PaidItem(
             id: booking['id']?.toString() ?? '',
             type: PaidItemType.utility,
-            name: booking['serviceName']?.toString() ?? 'Tiện ích',
-            amount: (booking['totalPrice'] as num?)?.toDouble() ?? 0.0,
+            name: serviceName,
+            amount: amount,
             paymentDate: paymentDate,
             description: booking['serviceName']?.toString(),
             icon: Icons.spa,
             iconColor: const Color(0xFF9B59B6),
+            unitId: unitIdForRequest.isNotEmpty ? unitIdForRequest : null,
           ));
         }
       }
@@ -590,7 +619,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
                               '$typeName: ${NumberFormat.currency(locale: 'vi_VN', symbol: '₫').format(entry.value).replaceAll('.', ',')}',
                               style: theme.textTheme.bodySmall,
                             ),
-                            backgroundColor: _getTypeColor(entry.key).withValues(alpha: 0.1),
+                            backgroundColor: _getTypeColor(entry.key).withOpacity(0.1),
                             labelStyle: TextStyle(
                               color: _getTypeColor(entry.key),
                               fontSize: 12,
@@ -747,99 +776,149 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
   }
 
   Widget _buildPaidItemCard(PaidItem item, ThemeData theme) {
-    return _PaidInvoicesGlassCard(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Icon and Status
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: item.iconColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  item.icon,
-                  color: item.iconColor,
-                  size: 24,
-                ),
-              ),
-              Flexible(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    return InkWell(
+      onTap: () => _showPaidItemDetail(context, item),
+      borderRadius: BorderRadius.circular(28),
+      child: _PaidInvoicesGlassCard(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            // Icon and Status
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: AppColors.success.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
+                    color: item.iconColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(14),
                   ),
+                  child: Icon(
+                    item.icon,
+                    color: item.iconColor,
+                    size: 24,
+                  ),
+                ),
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.success.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'Đã thanh toán',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: AppColors.success,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 10,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            
+            // Service Name
+            Flexible(
+              child: Text(
+                item.name,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ) ?? TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            
+            // Amount
+            Flexible(
+              child: Text(
+                NumberFormat.currency(locale: 'vi_VN', symbol: '₫')
+                    .format(item.amount)
+                    .replaceAll('.', ','),
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            
+            // Payment Date
+            Row(
+              children: [
+                Icon(
+                  Icons.calendar_today,
+                  size: 14,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+                const SizedBox(width: 4),
+                Flexible(
                   child: Text(
-                    'Đã thanh toán',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: AppColors.success,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 10,
+                    DateFormat('dd/MM/yyyy').format(item.paymentDate),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-              ),
-            ],
-          ),
-          
-          // Service Name
-          Flexible(
-            child: Text(
-              item.name,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+              ],
             ),
-          ),
-          
-          // Amount
-          Flexible(
-            child: Text(
-              NumberFormat.currency(locale: 'vi_VN', symbol: '₫')
-                  .format(item.amount)
-                  .replaceAll('.', ','),
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          
-          // Payment Date
-          Row(
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showPaidItemDetail(BuildContext context, PaidItem item) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.35),
+      isDismissible: true,
+      enableDrag: true,
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: Stack(
             children: [
-              Icon(
-                Icons.calendar_today,
-                size: 14,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              // Backdrop - tap to dismiss
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).maybePop(),
+                ),
               ),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  DateFormat('dd/MM/yyyy').format(item.paymentDate),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              // Sheet content - prevent tap propagation
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {}, // Prevent tap from propagating to backdrop
+                  child: _PaidItemDetailSheet(
+                    item: item,
+                    invoiceService: _invoiceService,
+                    bookingService: _bookingService,
+                    cleaningRequestService: _cleaningRequestService,
+                    maintenanceRequestService: _maintenanceRequestService,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -918,5 +997,718 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
       default:
         return 'Mới nhất';
     }
+  }
+
+  /// Map serviceCode to Vietnamese display name
+  String _mapServiceCodeToDisplayName(String serviceCode, String fallback) {
+    switch (serviceCode.toUpperCase()) {
+      case 'RESIDENT_CARD':
+        return 'Thẻ cư dân';
+      case 'VEHICLE_CARD':
+        return 'Thẻ xe';
+      default:
+        return fallback;
+    }
+  }
+}
+
+class _PaidItemDetailSheet extends StatefulWidget {
+  const _PaidItemDetailSheet({
+    required this.item,
+    required this.invoiceService,
+    required this.bookingService,
+    required this.cleaningRequestService,
+    required this.maintenanceRequestService,
+  });
+
+  final PaidItem item;
+  final InvoiceService invoiceService;
+  final ServiceBookingService bookingService;
+  final CleaningRequestService cleaningRequestService;
+  final MaintenanceRequestService maintenanceRequestService;
+
+  @override
+  State<_PaidItemDetailSheet> createState() => _PaidItemDetailSheetState();
+}
+
+class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
+  Map<String, dynamic>? _detailData;
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDetail();
+  }
+
+  Future<void> _loadDetail() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      switch (widget.item.type) {
+        case PaidItemType.electricity:
+        case PaidItemType.water:
+          // Load invoice detail for electricity/water
+          if (widget.item.unitId != null && widget.item.unitId!.isNotEmpty) {
+            try {
+              final invoices = await widget.invoiceService.getPaidInvoicesByCategory(
+                unitId: widget.item.unitId!,
+              );
+              for (final category in invoices) {
+                for (final invoice in category.invoices) {
+                  if (invoice.invoiceId == widget.item.id) {
+                    setState(() {
+                      _detailData = {
+                        'type': 'invoice',
+                        'invoiceId': invoice.invoiceId,
+                        'serviceCode': invoice.serviceCode,
+                        'description': invoice.description,
+                        'serviceDate': invoice.serviceDate,
+                        'lineTotal': invoice.lineTotal,
+                        'quantity': invoice.quantity,
+                        'unit': invoice.unit,
+                        'unitPrice': invoice.unitPrice,
+                        'taxAmount': invoice.taxAmount,
+                      };
+                    });
+                    break;
+                  }
+                }
+              }
+            } catch (e) {
+              debugPrint('Error loading invoice detail: $e');
+            }
+          }
+          break;
+        case PaidItemType.utility:
+          // Try booking first, then invoice
+          try {
+            final booking = await widget.bookingService.getBookingById(widget.item.id);
+            setState(() {
+              _detailData = {
+                'type': 'booking',
+                ...booking,
+              };
+            });
+          } catch (e) {
+            debugPrint('Error loading booking detail, trying invoice: $e');
+            // Fallback to invoice if unitId is available
+            if (widget.item.unitId != null && widget.item.unitId!.isNotEmpty) {
+              try {
+                final invoices = await widget.invoiceService.getPaidInvoicesByCategory(
+                  unitId: widget.item.unitId!,
+                );
+                for (final category in invoices) {
+                  for (final invoice in category.invoices) {
+                    if (invoice.invoiceId == widget.item.id) {
+                      setState(() {
+                        _detailData = {
+                          'type': 'invoice',
+                          'invoiceId': invoice.invoiceId,
+                          'serviceCode': invoice.serviceCode,
+                          'description': invoice.description,
+                          'serviceDate': invoice.serviceDate,
+                          'lineTotal': invoice.lineTotal,
+                          'quantity': invoice.quantity,
+                          'unit': invoice.unit,
+                          'unitPrice': invoice.unitPrice,
+                          'taxAmount': invoice.taxAmount,
+                        };
+                      });
+                      break;
+                    }
+                  }
+                }
+              } catch (e2) {
+                debugPrint('Error loading invoice detail: $e2');
+              }
+            }
+          }
+          break;
+        case PaidItemType.cleaning:
+          // Load cleaning request detail
+          try {
+            final requests = await widget.cleaningRequestService.getPaidRequests();
+            final request = requests.firstWhere(
+              (r) => r.id == widget.item.id,
+              orElse: () => throw Exception('Not found'),
+            );
+            setState(() {
+              _detailData = {
+                'type': 'cleaning',
+                'id': request.id,
+                'cleaningType': request.cleaningType,
+                'note': request.note,
+                'location': request.location,
+                'createdAt': request.createdAt,
+                'status': request.status,
+              };
+            });
+          } catch (e) {
+            debugPrint('Error loading cleaning detail: $e');
+          }
+          break;
+        case PaidItemType.repair:
+          // Load maintenance request detail
+          try {
+            final requests = await widget.maintenanceRequestService.getPaidRequests();
+            final request = requests.firstWhere(
+              (r) => r.id == widget.item.id,
+              orElse: () => throw Exception('Not found'),
+            );
+            setState(() {
+              _detailData = {
+                'type': 'repair',
+                'id': request.id,
+                'title': request.title,
+                'note': request.note,
+                'location': request.location,
+                'createdAt': request.createdAt,
+                'paymentDate': request.paymentDate,
+                'paymentAmount': request.paymentAmount,
+                'status': request.status,
+              };
+            });
+          } catch (e) {
+            debugPrint('Error loading repair detail: $e');
+          }
+          break;
+      }
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark
+                ? const Color(0xFF0F213A)
+                : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: colorScheme.onSurface.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: widget.item.iconColor.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Icon(
+                        widget.item.icon,
+                        color: widget.item.iconColor,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.item.name,
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Đã thanh toán',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: AppColors.success,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Content
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _error != null
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.error_outline,
+                                    size: 48,
+                                    color: colorScheme.error,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'Không thể tải chi tiết',
+                                    style: theme.textTheme.titleMedium,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _error!,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: colorScheme.onSurface.withValues(alpha: 0.6),
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : ListView(
+                            controller: scrollController,
+                            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                            children: [
+                              _buildDetailContent(theme, colorScheme, isDark),
+                            ],
+                          ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailContent(ThemeData theme, ColorScheme colorScheme, bool isDark) {
+    if (_detailData == null) {
+      return _buildBasicInfo(theme, colorScheme, isDark);
+    }
+
+    final type = _detailData!['type'] as String?;
+    switch (type) {
+      case 'invoice':
+        return _buildInvoiceDetail(theme, colorScheme, isDark);
+      case 'booking':
+        return _buildBookingDetail(theme, colorScheme, isDark);
+      case 'cleaning':
+        return _buildCleaningDetail(theme, colorScheme, isDark);
+      case 'repair':
+        return _buildRepairDetail(theme, colorScheme, isDark);
+      default:
+        return _buildBasicInfo(theme, colorScheme, isDark);
+    }
+  }
+
+  Widget _buildBasicInfo(ThemeData theme, ColorScheme colorScheme, bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildInfoRow(
+          theme,
+          colorScheme,
+          isDark,
+          Icons.attach_money,
+          'Số tiền',
+          NumberFormat.currency(locale: 'vi_VN', symbol: '₫')
+              .format(widget.item.amount)
+              .replaceAll('.', ','),
+        ),
+        const SizedBox(height: 16),
+        _buildInfoRow(
+          theme,
+          colorScheme,
+          isDark,
+          Icons.calendar_today,
+          'Ngày thanh toán',
+          DateFormat('dd/MM/yyyy HH:mm').format(widget.item.paymentDate),
+        ),
+        if (widget.item.description != null) ...[
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            theme,
+            colorScheme,
+            isDark,
+            Icons.description,
+            'Mô tả',
+            widget.item.description!,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildInvoiceDetail(ThemeData theme, ColorScheme colorScheme, bool isDark) {
+    final data = _detailData!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildInfoRow(
+          theme,
+          colorScheme,
+          isDark,
+          Icons.receipt_long,
+          'Mã hóa đơn',
+          data['invoiceId']?.toString() ?? widget.item.id,
+        ),
+        const SizedBox(height: 16),
+        _buildInfoRow(
+          theme,
+          colorScheme,
+          isDark,
+          Icons.attach_money,
+          'Tổng tiền',
+          NumberFormat.currency(locale: 'vi_VN', symbol: '₫')
+              .format(data['lineTotal'] ?? widget.item.amount)
+              .replaceAll('.', ','),
+        ),
+        if (data['quantity'] != null && data['unitPrice'] != null) ...[
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            theme,
+            colorScheme,
+            isDark,
+            Icons.numbers,
+            'Số lượng',
+            '${data['quantity']} ${data['unit'] ?? ''}',
+          ),
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            theme,
+            colorScheme,
+            isDark,
+            Icons.price_check,
+            'Đơn giá',
+            NumberFormat.currency(locale: 'vi_VN', symbol: '₫')
+                .format(data['unitPrice'])
+                .replaceAll('.', ','),
+          ),
+        ],
+        if (data['taxAmount'] != null && (data['taxAmount'] as num) > 0) ...[
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            theme,
+            colorScheme,
+            isDark,
+            Icons.receipt,
+            'Thuế',
+            NumberFormat.currency(locale: 'vi_VN', symbol: '₫')
+                .format(data['taxAmount'])
+                .replaceAll('.', ','),
+          ),
+        ],
+        const SizedBox(height: 16),
+        _buildInfoRow(
+          theme,
+          colorScheme,
+          isDark,
+          Icons.calendar_today,
+          'Ngày dịch vụ',
+          data['serviceDate']?.toString() ?? DateFormat('dd/MM/yyyy').format(widget.item.paymentDate),
+        ),
+        const SizedBox(height: 16),
+        _buildInfoRow(
+          theme,
+          colorScheme,
+          isDark,
+          Icons.calendar_today,
+          'Ngày thanh toán',
+          DateFormat('dd/MM/yyyy HH:mm').format(widget.item.paymentDate),
+        ),
+        if (data['description'] != null && data['description'].toString().isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            theme,
+            colorScheme,
+            isDark,
+            Icons.description,
+            'Mô tả',
+            data['description'].toString(),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildBookingDetail(ThemeData theme, ColorScheme colorScheme, bool isDark) {
+    final data = _detailData!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildInfoRow(
+          theme,
+          colorScheme,
+          isDark,
+          Icons.attach_money,
+          'Tổng tiền',
+          NumberFormat.currency(locale: 'vi_VN', symbol: '₫')
+              .format(data['totalPrice'] ?? data['amount'] ?? widget.item.amount)
+              .replaceAll('.', ','),
+        ),
+        const SizedBox(height: 16),
+        _buildInfoRow(
+          theme,
+          colorScheme,
+          isDark,
+          Icons.calendar_today,
+          'Ngày đặt',
+          data['createdAt'] != null
+              ? DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(data['createdAt'].toString()).toLocal())
+              : DateFormat('dd/MM/yyyy').format(widget.item.paymentDate),
+        ),
+        const SizedBox(height: 16),
+        _buildInfoRow(
+          theme,
+          colorScheme,
+          isDark,
+          Icons.calendar_today,
+          'Ngày thanh toán',
+          DateFormat('dd/MM/yyyy HH:mm').format(widget.item.paymentDate),
+        ),
+        if (data['serviceName'] != null) ...[
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            theme,
+            colorScheme,
+            isDark,
+            Icons.spa,
+            'Dịch vụ',
+            data['serviceName'].toString(),
+          ),
+        ],
+        if (data['purpose'] != null && data['purpose'].toString().isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            theme,
+            colorScheme,
+            isDark,
+            Icons.description,
+            'Mục đích',
+            data['purpose'].toString(),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCleaningDetail(ThemeData theme, ColorScheme colorScheme, bool isDark) {
+    final data = _detailData!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildInfoRow(
+          theme,
+          colorScheme,
+          isDark,
+          Icons.cleaning_services,
+          'Loại dọn dẹp',
+          data['cleaningType']?.toString() ?? 'Dọn dẹp',
+        ),
+        const SizedBox(height: 16),
+        if (data['location'] != null && data['location'].toString().isNotEmpty) ...[
+          _buildInfoRow(
+            theme,
+            colorScheme,
+            isDark,
+            Icons.location_on,
+            'Địa điểm',
+            data['location'].toString(),
+          ),
+          const SizedBox(height: 16),
+        ],
+        _buildInfoRow(
+          theme,
+          colorScheme,
+          isDark,
+          Icons.calendar_today,
+          'Ngày tạo',
+          data['createdAt'] != null
+              ? DateFormat('dd/MM/yyyy HH:mm').format(data['createdAt'] as DateTime)
+              : DateFormat('dd/MM/yyyy').format(widget.item.paymentDate),
+        ),
+        if (data['note'] != null && data['note'].toString().isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            theme,
+            colorScheme,
+            isDark,
+            Icons.description,
+            'Ghi chú',
+            data['note'].toString(),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildRepairDetail(ThemeData theme, ColorScheme colorScheme, bool isDark) {
+    final data = _detailData!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildInfoRow(
+          theme,
+          colorScheme,
+          isDark,
+          Icons.handyman,
+          'Tiêu đề',
+          data['title']?.toString() ?? 'Sửa chữa',
+        ),
+        const SizedBox(height: 16),
+        if (data['location'] != null && data['location'].toString().isNotEmpty) ...[
+          _buildInfoRow(
+            theme,
+            colorScheme,
+            isDark,
+            Icons.location_on,
+            'Địa điểm',
+            data['location'].toString(),
+          ),
+          const SizedBox(height: 16),
+        ],
+        if (data['paymentAmount'] != null) ...[
+          _buildInfoRow(
+            theme,
+            colorScheme,
+            isDark,
+            Icons.attach_money,
+            'Số tiền',
+            NumberFormat.currency(locale: 'vi_VN', symbol: '₫')
+                .format(data['paymentAmount'])
+                .replaceAll('.', ','),
+          ),
+          const SizedBox(height: 16),
+        ],
+        _buildInfoRow(
+          theme,
+          colorScheme,
+          isDark,
+          Icons.calendar_today,
+          'Ngày tạo',
+          data['createdAt'] != null
+              ? DateFormat('dd/MM/yyyy HH:mm').format(data['createdAt'] as DateTime)
+              : DateFormat('dd/MM/yyyy').format(widget.item.paymentDate),
+        ),
+        if (data['paymentDate'] != null) ...[
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            theme,
+            colorScheme,
+            isDark,
+            Icons.calendar_today,
+            'Ngày thanh toán',
+            DateFormat('dd/MM/yyyy HH:mm').format(data['paymentDate'] as DateTime),
+          ),
+        ],
+        if (data['note'] != null && data['note'].toString().isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            theme,
+            colorScheme,
+            isDark,
+            Icons.description,
+            'Ghi chú',
+            data['note'].toString(),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildInfoRow(
+    ThemeData theme,
+    ColorScheme colorScheme,
+    bool isDark,
+    IconData icon,
+    String label,
+    String value,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colorScheme.outline.withValues(alpha: 0.1),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: widget.item.iconColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icon,
+              size: 20,
+              color: widget.item.iconColor,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.6)
+                        : colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

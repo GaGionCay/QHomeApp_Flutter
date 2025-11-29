@@ -155,6 +155,46 @@ class ResidentService {
     return pagedResponse.content;
   }
 
+  /// Fetch all news across all pages (for client-side pagination after filtering)
+  Future<List<ResidentNews>> getAllResidentNews(
+    String residentId, {
+    DateTime? dateFrom,
+    DateTime? dateTo,
+    int? pageSize, // Use pageSize from first response if not provided
+    int maxPages = 100, // Limit to prevent infinite loops
+  }) async {
+    List<ResidentNews> allNews = [];
+    int currentPage = 0;
+    bool hasMore = true;
+    int actualPageSize = pageSize ?? 7; // Default to 7 if not provided
+
+    while (hasMore && currentPage < maxPages) {
+      final pagedResponse = await getResidentNewsPaged(
+        residentId,
+        page: currentPage,
+        size: actualPageSize,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+      );
+
+      // Use pageSize from response (first page)
+      if (currentPage == 0) {
+        actualPageSize = pagedResponse.pageSize;
+      }
+
+      allNews.addAll(pagedResponse.content);
+
+      if (pagedResponse.hasNext && pagedResponse.content.isNotEmpty) {
+        currentPage++;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    print('✅ [ResidentService] Fetched ${allNews.length} news items across ${currentPage + 1} pages (pageSize: $actualPageSize)');
+    return allNews;
+  }
+
   /// Get total count of news items (for pagination)
   /// Returns null if API doesn't support count
   Future<int?> getResidentNewsCount(String residentId) async {
@@ -224,21 +264,28 @@ class ResidentService {
     String buildingId, {
     DateTime? dateFrom,
     DateTime? dateTo,
+    int? pageSize, // Use pageSize from first response if not provided
     int maxPages = 100, // Limit to prevent infinite loops
   }) async {
     List<ResidentNotification> allNotifications = [];
     int currentPage = 0;
     bool hasMore = true;
+    int actualPageSize = pageSize ?? 7; // Default to 7 if not provided
 
     while (hasMore && currentPage < maxPages) {
       final pagedResponse = await getResidentNotificationsPaged(
         residentId,
         buildingId,
         page: currentPage,
-        size: 7,
+        size: actualPageSize,
         dateFrom: dateFrom,
         dateTo: dateTo,
       );
+
+      // Use pageSize from response (first page)
+      if (currentPage == 0) {
+        actualPageSize = pagedResponse.pageSize;
+      }
 
       allNotifications.addAll(pagedResponse.content);
 
@@ -249,7 +296,7 @@ class ResidentService {
       }
     }
 
-    print('✅ [ResidentService] Fetched ${allNotifications.length} notifications across ${currentPage + 1} pages');
+    print('✅ [ResidentService] Fetched ${allNotifications.length} notifications across ${currentPage + 1} pages (pageSize: $actualPageSize)');
     return allNotifications;
   }
 

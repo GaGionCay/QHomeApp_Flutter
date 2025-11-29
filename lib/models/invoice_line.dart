@@ -77,6 +77,10 @@ class InvoiceLineResponseDto {
       case 'VEHICLE_PARKING':
       case 'MOTORBIKE_PARK':
         return 'Vé gửi xe';
+      case 'RESIDENT_CARD':
+        return 'Thẻ cư dân';
+      case 'VEHICLE_CARD':
+        return 'Thẻ xe';
       default:
         return serviceCode;
     }

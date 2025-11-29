@@ -11,6 +11,10 @@ class NotificationViewModel extends ChangeNotifier {
 
   List<ResidentNotification> _notifications = [];
   List<ResidentNotification> get notifications => _notifications;
+  
+  // Store all notifications (unfiltered) for client-side pagination after filtering
+  List<ResidentNotification> _allNotifications = [];
+  int? _pageSize; // Set from API response
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
@@ -63,6 +67,39 @@ class NotificationViewModel extends ChangeNotifier {
   void setResidentAndBuilding(String? residentId, String? buildingId) {
     _residentId = residentId;
     _buildingId = buildingId;
+  }
+
+  /// Get filtered notifications for current page
+  List<ResidentNotification> get _filteredNotifications {
+    List<ResidentNotification> filtered = List.from(_allNotifications);
+
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase().trim();
+      filtered = filtered.where((notification) {
+        return notification.title.toLowerCase().contains(query);
+      }).toList();
+    }
+
+    if (_readStatusFilter != NotificationReadStatusFilter.all) {
+      filtered = filtered.where((notification) {
+        if (_readStatusFilter == NotificationReadStatusFilter.read) {
+          return notification.isRead;
+        } else {
+          return !notification.isRead;
+        }
+      }).toList();
+    }
+
+    if (_typeFilter != NotificationTypeFilter.all) {
+      filtered = filtered.where((notification) {
+        if (_typeFilter == NotificationTypeFilter.cardApproved) {
+          return notification.type.toUpperCase() == 'CARD_APPROVED';
+        }
+        return true;
+      }).toList();
+    }
+
+    return filtered;
   }
 
   Map<String, List<ResidentNotification>> get groupedNotifications {
@@ -157,9 +194,19 @@ class NotificationViewModel extends ChangeNotifier {
       return;
     }
 
+    // If readStatusFilter is active, load all notifications and paginate client-side
+    final shouldLoadAll = _readStatusFilter != NotificationReadStatusFilter.all;
+    
+    if (shouldLoadAll) {
+      await _loadAllAndPaginateClientSide(refresh: refresh, page: page);
+      return;
+    }
+
+    // Otherwise, use server-side pagination
     if (refresh) {
       _currentPage = 0;
       _notifications.clear();
+      _allNotifications.clear();
     } else if (page != null) {
       _currentPage = page;
     }
@@ -177,13 +224,14 @@ class NotificationViewModel extends ChangeNotifier {
         _residentId!,
         _buildingId!,
         page: _currentPage,
-        size: 7, // Fixed size as per requirement
+        size: _pageSize ?? 7, // Use default if not set yet
         dateFrom: dateFrom,
         dateTo: dateTo,
       );
 
       _notifications = pagedResponse.content;
       _currentPage = pagedResponse.currentPage;
+      _pageSize = pagedResponse.pageSize; // Get page size from response
       _totalPages = pagedResponse.totalPages;
       _totalElements = pagedResponse.totalElements;
       _hasNext = pagedResponse.hasNext;
@@ -204,6 +252,113 @@ class NotificationViewModel extends ChangeNotifier {
         onNotificationsLoaded!();
       }
     }
+  }
+
+  /// Load all notifications and paginate client-side after filtering
+  Future<void> _loadAllAndPaginateClientSide({bool refresh = false, int? page}) async {
+    // Always show loading when refreshing or when allNotifications is empty
+    if (refresh || _allNotifications.isEmpty) {
+      _isLoading = true;
+      _error = null;
+      _currentPage = 0;
+      notifyListeners();
+
+      try {
+        final dateFrom = _filterDateFrom;
+        final dateTo = _filterDateTo;
+
+        // Load first page to get pageSize from response
+        final firstPageResponse = await _residentService.getResidentNotificationsPaged(
+          _residentId!,
+          _buildingId!,
+          page: 0,
+          size: 7, // Default size, will be overridden by response
+          dateFrom: dateFrom,
+          dateTo: dateTo,
+        );
+        _pageSize = firstPageResponse.pageSize; // Get page size from response
+
+        // Load all notifications with pageSize from first response
+        _allNotifications = await _residentService.getAllResidentNotifications(
+          _residentId!,
+          _buildingId!,
+          dateFrom: dateFrom,
+          dateTo: dateTo,
+          pageSize: _pageSize, // Will be set from firstPageResponse above
+        );
+      } catch (e) {
+        _error = 'Lỗi tải thông báo: ${e.toString()}';
+        debugPrint('❌ Error loading all notifications: $e');
+        _isLoading = false;
+        notifyListeners();
+        return;
+      }
+    }
+
+    if (page != null) {
+      _currentPage = page;
+    }
+
+    // If refreshing, show loading while filtering and paginating
+    if (refresh) {
+      _isLoading = true;
+      notifyListeners();
+    }
+
+    // Apply filters and paginate client-side
+    final filtered = _filteredNotifications;
+    
+    // Ensure pageSize is set (should be set from first page response)
+    if (_pageSize == null) {
+      debugPrint('⚠️ [NotificationViewModel] pageSize is null, cannot paginate');
+      _notifications = [];
+      _totalPages = 1;
+      _totalElements = 0;
+      _hasNext = false;
+      _hasPrevious = false;
+      _isFirst = true;
+      _isLast = true;
+      _isLoading = false;
+      notifyListeners();
+      return;
+    }
+    
+    // Calculate pagination
+    _totalElements = filtered.length;
+    _totalPages = (_totalElements / _pageSize!).ceil();
+    if (_totalPages == 0) _totalPages = 1; // At least 1 page even if empty
+    
+    // Ensure current page is valid
+    if (_currentPage >= _totalPages) {
+      _currentPage = _totalPages > 0 ? _totalPages - 1 : 0;
+    }
+    
+    // Get notifications for current page
+    final startIndex = _currentPage * _pageSize!;
+    final endIndex = (startIndex + _pageSize!).clamp(0, filtered.length);
+    _notifications = filtered.sublist(
+      startIndex.clamp(0, filtered.length),
+      endIndex,
+    );
+    
+    // Update pagination flags
+    _hasNext = _currentPage < _totalPages - 1;
+    _hasPrevious = _currentPage > 0;
+    _isFirst = _currentPage == 0;
+    _isLast = _currentPage >= _totalPages - 1;
+
+    // Call callback to update read status BEFORE pagination
+    // This ensures read status is correct when filtering
+    if (onNotificationsLoaded != null) {
+      await onNotificationsLoaded!();
+    }
+    
+    // Now paginate with correct read status
+    _rePaginateClientSide();
+    
+    _isLoading = false;
+    _error = null;
+    notifyListeners();
   }
 
   // Callback to be called after loadNotifications completes
@@ -231,6 +386,8 @@ class NotificationViewModel extends ChangeNotifier {
     _filterDateFrom = dateFrom;
     _filterDateTo = dateTo;
     _currentPage = 0;
+    // Clear cached all notifications to force reload
+    _allNotifications.clear();
     notifyListeners();
   }
 
@@ -238,7 +395,10 @@ class NotificationViewModel extends ChangeNotifier {
     _filterDateFrom = null;
     _filterDateTo = null;
     _typeFilter = NotificationTypeFilter.all;
+    _readStatusFilter = NotificationReadStatusFilter.all;
     _currentPage = 0;
+    // Clear cached all notifications to force reload
+    _allNotifications.clear();
     notifyListeners();
   }
 
@@ -254,6 +414,9 @@ class NotificationViewModel extends ChangeNotifier {
 
   void setReadStatusFilter(NotificationReadStatusFilter filter) {
     _readStatusFilter = filter;
+    _currentPage = 0; // Reset to first page when filter changes
+    // Clear cached all notifications to force reload
+    _allNotifications.clear();
     notifyListeners();
   }
 
@@ -266,7 +429,99 @@ class NotificationViewModel extends ChangeNotifier {
 
   void updateNotifications(List<ResidentNotification> notifications) {
     _notifications = notifications;
+    // Also update _allNotifications if we have client-side pagination active
+    if (_readStatusFilter != NotificationReadStatusFilter.all && _allNotifications.isNotEmpty) {
+      // Update read status in _allNotifications based on current page notifications
+      final notificationMap = {for (var n in notifications) n.id: n};
+      for (int i = 0; i < _allNotifications.length; i++) {
+        final updated = notificationMap[_allNotifications[i].id];
+        if (updated != null) {
+          _allNotifications[i] = updated;
+        }
+      }
+      // Re-paginate after updating read status
+      _rePaginateClientSide();
+    }
     notifyListeners();
   }
+  
+  /// Update read status of a specific notification in _allNotifications
+  void updateNotificationReadStatus(String notificationId, bool isRead) {
+    if (_allNotifications.isNotEmpty) {
+      final index = _allNotifications.indexWhere((n) => n.id == notificationId);
+      if (index != -1) {
+        final currentReadAt = _allNotifications[index].readAt;
+        _allNotifications[index] = _allNotifications[index].copyWith(
+          isRead: isRead,
+          readAt: isRead ? (currentReadAt ?? DateTime.now()) : null,
+        );
+        debugPrint('✅ [NotificationViewModel] Updated read status for notification $notificationId: $isRead');
+      }
+    }
+  }
+  
+  /// Update read status for all notifications in _allNotifications based on read IDs
+  void updateAllNotificationsReadStatus(Set<String> readIds) {
+    if (_allNotifications.isEmpty) return;
+    
+    bool updated = false;
+    for (int i = 0; i < _allNotifications.length; i++) {
+      final notification = _allNotifications[i];
+      final shouldBeRead = readIds.contains(notification.id);
+      
+      if (shouldBeRead != notification.isRead) {
+        _allNotifications[i] = _allNotifications[i].copyWith(
+          isRead: shouldBeRead,
+          readAt: shouldBeRead ? (_allNotifications[i].readAt ?? DateTime.now()) : null,
+        );
+        updated = true;
+      }
+    }
+    
+    if (updated) {
+      debugPrint('✅ [NotificationViewModel] Updated read status for ${_allNotifications.where((n) => readIds.contains(n.id)).length} notifications in _allNotifications');
+      // Re-paginate if using client-side pagination
+      if (_readStatusFilter != NotificationReadStatusFilter.all) {
+        _rePaginateClientSide();
+      }
+      notifyListeners();
+    }
+  }
+  
+  /// Re-paginate client-side after updating notifications
+  void _rePaginateClientSide() {
+    final filtered = _filteredNotifications;
+    
+    // Ensure pageSize is set
+    if (_pageSize == null) {
+      debugPrint('⚠️ [NotificationViewModel] pageSize is null, cannot re-paginate');
+      return;
+    }
+    
+    // Calculate pagination
+    _totalElements = filtered.length;
+    _totalPages = (_totalElements / _pageSize!).ceil();
+    if (_totalPages == 0) _totalPages = 1;
+    
+    // Ensure current page is valid
+    if (_currentPage >= _totalPages) {
+      _currentPage = _totalPages > 0 ? _totalPages - 1 : 0;
+    }
+    
+    // Get notifications for current page
+    final startIndex = _currentPage * _pageSize!;
+    final endIndex = (startIndex + _pageSize!).clamp(0, filtered.length);
+    _notifications = filtered.sublist(
+      startIndex.clamp(0, filtered.length),
+      endIndex,
+    );
+    
+    // Update pagination flags
+    _hasNext = _currentPage < _totalPages - 1;
+    _hasPrevious = _currentPage > 0;
+    _isFirst = _currentPage == 0;
+    _isLast = _currentPage >= _totalPages - 1;
+  }
+
 }
 

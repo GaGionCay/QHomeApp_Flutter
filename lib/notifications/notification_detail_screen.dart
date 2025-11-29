@@ -139,12 +139,30 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
     switch (type.toUpperCase()) {
       case 'CARD_APPROVED':
         return AppColors.success;
-      case 'SYSTEM':
-        return const Color(0xFF26A69A);
+      case 'CARD_REJECTED':
+        return AppColors.danger;
+      case 'CARD_PENDING':
+        return AppColors.warning;
+      case 'CARD_FEE_REMINDER':
+        return AppColors.primaryBlue;
+      case 'REQUEST':
+        return AppColors.primaryEmerald;
+      case 'BILL':
+        return AppColors.primaryBlue;
       case 'PAYMENT':
-        return Colors.blue;
+        return AppColors.success;
+      case 'ELECTRICITY':
+        return AppColors.warning;
+      case 'WATER':
+        return const Color(0xFF2196F3);
+      case 'CONTRACT':
+        return AppColors.primaryEmerald;
       case 'SERVICE':
         return Colors.orange;
+      case 'SYSTEM':
+        return const Color(0xFF26A69A);
+      case 'NEWS':
+        return AppColors.primaryBlue;
       default:
         return Colors.grey;
     }
@@ -154,12 +172,30 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
     switch (type.toUpperCase()) {
       case 'CARD_APPROVED':
         return Icons.check_circle_outline;
-      case 'SYSTEM':
-        return Icons.info_outline;
+      case 'CARD_REJECTED':
+        return Icons.cancel_outlined;
+      case 'CARD_PENDING':
+        return Icons.pending_outlined;
+      case 'CARD_FEE_REMINDER':
+        return Icons.credit_card;
+      case 'REQUEST':
+        return Icons.request_quote;
+      case 'BILL':
+        return Icons.receipt_long;
       case 'PAYMENT':
         return Icons.payment;
+      case 'ELECTRICITY':
+        return Icons.bolt;
+      case 'WATER':
+        return Icons.water_drop;
+      case 'CONTRACT':
+        return Icons.description;
       case 'SERVICE':
         return Icons.room_service;
+      case 'SYSTEM':
+        return Icons.info_outline;
+      case 'NEWS':
+        return Icons.newspaper;
       default:
         return Icons.notifications_outlined;
     }
@@ -187,15 +223,38 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
   String _getTypeText(String type) {
     switch (type.toUpperCase()) {
       case 'CARD_APPROVED':
-        return 'THẺ ĐÃ DUYỆT';
-      case 'SYSTEM':
-        return 'HỆ THỐNG';
+        return 'The cu dan da duyet';
+      case 'CARD_REJECTED':
+        return 'The cu dan bi tu choi';
+      case 'CARD_PENDING':
+        return 'The cu dan dang cho';
+      case 'CARD_FEE_REMINDER':
+        return 'Nhac nho phi the';
+      case 'REQUEST':
+        return 'Yeu cau';
+      case 'BILL':
+        return 'Hoa don';
       case 'PAYMENT':
-        return 'THANH TOÁN';
+        return 'Thanh toan';
+      case 'ELECTRICITY':
+        return 'Tien dien';
+      case 'WATER':
+        return 'Tien nuoc';
+      case 'CONTRACT':
+        return 'Hop dong';
       case 'SERVICE':
-        return 'DỊCH VỤ';
+        return 'Dich vu';
+      case 'SYSTEM':
+        return 'He thong';
+      case 'NEWS':
+        return 'Tin tuc';
       default:
-        return type.toUpperCase();
+        // Fallback: convert to Vietnamese without accents and replace underscores
+        return type
+            .toUpperCase()
+            .replaceAll('_', ' ')
+            .toLowerCase()
+            .replaceAll(' ', '');
     }
   }
 

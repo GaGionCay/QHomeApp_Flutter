@@ -38,6 +38,12 @@ class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
     _contractService = ContractService(_api);
     _bus = AppEventBus();
     _viewModel = NewsViewModel();
+    // Set callback to update read status after news are loaded
+    _viewModel.onNewsLoaded = () async {
+      if (mounted) {
+        await _updateReadStatus();
+      }
+    };
     _residentId = null;
 
     // Remove infinite scroll listener since we're using pagination now
@@ -79,9 +85,10 @@ class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
       if (_residentId != null && _residentId!.isNotEmpty) {
         await _loadReadState();
         _viewModel.setResidentId(_residentId!);
+        _viewModel.setReadIds(_readIds);
         debugPrint('✅ [NewsScreen] Set residentId to viewModel: $_residentId');
         await _viewModel.loadNews(refresh: true);
-        _updateReadStatus();
+        await _updateReadStatus();
         return;
       }
 
@@ -98,8 +105,9 @@ class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
 
       await _loadReadState();
       _viewModel.setResidentId(_residentId!);
+      _viewModel.setReadIds(_readIds);
       await _viewModel.loadNews(refresh: true);
-      _updateReadStatus();
+      await _updateReadStatus();
     } catch (e) {
       debugPrint('⚠️ Lỗi lấy residentId: $e');
       if (mounted) {
@@ -116,7 +124,14 @@ class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
     _viewModel.setReadIds(_readIds);
   }
 
-  void _updateReadStatus() {
+  Future<void> _updateReadStatus() async {
+    // Update read status in _allNews if using client-side pagination
+    if (_viewModel.readStatusFilter != NotificationReadStatusFilter.all) {
+      // Update all news in _allNews based on read IDs
+      _viewModel.updateAllNewsReadStatus(_readIds);
+    }
+
+    // Also update current page news
     final news = List<ResidentNews>.from(_viewModel.news);
     for (var i = 0; i < news.length; i++) {
       if (_readIds.contains(news[i].id)) {
@@ -208,7 +223,9 @@ class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildBody(BuildContext context, NewsViewModel viewModel) {
-    if (viewModel.isLoading && viewModel.news.isEmpty) {
+    // Show loading skeleton when loading (even if news is not empty,
+    // because we might be loading new data for filtering)
+    if (viewModel.isLoading) {
       return NewsListSkeleton(controller: _scrollController);
     }
 
@@ -240,7 +257,8 @@ class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
 
     final grouped = viewModel.groupedNews;
 
-    if (grouped.isEmpty) {
+    // Only show empty state if not loading and truly empty
+    if (grouped.isEmpty && !viewModel.isLoading) {
       return _buildEmptyState(context);
     }
 
@@ -385,8 +403,9 @@ class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
                       ),
                       NotificationReadStatusFilterWidget(
                         currentFilter: viewModel.readStatusFilter,
-                        onFilterChanged: (filter) {
+                        onFilterChanged: (filter) async {
                           viewModel.setReadStatusFilter(filter);
+                          await viewModel.loadNews(refresh: true);
                         },
                       ),
                       NotificationDateFilter(
