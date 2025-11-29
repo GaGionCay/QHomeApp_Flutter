@@ -144,10 +144,54 @@ Future<void> _configurePreferredRefreshRate() async {
   }
 
   try {
-    await FlutterDisplayMode.setHighRefreshRate();
+    // Lấy danh sách các refresh rate có sẵn
+    final modes = await FlutterDisplayMode.supported;
+    if (modes.isEmpty) {
+      debugPrint('⚠️ Không có refresh rate nào được hỗ trợ');
+      return;
+    }
+
+    // Sắp xếp theo refresh rate giảm dần
+    modes.sort((a, b) => b.refreshRate.compareTo(a.refreshRate));
+    
+    // Tìm refresh rate cao nhất (thường là 90Hz, 120Hz, hoặc 144Hz)
+    // Ưu tiên 120Hz hoặc 90Hz nếu có, nếu không thì lấy cao nhất
+    DisplayMode? preferredMode;
+    
+    // Ưu tiên 120Hz
+    preferredMode = modes.firstWhere(
+      (mode) => mode.refreshRate == 120,
+      orElse: () => modes.first,
+    );
+    
+    // Nếu không có 120Hz, thử 90Hz
+    if (preferredMode.refreshRate != 120) {
+      preferredMode = modes.firstWhere(
+        (mode) => mode.refreshRate == 90,
+        orElse: () => modes.first,
+      );
+    }
+    
+    // Set refresh rate đã chọn
+    await FlutterDisplayMode.setPreferredMode(preferredMode);
+    debugPrint('✅ Đã đặt refresh rate: ${preferredMode.refreshRate}Hz (${preferredMode.width}x${preferredMode.height})');
+    
+    // Log tất cả các mode có sẵn để debug
+    debugPrint('📱 Các refresh rate có sẵn:');
+    for (final mode in modes) {
+      debugPrint('   - ${mode.refreshRate}Hz (${mode.width}x${mode.height})');
+    }
   } catch (e, stack) {
-    debugPrint('⚠️ Không thể đặt tần số quét cao: $e');
+    debugPrint('⚠️ Không thể đặt refresh rate: $e');
     debugPrint('$stack');
+    
+    // Fallback: thử set high refresh rate
+    try {
+      await FlutterDisplayMode.setHighRefreshRate();
+      debugPrint('✅ Đã đặt high refresh rate (fallback)');
+    } catch (fallbackError) {
+      debugPrint('⚠️ Không thể đặt high refresh rate (fallback): $fallbackError');
+    }
   }
 }
 
@@ -175,6 +219,21 @@ class MyApp extends StatelessWidget {
         Locale('vi', 'VN'),
       ],
       locale: const Locale('vi', 'VN'),
+      // Tối ưu performance
+      builder: (context, child) {
+        // Wrap với MediaQuery để đảm bảo text scaling không ảnh hưởng performance
+        return MediaQuery(
+          // Giữ nguyên text scaling nhưng tối ưu
+          data: MediaQuery.of(context).copyWith(
+            // Giảm text scaling factor nếu quá lớn để tránh lag
+            textScaler: MediaQuery.of(context).textScaler.clamp(
+              minScaleFactor: 0.8,
+              maxScaleFactor: 1.2,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
   }
 }

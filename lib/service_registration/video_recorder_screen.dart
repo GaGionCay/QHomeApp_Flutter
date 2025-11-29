@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 /// Màn hình quay video với khả năng tự động dừng khi đạt 50MB hoặc 2 phút
 class VideoRecorderScreen extends StatefulWidget {
