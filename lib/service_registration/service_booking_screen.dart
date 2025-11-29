@@ -1450,7 +1450,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
     final iconColor = isError ? colorScheme.error : colorScheme.primary;
 
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Container(
           width: 48,
@@ -1474,6 +1474,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 label,
@@ -1481,26 +1482,28 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                       color: isDark
                           ? Colors.white70
                           : AppColors.textSecondary,
-                      fontSize: 13,
+                      fontSize: 12,
                     ) ??
                     TextStyle(
                       color: isDark ? Colors.white70 : AppColors.textSecondary,
-                      fontSize: 13,
+                      fontSize: 12,
                     ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               Text(
                 value,
-                style: theme.textTheme.bodyLarge?.copyWith(
+                style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                       color: isDark ? Colors.white : AppColors.textPrimary,
-                      fontSize: 16,
+                      fontSize: 15,
                     ) ??
                     TextStyle(
                       fontWeight: FontWeight.w600,
                       color: isDark ? Colors.white : AppColors.textPrimary,
-                      fontSize: 16,
+                      fontSize: 15,
                     ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
