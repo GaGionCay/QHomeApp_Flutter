@@ -43,7 +43,8 @@ class AuthProvider extends ChangeNotifier {
           await authService.refreshToken();
           _isAuthenticated = true;
         } catch (_) {
-          await storage.deleteAll();
+          // Only delete session data, keep fingerprint credentials
+          await storage.deleteSessionData();
           _isAuthenticated = false;
         }
       }
@@ -175,7 +176,9 @@ Future<void> logout(BuildContext context) async {
       debugPrint('⚠️ Unregister token error: $e');
     }
     
-    await storage.deleteAll();
+    // Only delete session data, keep fingerprint credentials
+    // This allows users to use fingerprint login after logout
+    await storage.deleteSessionData();
     _isAuthenticated = false;
     notifyListeners();
 

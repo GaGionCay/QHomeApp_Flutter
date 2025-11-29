@@ -87,7 +87,8 @@ class BaseServiceClient {
         if (err.response?.statusCode == 401) {
           final refreshToken = await _storage.readRefreshToken();
           if (refreshToken == null || isRefreshing) {
-            await _storage.deleteAll();
+            // Only delete session data, keep fingerprint credentials
+            await _storage.deleteSessionData();
             return handler.next(err);
           }
           try {
@@ -100,7 +101,8 @@ class BaseServiceClient {
               return handler.resolve(clonedResponse);
             }
           } on DioException catch (e) {
-            await _storage.deleteAll();
+            // Only delete session data, keep fingerprint credentials
+            await _storage.deleteSessionData();
             return handler.next(e);
           } finally {
             isRefreshing = false;

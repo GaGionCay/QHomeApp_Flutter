@@ -82,5 +82,20 @@ class TokenStorage {
     await _storage.delete(key: 'faceEnabled');
   }
 
+  /// Delete all data including biometric credentials
   Future<void> deleteAll() async => _storage.deleteAll();
+
+  /// Delete only session data (tokens, user info) but keep biometric credentials
+  /// This allows fingerprint to remain enabled after logout or token expiration
+  Future<void> deleteSessionData() async {
+    await _storage.delete(key: 'accessToken');
+    await _storage.delete(key: 'refreshToken');
+    await _storage.delete(key: 'deviceId');
+    await _storage.delete(key: 'residentId');
+    await _storage.delete(key: 'buildingId');
+    await _storage.delete(key: 'role');
+    await _storage.delete(key: 'username');
+    // Note: biometricUsername, biometricPassword, biometricEnabled, 
+    // fingerprintEnabled are NOT deleted here - they persist across sessions
+  }
 }

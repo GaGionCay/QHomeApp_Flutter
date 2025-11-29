@@ -134,7 +134,8 @@ class AdminApiClient {
               return handler.resolve(clonedResponse);
             }
           } on DioException catch (e) {
-            await _storage.deleteAll();
+            // Only delete session data, keep fingerprint credentials
+            await _storage.deleteSessionData();
             return handler.next(e);
           } finally {
             isRefreshing = false;

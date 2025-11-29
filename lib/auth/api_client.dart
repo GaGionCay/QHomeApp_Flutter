@@ -201,7 +201,7 @@ class ApiClient {
       return '$_activeScheme://$_activeHostIp$normalizedPath';
     } else {
       // For local/other URLs, use API Gateway port (8989)
-      const gatewayPort = apiPort; // 8989
+      final gatewayPort = apiPort; // 8989
       return '$_activeScheme://$_activeHostIp:$gatewayPort$normalizedPath';
     }
   }
@@ -386,7 +386,8 @@ class ApiClient {
             // This prevents logout during payment callback when token might be temporarily expired
             if (refreshToken == null) {
               print('⚠️ No refresh token available. User will need to login again.');
-              await _storage.deleteAll();
+              // Only delete session data, keep fingerprint credentials
+              await _storage.deleteSessionData();
             } else {
               print('⚠️ Token refresh already in progress. Retrying request...');
             }

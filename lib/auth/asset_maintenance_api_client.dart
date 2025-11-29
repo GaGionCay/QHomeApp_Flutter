@@ -76,7 +76,8 @@ class AssetMaintenanceApiClient {
           if (error.response?.statusCode == 401) {
             final refreshToken = await _storage.readRefreshToken();
             if (refreshToken == null || _isRefreshing) {
-              await _storage.deleteAll();
+              // Only delete session data, keep fingerprint credentials
+              await _storage.deleteSessionData();
               return handler.next(error);
             }
             try {
@@ -89,7 +90,8 @@ class AssetMaintenanceApiClient {
                 return handler.resolve(cloned);
               }
             } on DioException catch (refreshError) {
-              await _storage.deleteAll();
+              // Only delete session data, keep fingerprint credentials
+              await _storage.deleteSessionData();
               return handler.next(refreshError);
             } finally {
               _isRefreshing = false;

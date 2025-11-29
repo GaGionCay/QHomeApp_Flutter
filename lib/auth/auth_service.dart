@@ -88,7 +88,8 @@ class AuthService {
     } catch (e) {
       print('Logout failed: $e');
     } finally {
-      await storage.deleteAll();
+      // Only delete session data, keep fingerprint credentials
+      await storage.deleteSessionData();
     }
   }
 
