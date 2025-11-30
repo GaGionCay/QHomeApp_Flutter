@@ -1,0 +1,275 @@
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../models/chat/group.dart';
+import 'chat_service.dart';
+import 'chat_view_model.dart';
+import 'create_group_screen.dart';
+import 'chat_screen.dart';
+import 'invitations_screen.dart';
+
+class GroupListScreen extends StatefulWidget {
+  const GroupListScreen({super.key});
+
+  @override
+  State<GroupListScreen> createState() => _GroupListScreenState();
+}
+
+class _GroupListScreenState extends State<GroupListScreen> {
+  late final ChatViewModel _viewModel;
+
+  @override
+  void initState() {
+    super.initState();
+    final service = ChatService();
+    _viewModel = ChatViewModel(service);
+    _viewModel.initialize();
+  }
+
+  @override
+  void dispose() {
+    _viewModel.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ChangeNotifierProvider.value(
+      value: _viewModel,
+      child: Scaffold(
+        backgroundColor: theme.colorScheme.surface,
+        appBar: AppBar(
+          title: const Text('Nhóm chat'),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(CupertinoIcons.mail),
+              onPressed: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const InvitationsScreen(),
+                  ),
+                );
+                if (mounted) {
+                  _viewModel.refresh();
+                }
+              },
+            ),
+            IconButton(
+              icon: const Icon(CupertinoIcons.add),
+              onPressed: () async {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const CreateGroupScreen(),
+                  ),
+                );
+                if (result == true && mounted) {
+                  _viewModel.refresh();
+                }
+              },
+            ),
+          ],
+        ),
+        body: Consumer<ChatViewModel>(
+          builder: (context, viewModel, child) {
+            if (viewModel.isLoading && viewModel.groups.isEmpty) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (viewModel.error != null && viewModel.groups.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      CupertinoIcons.exclamationmark_triangle,
+                      size: 48,
+                      color: theme.colorScheme.error,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      viewModel.error!,
+                      style: theme.textTheme.bodyMedium,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () => viewModel.refresh(),
+                      child: const Text('Thử lại'),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            if (viewModel.groups.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      CupertinoIcons.chat_bubble_2,
+                      size: 64,
+                      color: theme.colorScheme.onSurface.withOpacity(0.3),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Chưa có nhóm chat nào',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withOpacity(0.6),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Tạo nhóm mới để bắt đầu trò chuyện',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withOpacity(0.5),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const CreateGroupScreen(),
+                          ),
+                        );
+                        if (result == true && mounted) {
+                          viewModel.refresh();
+                        }
+                      },
+                      icon: const Icon(CupertinoIcons.add),
+                      label: const Text('Tạo nhóm mới'),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return RefreshIndicator(
+              onRefresh: () => viewModel.refresh(),
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: viewModel.groups.length + (viewModel.hasMore ? 1 : 0),
+                itemBuilder: (context, index) {
+                  if (index == viewModel.groups.length) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+                  }
+
+                  final group = viewModel.groups[index];
+                  return _GroupListItem(
+                    group: group,
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ChatScreen(groupId: group.id),
+                        ),
+                      );
+                      // Refresh to update unread count after returning from chat
+                      if (mounted) {
+                        _viewModel.refresh();
+                      }
+                    },
+                  );
+                },
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _GroupListItem extends StatelessWidget {
+  final ChatGroup group;
+  final VoidCallback onTap;
+
+  const _GroupListItem({
+    required this.group,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasUnread = (group.unreadCount ?? 0) > 0;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: CircleAvatar(
+          radius: 28,
+          backgroundColor: theme.colorScheme.primaryContainer,
+          backgroundImage: group.avatarUrl != null
+              ? NetworkImage(group.avatarUrl!)
+              : null,
+          child: group.avatarUrl == null
+              ? Text(
+                  group.name.isNotEmpty ? group.name[0].toUpperCase() : 'G',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.bold,
+                  ),
+                )
+              : null,
+        ),
+        title: Text(
+          group.name,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: hasUnread ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (group.description != null && group.description!.isNotEmpty)
+              Text(
+                group.description!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall,
+              ),
+            const SizedBox(height: 4),
+            Text(
+              '${group.currentMemberCount}/${group.maxMembers} thành viên',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
+              ),
+            ),
+          ],
+        ),
+        trailing: hasUnread
+            ? Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.error,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  group.unreadCount! > 99 ? '99+' : '${group.unreadCount}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              )
+            : null,
+        onTap: onTap,
+      ),
+    );
+  }
+}
+

@@ -44,6 +44,7 @@ import '../register/register_resident_card_screen.dart';
 import '../qr/qr_scanner_screen.dart';
 import '../service_registration/service_requests_overview_screen.dart';
 import '../models/service_requests.dart';
+import '../chat/group_list_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final void Function(int)? onNavigateToTab;
@@ -1040,6 +1041,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 const SizedBox(height: 24),
                                 _buildWeatherAndAlerts(context),
                                 const SizedBox(height: 24),
+                                _buildGroupChatCard(context),
+                                const SizedBox(height: 24),
                                 _buildPriorityAlertsCard(context),
                                 const SizedBox(height: 24),
                                 _buildFeatureGrid(media.size),
@@ -1707,6 +1710,76 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildGroupChatCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+
+    return _HomeGlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const GroupListScreen(),
+            ),
+          );
+        },
+        child: Row(
+          children: [
+            Container(
+              height: 56,
+              width: 56,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppColors.primaryBlue,
+                    AppColors.primaryBlue.withValues(alpha: 0.8),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: AppColors.subtleShadow,
+              ),
+              child: const Icon(
+                CupertinoIcons.chat_bubble_2_fill,
+                color: Colors.white,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Nhóm chat',
+                    style: textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Trò chuyện với cư dân trong tòa nhà',
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Icon(
+              CupertinoIcons.right_chevron,
+              size: 18,
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildServiceDeck(BuildContext context) {
     final items = _serviceItems(context);
     return _HomeGlassCard(
@@ -2254,6 +2327,20 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         },
       ),
+      _ServiceCardData(
+        title: 'Nhóm chat',
+        subtitle: 'Trò chuyện với cư dân trong tòa nhà',
+        icon: CupertinoIcons.chat_bubble_2_fill,
+        accent: AppColors.primaryBlue,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const GroupListScreen(),
+            ),
+          );
+        },
+      ),
     ];
   }
 
@@ -2315,6 +2402,20 @@ class _HomeScreenState extends State<HomeScreen> {
         icon: CupertinoIcons.creditcard_fill,
         accent: AppColors.primaryAqua,
         onTap: _openCardRegistrationScreen,
+      ),
+      _ServiceCardData(
+        title: 'Nhóm chat',
+        subtitle: 'Trò chuyện với cư dân',
+        icon: CupertinoIcons.chat_bubble_2_fill,
+        accent: AppColors.primaryBlue,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const GroupListScreen(),
+            ),
+          );
+        },
       ),
     ];
 
