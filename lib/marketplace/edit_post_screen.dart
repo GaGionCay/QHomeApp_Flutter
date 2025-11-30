@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -8,6 +9,7 @@ import 'edit_post_view_model.dart';
 import 'marketplace_service.dart';
 import '../auth/token_storage.dart';
 import '../models/marketplace_post.dart';
+import 'number_formatter.dart';
 
 class EditPostScreen extends StatefulWidget {
   final MarketplacePost post;
@@ -43,7 +45,10 @@ class _EditPostScreenState extends State<EditPostScreen> {
     // Initialize form with existing post data
     _titleController.text = widget.post.title;
     _descriptionController.text = widget.post.description ?? '';
-    _priceController.text = widget.post.price?.toString() ?? '';
+    // Format price with thousand separator
+    if (widget.post.price != null) {
+      _priceController.text = _formatPrice(widget.post.price!);
+    }
     _locationController.text = widget.post.location ?? '';
     _phoneController.text = widget.post.contactInfo?.phone ?? '';
     _emailController.text = widget.post.contactInfo?.email ?? '';
@@ -106,7 +111,7 @@ class _EditPostScreenState extends State<EditPostScreen> {
       title: _titleController.text.trim(),
       description: _descriptionController.text.trim(),
       price: _priceController.text.isNotEmpty 
-          ? double.tryParse(_priceController.text.trim()) 
+          ? parseFormattedNumber(_priceController.text.trim())
           : null,
       category: _viewModel.selectedCategory,
       location: _locationController.text.trim().isNotEmpty 
@@ -237,11 +242,15 @@ class _EditPostScreenState extends State<EditPostScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 prefixText: '₫ ',
+                hintText: '0',
               ),
               keyboardType: TextInputType.number,
+              inputFormatters: [
+                ThousandsSeparatorInputFormatter(),
+              ],
               validator: (value) {
                 if (value != null && value.trim().isNotEmpty) {
-                  final price = double.tryParse(value.trim());
+                  final price = parseFormattedNumber(value.trim());
                   if (price == null || price < 0) {
                     return 'Giá không hợp lệ';
                   }
@@ -539,6 +548,19 @@ class _EditPostScreenState extends State<EditPostScreen> {
       ),
       ),
     );
+  }
+
+  String _formatPrice(double price) {
+    // Format price with thousand separator
+    String priceStr = price.toStringAsFixed(0);
+    String formatted = '';
+    for (int i = priceStr.length - 1; i >= 0; i--) {
+      if ((priceStr.length - 1 - i) > 0 && (priceStr.length - 1 - i) % 3 == 0) {
+        formatted = ',' + formatted;
+      }
+      formatted = priceStr[i] + formatted;
+    }
+    return formatted;
   }
 }
 

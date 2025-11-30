@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'create_post_view_model.dart';
 import 'marketplace_service.dart';
 import '../auth/token_storage.dart';
 import '../models/marketplace_post.dart';
+import 'number_formatter.dart';
 
 class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key});
@@ -166,16 +168,23 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                       prefixIcon: const Icon(CupertinoIcons.money_dollar),
                     ),
                     keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      ThousandsSeparatorInputFormatter(),
+                    ],
                     validator: (value) {
                       if (value != null && value.isNotEmpty) {
-                        final price = double.tryParse(value.replaceAll(',', ''));
+                        final price = parseFormattedNumber(value);
                         if (price == null || price < 0) {
                           return 'Giá không hợp lệ';
                         }
                       }
                       return null;
                     },
-                    onChanged: viewModel.setPrice,
+                    onChanged: (value) {
+                      // Parse formatted number before passing to viewModel
+                      final price = parseFormattedNumber(value);
+                      viewModel.setPrice(price?.toString() ?? '');
+                    },
                   ),
                   const SizedBox(height: 16),
 
