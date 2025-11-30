@@ -65,16 +65,20 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Future<void> _editPost(BuildContext context, MarketplacePost post) async {
+    // Capture dependencies before awaiting
+    final navigator = Navigator.of(context);
+    final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+    
     // Navigate to edit post screen
-    final result = await Navigator.push(
-      context,
+    final result = await navigator.push(
       MaterialPageRoute(
         builder: (context) => EditPostScreen(
           post: post,
           onPostUpdated: () async {
             // Refresh marketplace view model
-            final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
-            await viewModel.refresh();
+            if (!context.mounted) return;
+            final vm = Provider.of<MarketplaceViewModel>(context, listen: false);
+            await vm.refresh();
           },
         ),
       ),
@@ -83,14 +87,19 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     // If post was updated, refresh the screen
     if (result == true && mounted) {
       // Reload post data
-      final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
       await viewModel.refresh();
+      if (!mounted) return;
       // Pop to go back to marketplace screen, or refresh current screen
-      Navigator.of(context).pop(true);
+      navigator.pop(true);
     }
   }
 
   Future<void> _deletePost(BuildContext context, MarketplacePost post) async {
+    // Capture context dependencies before async gap
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+    
     // Show confirmation dialog
     final confirmed = await showDialog<bool>(
       context: context,
@@ -115,18 +124,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
     if (confirmed == true && mounted) {
       try {
-        final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
         await viewModel.deletePost(post.id);
         
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          messenger.showSnackBar(
             const SnackBar(content: Text('Đã xóa bài đăng')),
           );
-          Navigator.of(context).pop(true); // Go back to marketplace screen
+          navigator.pop(true); // Go back to marketplace screen
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          messenger.showSnackBar(
             SnackBar(content: Text('Lỗi khi xóa bài đăng: $e')),
           );
         }

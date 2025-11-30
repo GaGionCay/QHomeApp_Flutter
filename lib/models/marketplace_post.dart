@@ -205,8 +205,8 @@ class MarketplacePostImage {
         return fullUrl;
       } else {
         // Fallback: construct from known pattern
-        final host = 'localhost';
-        final port = 8989;
+        const host = 'localhost';
+        const port = 8989;
         final path = relativePath.startsWith('/') ? relativePath : '/$relativePath';
         return 'http://$host:$port$path';
       }

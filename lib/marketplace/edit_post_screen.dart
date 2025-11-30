@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -44,7 +43,7 @@ class _EditPostScreenState extends State<EditPostScreen> {
     
     // Initialize form with existing post data
     _titleController.text = widget.post.title;
-    _descriptionController.text = widget.post.description ?? '';
+    _descriptionController.text = widget.post.description;
     // Format price with thousand separator
     if (widget.post.price != null) {
       _priceController.text = _formatPrice(widget.post.price!);
@@ -206,7 +205,7 @@ class _EditPostScreenState extends State<EditPostScreen> {
             Consumer<EditPostViewModel>(
               builder: (context, viewModel, child) {
                 return DropdownButtonFormField<String>(
-                  value: viewModel.selectedCategory ?? widget.post.category,
+                  initialValue: viewModel.selectedCategory ?? widget.post.category,
                   decoration: InputDecoration(
                     labelText: 'Danh mục *',
                     border: OutlineInputBorder(
@@ -556,7 +555,7 @@ class _EditPostScreenState extends State<EditPostScreen> {
     String formatted = '';
     for (int i = priceStr.length - 1; i >= 0; i--) {
       if ((priceStr.length - 1 - i) > 0 && (priceStr.length - 1 - i) % 3 == 0) {
-        formatted = ',' + formatted;
+        formatted = ',$formatted';
       }
       formatted = priceStr[i] + formatted;
     }

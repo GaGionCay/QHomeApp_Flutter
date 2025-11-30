@@ -22,8 +22,6 @@ class MarketplaceViewModel extends ChangeNotifier {
   String? _error;
   int _currentPage = 0;
   int? _pageSize;
-  int _totalPages = 0;
-  int _totalElements = 0;
   bool _hasMore = true;
 
   // Filters
@@ -44,12 +42,10 @@ class MarketplaceViewModel extends ChangeNotifier {
   String? get sortBy => _sortBy;
 
   String? _buildingId;
-  String? _residentId;
   final Set<String> _subscribedPostIds = {}; // Track subscribed posts
 
   Future<void> initialize() async {
     _buildingId = await _tokenStorage.readBuildingId();
-    _residentId = await _tokenStorage.readResidentId();
     await loadCategories();
     await loadPosts(refresh: true);
     _setupRealtimeUpdates();
@@ -105,7 +101,6 @@ class MarketplaceViewModel extends ChangeNotifier {
           );
           notifyListeners();
         }
-        break;
       case 'POST_LIKED':
       case 'POST_UNLIKED':
         // Update like status
@@ -132,7 +127,6 @@ class MarketplaceViewModel extends ChangeNotifier {
           updatedAt: post.updatedAt,
         );
         notifyListeners();
-        break;
       case 'NEW_COMMENT':
         // Increment comment count and emit event for PostDetailScreen
         _posts[index] = MarketplacePost(
@@ -159,11 +153,9 @@ class MarketplaceViewModel extends ChangeNotifier {
         notifyListeners();
         // Emit event for PostDetailScreen to reload comments
         AppEventBus().emit('new_comment', {'postId': postId, 'data': data});
-        break;
       case 'NEW_POST':
         // Refresh posts list to show new post
         loadPosts(refresh: true);
-        break;
     }
   }
 
@@ -220,8 +212,6 @@ class MarketplaceViewModel extends ChangeNotifier {
       );
 
       _pageSize = response.pageSize;
-      _totalPages = response.totalPages;
-      _totalElements = response.totalElements;
 
       if (refresh) {
         _posts = response.content;

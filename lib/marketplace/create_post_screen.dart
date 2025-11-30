@@ -1,12 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'create_post_view_model.dart';
 import 'marketplace_service.dart';
 import '../auth/token_storage.dart';
-import '../models/marketplace_post.dart';
 import 'number_formatter.dart';
 
 class CreatePostScreen extends StatefulWidget {
@@ -190,7 +188,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
                   // Category
                   DropdownButtonFormField<String>(
-                    value: viewModel.selectedCategory,
+                    initialValue: viewModel.selectedCategory,
                     decoration: InputDecoration(
                       labelText: 'Danh mục *',
                       border: OutlineInputBorder(
