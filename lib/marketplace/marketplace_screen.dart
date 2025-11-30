@@ -1,0 +1,577 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:dio/dio.dart';
+import '../auth/token_storage.dart';
+import 'marketplace_view_model.dart';
+import 'marketplace_service.dart';
+import '../models/marketplace_post.dart';
+import '../common/layout_insets.dart';
+import 'create_post_screen.dart';
+import 'post_detail_screen.dart';
+import 'image_viewer_screen.dart';
+
+class MarketplaceScreen extends StatefulWidget {
+  const MarketplaceScreen({super.key});
+
+  @override
+  State<MarketplaceScreen> createState() => _MarketplaceScreenState();
+}
+
+class _MarketplaceScreenState extends State<MarketplaceScreen> {
+  late final MarketplaceViewModel _viewModel;
+  final ScrollController _scrollController = ScrollController();
+  final TokenStorage _tokenStorage = TokenStorage();
+  String? _currentResidentId;
+
+  @override
+  void initState() {
+    super.initState();
+    final service = MarketplaceService();
+    final storage = TokenStorage();
+    _viewModel = MarketplaceViewModel(service, storage);
+    _viewModel.initialize();
+    _scrollController.addListener(_onScroll);
+    _loadCurrentUser();
+  }
+
+  Future<void> _loadCurrentUser() async {
+    _currentResidentId = await _tokenStorage.readResidentId();
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _viewModel.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent * 0.8) {
+      _viewModel.loadMore();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ChangeNotifierProvider.value(
+      value: _viewModel,
+      child: Scaffold(
+        backgroundColor: theme.colorScheme.surface,
+        appBar: AppBar(
+          title: const Text('Chợ cư dân'),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+        ),
+        body: Consumer<MarketplaceViewModel>(
+          builder: (context, viewModel, child) {
+            if (viewModel.isLoading && viewModel.posts.isEmpty) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (viewModel.error != null && viewModel.posts.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      CupertinoIcons.exclamationmark_triangle,
+                      size: 48,
+                      color: theme.colorScheme.error,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      viewModel.error!,
+                      style: theme.textTheme.bodyLarge,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () => viewModel.refresh(),
+                      child: const Text('Thử lại'),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            if (viewModel.posts.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      CupertinoIcons.shopping_cart,
+                      size: 64,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Chưa có bài đăng nào',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return RefreshIndicator(
+              onRefresh: () => viewModel.refresh(),
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(16),
+                itemCount: viewModel.posts.length + (viewModel.isLoading ? 1 : 0),
+                itemBuilder: (context, index) {
+                  if (index >= viewModel.posts.length) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+                  }
+
+                  final post = viewModel.posts[index];
+                  return _PostCard(
+                    post: post,
+                    currentResidentId: _currentResidentId,
+                    onLike: () => viewModel.toggleLike(post.id),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ChangeNotifierProvider.value(
+                            value: viewModel,
+                            child: PostDetailScreen(post: post),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            );
+          },
+        ),
+        floatingActionButton: Padding(
+          padding: EdgeInsets.only(
+            bottom: LayoutInsets.navBarHeight + 
+                   LayoutInsets.navBarVerticalPadding * 2 + 
+                   MediaQuery.of(context).padding.bottom + 
+                   16, // Extra spacing above nav bar
+          ),
+          child: FloatingActionButton.extended(
+            onPressed: () async {
+              final result = await Navigator.push<MarketplacePost>(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const CreatePostScreen(),
+                ),
+              );
+              
+              // Refresh posts if a new post was created
+              if (result != null && mounted) {
+                _viewModel.refresh();
+              }
+            },
+            icon: const Icon(CupertinoIcons.add),
+            label: const Text('Đăng bài'),
+          ),
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      ),
+    );
+  }
+}
+
+class _PostCard extends StatelessWidget {
+  final MarketplacePost post;
+  final String? currentResidentId;
+  final VoidCallback onLike;
+  final VoidCallback onTap;
+
+  const _PostCard({
+    required this.post,
+    this.currentResidentId,
+    required this.onLike,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: isDark
+            ? theme.colorScheme.surfaceContainerHigh
+            : theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.12),
+        ),
+        boxShadow: isDark
+            ? []
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 18,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header - Người đăng bài
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 22,
+                      backgroundColor: theme.colorScheme.primaryContainer,
+                      child: Icon(
+                        CupertinoIcons.person_fill,
+                        color: theme.colorScheme.onPrimaryContainer,
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  post.author?.name ?? 'Người dùng',
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: (currentResidentId != null && 
+                                            post.residentId == currentResidentId)
+                                        ? theme.colorScheme.primary
+                                        : theme.colorScheme.onSurface,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: (currentResidentId != null && 
+                                          post.residentId == currentResidentId)
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.primaryContainer,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  (currentResidentId != null && 
+                                   post.residentId == currentResidentId)
+                                      ? 'Bạn'
+                                      : 'Người đăng',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: (currentResidentId != null && 
+                                            post.residentId == currentResidentId)
+                                        ? theme.colorScheme.onPrimary
+                                        : theme.colorScheme.onPrimaryContainer,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          if (post.author?.unitNumber != null)
+                            Row(
+                              children: [
+                                Icon(
+                                  CupertinoIcons.home,
+                                  size: 14,
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  post.author!.unitNumber!,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          _formatDate(post.createdAt),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Title
+                Text(
+                  post.title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (post.description.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    post.description,
+                    style: theme.textTheme.bodyMedium,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                // Images
+                if (post.images.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 200,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: post.images.length,
+                      itemBuilder: (context, index) {
+                        final image = post.images[index];
+                        // Debug: Log image URLs
+                        print('🖼️ [MarketplaceScreen] Displaying image $index: thumbnailUrl=${image.thumbnailUrl}, imageUrl=${image.imageUrl}');
+                        print('🖼️ [MarketplaceScreen] Image widget created for index $index');
+                        return GestureDetector(
+                          onTap: () {
+                            // Open image viewer
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ImageViewerScreen(
+                                  images: post.images,
+                                  initialIndex: index,
+                                ),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            width: 200,
+                            margin: EdgeInsets.only(
+                              right: index < post.images.length - 1 ? 8 : 0,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              color: theme.colorScheme.surfaceContainerHighest,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.08),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Builder(
+                                builder: (context) {
+                                  // Use original imageUrl for better quality, fallback to thumbnail if needed
+                                  if (image.imageUrl.isNotEmpty) {
+                                    print('🖼️ [MarketplaceScreen] Building image widget: ${image.imageUrl}');
+                                    return CachedNetworkImage(
+                                      imageUrl: image.imageUrl,
+                                      fit: BoxFit.cover,
+                                      httpHeaders: {
+                                        'ngrok-skip-browser-warning': 'true', // Skip ngrok browser warning
+                                      },
+                                      placeholder: (context, url) {
+                                        print('🖼️ [MarketplaceScreen] Loading image: $url');
+                                            return Container(
+                                              color: theme.colorScheme.surfaceContainerHighest,
+                                              child: Center(
+                                                child: SizedBox(
+                                                  width: 24,
+                                                  height: 24,
+                                                  child: CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                    color: theme.colorScheme.primary,
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                          errorWidget: (context, url, error) {
+                                            print('❌ [MarketplaceScreen] Error loading image: url=$url, error=$error');
+                                            print('❌ [MarketplaceScreen] Error type: ${error.runtimeType}');
+                                            if (error is DioException) {
+                                              print('❌ [MarketplaceScreen] DioException: statusCode=${error.response?.statusCode}, message=${error.message}');
+                                            }
+                                            return Container(
+                                              color: theme.colorScheme.surfaceContainerHighest,
+                                              child: Icon(
+                                                CupertinoIcons.photo,
+                                                size: 48,
+                                                color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                                              ),
+                                            );
+                                          },
+                                        );
+                                  } else {
+                                    print('⚠️ [MarketplaceScreen] No image URL available');
+                                    return Container(
+                                      color: theme.colorScheme.surfaceContainerHighest,
+                                      child: Icon(
+                                        CupertinoIcons.photo,
+                                        size: 48,
+                                        color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                                      ),
+                                    );
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                // Price and Category
+                Row(
+                  children: [
+                    if (post.price != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          _formatPrice(post.price!),
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: theme.colorScheme.onPrimaryContainer,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    if (post.category.isNotEmpty) ...[
+                      if (post.price != null) const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.secondaryContainer,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          post.category,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSecondaryContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Actions
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: onLike,
+                      icon: Icon(
+                        post.isLiked
+                            ? CupertinoIcons.heart_fill
+                            : CupertinoIcons.heart,
+                        color: post.isLiked
+                            ? Colors.red
+                            : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                    Text(
+                      '${post.likeCount}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    const SizedBox(width: 24),
+                    Icon(
+                      CupertinoIcons.chat_bubble,
+                      size: 20,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${post.commentCount}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime? date) {
+    if (date == null) return '';
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inDays == 0) {
+      if (difference.inHours == 0) {
+        if (difference.inMinutes == 0) {
+          return 'Vừa xong';
+        }
+        return '${difference.inMinutes} phút trước';
+      }
+      return '${difference.inHours} giờ trước';
+    } else if (difference.inDays == 1) {
+      return 'Hôm qua';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays} ngày trước';
+    } else {
+      return '${date.day}/${date.month}/${date.year}';
+    }
+  }
+
+  String _formatPrice(double price) {
+    if (price >= 1000000) {
+      return '${(price / 1000000).toStringAsFixed(1)}M đ';
+    } else if (price >= 1000) {
+      return '${(price / 1000).toStringAsFixed(0)}K đ';
+    }
+    return '${price.toStringAsFixed(0)} đ';
+  }
+}
+

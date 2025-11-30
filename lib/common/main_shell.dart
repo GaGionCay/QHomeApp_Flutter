@@ -22,6 +22,7 @@ import '../profile/profile_service.dart';
 import 'service_category_screen.dart';
 import '../theme/app_colors.dart';
 import 'menu_screen.dart';
+import '../marketplace/marketplace_screen.dart';
 
 class MainShell extends StatefulWidget {
   final int initialIndex;
@@ -80,6 +81,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
       HomeScreen(onNavigateToTab: _onItemTapped),
       const ServiceCategoryScreen(),
       const MenuScreen(),
+      const MarketplaceScreen(),
     ];
   }
 
@@ -156,6 +158,17 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
     debugPrint('✅ WebSocket connected');
     _subscribeToNewsTopic();
     _subscribeToNotificationTopics();
+    _subscribeToMarketplaceTopics();
+    _setupMarketplaceEventListeners();
+  }
+
+  void _setupMarketplaceEventListeners() {
+    // Listen for requests to subscribe to post comments
+    AppEventBus().on('subscribe_post_comments', (postId) {
+      if (postId is String) {
+        subscribeToPostComments(postId);
+      }
+    });
   }
 
   void _subscribeToNewsTopic() {
@@ -203,6 +216,51 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
       debugPrint('✅ Subscribed to /topic/notifications/resident/$_userResidentId');
     } else {
       debugPrint('⚠️ Không có residentId, bỏ qua subscribe đến /topic/notifications/resident/{residentId}');
+    }
+  }
+
+  void _subscribeToMarketplaceTopics() {
+    // Subscribe to building-level marketplace posts
+    for (final buildingId in _userBuildingIds) {
+      _stompClient?.subscribe(
+        destination: '/topic/marketplace/building/$buildingId/posts',
+        headers: {'id': 'marketplace-building-$buildingId'},
+        callback: _handleMarketplaceFrame,
+      );
+      debugPrint('✅ Subscribed to /topic/marketplace/building/$buildingId/posts');
+    }
+    
+    // Subscribe to post stats updates for all visible posts
+    // This will be done dynamically when posts are loaded
+  }
+
+  void subscribeToPostComments(String postId) {
+    _stompClient?.subscribe(
+      destination: '/topic/marketplace/post/$postId/comments',
+      headers: {'id': 'marketplace-post-$postId-comments'},
+      callback: _handleMarketplaceFrame,
+    );
+    debugPrint('✅ Subscribed to /topic/marketplace/post/$postId/comments');
+  }
+
+  void _handleMarketplaceFrame(StompFrame frame) {
+    if (frame.body == null) return;
+    try {
+      final decoded = json.decode(frame.body!);
+      final type = decoded['type'] as String?;
+      final postId = decoded['postId'] as String?;
+      
+      debugPrint('🔔 [Marketplace WebSocket] Received: type=$type, postId=$postId');
+      
+      // Emit event to update marketplace screen
+      AppEventBus().emit('marketplace_update', decoded);
+      
+      // Also emit for comment updates
+      if (type == 'NEW_COMMENT') {
+        AppEventBus().emit('new_comment', {'postId': postId, 'data': decoded});
+      }
+    } catch (e) {
+      debugPrint('⚠️ [Marketplace WebSocket] Error parsing frame: $e');
     }
   }
 
@@ -522,6 +580,11 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
                       icon: Icon(CupertinoIcons.square_grid_2x2),
                       selectedIcon: Icon(CupertinoIcons.square_grid_2x2_fill),
                       label: 'Tiện ích',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(CupertinoIcons.cart),
+                      selectedIcon: Icon(CupertinoIcons.cart_fill),
+                      label: 'Chợ cư dân',
                     ),
                   ],
                 ),
