@@ -15,7 +15,7 @@ class MarketplaceService {
 
   /// Lấy danh sách posts với pagination và filter
   Future<MarketplacePagedResponse> getPosts({
-    required String buildingId,
+    String? buildingId,
     int page = 0,
     int size = 20,
     String? search,
@@ -27,10 +27,14 @@ class MarketplaceService {
   }) async {
     try {
       final queryParams = <String, dynamic>{
-        'buildingId': buildingId,
         'page': page,
         'size': size,
       };
+
+      // Only add buildingId if provided (optional - allows viewing all posts)
+      if (buildingId != null && buildingId.isNotEmpty) {
+        queryParams['buildingId'] = buildingId;
+      }
 
       if (search != null && search.isNotEmpty) {
         queryParams['search'] = search;
@@ -250,14 +254,6 @@ class MarketplaceService {
     }
   }
 
-  /// Like/Unlike post
-  Future<void> toggleLike(String postId) async {
-    try {
-      await _apiClient.dio.post('/posts/$postId/like');
-    } catch (e) {
-      throw Exception('Lỗi khi like post: ${e.toString()}');
-    }
-  }
 
   /// Lấy danh sách comments của post (deprecated - use getCommentsPaged)
   Future<List<MarketplaceComment>> getComments(String postId) async {

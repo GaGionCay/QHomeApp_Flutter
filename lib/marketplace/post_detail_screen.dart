@@ -65,20 +65,16 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Future<void> _editPost(BuildContext context, MarketplacePost post) async {
-    // Capture dependencies before awaiting
-    final navigator = Navigator.of(context);
-    final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
-    
     // Navigate to edit post screen
-    final result = await navigator.push(
+    final result = await Navigator.push(
+      context,
       MaterialPageRoute(
         builder: (context) => EditPostScreen(
           post: post,
           onPostUpdated: () async {
             // Refresh marketplace view model
-            if (!context.mounted) return;
-            final vm = Provider.of<MarketplaceViewModel>(context, listen: false);
-            await vm.refresh();
+            final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+            await viewModel.refresh();
           },
         ),
       ),
@@ -87,19 +83,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     // If post was updated, refresh the screen
     if (result == true && mounted) {
       // Reload post data
+      final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
       await viewModel.refresh();
-      if (!mounted) return;
       // Pop to go back to marketplace screen, or refresh current screen
-      navigator.pop(true);
+      Navigator.of(context).pop(true);
     }
   }
 
   Future<void> _deletePost(BuildContext context, MarketplacePost post) async {
-    // Capture context dependencies before async gap
-    final navigator = Navigator.of(context);
-    final messenger = ScaffoldMessenger.of(context);
-    final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
-    
     // Show confirmation dialog
     final confirmed = await showDialog<bool>(
       context: context,
@@ -124,17 +115,18 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
     if (confirmed == true && mounted) {
       try {
+        final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
         await viewModel.deletePost(post.id);
         
         if (mounted) {
-          messenger.showSnackBar(
+          ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Đã xóa bài đăng')),
           );
-          navigator.pop(true); // Go back to marketplace screen
+          Navigator.of(context).pop(true); // Go back to marketplace screen
         }
       } catch (e) {
         if (mounted) {
-          messenger.showSnackBar(
+          ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Lỗi khi xóa bài đăng: $e')),
           );
         }
@@ -645,7 +637,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                         ],
                       ),
                       const SizedBox(height: 6),
-                      if (post.author?.unitNumber != null)
+                      if (post.author?.unitNumber != null || post.author?.buildingName != null)
                         Row(
                           children: [
                             Icon(
@@ -654,13 +646,31 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                               color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                             ),
                             const SizedBox(width: 6),
-                            Text(
-                              post.author!.unitNumber!,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                                fontWeight: FontWeight.w500,
+                            if (post.author?.buildingName != null) ...[
+                              Text(
+                                post.author!.buildingName!,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
-                            ),
+                              if (post.author?.unitNumber != null) ...[
+                                Text(
+                                  ' - ',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                                  ),
+                                ),
+                              ],
+                            ],
+                            if (post.author?.unitNumber != null)
+                              Text(
+                                post.author!.unitNumber!,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
                           ],
                         ),
                     ],
@@ -804,12 +814,23 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                       color: theme.colorScheme.primaryContainer,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Text(
-                      _formatPrice(post.price!),
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: theme.colorScheme.onPrimaryContainer,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          CupertinoIcons.money_dollar,
+                          size: 16,
+                          color: theme.colorScheme.onPrimaryContainer,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _formatPrice(post.price!),
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: theme.colorScheme.onPrimaryContainer,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 if (post.category.isNotEmpty) ...[
@@ -823,38 +844,130 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                       color: theme.colorScheme.secondaryContainer,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Text(
-                      post.category,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSecondaryContainer,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          CupertinoIcons.square_grid_2x2,
+                          size: 14,
+                          color: theme.colorScheme.onSecondaryContainer,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          post.categoryName.isNotEmpty ? post.categoryName : post.category,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSecondaryContainer,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ],
             ),
             
+            // Location
+            if (post.location != null && post.location!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(
+                    CupertinoIcons.location,
+                    size: 16,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      post.location!,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            
+            // Contact Info
+            if (post.contactInfo != null && 
+                ((post.contactInfo!.showPhone && post.contactInfo!.phone != null && post.contactInfo!.phone!.isNotEmpty) ||
+                 (post.contactInfo!.showEmail && post.contactInfo!.email != null && post.contactInfo!.email!.isNotEmpty))) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: theme.colorScheme.outline.withValues(alpha: 0.12),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          CupertinoIcons.phone_circle,
+                          size: 18,
+                          color: theme.colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Thông tin liên hệ',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (post.contactInfo!.showPhone && post.contactInfo!.phone != null && post.contactInfo!.phone!.isNotEmpty) ...[
+                      Row(
+                        children: [
+                          Icon(
+                            CupertinoIcons.phone,
+                            size: 16,
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            post.contactInfo!.phone!,
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        ],
+                      ),
+                      if (post.contactInfo!.showEmail && post.contactInfo!.email != null && post.contactInfo!.email!.isNotEmpty)
+                        const SizedBox(height: 8),
+                    ],
+                    if (post.contactInfo!.showEmail && post.contactInfo!.email != null && post.contactInfo!.email!.isNotEmpty)
+                      Row(
+                        children: [
+                          Icon(
+                            CupertinoIcons.mail,
+                            size: 16,
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              post.contactInfo!.email!,
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ],
+            
             const SizedBox(height: 12),
             
             // Actions
             Row(
               children: [
-                IconButton(
-                  onPressed: () => viewModel.toggleLike(post.id),
-                  icon: Icon(
-                    post.isLiked
-                        ? CupertinoIcons.heart_fill
-                        : CupertinoIcons.heart,
-                    color: post.isLiked
-                        ? Colors.red
-                        : theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
-                ),
-                Text(
-                  '${post.likeCount}',
-                  style: theme.textTheme.bodySmall,
-                ),
-                const SizedBox(width: 24),
                 Icon(
                   CupertinoIcons.chat_bubble,
                   size: 20,

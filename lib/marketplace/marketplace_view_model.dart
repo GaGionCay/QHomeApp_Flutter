@@ -22,6 +22,8 @@ class MarketplaceViewModel extends ChangeNotifier {
   String? _error;
   int _currentPage = 0;
   int? _pageSize;
+  int _totalPages = 0;
+  int _totalElements = 0;
   bool _hasMore = true;
 
   // Filters
@@ -29,6 +31,7 @@ class MarketplaceViewModel extends ChangeNotifier {
   String? _searchQuery;
   String _statusFilter = 'ACTIVE';
   String? _sortBy;
+  bool _showAllBuildings = false; // false = show only my building, true = show all buildings
 
   // Getters
   List<MarketplacePost> get posts => _posts;
@@ -40,12 +43,15 @@ class MarketplaceViewModel extends ChangeNotifier {
   String? get searchQuery => _searchQuery;
   String get statusFilter => _statusFilter;
   String? get sortBy => _sortBy;
+  bool get showAllBuildings => _showAllBuildings;
 
   String? _buildingId;
+  String? _residentId;
   final Set<String> _subscribedPostIds = {}; // Track subscribed posts
 
   Future<void> initialize() async {
     _buildingId = await _tokenStorage.readBuildingId();
+    _residentId = await _tokenStorage.readResidentId();
     await loadCategories();
     await loadPosts(refresh: true);
     _setupRealtimeUpdates();
@@ -73,11 +79,10 @@ class MarketplaceViewModel extends ChangeNotifier {
     
     switch (type) {
       case 'POST_STATS_UPDATE':
-        // Update like count, comment count
-        final likeCount = data['likeCount'] as int?;
+        // Update comment count
         final commentCount = data['commentCount'] as int?;
         
-        if (likeCount != null || commentCount != null) {
+        if (commentCount != null) {
           _posts[index] = MarketplacePost(
             id: post.id,
             residentId: post.residentId,
@@ -91,9 +96,7 @@ class MarketplaceViewModel extends ChangeNotifier {
             contactInfo: post.contactInfo,
             location: post.location,
             viewCount: post.viewCount,
-            likeCount: likeCount ?? post.likeCount,
-            commentCount: commentCount ?? post.commentCount,
-            isLiked: post.isLiked,
+            commentCount: commentCount,
             images: post.images,
             author: post.author,
             createdAt: post.createdAt,
@@ -101,32 +104,7 @@ class MarketplaceViewModel extends ChangeNotifier {
           );
           notifyListeners();
         }
-      case 'POST_LIKED':
-      case 'POST_UNLIKED':
-        // Update like status
-        final isLiked = type == 'POST_LIKED';
-        _posts[index] = MarketplacePost(
-          id: post.id,
-          residentId: post.residentId,
-          buildingId: post.buildingId,
-          title: post.title,
-          description: post.description,
-          price: post.price,
-          category: post.category,
-          categoryName: post.categoryName,
-          status: post.status,
-          contactInfo: post.contactInfo,
-          location: post.location,
-          viewCount: post.viewCount,
-          likeCount: isLiked ? post.likeCount + 1 : (post.likeCount > 0 ? post.likeCount - 1 : 0),
-          commentCount: post.commentCount,
-          isLiked: isLiked,
-          images: post.images,
-          author: post.author,
-          createdAt: post.createdAt,
-          updatedAt: post.updatedAt,
-        );
-        notifyListeners();
+        break;
       case 'NEW_COMMENT':
         // Increment comment count and emit event for PostDetailScreen
         _posts[index] = MarketplacePost(
@@ -142,9 +120,7 @@ class MarketplaceViewModel extends ChangeNotifier {
           contactInfo: post.contactInfo,
           location: post.location,
           viewCount: post.viewCount,
-          likeCount: post.likeCount,
           commentCount: post.commentCount + 1,
-          isLiked: post.isLiked,
           images: post.images,
           author: post.author,
           createdAt: post.createdAt,
@@ -153,9 +129,11 @@ class MarketplaceViewModel extends ChangeNotifier {
         notifyListeners();
         // Emit event for PostDetailScreen to reload comments
         AppEventBus().emit('new_comment', {'postId': postId, 'data': data});
+        break;
       case 'NEW_POST':
         // Refresh posts list to show new post
         loadPosts(refresh: true);
+        break;
     }
   }
 
@@ -181,12 +159,6 @@ class MarketplaceViewModel extends ChangeNotifier {
   }
 
   Future<void> loadPosts({bool refresh = false, int? page}) async {
-    if (_buildingId == null) {
-      _error = 'Building ID not found';
-      notifyListeners();
-      return;
-    }
-
     if (refresh) {
       _currentPage = 0;
       _posts = [];
@@ -201,8 +173,10 @@ class MarketplaceViewModel extends ChangeNotifier {
 
     try {
       final targetPage = page ?? _currentPage;
+      // If showAllBuildings is true, don't send buildingId (null = all buildings)
+      // If showAllBuildings is false, send buildingId to filter by user's building
       final response = await _service.getPosts(
-        buildingId: _buildingId!,
+        buildingId: _showAllBuildings ? null : _buildingId,
         page: targetPage,
         size: _pageSize ?? 20,
         search: _searchQuery,
@@ -212,6 +186,8 @@ class MarketplaceViewModel extends ChangeNotifier {
       );
 
       _pageSize = response.pageSize;
+      _totalPages = response.totalPages;
+      _totalElements = response.totalElements;
 
       if (refresh) {
         _posts = response.content;
@@ -265,51 +241,12 @@ class MarketplaceViewModel extends ChangeNotifier {
     loadPosts(refresh: true);
   }
 
-  Future<void> toggleLike(String postId) async {
-    // Optimistic update - update UI immediately
-    final index = _posts.indexWhere((p) => p.id == postId);
-    if (index == -1) return;
-    
-    final post = _posts[index];
-    final wasLiked = post.isLiked;
-    final oldLikeCount = post.likeCount;
-    
-    // Update UI immediately (optimistic update)
-    _posts[index] = MarketplacePost(
-      id: post.id,
-      residentId: post.residentId,
-      buildingId: post.buildingId,
-      title: post.title,
-      description: post.description,
-      price: post.price,
-      category: post.category,
-      categoryName: post.categoryName,
-      status: post.status,
-      contactInfo: post.contactInfo,
-      location: post.location,
-      viewCount: post.viewCount,
-      likeCount: wasLiked ? (oldLikeCount > 0 ? oldLikeCount - 1 : 0) : oldLikeCount + 1,
-      commentCount: post.commentCount,
-      isLiked: !wasLiked,
-      images: post.images,
-      author: post.author,
-      createdAt: post.createdAt,
-      updatedAt: post.updatedAt,
-    );
-    notifyListeners();
-    
-    // Then call API
-    try {
-      await _service.toggleLike(postId);
-      // Optionally reload to get accurate count from server
-      // But optimistic update already shows the change
-    } catch (e) {
-      // Revert on error
-      _posts[index] = post;
-      _error = 'Lỗi khi like bài đăng: ${e.toString()}';
-      notifyListeners();
-    }
+  void setShowAllBuildings(bool showAll) {
+    if (_showAllBuildings == showAll) return;
+    _showAllBuildings = showAll;
+    loadPosts(refresh: true);
   }
+
 
   Future<MarketplacePost?> getPostById(String postId) async {
     try {
@@ -364,9 +301,7 @@ class MarketplaceViewModel extends ChangeNotifier {
           contactInfo: post.contactInfo,
           location: post.location,
           viewCount: post.viewCount,
-          likeCount: post.likeCount,
           commentCount: post.commentCount + 1,
-          isLiked: post.isLiked,
           images: post.images,
           author: post.author,
           createdAt: post.createdAt,

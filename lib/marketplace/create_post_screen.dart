@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'create_post_view_model.dart';
 import 'marketplace_service.dart';
@@ -188,7 +189,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
                   // Category
                   DropdownButtonFormField<String>(
-                    initialValue: viewModel.selectedCategory,
+                    value: viewModel.selectedCategory,
                     decoration: InputDecoration(
                       labelText: 'Danh mục *',
                       border: OutlineInputBorder(
@@ -386,6 +387,23 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             prefixIcon: const Icon(CupertinoIcons.phone),
           ),
           keyboardType: TextInputType.phone,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(10),
+          ],
+          validator: (value) {
+            if (viewModel.showPhone) {
+              if (value == null || value.trim().isEmpty) {
+                return 'Số điện thoại không được để trống khi chọn hiển thị số điện thoại';
+              }
+              // Remove all non-digit characters
+              final digitsOnly = value.replaceAll(RegExp(r'[^0-9]'), '');
+              if (digitsOnly.length != 10) {
+                return 'Số điện thoại phải có đúng 10 chữ số';
+              }
+            }
+            return null;
+          },
           onChanged: viewModel.setPhone,
         ),
         const SizedBox(height: 8),
@@ -393,7 +411,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           children: [
             Checkbox(
               value: viewModel.showPhone,
-              onChanged: (value) => viewModel.setShowPhone(value ?? true),
+              onChanged: (value) {
+                viewModel.setShowPhone(value ?? true);
+                // Trigger validation when checkbox changes
+                if (viewModel.formKey.currentState != null) {
+                  viewModel.formKey.currentState!.validate();
+                }
+              },
             ),
             Text(
               'Hiển thị số điện thoại',
@@ -415,6 +439,18 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             prefixIcon: const Icon(CupertinoIcons.mail),
           ),
           keyboardType: TextInputType.emailAddress,
+          validator: (value) {
+            if (viewModel.showEmail) {
+              if (value == null || value.trim().isEmpty) {
+                return 'Email không được để trống khi chọn hiển thị email';
+              }
+              final emailRegex = RegExp(r'^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$');
+              if (!emailRegex.hasMatch(value.trim())) {
+                return 'Email không đúng định dạng';
+              }
+            }
+            return null;
+          },
           onChanged: viewModel.setEmail,
         ),
         const SizedBox(height: 8),
@@ -422,7 +458,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           children: [
             Checkbox(
               value: viewModel.showEmail,
-              onChanged: (value) => viewModel.setShowEmail(value ?? false),
+              onChanged: (value) {
+                viewModel.setShowEmail(value ?? false);
+                // Trigger validation when checkbox changes
+                if (viewModel.formKey.currentState != null) {
+                  viewModel.formKey.currentState!.validate();
+                }
+              },
             ),
             Text(
               'Hiển thị email',

@@ -7,6 +7,7 @@ import '../auth/token_storage.dart';
 import 'marketplace_view_model.dart';
 import 'marketplace_service.dart';
 import '../models/marketplace_post.dart';
+import '../models/marketplace_category.dart';
 import '../common/layout_insets.dart';
 import 'create_post_screen.dart';
 import 'post_detail_screen.dart';
@@ -66,6 +67,105 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
           title: const Text('Chợ cư dân'),
           backgroundColor: Colors.transparent,
           elevation: 0,
+          actions: [
+            Consumer<MarketplaceViewModel>(
+              builder: (context, viewModel, child) {
+                return IconButton(
+                  icon: Stack(
+                    children: [
+                      Icon(
+                        CupertinoIcons.slider_horizontal_3,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                      // Badge to show active filters
+                      if (viewModel.selectedCategory != null || viewModel.sortBy != null)
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.error,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  onPressed: () => _showFilterBottomSheet(context, viewModel),
+                );
+              },
+            ),
+          ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(96), // Increased for filter badges
+            child: Column(
+              children: [
+                Consumer<MarketplaceViewModel>(
+                  builder: (context, viewModel, child) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: SegmentedButton<bool>(
+                        segments: const [
+                          ButtonSegment<bool>(
+                            value: false,
+                            label: Text('Building của tôi'),
+                            icon: Icon(CupertinoIcons.building_2_fill, size: 16),
+                          ),
+                          ButtonSegment<bool>(
+                            value: true,
+                            label: Text('Tất cả'),
+                            icon: Icon(CupertinoIcons.globe, size: 16),
+                          ),
+                        ],
+                        selected: {viewModel.showAllBuildings},
+                        onSelectionChanged: (Set<bool> selected) {
+                          if (selected.isNotEmpty) {
+                            viewModel.setShowAllBuildings(selected.first);
+                          }
+                        },
+                        style: SegmentedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                // Filter badges
+                Consumer<MarketplaceViewModel>(
+                  builder: (context, viewModel, child) {
+                    if (viewModel.selectedCategory == null && viewModel.sortBy == null) {
+                      return const SizedBox.shrink();
+                    }
+                    return Container(
+                      height: 40,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          if (viewModel.selectedCategory != null)
+                            _buildFilterChip(
+                              context,
+                              theme,
+                              _getCategoryName(viewModel.selectedCategory!, viewModel.categories),
+                              () => viewModel.setCategoryFilter(null),
+                            ),
+                          if (viewModel.sortBy != null)
+                            _buildFilterChip(
+                              context,
+                              theme,
+                              _getSortByLabel(viewModel.sortBy!),
+                              () => viewModel.setSortBy(null),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
         ),
         body: Consumer<MarketplaceViewModel>(
           builder: (context, viewModel, child) {
@@ -141,7 +241,6 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                   return _PostCard(
                     post: post,
                     currentResidentId: _currentResidentId,
-                    onLike: () => viewModel.toggleLike(post.id),
                     onTap: () {
                       Navigator.push(
                         context,
@@ -188,18 +287,201 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
       ),
     );
   }
+
+  void _showFilterBottomSheet(BuildContext context, MarketplaceViewModel viewModel) {
+    final theme = Theme.of(context);
+    String? selectedCategory = viewModel.selectedCategory;
+    String? selectedSortBy = viewModel.sortBy;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return Container(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).padding.bottom,
+              top: 20,
+              left: 20,
+              right: 20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Bộ lọc',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        // Clear all filters
+                        setState(() {
+                          selectedCategory = null;
+                          selectedSortBy = null;
+                        });
+                        viewModel.setCategoryFilter(null);
+                        viewModel.setSortBy(null);
+                      },
+                      child: const Text('Xóa tất cả'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                
+                // Category Filter
+                Text(
+                  'Danh mục',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    // "Tất cả" option
+                    ChoiceChip(
+                      label: const Text('Tất cả'),
+                      selected: selectedCategory == null,
+                      onSelected: (selected) {
+                        setState(() {
+                          selectedCategory = null;
+                        });
+                        viewModel.setCategoryFilter(null);
+                      },
+                    ),
+                    // Category options
+                    ...viewModel.categories
+                        .where((cat) => cat.active)
+                        .map((category) => ChoiceChip(
+                              label: Text(category.name),
+                              selected: selectedCategory == category.code,
+                              onSelected: (selected) {
+                                setState(() {
+                                  selectedCategory = selected ? category.code : null;
+                                });
+                                viewModel.setCategoryFilter(selected ? category.code : null);
+                              },
+                            )),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                
+                // Price Sort
+                Text(
+                  'Sắp xếp theo giá',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('Mặc định'),
+                      selected: selectedSortBy == null,
+                      onSelected: (selected) {
+                        setState(() {
+                          selectedSortBy = null;
+                        });
+                        viewModel.setSortBy(null);
+                      },
+                    ),
+                    ChoiceChip(
+                      label: const Text('Giá: Thấp → Cao'),
+                      selected: selectedSortBy == 'price_asc',
+                      onSelected: (selected) {
+                        setState(() {
+                          selectedSortBy = selected ? 'price_asc' : null;
+                        });
+                        viewModel.setSortBy(selected ? 'price_asc' : null);
+                      },
+                    ),
+                    ChoiceChip(
+                      label: const Text('Giá: Cao → Thấp'),
+                      selected: selectedSortBy == 'price_desc',
+                      onSelected: (selected) {
+                        setState(() {
+                          selectedSortBy = selected ? 'price_desc' : null;
+                        });
+                        viewModel.setSortBy(selected ? 'price_desc' : null);
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(BuildContext context, ThemeData theme, String label, VoidCallback onRemove) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      child: Chip(
+        label: Text(label),
+        onDeleted: onRemove,
+        deleteIcon: const Icon(CupertinoIcons.xmark_circle_fill, size: 18),
+        backgroundColor: theme.colorScheme.primaryContainer,
+        labelStyle: TextStyle(
+          color: theme.colorScheme.onPrimaryContainer,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+
+  String _getCategoryName(String categoryCode, List<MarketplaceCategory> categories) {
+    try {
+      final category = categories.firstWhere(
+        (cat) => cat.code == categoryCode,
+      );
+      return category.name;
+    } catch (e) {
+      return categoryCode;
+    }
+  }
+
+  String _getSortByLabel(String sortBy) {
+    switch (sortBy) {
+      case 'price_asc':
+        return 'Giá: Thấp → Cao';
+      case 'price_desc':
+        return 'Giá: Cao → Thấp';
+      case 'newest':
+        return 'Mới nhất';
+      case 'oldest':
+        return 'Cũ nhất';
+      default:
+        return sortBy;
+    }
+  }
 }
 
 class _PostCard extends StatelessWidget {
   final MarketplacePost post;
   final String? currentResidentId;
-  final VoidCallback onLike;
   final VoidCallback onTap;
 
   const _PostCard({
     required this.post,
     this.currentResidentId,
-    required this.onLike,
     required this.onTap,
   });
 
@@ -300,7 +582,7 @@ class _PostCard extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: 4),
-                          if (post.author?.unitNumber != null)
+                          if (post.author?.unitNumber != null || post.author?.buildingName != null)
                             Row(
                               children: [
                                 Icon(
@@ -309,13 +591,31 @@ class _PostCard extends StatelessWidget {
                                   color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                                 ),
                                 const SizedBox(width: 4),
-                                Text(
-                                  post.author!.unitNumber!,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                                    fontWeight: FontWeight.w500,
+                                if (post.author?.buildingName != null) ...[
+                                  Text(
+                                    post.author!.buildingName!,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                   ),
-                                ),
+                                  if (post.author?.unitNumber != null) ...[
+                                    Text(
+                                      ' - ',
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                                if (post.author?.unitNumber != null)
+                                  Text(
+                                    post.author!.unitNumber!,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
                               ],
                             ),
                         ],
@@ -351,6 +651,153 @@ class _PostCard extends StatelessWidget {
                     style: theme.textTheme.bodyMedium,
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                // Price, Category, Location
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (post.price != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              CupertinoIcons.money_dollar,
+                              size: 14,
+                              color: theme.colorScheme.onPrimaryContainer,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              post.priceDisplay,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.onPrimaryContainer,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (post.category.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.secondaryContainer,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              CupertinoIcons.square_grid_2x2,
+                              size: 12,
+                              color: theme.colorScheme.onSecondaryContainer,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              post.categoryName.isNotEmpty ? post.categoryName : post.category,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.onSecondaryContainer,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (post.location != null && post.location!.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.tertiaryContainer,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              CupertinoIcons.location,
+                              size: 12,
+                              color: theme.colorScheme.onTertiaryContainer,
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                post.location!,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: theme.colorScheme.onTertiaryContainer,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+                // Contact Info (if visible)
+                if (post.contactInfo != null && 
+                    ((post.contactInfo!.showPhone && post.contactInfo!.phone != null && post.contactInfo!.phone!.isNotEmpty) ||
+                     (post.contactInfo!.showEmail && post.contactInfo!.email != null && post.contactInfo!.email!.isNotEmpty))) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                        CupertinoIcons.phone_circle,
+                        size: 14,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 6),
+                      if (post.contactInfo!.showPhone && post.contactInfo!.phone != null && post.contactInfo!.phone!.isNotEmpty) ...[
+                        Icon(
+                          CupertinoIcons.phone,
+                          size: 12,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          post.contactInfo!.phone!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                          ),
+                        ),
+                        if (post.contactInfo!.showEmail && post.contactInfo!.email != null && post.contactInfo!.email!.isNotEmpty)
+                          const SizedBox(width: 12),
+                      ],
+                      if (post.contactInfo!.showEmail && post.contactInfo!.email != null && post.contactInfo!.email!.isNotEmpty) ...[
+                        Icon(
+                          CupertinoIcons.mail,
+                          size: 12,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            post.contactInfo!.email!,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
                 // Images
@@ -507,22 +954,6 @@ class _PostCard extends StatelessWidget {
                 // Actions
                 Row(
                   children: [
-                    IconButton(
-                      onPressed: onLike,
-                      icon: Icon(
-                        post.isLiked
-                            ? CupertinoIcons.heart_fill
-                            : CupertinoIcons.heart,
-                        color: post.isLiked
-                            ? Colors.red
-                            : theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                      ),
-                    ),
-                    Text(
-                      '${post.likeCount}',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    const SizedBox(width: 24),
                     Icon(
                       CupertinoIcons.chat_bubble,
                       size: 20,

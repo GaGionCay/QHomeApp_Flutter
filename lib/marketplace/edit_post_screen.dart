@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -51,6 +52,12 @@ class _EditPostScreenState extends State<EditPostScreen> {
     _locationController.text = widget.post.location ?? '';
     _phoneController.text = widget.post.contactInfo?.phone ?? '';
     _emailController.text = widget.post.contactInfo?.email ?? '';
+    
+    // Set showPhone and showEmail from existing post
+    if (widget.post.contactInfo != null) {
+      _viewModel.setShowPhone(widget.post.contactInfo!.showPhone);
+      _viewModel.setShowEmail(widget.post.contactInfo!.showEmail);
+    }
     
     // Set existing images
     _viewModel.setExistingImages(widget.post.images);
@@ -125,6 +132,8 @@ class _EditPostScreenState extends State<EditPostScreen> {
               email: _emailController.text.trim().isNotEmpty 
                   ? _emailController.text.trim() 
                   : null,
+              showPhone: _viewModel.showPhone,
+              showEmail: _viewModel.showEmail,
             )
           : null,
       newImages: _viewModel.newImages,
@@ -205,7 +214,7 @@ class _EditPostScreenState extends State<EditPostScreen> {
             Consumer<EditPostViewModel>(
               builder: (context, viewModel, child) {
                 return DropdownButtonFormField<String>(
-                  initialValue: viewModel.selectedCategory ?? widget.post.category,
+                  value: viewModel.selectedCategory ?? widget.post.category,
                   decoration: InputDecoration(
                     labelText: 'Danh mục *',
                     border: OutlineInputBorder(
@@ -278,27 +287,112 @@ class _EditPostScreenState extends State<EditPostScreen> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _phoneController,
-              decoration: InputDecoration(
-                labelText: 'Số điện thoại',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+            const SizedBox(height: 8),
+            Text(
+              'Thông tin này sẽ được hiển thị công khai',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
               ),
-              keyboardType: TextInputType.phone,
             ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _emailController,
-              decoration: InputDecoration(
-                labelText: 'Email',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              keyboardType: TextInputType.emailAddress,
+            const SizedBox(height: 12),
+            Consumer<EditPostViewModel>(
+              builder: (context, viewModel, child) {
+                return Column(
+                  children: [
+                    // Phone
+                    TextFormField(
+                      controller: _phoneController,
+                      decoration: InputDecoration(
+                        labelText: 'Số điện thoại',
+                        hintText: 'Nhập số điện thoại (tùy chọn)',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        prefixIcon: const Icon(CupertinoIcons.phone),
+                      ),
+                      keyboardType: TextInputType.phone,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(10),
+                      ],
+                      validator: (value) {
+                        if (viewModel.showPhone) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Số điện thoại không được để trống khi chọn hiển thị số điện thoại';
+                          }
+                          final digitsOnly = value.replaceAll(RegExp(r'[^0-9]'), '');
+                          if (digitsOnly.length != 10) {
+                            return 'Số điện thoại phải có đúng 10 chữ số';
+                          }
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: viewModel.showPhone,
+                          onChanged: (value) {
+                            viewModel.setShowPhone(value ?? true);
+                            if (_formKey.currentState != null) {
+                              _formKey.currentState!.validate();
+                            }
+                          },
+                        ),
+                        Text(
+                          'Hiển thị số điện thoại',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    // Email
+                    TextFormField(
+                      controller: _emailController,
+                      decoration: InputDecoration(
+                        labelText: 'Email',
+                        hintText: 'Nhập email (tùy chọn)',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        prefixIcon: const Icon(CupertinoIcons.mail),
+                      ),
+                      keyboardType: TextInputType.emailAddress,
+                      validator: (value) {
+                        if (viewModel.showEmail) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Email không được để trống khi chọn hiển thị email';
+                          }
+                          final emailRegex = RegExp(r'^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$');
+                          if (!emailRegex.hasMatch(value.trim())) {
+                            return 'Email không đúng định dạng';
+                          }
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: viewModel.showEmail,
+                          onChanged: (value) {
+                            viewModel.setShowEmail(value ?? false);
+                            if (_formKey.currentState != null) {
+                              _formKey.currentState!.validate();
+                            }
+                          },
+                        ),
+                        Text(
+                          'Hiển thị email',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 24),
 
@@ -555,7 +649,7 @@ class _EditPostScreenState extends State<EditPostScreen> {
     String formatted = '';
     for (int i = priceStr.length - 1; i >= 0; i--) {
       if ((priceStr.length - 1 - i) > 0 && (priceStr.length - 1 - i) % 3 == 0) {
-        formatted = ',$formatted';
+        formatted = ',' + formatted;
       }
       formatted = priceStr[i] + formatted;
     }

@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'marketplace_service.dart';
 import '../auth/token_storage.dart';
@@ -7,8 +8,9 @@ import '../models/marketplace_category.dart';
 
 class EditPostViewModel extends ChangeNotifier {
   final MarketplaceService _service;
+  final TokenStorage _tokenStorage;
 
-  EditPostViewModel(this._service, TokenStorage _);
+  EditPostViewModel(this._service, this._tokenStorage);
 
   // State
   List<MarketplaceCategory> _categories = [];
@@ -18,6 +20,8 @@ class EditPostViewModel extends ChangeNotifier {
   List<String> _imagesToDelete = [];
   bool _isSubmitting = false;
   String? _error;
+  bool _showPhone = true;
+  bool _showEmail = false;
 
   // Getters
   List<MarketplaceCategory> get categories => _categories;
@@ -27,6 +31,18 @@ class EditPostViewModel extends ChangeNotifier {
   List<String> get imagesToDelete => _imagesToDelete;
   bool get isSubmitting => _isSubmitting;
   String? get error => _error;
+  bool get showPhone => _showPhone;
+  bool get showEmail => _showEmail;
+
+  void setShowPhone(bool value) {
+    _showPhone = value;
+    notifyListeners();
+  }
+
+  void setShowEmail(bool value) {
+    _showEmail = value;
+    notifyListeners();
+  }
 
   Future<void> initialize() async {
     try {
@@ -119,6 +135,11 @@ class EditPostViewModel extends ChangeNotifier {
       notifyListeners();
       return null;
     }
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 }
 

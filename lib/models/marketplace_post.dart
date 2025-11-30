@@ -13,9 +13,7 @@ class MarketplacePost {
   final MarketplaceContactInfo? contactInfo;
   final String? location; // Tòa nhà, tầng, căn hộ
   final int viewCount;
-  final int likeCount;
   final int commentCount;
-  final bool isLiked; // User đã like chưa
   final List<MarketplacePostImage> images;
   final MarketplaceResidentInfo? author; // Thông tin người đăng
   final DateTime createdAt;
@@ -34,9 +32,7 @@ class MarketplacePost {
     this.contactInfo,
     this.location,
     required this.viewCount,
-    required this.likeCount,
     required this.commentCount,
-    required this.isLiked,
     required this.images,
     this.author,
     required this.createdAt,
@@ -76,9 +72,7 @@ class MarketplacePost {
           : null,
       location: json['location'],
       viewCount: json['viewCount'] ?? 0,
-      likeCount: json['likeCount'] ?? 0,
       commentCount: json['commentCount'] ?? 0,
-      isLiked: json['isLiked'] ?? false,
       images: () {
         final imagesJson = json['images'];
         print('🖼️ [MarketplacePost] Images data: $imagesJson');
@@ -205,8 +199,8 @@ class MarketplacePostImage {
         return fullUrl;
       } else {
         // Fallback: construct from known pattern
-        const host = 'localhost';
-        const port = 8989;
+        final host = 'localhost';
+        final port = 8989;
         final path = relativePath.startsWith('/') ? relativePath : '/$relativePath';
         return 'http://$host:$port$path';
       }
@@ -272,12 +266,14 @@ class MarketplaceResidentInfo {
   final String? name;
   final String? avatarUrl;
   final String? unitNumber; // Số căn hộ
+  final String? buildingName; // Tên tòa nhà (e.g., "Tòa A", "Tòa B")
 
   MarketplaceResidentInfo({
     required this.residentId,
     this.name,
     this.avatarUrl,
     this.unitNumber,
+    this.buildingName,
   });
 
   factory MarketplaceResidentInfo.fromJson(Map<String, dynamic> json) {
@@ -287,8 +283,9 @@ class MarketplaceResidentInfo {
       name: json['name'],
       avatarUrl: json['avatarUrl'],
       unitNumber: json['unitNumber'],
+      buildingName: json['buildingName'],
     );
-    print('✅ [MarketplaceResidentInfo] Parsed - name: ${result.name}, residentId: ${result.residentId}, unitNumber: ${result.unitNumber}');
+    print('✅ [MarketplaceResidentInfo] Parsed - name: ${result.name}, residentId: ${result.residentId}, unitNumber: ${result.unitNumber}, buildingName: ${result.buildingName}');
     return result;
   }
 }
