@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../models/chat/message.dart';
+import '../models/chat/group.dart';
 import '../profile/profile_service.dart';
 import '../auth/api_client.dart';
 import 'chat_service.dart';
@@ -18,6 +19,7 @@ class ChatMessageViewModel extends ChangeNotifier {
   String? _groupName;
   String? _currentUserId;
   String? _currentResidentId;
+  ChatGroup? _group;
 
   List<ChatMessage> get messages => _messages;
   bool get isLoading => _isLoading;
@@ -26,11 +28,19 @@ class ChatMessageViewModel extends ChangeNotifier {
   String? get groupName => _groupName;
   String? get currentUserId => _currentUserId;
   String? get currentResidentId => _currentResidentId;
+  ChatGroup? get group => _group;
+  
+  bool get isCreator => _group != null && _currentResidentId != null && 
+      _group!.createdBy == _currentResidentId;
 
   Future<void> initialize(String groupId) async {
     _groupId = groupId;
+    _isLoading = true;
+    notifyListeners();
     await _loadCurrentUser();
-    await loadGroupInfo();
+    await loadGroupInfo(); // Load group info first to show name immediately
+    _isLoading = false;
+    notifyListeners();
     await loadMessages(refresh: true);
     await markAsRead();
   }
@@ -57,10 +67,47 @@ class ChatMessageViewModel extends ChangeNotifier {
   Future<void> loadGroupInfo() async {
     try {
       final group = await _service.getGroupById(_groupId!);
+      _group = group;
       _groupName = group.name;
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading group info: $e');
+    }
+  }
+
+  Future<void> updateGroupName(String newName) async {
+    try {
+      final updatedGroup = await _service.updateGroup(
+        groupId: _groupId!,
+        name: newName,
+      );
+      _group = updatedGroup;
+      _groupName = updatedGroup.name;
+      notifyListeners();
+    } catch (e) {
+      _error = 'Lỗi khi đổi tên nhóm: ${e.toString()}';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> leaveGroup() async {
+    try {
+      await _service.leaveGroup(_groupId!);
+    } catch (e) {
+      _error = 'Lỗi khi rời nhóm: ${e.toString()}';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> deleteGroup() async {
+    try {
+      await _service.deleteGroup(_groupId!);
+    } catch (e) {
+      _error = 'Lỗi khi xóa nhóm: ${e.toString()}';
+      notifyListeners();
+      rethrow;
     }
   }
 

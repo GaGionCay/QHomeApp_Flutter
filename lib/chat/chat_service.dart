@@ -123,6 +123,15 @@ class ChatService {
     }
   }
 
+  /// Delete group (only creator can delete)
+  Future<void> deleteGroup(String groupId) async {
+    try {
+      await _apiClient.dio.delete('/groups/$groupId');
+    } catch (e) {
+      throw Exception('Lỗi khi xóa nhóm: ${e.toString()}');
+    }
+  }
+
   /// Invite members by phone number
   Future<InviteMembersResponse> inviteMembersByPhone({
     required String groupId,

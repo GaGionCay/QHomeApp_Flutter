@@ -80,8 +80,8 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
     _pages = [
       HomeScreen(onNavigateToTab: _onItemTapped),
       const ServiceCategoryScreen(),
-      const MenuScreen(),
       const MarketplaceScreen(),
+      const MenuScreen(),
     ];
   }
 
@@ -577,14 +577,14 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
                       label: 'Dịch vụ',
                     ),
                     NavigationDestination(
-                      icon: Icon(CupertinoIcons.square_grid_2x2),
-                      selectedIcon: Icon(CupertinoIcons.square_grid_2x2_fill),
-                      label: 'Tiện ích',
-                    ),
-                    NavigationDestination(
                       icon: Icon(CupertinoIcons.cart),
                       selectedIcon: Icon(CupertinoIcons.cart_fill),
                       label: 'Chợ cư dân',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(CupertinoIcons.square_grid_2x2),
+                      selectedIcon: Icon(CupertinoIcons.square_grid_2x2_fill),
+                      label: 'Tiện ích',
                     ),
                   ],
                 ),

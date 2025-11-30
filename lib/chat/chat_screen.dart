@@ -6,6 +6,7 @@ import '../models/chat/message.dart';
 import 'chat_service.dart';
 import 'chat_message_view_model.dart';
 import 'invite_members_dialog.dart';
+import 'group_members_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final String groupId;
@@ -45,6 +46,134 @@ class _ChatScreenState extends State<ChatScreen> {
     _messageController.clear();
   }
 
+  Future<void> _showRenameDialog(BuildContext context, ChatMessageViewModel viewModel) async {
+    final controller = TextEditingController(text: viewModel.groupName);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Đổi tên nhóm'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'Nhập tên nhóm mới',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () {
+              final newName = controller.text.trim();
+              if (newName.isNotEmpty) {
+                Navigator.pop(context, newName);
+              }
+            },
+            child: const Text('Lưu'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && mounted) {
+      try {
+        await viewModel.updateGroupName(result);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Đã đổi tên nhóm thành công')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Lỗi: ${e.toString()}')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _showLeaveConfirmation(BuildContext context, ChatMessageViewModel viewModel) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rời nhóm'),
+        content: const Text('Bạn có chắc chắn muốn rời nhóm này không?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Rời nhóm'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && mounted) {
+      try {
+        await viewModel.leaveGroup();
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Đã rời nhóm')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Lỗi: ${e.toString()}')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _showDeleteConfirmation(BuildContext context, ChatMessageViewModel viewModel) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xóa nhóm'),
+        content: const Text('Bạn có chắc chắn muốn xóa nhóm này không? Hành động này không thể hoàn tác.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Xóa nhóm'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && mounted) {
+      try {
+        await viewModel.deleteGroup();
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Đã xóa nhóm')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Lỗi: ${e.toString()}')),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -53,7 +182,17 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Scaffold(
         backgroundColor: theme.colorScheme.surface,
         appBar: AppBar(
-          title: Text(_viewModel.groupName ?? 'Nhóm chat'),
+          title: Consumer<ChatMessageViewModel>(
+            builder: (context, viewModel, child) {
+              if (viewModel.isLoading && viewModel.groupName == null) {
+                return const Text('Đang tải...');
+              }
+              return Text(
+                viewModel.groupName ?? 'Nhóm chat',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              );
+            },
+          ),
           backgroundColor: Colors.transparent,
           elevation: 0,
           actions: [
@@ -67,6 +206,72 @@ class _ChatScreenState extends State<ChatScreen> {
                 if (result == true && mounted) {
                   // Refresh group info if needed
                 }
+              },
+            ),
+            Consumer<ChatMessageViewModel>(
+              builder: (context, viewModel, child) {
+                return PopupMenuButton<String>(
+                  icon: const Icon(CupertinoIcons.ellipsis),
+                  onSelected: (value) async {
+                    if (value == 'members') {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => GroupMembersScreen(groupId: widget.groupId),
+                        ),
+                      );
+                    } else if (value == 'rename') {
+                      await _showRenameDialog(context, viewModel);
+                    } else if (value == 'leave') {
+                      await _showLeaveConfirmation(context, viewModel);
+                    } else if (value == 'delete') {
+                      await _showDeleteConfirmation(context, viewModel);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'members',
+                      child: Row(
+                        children: [
+                          Icon(CupertinoIcons.person_2, size: 20),
+                          SizedBox(width: 8),
+                          Text('Xem thành viên'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'rename',
+                      child: Row(
+                        children: [
+                          Icon(CupertinoIcons.pencil, size: 20),
+                          SizedBox(width: 8),
+                          Text('Đổi tên nhóm'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'leave',
+                      child: Row(
+                        children: [
+                          Icon(CupertinoIcons.arrow_right_square, size: 20),
+                          SizedBox(width: 8),
+                          Text('Rời nhóm'),
+                        ],
+                      ),
+                    ),
+                    if (viewModel.isCreator)
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(CupertinoIcons.delete, size: 20, color: Colors.red),
+                            SizedBox(width: 8),
+                            Text('Xóa nhóm', style: TextStyle(color: Colors.red)),
+                          ],
+                        ),
+                      ),
+                  ],
+                );
               },
             ),
           ],
@@ -107,6 +312,10 @@ class _ChatScreenState extends State<ChatScreen> {
                       }
 
                       final message = viewModel.messages[viewModel.messages.length - 1 - index];
+                      // Check if this is a system message
+                      if (message.messageType == 'SYSTEM') {
+                        return _SystemMessageBubble(message: message);
+                      }
                       return _MessageBubble(
                         message: message,
                         currentResidentId: viewModel.currentResidentId,
@@ -208,6 +417,54 @@ class _MessageBubble extends StatelessWidget {
     if (diff.inDays < 1) return '${time.hour}:${time.minute.toString().padLeft(2, '0')}';
     if (diff.inDays < 7) return '${diff.inDays} ngày trước';
     return '${time.day}/${time.month}/${time.year}';
+  }
+}
+
+class _SystemMessageBubble extends StatelessWidget {
+  final ChatMessage message;
+
+  const _SystemMessageBubble({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(
+                  child: Divider(
+                    color: theme.colorScheme.outline.withOpacity(0.3),
+                    thickness: 1,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    message.content ?? '',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF6B7280), // Gray color
+                      fontSize: 12,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                Expanded(
+                  child: Divider(
+                    color: theme.colorScheme.outline.withOpacity(0.3),
+                    thickness: 1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
