@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
@@ -17,6 +19,7 @@ import 'auth/token_storage.dart';
 import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
+import 'package:go_router/go_router.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -231,7 +234,120 @@ class MyApp extends StatelessWidget {
               maxScaleFactor: 1.2,
             ),
           ),
-          child: child!,
+          child: ExitConfirmationWrapper(child: child!),
+        );
+      },
+    );
+  }
+}
+
+/// Widget wrapper để xác nhận trước khi thoát app trên Android
+class ExitConfirmationWrapper extends StatefulWidget {
+  final Widget child;
+
+  const ExitConfirmationWrapper({
+    super.key,
+    required this.child,
+  });
+
+  @override
+  State<ExitConfirmationWrapper> createState() => _ExitConfirmationWrapperState();
+}
+
+class _ExitConfirmationWrapperState extends State<ExitConfirmationWrapper> {
+  DateTime? _lastBackPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    // Chỉ áp dụng cho Android
+    if (!Platform.isAndroid) {
+      return widget.child;
+    }
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, dynamic result) async {
+        if (didPop) {
+          return;
+        }
+
+        // Kiểm tra xem có thể pop không (tức là có màn hình trước đó)
+        // Sử dụng GoRouter để kiểm tra
+        final router = GoRouter.of(context);
+        if (router.canPop()) {
+          // Có màn hình trước đó, cho phép pop bình thường
+          router.pop();
+          return;
+        }
+
+        // Không thể pop (đang ở màn hình đầu tiên), hiển thị dialog xác nhận
+        final now = DateTime.now();
+        final shouldShowDialog = _lastBackPressed == null ||
+            now.difference(_lastBackPressed!) > const Duration(seconds: 2);
+
+        if (shouldShowDialog) {
+          _lastBackPressed = now;
+          final shouldExit = await _showExitConfirmationDialog(context);
+          if (shouldExit == true && mounted) {
+            // Thoát app
+            SystemNavigator.pop();
+          }
+        }
+      },
+      child: widget.child,
+    );
+  }
+
+  /// Hiển thị dialog xác nhận thoát app
+  Future<bool?> _showExitConfirmationDialog(BuildContext context) async {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text(
+            'Thoát ứng dụng',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: const Text(
+            'Bạn có chắc chắn muốn thoát ứng dụng?',
+            style: TextStyle(fontSize: 16),
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(false); // Không thoát
+              },
+              child: const Text(
+                'Không',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(true); // Thoát
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+              ),
+              child: const Text(
+                'Có',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
         );
       },
     );
