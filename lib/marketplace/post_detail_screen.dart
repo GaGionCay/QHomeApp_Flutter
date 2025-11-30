@@ -3,6 +3,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter_linkify/flutter_linkify.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:shimmer/shimmer.dart';
 import '../models/marketplace_post.dart';
 import '../models/marketplace_comment.dart';
 import '../auth/token_storage.dart';
@@ -29,8 +32,15 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   final TokenStorage _tokenStorage = TokenStorage();
   List<MarketplaceComment> _comments = [];
   bool _isLoadingComments = false;
+  bool _isLoadingMoreComments = false;
   bool _isPostingComment = false;
   String? _currentResidentId;
+  String? _replyingToCommentId; // ID của comment đang được reply
+  MarketplaceComment? _replyingToComment; // Comment đang được reply (để hiển thị tên)
+  int _currentPage = 0;
+  int _pageSize = 10;
+  bool _hasMoreComments = true;
+  Map<String, bool> _expandedComments = {}; // Track expanded state for read more
 
   @override
   void initState() {
@@ -152,25 +162,57 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     });
   }
 
-  Future<void> _loadComments() async {
-    setState(() => _isLoadingComments = true);
+  Future<void> _loadComments({bool loadMore = false}) async {
+    if (loadMore) {
+      if (_isLoadingMoreComments || !_hasMoreComments) return;
+      setState(() => _isLoadingMoreComments = true);
+    } else {
+      setState(() {
+        _isLoadingComments = true;
+        _currentPage = 0;
+        _comments = [];
+        _hasMoreComments = true;
+      });
+    }
+
     try {
       final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
-      final comments = await viewModel.getComments(widget.post.id);
+      final pagedResponse = await viewModel.getCommentsPaged(
+        widget.post.id,
+        page: _currentPage,
+        size: _pageSize,
+      );
+      
       if (mounted) {
         setState(() {
-          _comments = comments;
+          if (loadMore) {
+            _comments.addAll(pagedResponse.content);
+          } else {
+            _comments = pagedResponse.content;
+          }
+          _currentPage = pagedResponse.currentPage + 1;
+          _hasMoreComments = pagedResponse.hasNext;
           _isLoadingComments = false;
+          _isLoadingMoreComments = false;
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isLoadingComments = false);
+        setState(() {
+          _isLoadingComments = false;
+          _isLoadingMoreComments = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Lỗi khi tải bình luận: $e')),
         );
       }
     }
+  }
+
+  void _toggleCommentExpand(String commentId) {
+    setState(() {
+      _expandedComments[commentId] = !(_expandedComments[commentId] ?? false);
+    });
   }
 
   Future<void> _postComment() async {
@@ -180,10 +222,16 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     setState(() => _isPostingComment = true);
     try {
       final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
-      final newComment = await viewModel.addComment(widget.post.id, content);
+      final newComment = await viewModel.addComment(
+        widget.post.id, 
+        content,
+        parentCommentId: _replyingToCommentId,
+      );
       
       if (newComment != null && mounted) {
         _commentController.clear();
+        _replyingToCommentId = null;
+        _replyingToComment = null;
         // Reload comments to get updated list
         await _loadComments();
         // Scroll to bottom to show new comment
@@ -206,6 +254,29 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         setState(() => _isPostingComment = false);
       }
     }
+  }
+
+  void _startReply(MarketplaceComment comment) {
+    setState(() {
+      _replyingToCommentId = comment.id;
+      _replyingToComment = comment;
+    });
+    // Focus vào comment input
+    // Scroll to comment input
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  void _cancelReply() {
+    setState(() {
+      _replyingToCommentId = null;
+      _replyingToComment = null;
+    });
   }
 
   @override
@@ -303,12 +374,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                       
                       // Comments List
                       if (_isLoadingComments)
-                        const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(32.0),
-                            child: CircularProgressIndicator(),
-                          ),
-                        )
+                        _buildCommentSkeleton(theme)
                       else if (_comments.isEmpty)
                         Center(
                           child: Padding(
@@ -331,12 +397,28 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                             ),
                           ),
                         )
-                      else
+                      else ...[
                         ..._comments.map((comment) => _buildCommentCard(
                               context,
                               theme,
                               comment,
+                              depth: 0,
                             )),
+                        // Load more button
+                        if (_hasMoreComments)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16.0),
+                            child: Center(
+                              child: _isLoadingMoreComments
+                                  ? const CircularProgressIndicator()
+                                  : TextButton.icon(
+                                      onPressed: () => _loadComments(loadMore: true),
+                                      icon: const Icon(CupertinoIcons.arrow_down),
+                                      label: const Text('Xem thêm bình luận'),
+                                    ),
+                            ),
+                          ),
+                      ],
                       
                       const SizedBox(height: 80), // Space for input field
                     ],
@@ -345,61 +427,115 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               ),
               
               // Comment Input
-              Container(
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? theme.colorScheme.surfaceContainerHigh
-                      : theme.colorScheme.surface,
-                  border: Border(
-                    top: BorderSide(
-                      color: theme.colorScheme.outline.withValues(alpha: 0.12),
-                    ),
-                  ),
-                ),
-                padding: EdgeInsets.only(
-                  left: 16,
-                  right: 16,
-                  top: 8,
-                  bottom: MediaQuery.of(context).padding.bottom + 8,
-                ),
-                child: SafeArea(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _commentController,
-                          decoration: InputDecoration(
-                            hintText: 'Viết bình luận...',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Reply banner
+                  if (_replyingToComment != null)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+                        border: Border(
+                          bottom: BorderSide(
+                            color: theme.colorScheme.outline.withValues(alpha: 0.12),
                           ),
-                          maxLines: null,
-                          textInputAction: TextInputAction.send,
-                          onSubmitted: (_) => _postComment(),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        onPressed: _isPostingComment ? null : _postComment,
-                        icon: _isPostingComment
-                            ? const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : Icon(
-                                CupertinoIcons.paperplane_fill,
-                                color: theme.colorScheme.primary,
+                      child: Row(
+                        children: [
+                          Icon(
+                            CupertinoIcons.arrow_turn_down_right,
+                            size: 16,
+                            color: theme.colorScheme.onPrimaryContainer,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Đang trả lời cho ${_replyingToComment!.author?.name ?? 'Người dùng'}',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onPrimaryContainer,
+                                fontWeight: FontWeight.w500,
                               ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(
+                              CupertinoIcons.xmark_circle_fill,
+                              size: 20,
+                              color: theme.colorScheme.onPrimaryContainer,
+                            ),
+                            onPressed: _cancelReply,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? theme.colorScheme.surfaceContainerHigh
+                          : theme.colorScheme.surface,
+                      border: Border(
+                        top: BorderSide(
+                          color: theme.colorScheme.outline.withValues(alpha: 0.12),
+                        ),
+                      ),
+                    ),
+                    padding: EdgeInsets.only(
+                      left: 16,
+                      right: 16,
+                      top: 8,
+                      bottom: MediaQuery.of(context).padding.bottom + 8,
+                    ),
+                    child: SafeArea(
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _commentController,
+                              decoration: InputDecoration(
+                                hintText: _replyingToComment != null
+                                    ? 'Viết câu trả lời...'
+                                    : 'Viết bình luận...',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(24),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
+                              ),
+                              maxLines: null,
+                              textInputAction: TextInputAction.send,
+                              onSubmitted: (_) => _postComment(),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            onPressed: _isPostingComment ? null : _postComment,
+                            icon: _isPostingComment
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : Icon(
+                                    CupertinoIcons.paperplane_fill,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ],
           );
@@ -732,87 +868,262 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   Widget _buildCommentCard(
     BuildContext context,
     ThemeData theme,
-    MarketplaceComment comment,
-  ) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            radius: 16,
-            backgroundColor: theme.colorScheme.primaryContainer,
-            child: Icon(
-              CupertinoIcons.person_fill,
-              size: 16,
-              color: theme.colorScheme.onPrimaryContainer,
-            ),
+    MarketplaceComment comment, {
+    int depth = 0, // Độ sâu của reply (0 = top-level comment)
+  }) {
+    final isReply = depth > 0;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          margin: EdgeInsets.only(
+            bottom: 12,
+            left: isReply ? 32.0 : 0, // Indent cho replies
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        comment.author?.name ?? 'Người dùng',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: (_currentResidentId != null && 
-                                  comment.residentId == _currentResidentId)
-                              ? theme.colorScheme.primary
-                              : theme.colorScheme.onSurface,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(12),
+            border: isReply 
+                ? Border(
+                    left: BorderSide(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                      width: 3,
                     ),
-                    if (_currentResidentId != null && 
-                        comment.residentId == _currentResidentId) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          'Bạn',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.onPrimary,
-                            fontWeight: FontWeight.w600,
+                  )
+                : null,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: isReply ? 14 : 16,
+                backgroundColor: theme.colorScheme.primaryContainer,
+                child: Icon(
+                  CupertinoIcons.person_fill,
+                  size: isReply ? 14 : 16,
+                  color: theme.colorScheme.onPrimaryContainer,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            comment.author?.name ?? 'Người dùng',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: (_currentResidentId != null && 
+                                      comment.residentId == _currentResidentId)
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.onSurface,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                      ),
-                    ],
-                    const SizedBox(width: 8),
-                    Text(
-                      _formatDate(comment.createdAt),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                        if (_currentResidentId != null && 
+                            comment.residentId == _currentResidentId) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'Bạn',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.onPrimary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(width: 8),
+                        Text(
+                          _formatDate(comment.createdAt),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ],
+                        ),
+                        const SizedBox(height: 4),
+                        _buildCommentContent(context, theme, comment),
+                        const SizedBox(height: 8),
+                    // Reply button
+                    InkWell(
+                      onTap: () => _startReply(comment),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            CupertinoIcons.arrow_turn_down_right,
+                            size: 16,
+                            color: theme.colorScheme.primary,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Trả lời',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  comment.content,
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ],
+              ),
+            ],
+          ),
+        ),
+        // Hiển thị replies nếu có
+        if (comment.replies.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          ...comment.replies.map((reply) => _buildCommentCard(
+            context,
+            theme,
+            reply,
+            depth: depth + 1,
+          )),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCommentSkeleton(ThemeData theme) {
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: 3,
+      itemBuilder: (context, index) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Shimmer.fromColors(
+            baseColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+            highlightColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.1),
+            period: const Duration(milliseconds: 1200),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          height: 16,
+                          width: 120,
+                          margin: const EdgeInsets.only(bottom: 8),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        Container(
+                          height: 14,
+                          margin: const EdgeInsets.only(bottom: 4),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        Container(
+                          height: 14,
+                          width: 200,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ],
-      ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCommentContent(BuildContext context, ThemeData theme, MarketplaceComment comment) {
+    const int maxLines = 3;
+    final bool isExpanded = _expandedComments[comment.id] ?? false;
+    final textStyle = theme.textTheme.bodyMedium;
+    
+    // Check if text needs read more
+    final textPainter = TextPainter(
+      text: TextSpan(text: comment.content, style: textStyle),
+      maxLines: maxLines,
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout(maxWidth: double.infinity);
+    final needsReadMore = textPainter.didExceedMaxLines;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Linkify(
+          onOpen: (link) async {
+            final uri = Uri.parse(link.url);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+          },
+          text: comment.content,
+          style: textStyle,
+          linkStyle: textStyle?.copyWith(
+            color: theme.colorScheme.primary,
+            decoration: TextDecoration.underline,
+          ),
+          options: const LinkifyOptions(
+            humanize: false,
+            removeWww: false,
+          ),
+          maxLines: isExpanded ? null : maxLines,
+          overflow: isExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+        ),
+        if (needsReadMore)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: InkWell(
+              onTap: () => _toggleCommentExpand(comment.id),
+              child: Text(
+                isExpanded ? 'Thu gọn' : 'Xem thêm',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 

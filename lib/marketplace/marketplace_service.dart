@@ -5,6 +5,7 @@ import '../models/marketplace_post.dart';
 import '../models/marketplace_comment.dart';
 import '../models/marketplace_category.dart';
 import '../models/marketplace_paged_response.dart';
+import '../models/comment_paged_response.dart';
 import 'marketplace_api_client.dart';
 
 class MarketplaceService {
@@ -258,13 +259,29 @@ class MarketplaceService {
     }
   }
 
-  /// Lấy danh sách comments của post
+  /// Lấy danh sách comments của post (deprecated - use getCommentsPaged)
   Future<List<MarketplaceComment>> getComments(String postId) async {
     try {
       final response = await _apiClient.dio.get('/posts/$postId/comments');
       return (response.data as List<dynamic>)
           .map((json) => MarketplaceComment.fromJson(json))
           .toList();
+    } catch (e) {
+      throw Exception('Lỗi khi lấy comments: ${e.toString()}');
+    }
+  }
+
+  /// Lấy danh sách comments của post với pagination
+  Future<CommentPagedResponse> getCommentsPaged(String postId, {int page = 0, int size = 10}) async {
+    try {
+      final response = await _apiClient.dio.get(
+        '/posts/$postId/comments',
+        queryParameters: {
+          'page': page,
+          'size': size,
+        },
+      );
+      return CommentPagedResponse.fromJson(response.data);
     } catch (e) {
       throw Exception('Lỗi khi lấy comments: ${e.toString()}');
     }

@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../models/marketplace_post.dart';
 import '../models/marketplace_category.dart';
 import '../models/marketplace_comment.dart';
+import '../models/comment_paged_response.dart';
 import 'marketplace_service.dart';
 import '../auth/token_storage.dart';
 import '../core/event_bus.dart';
@@ -336,6 +337,15 @@ class MarketplaceViewModel extends ChangeNotifier {
     } catch (e) {
       debugPrint('Error loading comments: $e');
       return [];
+    }
+  }
+
+  Future<CommentPagedResponse> getCommentsPaged(String postId, {int page = 0, int size = 10}) async {
+    try {
+      return await _service.getCommentsPaged(postId, page: page, size: size);
+    } catch (e) {
+      debugPrint('Error loading comments paged: $e');
+      rethrow;
     }
   }
 
