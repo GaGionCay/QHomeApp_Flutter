@@ -369,6 +369,51 @@ class ChatService {
     }
   }
 
+  /// Upload multiple images
+  Future<List<String>> uploadImages({
+    required String groupId,
+    required List<XFile> images,
+  }) async {
+    try {
+      print('📤 [ChatService] Bắt đầu upload ${images.length} ảnh cho groupId: $groupId');
+      
+      final formData = FormData();
+      for (var image in images) {
+        formData.files.add(
+          MapEntry(
+            'files',
+            await MultipartFile.fromFile(image.path, filename: image.name),
+          ),
+        );
+      }
+
+      print('📤 [ChatService] Gửi request POST /uploads/chat/$groupId/images');
+      final response = await _apiClient.dio.post(
+        '/uploads/chat/$groupId/images',
+        data: formData,
+      );
+
+      print('📥 [ChatService] Response status: ${response.statusCode}');
+      print('📥 [ChatService] Response data: ${response.data}');
+      
+      final imageUrls = (response.data['imageUrls'] as List<dynamic>?)
+          ?.map((e) => e.toString())
+          .toList();
+      
+      if (imageUrls == null || imageUrls.isEmpty) {
+        print('❌ [ChatService] Response không có imageUrls! Response: ${response.data}');
+        throw Exception('Response không có imageUrls: ${response.data}');
+      }
+      
+      print('✅ [ChatService] Upload ${imageUrls.length} ảnh thành công!');
+      return imageUrls;
+    } catch (e, stackTrace) {
+      print('❌ [ChatService] Lỗi khi upload nhiều ảnh: $e');
+      print('📋 [ChatService] Stack trace: $stackTrace');
+      throw Exception('Lỗi khi upload nhiều ảnh: ${e.toString()}');
+    }
+  }
+
   /// Upload audio (voice message)
   Future<Map<String, dynamic>> uploadAudio({
     required String groupId,

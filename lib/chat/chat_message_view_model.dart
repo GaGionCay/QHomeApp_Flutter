@@ -217,6 +217,36 @@ class ChatMessageViewModel extends ChangeNotifier {
     }
   }
 
+  /// Upload multiple images and send each as a separate message
+  Future<void> uploadAndSendMultipleImages(List<XFile> images) async {
+    try {
+      print('📤 [ChatMessageViewModel] Bắt đầu upload ${images.length} ảnh');
+      
+      // Upload all images in parallel
+      final imageUrls = await _service.uploadImages(
+        groupId: _groupId!,
+        images: images,
+      );
+      
+      print('✅ [ChatMessageViewModel] Upload ${imageUrls.length} ảnh thành công');
+      
+      // Send each image as a separate message (sequentially to maintain order)
+      for (var imageUrl in imageUrls) {
+        await sendImageMessage(imageUrl);
+        // Small delay to ensure messages are sent in order
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      
+      print('✅ [ChatMessageViewModel] Đã gửi ${imageUrls.length} ảnh thành công');
+    } catch (e, stackTrace) {
+      print('❌ [ChatMessageViewModel] Lỗi khi upload/gửi nhiều ảnh: $e');
+      print('📋 [ChatMessageViewModel] Stack trace: $stackTrace');
+      _error = 'Lỗi khi gửi ảnh: ${e.toString()}';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
   Future<Map<String, dynamic>> uploadAudio(File audioFile) async {
     try {
       return await _service.uploadAudio(

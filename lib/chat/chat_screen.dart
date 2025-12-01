@@ -211,59 +211,119 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _pickImage(ImageSource source) async {
     try {
       print('📸 [ChatScreen] Bắt đầu chọn ảnh từ ${source == ImageSource.gallery ? "gallery" : "camera"}');
-      final XFile? image = await _imagePicker.pickImage(
-        source: source,
-        imageQuality: 85,
-        maxWidth: 1920,
-        maxHeight: 1920,
-      );
-
-      if (image == null) {
-        print('⚠️ [ChatScreen] Người dùng hủy chọn ảnh');
-        return;
-      }
-
-      print('✅ [ChatScreen] Đã chọn ảnh: ${image.path}, size: ${await image.length()} bytes');
-
-      if (mounted) {
-        // Show loading
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đang upload ảnh...')),
+      
+      if (source == ImageSource.gallery) {
+        // Allow multiple image selection from gallery
+        final images = await _imagePicker.pickMultiImage(
+          imageQuality: 85,
+          maxWidth: 1920,
+          maxHeight: 1920,
         );
 
-        try {
-          print('📤 [ChatScreen] Bắt đầu upload ảnh...');
-          final imageUrl = await _viewModel.uploadImage(image);
-          print('✅ [ChatScreen] Upload ảnh thành công! imageUrl: $imageUrl');
-          
-          print('📨 [ChatScreen] Bắt đầu gửi message với ảnh...');
-          await _viewModel.sendImageMessage(imageUrl);
-          print('✅ [ChatScreen] Gửi message ảnh thành công!');
-          
-          if (mounted) {
-            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('✅ Đã gửi ảnh thành công!'),
-                backgroundColor: Colors.green,
-                duration: Duration(seconds: 2),
-              ),
-            );
-            // Auto-scroll to bottom only if needed
-            _scrollToBottomIfNeeded();
+        if (images.isEmpty) {
+          print('⚠️ [ChatScreen] Người dùng hủy chọn ảnh');
+          return;
+        }
+
+        print('✅ [ChatScreen] Đã chọn ${images.length} ảnh từ gallery');
+
+        if (mounted) {
+          // Show loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Đang upload ${images.length} ảnh...'),
+              duration: const Duration(days: 1), // Long duration, will be dismissed manually
+            ),
+          );
+
+          try {
+            print('📤 [ChatScreen] Bắt đầu upload ${images.length} ảnh...');
+            await _viewModel.uploadAndSendMultipleImages(images);
+            print('✅ [ChatScreen] Đã gửi ${images.length} ảnh thành công!');
+            
+            if (mounted) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('✅ Đã gửi ${images.length} ảnh thành công!'),
+                  backgroundColor: Colors.green,
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+              // Auto-scroll to bottom only if needed
+              _scrollToBottomIfNeeded();
+            }
+          } catch (e, stackTrace) {
+            print('❌ [ChatScreen] Lỗi khi gửi ảnh: $e');
+            print('📋 [ChatScreen] Stack trace: $stackTrace');
+            if (mounted) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('❌ Lỗi khi gửi ảnh: ${e.toString()}'),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 5),
+                ),
+              );
+            }
           }
-        } catch (e, stackTrace) {
-          print('❌ [ChatScreen] Lỗi khi gửi ảnh: $e');
-          print('📋 [ChatScreen] Stack trace: $stackTrace');
-          if (mounted) {
-            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('❌ Lỗi khi gửi ảnh: ${e.toString()}'),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 5),
-              ),
-            );
+        }
+      } else {
+        // Camera: single image only
+        final image = await _imagePicker.pickImage(
+          source: source,
+          imageQuality: 85,
+          maxWidth: 1920,
+          maxHeight: 1920,
+        );
+
+        if (image == null) {
+          print('⚠️ [ChatScreen] Người dùng hủy chụp ảnh');
+          return;
+        }
+
+        print('✅ [ChatScreen] Đã chụp ảnh: ${image.path}, size: ${await image.length()} bytes');
+
+        if (mounted) {
+          // Show loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Đang upload ảnh...')),
+          );
+
+          try {
+            print('📤 [ChatScreen] Bắt đầu upload ảnh...');
+            final imageUrl = await _viewModel.uploadImage(image);
+            print('✅ [ChatScreen] Upload ảnh thành công! imageUrl: $imageUrl');
+            
+            print('📨 [ChatScreen] Bắt đầu gửi message với ảnh...');
+            await _viewModel.sendImageMessage(imageUrl);
+            print('✅ [ChatScreen] Gửi message ảnh thành công!');
+            
+            if (mounted) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('✅ Đã gửi ảnh thành công!'),
+                  backgroundColor: Colors.green,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+              // Auto-scroll to bottom only if needed
+              _scrollToBottomIfNeeded();
+            }
+          } catch (e, stackTrace) {
+            print('❌ [ChatScreen] Lỗi khi gửi ảnh: $e');
+            print('📋 [ChatScreen] Stack trace: $stackTrace');
+            if (mounted) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('❌ Lỗi khi gửi ảnh: ${e.toString()}'),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 5),
+                ),
+              );
+            }
           }
         }
       }
@@ -2013,7 +2073,7 @@ class _MessageInput extends StatelessWidget {
                       children: [
                         Icon(CupertinoIcons.photo, size: 20),
                         SizedBox(width: 8),
-                        Text('Chọn ảnh'),
+                        Text('Chọn nhiều ảnh'),
                       ],
                     ),
                   ),

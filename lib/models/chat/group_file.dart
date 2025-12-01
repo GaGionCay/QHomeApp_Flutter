@@ -7,7 +7,8 @@ class GroupFile {
   final String? senderAvatar;
   final String fileName;
   final int fileSize;
-  final String? fileType; // mimeType
+  final String? fileType; // IMAGE, AUDIO, VIDEO, DOCUMENT (legacy)
+  final String? mimeType; // Actual mime type from backend (e.g., image/jpeg, image/png)
   final String fileUrl;
   final DateTime createdAt;
 
@@ -21,9 +22,19 @@ class GroupFile {
     required this.fileName,
     required this.fileSize,
     this.fileType,
+    this.mimeType,
     required this.fileUrl,
     required this.createdAt,
   });
+
+  /// Check if this file is an image based on mimeType
+  bool get isImage {
+    if (mimeType == null || mimeType!.isEmpty) {
+      // Fallback to fileType if mimeType is not available
+      return fileType == 'IMAGE';
+    }
+    return mimeType!.startsWith('image/');
+  }
 
   factory GroupFile.fromJson(Map<String, dynamic> json) {
     return GroupFile(
@@ -34,8 +45,13 @@ class GroupFile {
       senderName: json['senderName'],
       senderAvatar: json['senderAvatar'],
       fileName: json['fileName'] ?? 'file',
-      fileSize: json['fileSize'] ?? 0,
+      fileSize: (json['fileSize'] is int) 
+          ? json['fileSize'] as int 
+          : (json['fileSize'] is num) 
+              ? (json['fileSize'] as num).toInt() 
+              : (json['fileSize'] != null ? int.tryParse(json['fileSize'].toString()) ?? 0 : 0),
       fileType: json['fileType'],
+      mimeType: json['mimeType'] ?? json['fileType'], // Backend now returns mimeType separately
       fileUrl: json['fileUrl'] ?? '',
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'])
