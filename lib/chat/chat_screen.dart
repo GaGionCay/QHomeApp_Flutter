@@ -1037,6 +1037,7 @@ class _ChatScreenState extends State<ChatScreen> {
         fullImageUrl,
         fileName,
         'image',
+        'image/jpeg', // mimeType
         (received, total) {
           // Progress callback - but we won't show it to avoid interrupting
         },
@@ -1615,6 +1616,7 @@ class _FileMessageWidgetState extends State<_FileMessageWidget> {
             : '${ApiClient.activeFileBaseUrl}${widget.fileUrl}',
         widget.fileName,
         fileType,
+        widget.mimeType, // mimeType
         (received, total) {
           if (total > 0 && context.mounted) {
             final progressPercent = ((received / total) * 100).toInt();

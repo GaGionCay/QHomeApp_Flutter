@@ -5,7 +5,7 @@ import 'package:path/path.dart' as path;
 
 /// Service to manage file storage in Android public directories
 class PublicFileStorageService {
-  static const String appFolderName = 'MyApp';
+  static const String appFolderName = 'QHomeBase';
 
   /// Get file type from mimeType or file extension
   static String getFileType(String? mimeType, String fileName) {
@@ -56,31 +56,47 @@ class PublicFileStorageService {
     return path.extension(fileName).toLowerCase().replaceFirst('.', '');
   }
 
-  /// Get directory path based on file type
-  /// For Android 10+ (API 29+), we use app-private directories to avoid permission issues
-  /// Images/videos are saved via gal package which handles MediaStore integration
-  static Future<Directory> getPublicDirectory(String fileType) async {
-    // Use app's documents directory for all file types
-    // This avoids permission issues on Android 10+
-    final documentsDir = await getApplicationDocumentsDirectory();
-    final baseDir = Directory('${documentsDir.path}/chat_files');
-    
-    switch (fileType) {
-      case 'image':
-        return Directory('${baseDir.path}/images');
-      case 'video':
-        return Directory('${baseDir.path}/videos');
-      case 'audio':
-        return Directory('${baseDir.path}/audio');
-      case 'document':
-      default:
-        return Directory('${baseDir.path}/documents');
+  /// Get Android app documents directory (accessible without special permissions)
+  /// This directory is in /storage/emulated/0/Android/data/<package>/files/Documents
+  /// Files here can be accessed via file manager and opened by other apps
+  static Future<Directory> getAndroidAppDocumentsDirectory() async {
+    if (Platform.isAndroid) {
+      // Use getExternalStorageDirectory which gives us app-private external storage
+      // This is accessible without MANAGE_EXTERNAL_STORAGE permission
+      final externalDir = await getExternalStorageDirectory();
+      if (externalDir != null) {
+        final documentsDir = Directory('${externalDir.path}/Documents');
+        if (!await documentsDir.exists()) {
+          await documentsDir.create(recursive: true);
+        }
+        return documentsDir;
+      }
     }
+    
+    // Fallback to app documents directory
+    final documentsDir = await getApplicationDocumentsDirectory();
+    return documentsDir;
+  }
+
+  /// Get public directory based on file type
+  /// For Android: uses app documents directory (accessible without special permissions)
+  /// For images/videos: uses gal package to save to gallery
+  static Future<Directory> getPublicDirectory(String fileType) async {
+    if (Platform.isAndroid) {
+      // Use app documents directory for all file types
+      // This is accessible via file manager without MANAGE_EXTERNAL_STORAGE permission
+      return await getAndroidAppDocumentsDirectory();
+    }
+
+    // Fallback to app documents directory
+    final documentsDir = await getApplicationDocumentsDirectory();
+    return documentsDir;
   }
 
   /// Check if file already exists in public directory
   static Future<String?> getExistingFilePath(String fileName, String fileType) async {
     try {
+      // Check app documents directory
       final publicDir = await getPublicDirectory(fileType);
       if (!await publicDir.exists()) {
         return null;
@@ -88,6 +104,7 @@ class PublicFileStorageService {
 
       final file = File('${publicDir.path}/$fileName');
       if (await file.exists()) {
+        print('✅ [PublicFileStorageService] File exists: ${file.path}');
         return file.path;
       }
       return null;
@@ -97,16 +114,17 @@ class PublicFileStorageService {
     }
   }
 
-  /// Save file to directory
-  /// For images/videos on Android, also saves to gallery via gal package
+  /// Save file to public directory
+  /// For images/videos on Android, uses gal package to save to gallery
+  /// For documents on Android, saves to Download directory
   static Future<String> saveToPublicDirectory(
     File sourceFile,
     String fileName,
     String fileType,
+    String? mimeType,
   ) async {
     try {
       // For images on Android, use gal package to save directly to gallery
-      // This saves to Pictures/<TênApp>/ and makes it appear in gallery
       if (Platform.isAndroid && fileType == 'image') {
         try {
           final bytes = await sourceFile.readAsBytes();
@@ -117,47 +135,78 @@ class PublicFileStorageService {
           );
           print('✅ [PublicFileStorageService] Saved image to gallery: $fileName');
           
-          // Also save a copy to app-private directory for reference
-          final storageDir = await getPublicDirectory(fileType);
-          if (!await storageDir.exists()) {
-            await storageDir.create(recursive: true);
+          // Also save a copy to app documents directory for easy access
+          final documentsDir = await getAndroidAppDocumentsDirectory();
+          try {
+            final documentsFile = File('${documentsDir.path}/$fileName');
+            await sourceFile.copy(documentsFile.path);
+            print('✅ [PublicFileStorageService] Also saved image to Documents: ${documentsFile.path}');
+            return documentsFile.path;
+          } catch (e) {
+            print('⚠️ [PublicFileStorageService] Error saving image to Documents: $e');
           }
-          final targetFile = File('${storageDir.path}/$fileName');
-          await sourceFile.copy(targetFile.path);
           
-          return targetFile.path; // Return local path for reference
+          // Return gallery path reference
+          return sourceFile.path;
         } catch (e) {
           print('⚠️ [PublicFileStorageService] Error saving to gallery: $e');
           // Fall through to regular file save
         }
       }
-      
-      // For videos and other files, save to app-private directory
-      final storageDir = await getPublicDirectory(fileType);
-      
-      // Create directory if it doesn't exist
-      if (!await storageDir.exists()) {
-        await storageDir.create(recursive: true);
-      }
 
-      // Copy file to storage directory
-      final targetFile = File('${storageDir.path}/$fileName');
-      await sourceFile.copy(targetFile.path);
-
-      // For videos on Android, also save to gallery using gal package
+      // For videos on Android, use gal package
       if (Platform.isAndroid && fileType == 'video') {
         try {
+          final bytes = await sourceFile.readAsBytes();
           await Gal.putImageBytes(
-            await targetFile.readAsBytes(),
+            bytes,
             name: fileName,
             album: appFolderName,
           );
           print('✅ [PublicFileStorageService] Saved video to gallery: $fileName');
+          
+          // Also save to app documents directory
+          final documentsDir = await getAndroidAppDocumentsDirectory();
+          try {
+            final documentsFile = File('${documentsDir.path}/$fileName');
+            await sourceFile.copy(documentsFile.path);
+            print('✅ [PublicFileStorageService] Also saved video to Documents: ${documentsFile.path}');
+            return documentsFile.path;
+          } catch (e) {
+            print('⚠️ [PublicFileStorageService] Error saving video to Documents: $e');
+          }
+          
+          return sourceFile.path;
         } catch (e) {
           print('⚠️ [PublicFileStorageService] Error saving video to gallery: $e');
-          // Continue even if gallery save fails - file is still saved locally
+          // Fall through to regular file save
         }
       }
+
+      // For documents and audio files on Android, save to app documents directory
+      // This is accessible via file manager without special permissions
+      if (Platform.isAndroid && (fileType == 'document' || fileType == 'audio')) {
+        final documentsDir = await getAndroidAppDocumentsDirectory();
+        try {
+          final documentsFile = File('${documentsDir.path}/$fileName');
+          await sourceFile.copy(documentsFile.path);
+          print('✅ [PublicFileStorageService] Saved $fileType to Documents: ${documentsFile.path}');
+          return documentsFile.path;
+        } catch (e) {
+          print('⚠️ [PublicFileStorageService] Error saving $fileType to Documents: $e');
+          // Fall through to app directory
+        }
+      }
+      
+      // Fallback: save to app-private directory
+      final storageDir = await getPublicDirectory(fileType);
+      if (!await storageDir.exists()) {
+        await storageDir.create(recursive: true);
+      }
+
+      final targetFile = File('${storageDir.path}/$fileName');
+      await sourceFile.copy(targetFile.path);
+      print('✅ [PublicFileStorageService] Saved file to app directory: ${targetFile.path}');
 
       return targetFile.path;
     } catch (e) {
@@ -171,14 +220,18 @@ class PublicFileStorageService {
     String fileUrl,
     String fileName,
     String fileType,
+    String? mimeType,
     Function(int received, int total)? onProgress,
   ) async {
     try {
       // Check if file already exists
       final existingPath = await getExistingFilePath(fileName, fileType);
       if (existingPath != null) {
+        print('✅ [PublicFileStorageService] File already exists: $existingPath');
         return existingPath;
       }
+
+      print('📥 [PublicFileStorageService] Downloading file: $fileName from $fileUrl');
 
       // Download file to temporary location first
       final tempDir = await getTemporaryDirectory();
@@ -210,8 +263,10 @@ class PublicFileStorageService {
         await sink.close();
       }
 
+      print('✅ [PublicFileStorageService] Downloaded file to temp: ${tempFile.path}');
+
       // Save to public directory
-      final savedPath = await saveToPublicDirectory(tempFile, fileName, fileType);
+      final savedPath = await saveToPublicDirectory(tempFile, fileName, fileType, mimeType);
 
       // Delete temporary file
       try {
@@ -220,6 +275,7 @@ class PublicFileStorageService {
         print('⚠️ [PublicFileStorageService] Error deleting temp file: $e');
       }
 
+      print('✅ [PublicFileStorageService] File saved to: $savedPath');
       return savedPath;
     } catch (e) {
       print('❌ [PublicFileStorageService] Error downloading and saving: $e');
@@ -227,4 +283,3 @@ class PublicFileStorageService {
     }
   }
 }
-

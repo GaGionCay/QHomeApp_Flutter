@@ -2,12 +2,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:dio/dio.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path/path.dart' as path;
 import '../models/chat/group_file.dart';
 import '../chat/chat_service.dart';
-import '../chat/file_cache_service.dart';
 import '../chat/public_file_storage_service.dart';
 import '../auth/api_client.dart';
 
@@ -27,7 +25,6 @@ class GroupFilesScreen extends StatefulWidget {
 
 class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerProviderStateMixin {
   final ChatService _chatService = ChatService();
-  final FileCacheService _fileCacheService = FileCacheService();
   final ScrollController _scrollController = ScrollController();
   late TabController _tabController;
 
@@ -66,15 +63,20 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
     }
   }
 
-  /// Check if file is an image based on mimeType
+  /// Check if file is an image based on mimeType, fileType, or file extension
   bool _isImageFile(GroupFile file) {
     // First check mimeType (preferred)
     if (file.mimeType != null && file.mimeType!.isNotEmpty) {
       final mimeType = file.mimeType!.toLowerCase();
       // Check mime-type: image/jpeg, image/png, image/jpg, image/heic, image/webp
       if (mimeType.startsWith('image/')) {
-        print('✅ [GroupFilesScreen] File ${file.fileName} is IMAGE (mimeType: $mimeType)');
         return true;
+      }
+      // If mimeType is application/octet-stream, check file extension
+      if (mimeType == 'application/octet-stream') {
+        if (_isImageExtension(file.fileName)) {
+          return true;
+        }
       }
     }
     
@@ -82,13 +84,33 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
     if (file.fileType != null && file.fileType!.isNotEmpty) {
       final fileType = file.fileType!.toUpperCase();
       if (fileType == 'IMAGE') {
-        print('✅ [GroupFilesScreen] File ${file.fileName} is IMAGE (fileType: $fileType)');
+        return true;
+      }
+      // If fileType looks like a mime type and is image
+      if (file.fileType!.toLowerCase().startsWith('image/')) {
         return true;
       }
     }
     
-    print('❌ [GroupFilesScreen] File ${file.fileName} is NOT IMAGE (mimeType: ${file.mimeType}, fileType: ${file.fileType})');
+    // Last resort: check file extension
+    if (_isImageExtension(file.fileName)) {
+      return true;
+    }
+    
     return false;
+  }
+
+  /// Check if file has image extension
+  bool _isImageExtension(String fileName) {
+    final extension = path.extension(fileName).toLowerCase();
+    return extension == '.jpg' || 
+           extension == '.jpeg' || 
+           extension == '.png' || 
+           extension == '.gif' || 
+           extension == '.webp' || 
+           extension == '.heic' ||
+           extension == '.bmp' ||
+           extension == '.svg';
   }
 
   /// Categorize files into images and documents
@@ -196,6 +218,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
         _buildFullUrl(file.fileUrl),
         file.fileName,
         'image',
+        file.mimeType ?? file.fileType,
         (received, total) {
           // Progress callback
         },
@@ -241,32 +264,51 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
   /// Download and open document file
   Future<void> _downloadAndOpenFile(GroupFile file) async {
     try {
-      // Check if file is already cached
-      final cachedPath = await _fileCacheService.getCachedFilePath(file.fileUrl);
-      if (cachedPath != null) {
-        await _openFile(cachedPath, file.mimeType ?? file.fileType);
+      // Determine file type and mime type
+      final fileType = PublicFileStorageService.getFileType(
+        file.mimeType ?? file.fileType,
+        file.fileName,
+      );
+      final mimeType = file.mimeType ?? file.fileType;
+
+      // Check if file already exists in public directory
+      final existingPath = await PublicFileStorageService.getExistingFilePath(
+        file.fileName,
+        fileType,
+      );
+      
+      if (existingPath != null) {
+        print('✅ [GroupFilesScreen] File already exists: $existingPath');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('File đã có trong máy, đang mở...'),
+              duration: Duration(seconds: 1),
+            ),
+          );
+        }
+        await _openFile(existingPath, mimeType);
         return;
       }
 
       // Show downloading snackbar
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Đang tải file...'),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đang tải file...'),
+            duration: Duration(days: 1), // Long duration, will be dismissed manually
+          ),
+        );
+      }
 
-      // Download file
-      final dio = Dio();
-      final cacheDir = await _fileCacheService.getCacheDirectory();
-      final fileExtension = path.extension(file.fileName);
-      final localFile = File('${cacheDir.path}/${file.id}$fileExtension');
-
-      await dio.download(
+      // Download and save to public directory
+      final savedPath = await PublicFileStorageService.downloadAndSave(
         _buildFullUrl(file.fileUrl),
-        localFile.path,
-        onReceiveProgress: (received, total) {
-          if (total > 0) {
+        file.fileName,
+        fileType,
+        mimeType,
+        (received, total) {
+          if (total > 0 && mounted) {
             final progress = (received / total * 100).toInt();
             if (progress % 10 == 0) {
               ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -281,22 +323,31 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
         },
       );
 
-      // Save to cache
-      await _fileCacheService.saveToCache(file.fileUrl, localFile, file.fileName);
-
       // Hide snackbar
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Đã tải file thành công'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
 
       // Open file
-      await _openFile(localFile.path, file.mimeType ?? file.fileType);
+      await _openFile(savedPath, mimeType);
     } catch (e) {
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Lỗi khi tải file: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      print('❌ [GroupFilesScreen] Error downloading file: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi tải file: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
     }
   }
 
@@ -304,9 +355,11 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
     try {
       final file = File(filePath);
       if (!await file.exists()) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('File không tồn tại')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('File không tồn tại')),
+          );
+        }
         return;
       }
 
@@ -325,7 +378,49 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
       
       print('📂 [GroupFilesScreen] Open result: ${result.type}, message: ${result.message}');
       
-      if (result.type != ResultType.done) {
+      // If permission denied and file is in Download directory, try to copy to app documents directory
+      if (result.type == ResultType.permissionDenied && filePath.contains('/Download/')) {
+        print('⚠️ [GroupFilesScreen] Permission denied for Download directory, copying to app documents directory');
+        try {
+          // Get file name from path
+          final fileName = filePath.split('/').last;
+          
+          // Copy file to app documents directory
+          final documentsDir = await PublicFileStorageService.getAndroidAppDocumentsDirectory();
+          final newFilePath = '${documentsDir.path}/$fileName';
+          await file.copy(newFilePath);
+          
+          print('✅ [GroupFilesScreen] Copied file to app documents directory: $newFilePath');
+          
+          // Try to open from new location
+          final newResult = await OpenFile.open(
+            newFilePath,
+            type: detectedMimeType ?? 'application/octet-stream',
+          );
+          
+          if (newResult.type != ResultType.done && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Không thể mở file: ${newResult.message.isNotEmpty ? newResult.message : "Không tìm thấy app phù hợp"}'),
+                duration: const Duration(seconds: 5),
+              ),
+            );
+          }
+          return;
+        } catch (e) {
+          print('❌ [GroupFilesScreen] Error copying file: $e');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Lỗi khi sao chép file: ${e.toString()}'),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        }
+      }
+      
+      if (result.type != ResultType.done && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Không thể mở file: ${result.message.isNotEmpty ? result.message : "Không tìm thấy app phù hợp"}'),
@@ -335,9 +430,11 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
       }
     } catch (e) {
       print('❌ [GroupFilesScreen] Error opening file: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi khi mở file: ${e.toString()}')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi khi mở file: ${e.toString()}')),
+        );
+      }
     }
   }
 
@@ -576,6 +673,23 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
               ),
             ),
           ),
+          // Badge to indicate this is an image
+          Positioned(
+            top: 4,
+            right: 4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.6),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Icon(
+                CupertinoIcons.photo,
+                color: Colors.white,
+                size: 12,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -617,6 +731,11 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
   }
 
   Widget _buildDocumentItem(GroupFile file, ThemeData theme) {
+    // Determine file category for badge
+    String fileCategory = _getFileCategory(file);
+    Color categoryColor = _getCategoryColor(fileCategory);
+    IconData categoryIcon = _getCategoryIcon(fileCategory);
+    
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
@@ -625,23 +744,76 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              Icon(
-                _getFileIcon(file.mimeType ?? file.fileType, file.fileName),
-                size: 40,
-                color: theme.colorScheme.primary,
+              // File icon with category badge
+              Stack(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: categoryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      _getFileIcon(file.mimeType ?? file.fileType, file.fileName),
+                      size: 28,
+                      color: categoryColor,
+                    ),
+                  ),
+                  // Category badge
+                  Positioned(
+                    bottom: -2,
+                    right: -2,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: categoryColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: theme.colorScheme.surface, width: 2),
+                      ),
+                      child: Icon(
+                        categoryIcon,
+                        size: 10,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      file.fileName,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            file.fileName,
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.w500,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        // Category label
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: categoryColor.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            fileCategory,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: categoryColor,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -692,6 +864,80 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
         ),
       ),
     );
+  }
+
+  /// Get file category for display
+  String _getFileCategory(GroupFile file) {
+    final mimeType = file.mimeType ?? file.fileType ?? '';
+    final lowerMimeType = mimeType.toLowerCase();
+    
+    if (lowerMimeType.startsWith('image/') || file.fileType == 'IMAGE') {
+      return 'ẢNH';
+    } else if (lowerMimeType.startsWith('video/') || file.fileType == 'VIDEO') {
+      return 'VIDEO';
+    } else if (lowerMimeType.startsWith('audio/') || file.fileType == 'AUDIO') {
+      return 'AUDIO';
+    } else if (lowerMimeType == 'application/pdf' || path.extension(file.fileName).toLowerCase() == '.pdf') {
+      return 'PDF';
+    } else if (lowerMimeType.contains('word') || lowerMimeType.contains('document') || 
+               path.extension(file.fileName).toLowerCase() == '.doc' || 
+               path.extension(file.fileName).toLowerCase() == '.docx') {
+      return 'DOC';
+    } else if (lowerMimeType.contains('excel') || lowerMimeType.contains('spreadsheet') ||
+               path.extension(file.fileName).toLowerCase() == '.xls' || 
+               path.extension(file.fileName).toLowerCase() == '.xlsx') {
+      return 'EXCEL';
+    } else if (lowerMimeType.contains('zip') || lowerMimeType.contains('archive') ||
+               path.extension(file.fileName).toLowerCase() == '.zip' || 
+               path.extension(file.fileName).toLowerCase() == '.rar') {
+      return 'ZIP';
+    } else {
+      return 'FILE';
+    }
+  }
+
+  /// Get color for file category
+  Color _getCategoryColor(String category) {
+    switch (category) {
+      case 'ẢNH':
+        return Colors.blue;
+      case 'VIDEO':
+        return Colors.red;
+      case 'AUDIO':
+        return Colors.purple;
+      case 'PDF':
+        return Colors.red.shade700;
+      case 'DOC':
+        return Colors.blue.shade700;
+      case 'EXCEL':
+        return Colors.green.shade700;
+      case 'ZIP':
+        return Colors.orange;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  /// Get icon for file category
+  IconData _getCategoryIcon(String category) {
+    switch (category) {
+      case 'ẢNH':
+        return CupertinoIcons.photo;
+      case 'VIDEO':
+        return CupertinoIcons.videocam;
+      case 'AUDIO':
+        return CupertinoIcons.music_note;
+      case 'PDF':
+        return CupertinoIcons.doc_text;
+      case 'DOC':
+        return CupertinoIcons.doc;
+      case 'EXCEL':
+        return CupertinoIcons.table;
+      case 'ZIP':
+        return CupertinoIcons.archivebox;
+      default:
+        return CupertinoIcons.doc;
+    }
   }
 }
 
