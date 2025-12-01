@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +17,7 @@ import '../auth/api_client.dart';
 import '../auth/token_storage.dart';
 import 'chat_service.dart';
 import 'chat_message_view_model.dart';
+import 'file_cache_service.dart';
 import 'invite_members_dialog.dart';
 import 'group_members_screen.dart';
 
@@ -37,9 +39,14 @@ class _ChatScreenState extends State<ChatScreen> {
   final _audioPlayer = AudioPlayer();
   bool _isRecording = false;
   Duration _recordingDuration = Duration.zero;
+  Timer? _recordingTimer;
+  DateTime? _recordingStartTime;
 
   bool _isLoadingMore = false;
   int _previousMessageCount = 0;
+  bool _isUserScrolling = false; // Track if user is manually scrolling
+  Timer? _scrollEndTimer;
+  int _lastMessageCount = 0; // Track message count to detect new messages
 
   @override
   void initState() {
@@ -48,18 +55,34 @@ class _ChatScreenState extends State<ChatScreen> {
     _viewModel = ChatMessageViewModel(service);
     _viewModel.initialize(widget.groupId);
     
-    // Add scroll listener for infinite scroll
+    // Add scroll listener for manual scroll detection (no auto-load on scroll)
     _scrollController.addListener(_onScroll);
+    
+    // Initialize message count after first load
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _lastMessageCount = _viewModel.messages.length;
+      }
+    });
   }
 
   void _onScroll() {
-    // When scrolling near the top (old messages), load more
-    if (_scrollController.position.pixels < 200 && 
-        !_isLoadingMore && 
-        _viewModel.hasMore &&
-        !_viewModel.isLoading) {
-      _loadMoreMessages();
-    }
+    // Mark that user is scrolling
+    _isUserScrolling = true;
+    
+    // Reset scroll end timer
+    _scrollEndTimer?.cancel();
+    _scrollEndTimer = Timer(const Duration(milliseconds: 150), () {
+      _isUserScrolling = false;
+    });
+
+    // NOTE: Removed auto-load on scroll - only load when user clicks "Hiển thị thêm tin nhắn" button
+  }
+
+  /// Check if user is near the bottom of the list (within 100px)
+  bool _isNearBottom() {
+    if (!_scrollController.hasClients) return true;
+    return _scrollController.position.pixels <= 100;
   }
 
   Future<void> _loadMoreMessages() async {
@@ -71,41 +94,57 @@ class _ChatScreenState extends State<ChatScreen> {
     });
 
     try {
-      // Store current scroll position before loading
+      // Store current scroll position and maxScrollExtent before loading
       double? previousScrollPosition;
+      double? previousMaxScrollExtent;
       if (_scrollController.hasClients) {
         previousScrollPosition = _scrollController.position.pixels;
+        previousMaxScrollExtent = _scrollController.position.maxScrollExtent;
       }
 
       await _viewModel.loadMore();
       
       // Maintain scroll position after loading more messages
-      // Since ListView is reversed, new messages are inserted at index 0
-      // We need to adjust scroll position to maintain visual position
-      if (mounted && _scrollController.hasClients && previousScrollPosition != null) {
+      // Since ListView is reversed, new messages are inserted at index 0 (top)
+      // We need to adjust scroll position to maintain the visual position of the item user was viewing
+      if (mounted && _scrollController.hasClients && 
+          previousScrollPosition != null && previousMaxScrollExtent != null) {
         final newMessageCount = _viewModel.messages.length;
         final addedCount = newMessageCount - _previousMessageCount;
         
         if (addedCount > 0) {
-          // Wait for next frame to ensure new items are rendered
+          // Wait for frames to ensure new items are fully rendered and maxScrollExtent is updated
+          // Use double postFrameCallback to ensure ListView has completed layout
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && _scrollController.hasClients) {
-              // Estimate height of added messages (average message height ~60-80px)
-              // This is approximate but works well for most cases
-              final estimatedHeight = addedCount * 70.0;
-              final newPosition = previousScrollPosition! + estimatedHeight;
-              
-              // Only adjust if we're not at the bottom
-              if (previousScrollPosition > 0) {
-                _scrollController.jumpTo(newPosition.clamp(
-                  0.0,
-                  _scrollController.position.maxScrollExtent,
-                ));
+            // Wait one more frame to ensure all items are laid out
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _scrollController.hasClients) {
+                final newMaxScrollExtent = _scrollController.position.maxScrollExtent;
+                
+                // Calculate the height difference (new messages added at top)
+                // The scroll extent increased by the height of new messages
+                final heightDifference = newMaxScrollExtent - previousMaxScrollExtent!;
+                
+                // Calculate new position: add the height difference to maintain visual position
+                final newPosition = previousScrollPosition! + heightDifference;
+                
+                // Only adjust if we're not at the bottom (pixels = 0 in reversed list)
+                // and the new position is valid
+                if (previousScrollPosition > 0 && 
+                    newPosition <= newMaxScrollExtent && 
+                    newPosition >= 0 &&
+                    newMaxScrollExtent > previousMaxScrollExtent) {
+                  // Use jumpTo (not animateTo) to instantly set position without animation
+                  // This prevents any visual jumps or glitches
+                  _scrollController.jumpTo(newPosition);
+                }
               }
-            }
+            });
           });
         }
       }
+    } catch (e) {
+      print('❌ [ChatScreen] Lỗi khi load more messages: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -116,12 +155,26 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   @override
-  void dispose() async {
+  void dispose() {
+    // Cancel timers first
+    _scrollEndTimer?.cancel();
+    _recordingTimer?.cancel();
+    _recordingTimer = null;
+    
+    // Dispose controllers
     _messageController.dispose();
     _scrollController.dispose();
-    await _audioRecorder.closeRecorder();
+    
+    // Dispose audio resources (async operations should be handled separately)
+    _audioRecorder.closeRecorder().catchError((e) {
+      print('⚠️ [ChatScreen] Error closing audio recorder: $e');
+    });
     _audioPlayer.dispose();
+    
+    // Dispose view model
     _viewModel.dispose();
+    
+    // Always call super.dispose() last
     super.dispose();
   }
 
@@ -132,13 +185,25 @@ class _ChatScreenState extends State<ChatScreen> {
     await _viewModel.sendMessage(content);
     _messageController.clear();
     
-    // Auto-scroll to bottom after sending message (since ListView is reversed)
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+    // Auto-scroll to bottom only if user was near bottom
+    _scrollToBottomIfNeeded();
+  }
+
+  /// Scroll to bottom only if user is near bottom (not manually scrolling)
+  void _scrollToBottomIfNeeded() {
+    if (!_scrollController.hasClients) return;
+    
+    // Only auto-scroll if user is near bottom and not manually scrolling
+    if (_isNearBottom() && !_isUserScrolling) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _scrollController.hasClients) {
+          _scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
     }
   }
 
@@ -183,14 +248,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 duration: Duration(seconds: 2),
               ),
             );
-            // Auto-scroll to bottom
-            if (_scrollController.hasClients) {
-              _scrollController.animateTo(
-                0,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOut,
-              );
-            }
+            // Auto-scroll to bottom only if needed
+            _scrollToBottomIfNeeded();
           }
         } catch (e, stackTrace) {
           print('❌ [ChatScreen] Lỗi khi gửi ảnh: $e');
@@ -257,28 +316,41 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       print('✅ [ChatScreen] Đã bắt đầu ghi âm thành công!');
 
+      // Start recording timer to update duration
+      _recordingStartTime = DateTime.now();
       setState(() {
         _isRecording = true;
         _recordingDuration = Duration.zero;
       });
 
-      // Update duration
-      _audioRecorder.onProgress!.listen((recording) {
-        if (mounted && _isRecording) {
+      // Update duration every second using Timer
+      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (mounted && _isRecording && _recordingStartTime != null) {
           setState(() {
-            _recordingDuration = recording.duration;
+            _recordingDuration = DateTime.now().difference(_recordingStartTime!);
           });
+        } else {
+          timer.cancel();
         }
       });
     } catch (e, stackTrace) {
       print('❌ [ChatScreen] Lỗi khi bắt đầu ghi âm: $e');
       print('📋 [ChatScreen] Stack trace: $stackTrace');
+      
+      // Clean up on error
+      _recordingTimer?.cancel();
+      _recordingTimer = null;
+      _recordingStartTime = null;
+      
       if (mounted) {
+        setState(() {
+          _isRecording = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Lỗi khi bắt đầu ghi âm: ${e.toString()}')),
         );
       }
-      // Clean up on error
+      
       try {
         await _audioRecorder.closeRecorder();
       } catch (_) {}
@@ -288,11 +360,17 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _stopRecording({bool send = true}) async {
     try {
       print('⏹️ [ChatScreen] Đang dừng ghi âm...');
+      
+      // Stop the timer first
+      _recordingTimer?.cancel();
+      _recordingTimer = null;
+      
       final path = await _audioRecorder.stopRecorder();
       print('✅ [ChatScreen] Đã dừng ghi âm, path: $path');
       
       setState(() {
         _isRecording = false;
+        _recordingStartTime = null;
       });
 
       if (send && path != null && mounted) {
@@ -343,14 +421,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 duration: Duration(seconds: 2),
               ),
             );
-            // Auto-scroll to bottom
-            if (_scrollController.hasClients) {
-              _scrollController.animateTo(
-                0,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOut,
-              );
-            }
+            // Auto-scroll to bottom only if needed
+            _scrollToBottomIfNeeded();
           }
         } catch (e, stackTrace) {
           print('❌ [ChatScreen] Lỗi khi gửi ghi âm: $e');
@@ -408,22 +480,20 @@ class _ChatScreenState extends State<ChatScreen> {
               ? fileSizeValue 
               : (fileSizeValue != null ? int.parse(fileSizeValue.toString()) : fileSize);
           
+          // Get mimeType from upload result
+          final mimeType = uploadResult['mimeType'] as String?;
+          
           await _viewModel.sendFileMessage(
             uploadResult['fileUrl'] as String,
             uploadResult['fileName'] as String? ?? fileName,
             fileSizeInt,
+            mimeType,
           );
           
           if (mounted) {
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            // Auto-scroll to bottom
-            if (_scrollController.hasClients) {
-              _scrollController.animateTo(
-                0,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOut,
-              );
-            }
+            // Auto-scroll to bottom only if needed
+            _scrollToBottomIfNeeded();
           }
         } catch (e) {
           if (mounted) {
@@ -677,6 +747,25 @@ class _ChatScreenState extends State<ChatScreen> {
             Expanded(
               child: Consumer<ChatMessageViewModel>(
                 builder: (context, viewModel, child) {
+                  // Only auto-scroll when NEW messages arrive (not on every rebuild)
+                  final currentMessageCount = viewModel.messages.length;
+                  final hasNewMessages = currentMessageCount > _lastMessageCount;
+                  
+                  if (hasNewMessages && mounted) {
+                    _lastMessageCount = currentMessageCount;
+                    
+                    // Only auto-scroll if user is at bottom and not manually scrolling
+                    // Use postFrameCallback to avoid interfering with current scroll
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted && !_isUserScrolling) {
+                        _scrollToBottomIfNeeded();
+                      }
+                    });
+                  } else if (!hasNewMessages && currentMessageCount != _lastMessageCount) {
+                    // Update count even if messages decreased (e.g., refresh)
+                    _lastMessageCount = currentMessageCount;
+                  }
+
                   if (viewModel.isLoading && viewModel.messages.isEmpty) {
                     return const Center(child: CircularProgressIndicator());
                   }
@@ -698,11 +787,14 @@ class _ChatScreenState extends State<ChatScreen> {
                     padding: const EdgeInsets.all(16),
                     // Optimize for performance: only render visible items + small cache
                     cacheExtent: 500, // Cache 500px above/below viewport
+                    // Add key to preserve scroll position during rebuilds
+                    key: const PageStorageKey<String>('chat_messages_list'),
                     itemCount: viewModel.messages.length + (viewModel.hasMore ? 1 : 0),
                     itemBuilder: (context, index) {
                       // Load more button/indicator at the top (oldest messages)
                       if (index == viewModel.messages.length) {
                         return _LoadMoreButton(
+                          key: const ValueKey('load_more_button'),
                           isLoading: _isLoadingMore || viewModel.isLoading,
                           hasMore: viewModel.hasMore,
                           onLoadMore: _loadMoreMessages,
@@ -710,11 +802,18 @@ class _ChatScreenState extends State<ChatScreen> {
                       }
 
                       final message = viewModel.messages[viewModel.messages.length - 1 - index];
+                      // Use stable key for each message to prevent unnecessary rebuilds
+                      final messageKey = ValueKey<String>('message_${message.id}');
+                      
                       // Check if this is a system message
                       if (message.messageType == 'SYSTEM') {
-                        return _SystemMessageBubble(message: message);
+                        return _SystemMessageBubble(
+                          key: messageKey,
+                          message: message,
+                        );
                       }
                       return _MessageBubble(
+                        key: messageKey,
                         message: message,
                         currentResidentId: viewModel.currentResidentId,
                       );
@@ -745,6 +844,7 @@ class _MessageBubble extends StatelessWidget {
   final String? currentResidentId;
 
   const _MessageBubble({
+    super.key,
     required this.message,
     this.currentResidentId,
   });
@@ -842,6 +942,7 @@ class _MessageBubble extends StatelessWidget {
                 fileUrl: _buildFullUrl(message.fileUrl!),
                 fileName: message.fileName ?? 'File',
                 fileSize: message.fileSize ?? 0,
+                mimeType: message.mimeType,
                 isMe: isMe,
                 theme: theme,
               )
@@ -928,6 +1029,11 @@ class _AudioMessageWidgetState extends State<_AudioMessageWidget> {
         setState(() {
           _isPlaying = state.playing;
         });
+        
+        // Reset when audio completes
+        if (state.processingState == ProcessingState.completed) {
+          _resetAudioState();
+        }
       }
     });
     _audioPlayer.durationStream.listen((duration) {
@@ -946,6 +1052,27 @@ class _AudioMessageWidgetState extends State<_AudioMessageWidget> {
     });
   }
 
+  Future<void> _resetAudioState() async {
+    try {
+      // Pause the player
+      await _audioPlayer.pause();
+      
+      // Seek to the beginning
+      await _audioPlayer.seek(Duration.zero);
+      
+      // Update state to reflect reset
+      if (mounted) {
+        setState(() {
+          _isPlaying = false;
+          _position = Duration.zero;
+        });
+      }
+    } catch (e) {
+      // Ignore errors during reset
+      print('⚠️ [AudioMessageWidget] Error resetting audio state: $e');
+    }
+  }
+
   @override
   void dispose() {
     _audioPlayer.dispose();
@@ -957,7 +1084,16 @@ class _AudioMessageWidgetState extends State<_AudioMessageWidget> {
       if (_isPlaying) {
         await _audioPlayer.pause();
       } else {
-        if (_position == Duration.zero || _position >= _duration) {
+        // If audio has finished playing, reset to beginning
+        if (_position >= _duration && _duration > Duration.zero) {
+          await _audioPlayer.seek(Duration.zero);
+          setState(() {
+            _position = Duration.zero;
+          });
+        }
+        
+        // Load audio if not already loaded or if position is at zero
+        if (_position == Duration.zero || _duration == Duration.zero) {
           setState(() {
             _isLoading = true;
           });
@@ -970,6 +1106,9 @@ class _AudioMessageWidgetState extends State<_AudioMessageWidget> {
       }
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Lỗi khi phát audio: ${e.toString()}')),
         );
@@ -1045,10 +1184,11 @@ class _AudioMessageWidgetState extends State<_AudioMessageWidget> {
   }
 }
 
-class _FileMessageWidget extends StatelessWidget {
+class _FileMessageWidget extends StatefulWidget {
   final String fileUrl;
   final String fileName;
   final int fileSize;
+  final String? mimeType;
   final bool isMe;
   final ThemeData theme;
 
@@ -1056,9 +1196,49 @@ class _FileMessageWidget extends StatelessWidget {
     required this.fileUrl,
     required this.fileName,
     required this.fileSize,
+    this.mimeType,
     required this.isMe,
     required this.theme,
   });
+
+  @override
+  State<_FileMessageWidget> createState() => _FileMessageWidgetState();
+}
+
+class _FileMessageWidgetState extends State<_FileMessageWidget> {
+  final FileCacheService _fileCacheService = FileCacheService();
+  String? _cachedFilePath;
+  bool _isCheckingCache = true;
+  bool _isDownloading = false;
+  int _lastProgressPercent = -1; // Track last progress to avoid too frequent updates
+
+  @override
+  void initState() {
+    super.initState();
+    _checkCache();
+  }
+
+  Future<void> _checkCache() async {
+    setState(() {
+      _isCheckingCache = true;
+    });
+    
+    try {
+      final cachedPath = await _fileCacheService.getCachedFilePath(widget.fileUrl);
+      if (mounted) {
+        setState(() {
+          _cachedFilePath = cachedPath;
+          _isCheckingCache = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isCheckingCache = false;
+        });
+      }
+    }
+  }
 
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
@@ -1066,7 +1246,27 @@ class _FileMessageWidget extends StatelessWidget {
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
-  IconData _getFileIcon(String fileName) {
+  IconData _getFileIcon(String? mimeType, String fileName) {
+    // Use mimeType if available, otherwise fall back to file extension
+    if (mimeType != null) {
+      if (mimeType.startsWith('image/')) {
+        return CupertinoIcons.photo_fill;
+      } else if (mimeType.startsWith('video/')) {
+        return CupertinoIcons.videocam_fill;
+      } else if (mimeType.startsWith('audio/')) {
+        return CupertinoIcons.music_note;
+      } else if (mimeType == 'application/pdf') {
+        return CupertinoIcons.doc_text_fill;
+      } else if (mimeType.contains('word') || mimeType.contains('document')) {
+        return CupertinoIcons.doc_fill;
+      } else if (mimeType.contains('excel') || mimeType.contains('spreadsheet')) {
+        return CupertinoIcons.table_fill;
+      } else if (mimeType.contains('zip') || mimeType.contains('archive')) {
+        return CupertinoIcons.archivebox_fill;
+      }
+    }
+    
+    // Fallback to file extension
     final extension = fileName.split('.').last.toLowerCase();
     switch (extension) {
       case 'pdf':
@@ -1080,87 +1280,115 @@ class _FileMessageWidget extends StatelessWidget {
       case 'zip':
       case 'rar':
         return CupertinoIcons.archivebox_fill;
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+        return CupertinoIcons.photo_fill;
+      case 'mp4':
+      case 'avi':
+      case 'mov':
+        return CupertinoIcons.videocam_fill;
       default:
         return CupertinoIcons.doc_fill;
     }
   }
 
   Future<void> _downloadAndOpenFile(BuildContext context) async {
+    // Prevent multiple simultaneous downloads
+    if (_isDownloading) {
+      return;
+    }
+
+    // If file is already cached, just open it
+    if (_cachedFilePath != null) {
+      await _openFile(context, _cachedFilePath!);
+      return;
+    }
+
+    setState(() {
+      _isDownloading = true;
+      _lastProgressPercent = -1;
+    });
+    
     try {
-      // Show loading
+      // Show initial loading message (only once)
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đang tải file: $fileName')),
+        SnackBar(
+          content: Text('Đang tải file: ${widget.fileName}'),
+          duration: const Duration(days: 1), // Keep it until we manually close it
+        ),
       );
 
-      // Request storage permission
-      if (Platform.isAndroid) {
-        final status = await Permission.storage.request();
-        if (!status.isGranted) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Cần quyền truy cập bộ nhớ để tải file')),
-            );
-          }
-          return;
-        }
-      }
+      // Note: No storage permission needed for Android 13+ when saving to app's private directory
+      // getTemporaryDirectory() and getApplicationDocumentsDirectory() don't require permissions
 
-      // Get download directory
-      final directory = Platform.isAndroid
-          ? await getExternalStorageDirectory()
-          : await getApplicationDocumentsDirectory();
-      
-      if (directory == null) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Không thể truy cập thư mục tải xuống')),
-          );
-        }
-        return;
-      }
+      // Get temporary directory for download
+      final tempDir = await getTemporaryDirectory();
+      final tempFilePath = '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}_${widget.fileName}';
 
-      final filePath = '${directory.path}/$fileName';
-
-      // Download file
+      // Download file to temp location
       final dio = Dio();
       final token = await TokenStorage().readAccessToken();
       if (token != null) {
         dio.options.headers['Authorization'] = 'Bearer $token';
       }
 
+      // Build full URL
+      final fullUrl = widget.fileUrl.startsWith('http') 
+          ? widget.fileUrl 
+          : '${ApiClient.activeFileBaseUrl}${widget.fileUrl}';
+
       await dio.download(
-        fileUrl,
-        filePath,
+        fullUrl,
+        tempFilePath,
         onReceiveProgress: (received, total) {
-          if (total != -1) {
-            final progress = (received / total * 100).toStringAsFixed(0);
-            if (context.mounted) {
+          if (total != -1 && context.mounted) {
+            final progressPercent = ((received / total) * 100).toInt();
+            // Only update every 5% to avoid too frequent updates
+            if (progressPercent != _lastProgressPercent && 
+                (progressPercent % 5 == 0 || progressPercent == 100)) {
+              _lastProgressPercent = progressPercent;
               ScaffoldMessenger.of(context).hideCurrentSnackBar();
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Đang tải: $progress%')),
+                SnackBar(
+                  content: Text('Đang tải: $progressPercent%'),
+                  duration: const Duration(days: 1), // Keep it until we manually close it
+                ),
               );
             }
           }
         },
       );
-
-      // Open file
-      final result = await OpenFile.open(filePath);
       
+      // Hide progress snackbar after download completes
       if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        if (result.type != ResultType.done) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Không thể mở file: ${result.message}')),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Đã mở file thành công')),
-          );
-        }
       }
+
+      // Save to cache
+      final downloadedFile = File(tempFilePath);
+      final cachedPath = await _fileCacheService.saveToCache(
+        widget.fileUrl,
+        downloadedFile,
+        widget.fileName,
+      );
+
+      // Update state
+      if (mounted) {
+        setState(() {
+          _cachedFilePath = cachedPath;
+          _isDownloading = false;
+        });
+      }
+
+      // Open file
+      await _openFile(context, cachedPath);
     } catch (e) {
-      if (context.mounted) {
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+        });
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Lỗi khi tải file: ${e.toString()}')),
@@ -1169,25 +1397,136 @@ class _FileMessageWidget extends StatelessWidget {
     }
   }
 
+  Future<void> _openFile(BuildContext context, String filePath) async {
+    try {
+      // Check if file exists
+      final file = File(filePath);
+      if (!await file.exists()) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('File không tồn tại')),
+          );
+        }
+        return;
+      }
+
+      print('📂 [FileMessageWidget] Mở file: $filePath');
+      print('📂 [FileMessageWidget] MimeType: ${widget.mimeType}');
+      print('📂 [FileMessageWidget] FileName: ${widget.fileName}');
+
+      // Detect mimeType from file extension if not provided
+      String? mimeType = widget.mimeType;
+      if (mimeType == null || mimeType.isEmpty) {
+        mimeType = _getMimeTypeFromFileName(widget.fileName);
+        print('📂 [FileMessageWidget] Detected mimeType: $mimeType');
+      }
+
+      // Open file with mimeType
+      final result = await OpenFile.open(
+        filePath,
+        type: mimeType ?? 'application/octet-stream',
+      );
+      
+      print('📂 [FileMessageWidget] Open result: ${result.type}, message: ${result.message}');
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        if (result.type != ResultType.done) {
+          final errorMessage = result.message.isNotEmpty 
+              ? result.message 
+              : 'Không tìm thấy app phù hợp để mở file này';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Không thể mở file: $errorMessage'),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+        // Don't show success message as it's annoying
+      }
+    } catch (e, stackTrace) {
+      print('❌ [FileMessageWidget] Lỗi khi mở file: $e');
+      print('📋 [FileMessageWidget] Stack trace: $stackTrace');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi mở file: ${e.toString()}'),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
+  String? _getMimeTypeFromFileName(String fileName) {
+    final extension = fileName.split('.').last.toLowerCase();
+    switch (extension) {
+      case 'pdf':
+        return 'application/pdf';
+      case 'doc':
+        return 'application/msword';
+      case 'docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case 'xls':
+        return 'application/vnd.ms-excel';
+      case 'xlsx':
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      case 'zip':
+        return 'application/zip';
+      case 'rar':
+        return 'application/x-rar-compressed';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'mp4':
+        return 'video/mp4';
+      case 'mp3':
+        return 'audio/mpeg';
+      case 'txt':
+        return 'text/plain';
+      default:
+        return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final hasCachedFile = _cachedFilePath != null && !_isCheckingCache;
+    final isLoading = _isCheckingCache || _isDownloading;
+
     return InkWell(
-      onTap: () => _downloadAndOpenFile(context),
+      onTap: isLoading ? null : () => _downloadAndOpenFile(context),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: isMe
+          color: widget.isMe
               ? Colors.white.withOpacity(0.2)
-              : theme.colorScheme.surfaceContainerHighest,
+              : widget.theme.colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           children: [
-            Icon(
-              _getFileIcon(fileName),
-              size: 32,
-              color: isMe ? Colors.white : theme.colorScheme.primary,
-            ),
+            if (isLoading)
+              SizedBox(
+                width: 32,
+                height: 32,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: widget.isMe ? Colors.white : widget.theme.colorScheme.primary,
+                ),
+              )
+            else
+              Icon(
+                _getFileIcon(widget.mimeType, widget.fileName),
+                size: 32,
+                color: widget.isMe ? Colors.white : widget.theme.colorScheme.primary,
+              ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -1195,9 +1534,9 @@ class _FileMessageWidget extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    fileName,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: isMe ? Colors.white : theme.colorScheme.onSurface,
+                    widget.fileName,
+                    style: widget.theme.textTheme.bodyMedium?.copyWith(
+                      color: widget.isMe ? Colors.white : widget.theme.colorScheme.onSurface,
                       fontWeight: FontWeight.w500,
                     ),
                     maxLines: 2,
@@ -1205,11 +1544,11 @@ class _FileMessageWidget extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    _formatFileSize(fileSize),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: isMe
+                    _formatFileSize(widget.fileSize),
+                    style: widget.theme.textTheme.bodySmall?.copyWith(
+                      color: widget.isMe
                           ? Colors.white.withOpacity(0.7)
-                          : theme.colorScheme.onSurface.withOpacity(0.6),
+                          : widget.theme.colorScheme.onSurface.withOpacity(0.6),
                       fontSize: 12,
                     ),
                   ),
@@ -1217,8 +1556,10 @@ class _FileMessageWidget extends StatelessWidget {
               ),
             ),
             Icon(
-              CupertinoIcons.arrow_down_circle,
-              color: isMe ? Colors.white : theme.colorScheme.primary,
+              hasCachedFile 
+                  ? CupertinoIcons.arrow_right_circle_fill
+                  : CupertinoIcons.arrow_down_circle,
+              color: widget.isMe ? Colors.white : widget.theme.colorScheme.primary,
             ),
           ],
         ),
@@ -1270,6 +1611,7 @@ class _LoadMoreButton extends StatelessWidget {
   final VoidCallback onLoadMore;
 
   const _LoadMoreButton({
+    super.key,
     required this.isLoading,
     required this.hasMore,
     required this.onLoadMore,
@@ -1305,7 +1647,7 @@ class _LoadMoreButton extends StatelessWidget {
 class _SystemMessageBubble extends StatelessWidget {
   final ChatMessage message;
 
-  const _SystemMessageBubble({required this.message});
+  const _SystemMessageBubble({super.key, required this.message});
 
   @override
   Widget build(BuildContext context) {

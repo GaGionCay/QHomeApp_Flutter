@@ -210,6 +210,7 @@ class ChatService {
     String? fileUrl,
     String? fileName,
     int? fileSize,
+    String? mimeType,
     String? replyToMessageId,
   }) async {
     try {
@@ -220,6 +221,7 @@ class ChatService {
         'fileUrl': fileUrl,
         'fileName': fileName,
         'fileSize': fileSize,
+        'mimeType': mimeType,
         'replyToMessageId': replyToMessageId,
       };
       

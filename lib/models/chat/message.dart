@@ -12,6 +12,7 @@ class ChatMessage {
   final String? fileUrl;
   final String? fileName;
   final int? fileSize;
+  final String? mimeType;
   final String? replyToMessageId;
   final ChatMessage? replyToMessage;
   final bool isEdited;
@@ -31,6 +32,7 @@ class ChatMessage {
     this.fileUrl,
     this.fileName,
     this.fileSize,
+    this.mimeType,
     this.replyToMessageId,
     this.replyToMessage,
     required this.isEdited,
@@ -52,6 +54,7 @@ class ChatMessage {
       fileUrl: json['fileUrl'],
       fileName: json['fileName'],
       fileSize: json['fileSize'],
+      mimeType: json['mimeType'],
       replyToMessageId: json['replyToMessageId']?.toString(),
       replyToMessage: json['replyToMessage'] != null
           ? ChatMessage.fromJson(json['replyToMessage'])
@@ -80,6 +83,7 @@ class ChatMessage {
       'fileUrl': fileUrl,
       'fileName': fileName,
       'fileSize': fileSize,
+      'mimeType': mimeType,
       'replyToMessageId': replyToMessageId,
       'replyToMessage': replyToMessage?.toJson(),
       'isEdited': isEdited,

@@ -260,7 +260,7 @@ class ChatMessageViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> sendFileMessage(String fileUrl, String fileName, int fileSize) async {
+  Future<void> sendFileMessage(String fileUrl, String fileName, int fileSize, String? mimeType) async {
     try {
       final message = await _service.sendMessage(
         groupId: _groupId!,
@@ -268,6 +268,7 @@ class ChatMessageViewModel extends ChangeNotifier {
         fileUrl: fileUrl,
         fileName: fileName,
         fileSize: fileSize,
+        mimeType: mimeType,
       );
       _messages.add(message);
       notifyListeners();
