@@ -45,6 +45,7 @@ import '../qr/qr_scanner_screen.dart';
 import '../service_registration/service_requests_overview_screen.dart';
 import '../models/service_requests.dart';
 import '../chat/group_list_screen.dart';
+import '../chat/chat_service.dart';
 
 class HomeScreen extends StatefulWidget {
   final void Function(int)? onNavigateToTab;
@@ -76,6 +77,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isWeatherLoading = true;
   _WeatherSnapshot? _weatherSnapshot;
   String? _weatherError;
+  bool _hasGroupChatActivity = false; // Badge for group chat
+  final ChatService _chatService = ChatService();
 
   // Error states
   String? _electricityError;
@@ -175,6 +178,10 @@ class _HomeScreenState extends State<HomeScreen> {
       final unitId = (data is String && data.isNotEmpty) ? data : null;
       unawaited(_onUnitChanged(unitId));
     });
+    // Listen for chat activity updates
+    _eventBus.on('chat_activity_updated', (_) async {
+      await _loadGroupChatActivity();
+    });
   }
 
   Future<void> _initialize() async {
@@ -268,6 +275,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _loadUnpaidServices(),
       _loadUnpaidInvoices(invoiceService),
       _loadUnreadNotifications(),
+      _loadGroupChatActivity(),
     ]);
 
     if (mounted) {
@@ -445,6 +453,38 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _unpaidInvoiceCount = 0;
           _unpaidInvoicesError = e.toString();
+        });
+      }
+    }
+  }
+
+  Future<void> _loadGroupChatActivity() async {
+    try {
+      // Get all groups and calculate total unread messages
+      final groupsResponse = await _chatService.getMyGroups(page: 0, size: 100);
+      int totalUnreadMessages = 0;
+      for (final group in groupsResponse.content) {
+        totalUnreadMessages += group.unreadCount ?? 0;
+      }
+
+      // Get pending invitations count
+      final pendingInvitations = await _chatService.getMyPendingInvitations();
+      final pendingInvitationsCount = pendingInvitations.length;
+
+      // Show badge if there are unread messages or pending invitations
+      final hasActivity = totalUnreadMessages > 0 || pendingInvitationsCount > 0;
+
+      if (mounted) {
+        setState(() {
+          _hasGroupChatActivity = hasActivity;
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ Không thể tải hoạt động group chat: $e');
+      // Don't show badge on error
+      if (mounted) {
+        setState(() {
+          _hasGroupChatActivity = false;
         });
       }
     }
@@ -1718,34 +1758,59 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () {
-          Navigator.push(
+        onTap: () async {
+          await Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) => const GroupListScreen(),
             ),
           );
+          // Refresh badge when returning from group list
+          await _loadGroupChatActivity();
         },
         child: Row(
           children: [
-            Container(
-              height: 56,
-              width: 56,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    AppColors.primaryBlue,
-                    AppColors.primaryBlue.withValues(alpha: 0.8),
-                  ],
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  height: 56,
+                  width: 56,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.primaryBlue,
+                        AppColors.primaryBlue.withValues(alpha: 0.8),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: AppColors.subtleShadow,
+                  ),
+                  child: const Icon(
+                    CupertinoIcons.chat_bubble_2_fill,
+                    color: Colors.white,
+                    size: 28,
+                  ),
                 ),
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: AppColors.subtleShadow,
-              ),
-              child: const Icon(
-                CupertinoIcons.chat_bubble_2_fill,
-                color: Colors.white,
-                size: 28,
-              ),
+                // Badge (red dot)
+                if (_hasGroupChatActivity)
+                  Positioned(
+                    right: -4,
+                    top: -4,
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: theme.colorScheme.surface,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(width: 16),
             Expanded(

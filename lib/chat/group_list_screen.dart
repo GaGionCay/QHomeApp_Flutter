@@ -17,6 +17,8 @@ class GroupListScreen extends StatefulWidget {
 
 class _GroupListScreenState extends State<GroupListScreen> {
   late final ChatViewModel _viewModel;
+  final ChatService _chatService = ChatService();
+  int _pendingInvitationsCount = 0;
 
   @override
   void initState() {
@@ -24,6 +26,24 @@ class _GroupListScreenState extends State<GroupListScreen> {
     final service = ChatService();
     _viewModel = ChatViewModel(service);
     _viewModel.initialize();
+    _loadInvitationsCount();
+  }
+
+  Future<void> _loadInvitationsCount() async {
+    try {
+      final invitations = await _chatService.getMyPendingInvitations();
+      if (mounted) {
+        setState(() {
+          _pendingInvitationsCount = invitations.length;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _pendingInvitationsCount = 0;
+        });
+      }
+    }
   }
 
   @override
@@ -44,19 +64,59 @@ class _GroupListScreenState extends State<GroupListScreen> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           actions: [
-            IconButton(
-              icon: const Icon(CupertinoIcons.mail),
-              onPressed: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const InvitationsScreen(),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                IconButton(
+                  icon: const Icon(CupertinoIcons.mail),
+                  onPressed: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const InvitationsScreen(),
+                      ),
+                    );
+                    if (mounted) {
+                      _viewModel.refresh();
+                      _loadInvitationsCount();
+                    }
+                  },
+                ),
+                // Badge for invitations count
+                if (_pendingInvitationsCount > 0)
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: theme.colorScheme.surface,
+                          width: 2,
+                        ),
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 18,
+                        minHeight: 18,
+                      ),
+                      child: Center(
+                        child: Text(
+                          _pendingInvitationsCount > 99
+                              ? '99+'
+                              : '$_pendingInvitationsCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
                   ),
-                );
-                if (mounted) {
-                  _viewModel.refresh();
-                }
-              },
+              ],
             ),
             IconButton(
               icon: const Icon(CupertinoIcons.add),
@@ -152,12 +212,40 @@ class _GroupListScreenState extends State<GroupListScreen> {
             }
 
             return RefreshIndicator(
-              onRefresh: () => viewModel.refresh(),
+              onRefresh: () async {
+                await viewModel.refresh();
+                await _loadInvitationsCount();
+              },
               child: ListView.builder(
                 padding: const EdgeInsets.all(16),
-                itemCount: viewModel.groups.length + (viewModel.hasMore ? 1 : 0),
+                itemCount: (_pendingInvitationsCount > 0 ? 1 : 0) + 
+                          viewModel.groups.length + 
+                          (viewModel.hasMore ? 1 : 0),
                 itemBuilder: (context, index) {
-                  if (index == viewModel.groups.length) {
+                  // Invitations section (first item if there are invitations)
+                  if (_pendingInvitationsCount > 0 && index == 0) {
+                    return _InvitationsSection(
+                      count: _pendingInvitationsCount,
+                      onTap: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const InvitationsScreen(),
+                          ),
+                        );
+                        if (mounted) {
+                          _viewModel.refresh();
+                          _loadInvitationsCount();
+                        }
+                      },
+                    );
+                  }
+
+                  // Adjust index for groups if invitations section is shown
+                  final groupIndex = _pendingInvitationsCount > 0 ? index - 1 : index;
+
+                  // Load more indicator
+                  if (groupIndex == viewModel.groups.length) {
                     return const Center(
                       child: Padding(
                         padding: EdgeInsets.all(16),
@@ -166,7 +254,7 @@ class _GroupListScreenState extends State<GroupListScreen> {
                     );
                   }
 
-                  final group = viewModel.groups[index];
+                  final group = viewModel.groups[groupIndex];
                   return _GroupListItem(
                     group: group,
                     onTap: () async {
@@ -186,6 +274,91 @@ class _GroupListScreenState extends State<GroupListScreen> {
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+class _InvitationsSection extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
+
+  const _InvitationsSection({
+    required this.count,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                height: 48,
+                width: 48,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  CupertinoIcons.mail,
+                  color: theme.colorScheme.onPrimaryContainer,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Lời mời',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Bạn có $count lời mời tham gia nhóm',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withOpacity(0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.error,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  count > 99 ? '99+' : '$count',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                CupertinoIcons.right_chevron,
+                size: 18,
+                color: theme.colorScheme.onSurface.withOpacity(0.5),
+              ),
+            ],
+          ),
         ),
       ),
     );

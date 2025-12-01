@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
 import '../models/chat/message.dart';
 import '../models/chat/group.dart';
 import '../profile/profile_service.dart';
@@ -119,21 +121,26 @@ class ChatMessageViewModel extends ChangeNotifier {
     }
 
     if (!_hasMore && !refresh) return;
+    if (_isLoading && !refresh) return; // Prevent multiple simultaneous loads
 
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
+      // Load only 25 messages per page for better performance
       final response = await _service.getMessages(
         groupId: _groupId!,
         page: _currentPage,
-        size: 50,
+        size: 25,
       );
 
       if (refresh) {
+        // When refreshing, replace all messages with newest ones
         _messages = response.content.reversed.toList();
       } else {
+        // When loading more, insert older messages at the beginning
+        // Messages are returned in descending order (newest first), so we reverse them
         _messages.insertAll(0, response.content.reversed);
       }
 
@@ -156,10 +163,110 @@ class ChatMessageViewModel extends ChangeNotifier {
         groupId: _groupId!,
         content: content,
       );
+      // Append new message to the end (newest messages are at the end)
       _messages.add(message);
       notifyListeners();
     } catch (e) {
       _error = 'Lỗi khi gửi tin nhắn: ${e.toString()}';
+      notifyListeners();
+    }
+  }
+
+  Future<String> uploadImage(XFile image) async {
+    try {
+      return await _service.uploadImage(
+        groupId: _groupId!,
+        image: image,
+      );
+    } catch (e) {
+      _error = 'Lỗi khi upload ảnh: ${e.toString()}';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> sendImageMessage(String imageUrl) async {
+    try {
+      final message = await _service.sendMessage(
+        groupId: _groupId!,
+        messageType: 'IMAGE',
+        imageUrl: imageUrl,
+      );
+      _messages.add(message);
+      notifyListeners();
+    } catch (e) {
+      _error = 'Lỗi khi gửi ảnh: ${e.toString()}';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> uploadAudio(File audioFile) async {
+    try {
+      return await _service.uploadAudio(
+        groupId: _groupId!,
+        audioFile: audioFile,
+      );
+    } catch (e) {
+      _error = 'Lỗi khi upload audio: ${e.toString()}';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> sendAudioMessage(String audioUrl, int fileSize) async {
+    try {
+      final message = await _service.sendMessage(
+        groupId: _groupId!,
+        messageType: 'AUDIO',
+        fileUrl: audioUrl,
+        fileSize: fileSize,
+      );
+      _messages.add(message);
+      notifyListeners();
+    } catch (e) {
+      _error = 'Lỗi khi gửi ghi âm: ${e.toString()}';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> uploadFile(File file) async {
+    try {
+      return await _service.uploadFile(
+        groupId: _groupId!,
+        file: file,
+      );
+    } catch (e) {
+      _error = 'Lỗi khi upload file: ${e.toString()}';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> sendFileMessage(String fileUrl, String fileName, int fileSize) async {
+    try {
+      final message = await _service.sendMessage(
+        groupId: _groupId!,
+        messageType: 'FILE',
+        fileUrl: fileUrl,
+        fileName: fileName,
+        fileSize: fileSize,
+      );
+      _messages.add(message);
+      notifyListeners();
+    } catch (e) {
+      _error = 'Lỗi khi gửi file: ${e.toString()}';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Add a new incoming message (from WebSocket or real-time updates)
+  void addIncomingMessage(ChatMessage message) {
+    // Check if message already exists to avoid duplicates
+    if (!_messages.any((m) => m.id == message.id)) {
+      _messages.add(message);
       notifyListeners();
     }
   }

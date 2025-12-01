@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../models/chat/invitation.dart';
+import '../core/event_bus.dart';
 import 'chat_service.dart';
 
 class InvitationsScreen extends StatefulWidget {
@@ -53,6 +54,8 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
           ),
         );
         _loadInvitations();
+        // Emit event to update badge on HomeScreen
+        AppEventBus().emit('chat_activity_updated');
       }
     } catch (e) {
       if (mounted) {
@@ -76,6 +79,8 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
           ),
         );
         _loadInvitations();
+        // Emit event to update badge on HomeScreen
+        AppEventBus().emit('chat_activity_updated');
       }
     } catch (e) {
       if (mounted) {

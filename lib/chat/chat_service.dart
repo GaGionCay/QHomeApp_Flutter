@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/chat/group.dart';
@@ -299,14 +300,41 @@ class ChatService {
     }
   }
 
-  /// Upload file
-  Future<Map<String, dynamic>> uploadFile({
+  /// Upload audio (voice message)
+  Future<Map<String, dynamic>> uploadAudio({
     required String groupId,
-    required XFile file,
+    required File audioFile,
   }) async {
     try {
       final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(file.path),
+        'file': await MultipartFile.fromFile(
+          audioFile.path,
+          filename: audioFile.path.split('/').last,
+        ),
+      });
+
+      final response = await _apiClient.dio.post(
+        '/uploads/chat/$groupId/audio',
+        data: formData,
+      );
+
+      return response.data as Map<String, dynamic>;
+    } catch (e) {
+      throw Exception('Lỗi khi upload audio: ${e.toString()}');
+    }
+  }
+
+  /// Upload file (document, PDF, zip, etc.)
+  Future<Map<String, dynamic>> uploadFile({
+    required String groupId,
+    required File file,
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(
+          file.path,
+          filename: file.path.split('/').last,
+        ),
       });
 
       final response = await _apiClient.dio.post(

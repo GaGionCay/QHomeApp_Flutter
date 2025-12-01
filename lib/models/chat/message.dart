@@ -7,7 +7,7 @@ class ChatMessage {
   final String? senderName;
   final String? senderAvatar;
   final String? content;
-  final String messageType; // TEXT, IMAGE, FILE, SYSTEM
+  final String messageType; // TEXT, IMAGE, AUDIO, FILE, SYSTEM
   final String? imageUrl;
   final String? fileUrl;
   final String? fileName;
