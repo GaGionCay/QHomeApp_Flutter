@@ -173,7 +173,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
             Text(
               'Nhập số điện thoại của cư dân để mời họ tham gia nhóm',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
               ),
             ),
             const SizedBox(height: 16),
@@ -238,4 +238,5 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     );
   }
 }
+
 

@@ -174,20 +174,20 @@ class _GroupListScreenState extends State<GroupListScreen> {
                     Icon(
                       CupertinoIcons.chat_bubble_2,
                       size: 64,
-                      color: theme.colorScheme.onSurface.withOpacity(0.3),
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
                     ),
                     const SizedBox(height: 16),
                     Text(
                       'Chưa có nhóm chat nào',
                       style: theme.textTheme.titleMedium?.copyWith(
-                        color: theme.colorScheme.onSurface.withOpacity(0.6),
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'Tạo nhóm mới để bắt đầu trò chuyện',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withOpacity(0.5),
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                       ),
                     ),
                     const SizedBox(height: 24),
@@ -329,7 +329,7 @@ class _InvitationsSection extends StatelessWidget {
                     Text(
                       'Bạn có $count lời mời tham gia nhóm',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withOpacity(0.6),
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                   ],
@@ -355,7 +355,7 @@ class _InvitationsSection extends StatelessWidget {
               Icon(
                 CupertinoIcons.right_chevron,
                 size: 18,
-                color: theme.colorScheme.onSurface.withOpacity(0.5),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
               ),
             ],
           ),
@@ -419,7 +419,7 @@ class _GroupListItem extends StatelessWidget {
             Text(
               '${group.currentMemberCount}/${group.maxMembers} thành viên',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
               ),
             ),
           ],
@@ -445,4 +445,5 @@ class _GroupListItem extends StatelessWidget {
     );
   }
 }
+
 

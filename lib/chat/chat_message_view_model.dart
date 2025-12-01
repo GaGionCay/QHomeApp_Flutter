@@ -326,10 +326,5 @@ class ChatMessageViewModel extends ChangeNotifier {
     if (!_hasMore || _isLoading) return;
     await loadMessages();
   }
-
-  @override
-  void dispose() {
-    super.dispose();
-  }
 }
 

@@ -137,13 +137,13 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
                           Icon(
                             CupertinoIcons.mail,
                             size: 64,
-                            color: theme.colorScheme.onSurface.withOpacity(0.3),
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
                           ),
                           const SizedBox(height: 16),
                           Text(
                             'Không có lời mời nào',
                             style: theme.textTheme.titleMedium?.copyWith(
-                              color: theme.colorScheme.onSurface.withOpacity(0.6),
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                             ),
                           ),
                         ],
@@ -179,7 +179,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
                                   Text(
                                     'Hết hạn: ${_formatDate(invitation.expiresAt)}',
                                     style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                                     ),
                                   ),
                                 ],
@@ -222,4 +222,5 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
     return '${diff.inDays} ngày nữa';
   }
 }
+
 

@@ -189,7 +189,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
                   // Category
                   DropdownButtonFormField<String>(
-                    value: viewModel.selectedCategory,
+                    initialValue: viewModel.selectedCategory,
                     decoration: InputDecoration(
                       labelText: 'Danh mục *',
                       border: OutlineInputBorder(

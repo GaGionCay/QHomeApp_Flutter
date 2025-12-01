@@ -422,6 +422,9 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       print('⏹️ [ChatScreen] Đang dừng ghi âm...');
       
+      // Capture messenger before any async gaps if we're going to send
+      final messenger = send ? ScaffoldMessenger.of(context) : null;
+      
       // Stop the timer first
       _recordingTimer?.cancel();
       _recordingTimer = null;
@@ -439,21 +442,22 @@ class _ChatScreenState extends State<ChatScreen> {
         final audioFile = File(path);
         if (!await audioFile.exists()) {
           print('❌ [ChatScreen] File ghi âm không tồn tại: $path');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
+          if (mounted && messenger != null) {
+            messenger.showSnackBar(
               const SnackBar(content: Text('File ghi âm không tồn tại')),
             );
           }
           return;
         }
-
+        
         final fileSize = await audioFile.length();
         print('📊 [ChatScreen] File size: $fileSize bytes');
         
-        // Show loading
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đang upload ghi âm...')),
-        );
+        if (messenger != null) {
+          messenger.showSnackBar(
+            const SnackBar(content: Text('Đang upload ghi âm...')),
+          );
+        }
 
         try {
           print('📤 [ChatScreen] Đang upload audio...');
@@ -473,9 +477,9 @@ class _ChatScreenState extends State<ChatScreen> {
           );
           print('✅ [ChatScreen] Đã gửi audio message thành công!');
           
-          if (mounted) {
-            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            ScaffoldMessenger.of(context).showSnackBar(
+          if (mounted && messenger != null) {
+            messenger.hideCurrentSnackBar();
+            messenger.showSnackBar(
               const SnackBar(
                 content: Text('✅ Đã gửi ghi âm thành công!'),
                 backgroundColor: Colors.green,
@@ -488,8 +492,8 @@ class _ChatScreenState extends State<ChatScreen> {
         } catch (e, stackTrace) {
           print('❌ [ChatScreen] Lỗi khi gửi ghi âm: $e');
           print('📋 [ChatScreen] Stack trace: $stackTrace');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
+          if (mounted && messenger != null) {
+            messenger.showSnackBar(
               SnackBar(content: Text('Lỗi khi gửi ghi âm: ${e.toString()}')),
             );
           }
@@ -517,6 +521,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _pickFile() async {
     try {
+      // Capture messenger before any async gaps
+      final messenger = ScaffoldMessenger.of(context);
+      
       final result = await FilePicker.platform.pickFiles(
         type: FileType.any,
         allowMultiple: false,
@@ -527,8 +534,7 @@ class _ChatScreenState extends State<ChatScreen> {
         final fileName = result.files.single.name;
         final fileSize = await file.length();
 
-        // Show loading
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           const SnackBar(content: Text('Đang upload file...')),
         );
 
@@ -590,6 +596,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _showRenameDialog(BuildContext context, ChatMessageViewModel viewModel) async {
+    final messenger = ScaffoldMessenger.of(context);
     final controller = TextEditingController(text: viewModel.groupName);
     final result = await showDialog<String>(
       context: context,
@@ -625,13 +632,13 @@ class _ChatScreenState extends State<ChatScreen> {
       try {
         await viewModel.updateGroupName(result);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          messenger.showSnackBar(
             const SnackBar(content: Text('Đã đổi tên nhóm thành công')),
           );
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          messenger.showSnackBar(
             SnackBar(content: Text('Lỗi: ${e.toString()}')),
           );
         }
@@ -640,6 +647,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _showLeaveConfirmation(BuildContext context, ChatMessageViewModel viewModel) async {
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -663,14 +672,14 @@ class _ChatScreenState extends State<ChatScreen> {
       try {
         await viewModel.leaveGroup();
         if (mounted) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
+          navigator.pop();
+          messenger.showSnackBar(
             const SnackBar(content: Text('Đã rời nhóm')),
           );
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          messenger.showSnackBar(
             SnackBar(content: Text('Lỗi: ${e.toString()}')),
           );
         }
@@ -679,6 +688,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _showDeleteConfirmation(BuildContext context, ChatMessageViewModel viewModel) async {
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -702,14 +713,14 @@ class _ChatScreenState extends State<ChatScreen> {
       try {
         await viewModel.deleteGroup();
         if (mounted) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
+          navigator.pop();
+          messenger.showSnackBar(
             const SnackBar(content: Text('Đã xóa nhóm')),
           );
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          messenger.showSnackBar(
             SnackBar(content: Text('Lỗi: ${e.toString()}')),
           );
         }
@@ -872,7 +883,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       child: Text(
                         'Chưa có tin nhắn nào',
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                         ),
                       ),
                     );
@@ -1117,8 +1128,8 @@ class _MessageBubble extends StatelessWidget {
                 message.senderName ?? 'Người dùng',
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: isMe
-                      ? Colors.white.withOpacity(0.8)
-                      : theme.colorScheme.onSurface.withOpacity(0.6),
+                      ? Colors.white.withValues(alpha: 0.8)
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -1210,8 +1221,8 @@ class _MessageBubble extends StatelessWidget {
               _formatTime(message.createdAt),
               style: theme.textTheme.labelSmall?.copyWith(
                 color: isMe
-                    ? Colors.white.withOpacity(0.7)
-                    : theme.colorScheme.onSurface.withOpacity(0.5),
+                    ? Colors.white.withValues(alpha: 0.7)
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.5),
               ),
             ),
           ],
@@ -1400,8 +1411,8 @@ class _AudioMessageWidgetState extends State<_AudioMessageWidget> {
                         ? _position.inMilliseconds / _duration.inMilliseconds
                         : 0,
                     backgroundColor: widget.isMe
-                        ? Colors.white.withOpacity(0.3)
-                        : widget.theme.colorScheme.primary.withOpacity(0.3),
+                        ? Colors.white.withValues(alpha: 0.3)
+                        : widget.theme.colorScheme.primary.withValues(alpha: 0.3),
                     valueColor: AlwaysStoppedAnimation<Color>(
                       widget.isMe ? Colors.white : widget.theme.colorScheme.primary,
                     ),
@@ -1409,11 +1420,11 @@ class _AudioMessageWidgetState extends State<_AudioMessageWidget> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  _formatDuration(_position) + ' / ' + _formatDuration(_duration),
+                  '${_formatDuration(_position)} / ${_formatDuration(_duration)}',
                   style: widget.theme.textTheme.bodySmall?.copyWith(
                     color: widget.isMe
-                        ? Colors.white.withOpacity(0.8)
-                        : widget.theme.colorScheme.onSurface.withOpacity(0.7),
+                        ? Colors.white.withValues(alpha: 0.8)
+                        : widget.theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     fontSize: 12,
                   ),
                 ),
@@ -1581,6 +1592,9 @@ class _FileMessageWidgetState extends State<_FileMessageWidget> {
   }
 
   Future<void> _downloadAndOpenFile(BuildContext context) async {
+    // Capture all context-dependent objects before any async gaps
+    final openFileContext = context;
+    
     // Prevent multiple simultaneous downloads
     if (_isDownloading) {
       return;
@@ -1588,7 +1602,7 @@ class _FileMessageWidgetState extends State<_FileMessageWidget> {
 
     // If file is already cached, just open it
     if (_cachedFilePath != null) {
-      await _openFile(context, _cachedFilePath!);
+      await _openFile(openFileContext, _cachedFilePath!);
       return;
     }
 
@@ -1598,11 +1612,14 @@ class _FileMessageWidgetState extends State<_FileMessageWidget> {
     });
     
     try {
+      // Capture messenger before any async gaps
+      final messenger = ScaffoldMessenger.of(context);
+      
       // Determine file type
       final fileType = PublicFileStorageService.getFileType(widget.mimeType, widget.fileName);
       
       // Show initial loading message
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(
           content: Text('Đang tải file: ${widget.fileName}'),
           duration: const Duration(days: 1),
@@ -1638,7 +1655,7 @@ class _FileMessageWidgetState extends State<_FileMessageWidget> {
 
       // Hide progress snackbar after download completes
       if (context.mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        messenger.hideCurrentSnackBar();
       }
 
       // Update state
@@ -1650,7 +1667,8 @@ class _FileMessageWidgetState extends State<_FileMessageWidget> {
       }
 
       // Open file
-      await _openFile(context, savedPath);
+      // ignore: use_build_context_synchronously
+      await _openFile(openFileContext, savedPath);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -1658,9 +1676,10 @@ class _FileMessageWidgetState extends State<_FileMessageWidget> {
         });
       }
       
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
+      // Check if context is still valid before using UI operations
+      if (openFileContext.mounted) {
+        ScaffoldMessenger.of(openFileContext).hideCurrentSnackBar();
+        ScaffoldMessenger.of(openFileContext).showSnackBar(
           SnackBar(
             content: Text('Lỗi khi tải file: ${e.toString()}'),
             backgroundColor: Colors.red,
@@ -1779,7 +1798,7 @@ class _FileMessageWidgetState extends State<_FileMessageWidget> {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: widget.isMe
-              ? Colors.white.withOpacity(0.2)
+              ? Colors.white.withValues(alpha: 0.2)
               : widget.theme.colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(8),
         ),
@@ -1820,8 +1839,8 @@ class _FileMessageWidgetState extends State<_FileMessageWidget> {
                     _formatFileSize(widget.fileSize),
                     style: widget.theme.textTheme.bodySmall?.copyWith(
                       color: widget.isMe
-                          ? Colors.white.withOpacity(0.7)
-                          : widget.theme.colorScheme.onSurface.withOpacity(0.6),
+                          ? Colors.white.withValues(alpha: 0.7)
+                          : widget.theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       fontSize: 12,
                     ),
                   ),
@@ -1944,7 +1963,7 @@ class _SystemMessageBubble extends StatelessWidget {
               children: [
                 Expanded(
                   child: Divider(
-                    color: theme.colorScheme.outline.withOpacity(0.3),
+                    color: theme.colorScheme.outline.withValues(alpha: 0.3),
                     thickness: 1,
                   ),
                 ),
@@ -1961,7 +1980,7 @@ class _SystemMessageBubble extends StatelessWidget {
                 ),
                 Expanded(
                   child: Divider(
-                    color: theme.colorScheme.outline.withOpacity(0.3),
+                    color: theme.colorScheme.outline.withValues(alpha: 0.3),
                     thickness: 1,
                   ),
                 ),
@@ -2004,7 +2023,7 @@ class _MessageInput extends StatelessWidget {
         color: theme.colorScheme.surface,
         border: Border(
           top: BorderSide(
-            color: theme.colorScheme.outline.withOpacity(0.2),
+            color: theme.colorScheme.outline.withValues(alpha: 0.2),
           ),
         ),
       ),
@@ -2154,7 +2173,7 @@ class _MessageInput extends StatelessWidget {
                     : (controller.text.trim().isEmpty ? null : onSend),
                 style: IconButton.styleFrom(
                   backgroundColor: isRecording
-                      ? Colors.red.withOpacity(0.1)
+                      ? Colors.red.withValues(alpha: 0.1)
                       : theme.colorScheme.primary,
                   foregroundColor: isRecording ? Colors.red : Colors.white,
                 ),
@@ -2173,4 +2192,5 @@ class _MessageInput extends StatelessWidget {
     return '$minutes:$seconds';
   }
 }
+
 

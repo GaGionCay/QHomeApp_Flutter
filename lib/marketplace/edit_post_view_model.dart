@@ -1,5 +1,4 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'marketplace_service.dart';
 import '../auth/token_storage.dart';
@@ -8,9 +7,8 @@ import '../models/marketplace_category.dart';
 
 class EditPostViewModel extends ChangeNotifier {
   final MarketplaceService _service;
-  final TokenStorage _tokenStorage;
 
-  EditPostViewModel(this._service, this._tokenStorage);
+  EditPostViewModel(this._service, TokenStorage _);
 
   // State
   List<MarketplaceCategory> _categories = [];
@@ -135,11 +133,6 @@ class EditPostViewModel extends ChangeNotifier {
       notifyListeners();
       return null;
     }
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
   }
 }
 

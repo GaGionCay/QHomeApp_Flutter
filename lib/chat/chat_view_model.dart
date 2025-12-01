@@ -68,10 +68,5 @@ class ChatViewModel extends ChangeNotifier {
     if (!_hasMore || _isLoading) return;
     await loadGroups();
   }
-
-  @override
-  void dispose() {
-    super.dispose();
-  }
 }
 

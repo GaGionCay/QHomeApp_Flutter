@@ -139,13 +139,13 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
                           Icon(
                             CupertinoIcons.person_2,
                             size: 64,
-                            color: theme.colorScheme.onSurface.withOpacity(0.3),
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
                           ),
                           const SizedBox(height: 16),
                           Text(
                             'Chưa có thành viên nào',
                             style: theme.textTheme.titleMedium?.copyWith(
-                              color: theme.colorScheme.onSurface.withOpacity(0.6),
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                             ),
                           ),
                         ],
@@ -160,7 +160,7 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
                             color: theme.colorScheme.surfaceContainerHighest,
                             border: Border(
                               bottom: BorderSide(
-                                color: theme.colorScheme.outline.withOpacity(0.2),
+                                color: theme.colorScheme.outline.withValues(alpha: 0.2),
                               ),
                             ),
                           ),
@@ -181,7 +181,7 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
                                   width: 48,
                                   height: 48,
                                   decoration: BoxDecoration(
-                                    color: theme.colorScheme.primary.withOpacity(0.1),
+                                    color: theme.colorScheme.primary.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(24),
                                   ),
                                   child: Icon(
@@ -204,7 +204,7 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
                                       Text(
                                         _group!.description!,
                                         style: theme.textTheme.bodySmall?.copyWith(
-                                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                                         ),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
@@ -224,7 +224,7 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
                                 'Thành viên (${_group!.currentMemberCount}/${_group!.maxMembers})',
                                 style: theme.textTheme.titleSmall?.copyWith(
                                   fontWeight: FontWeight.bold,
-                                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                                 ),
                               ),
                             ],
@@ -291,7 +291,7 @@ class _MemberListItem extends StatelessWidget {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withOpacity(0.1),
+                color: theme.colorScheme.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Icon(
@@ -316,10 +316,10 @@ class _MemberListItem extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
-                    color: roleColor.withOpacity(0.1),
+                    color: roleColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: roleColor.withOpacity(0.3),
+                      color: roleColor.withValues(alpha: 0.3),
                       width: 1,
                     ),
                   ),
@@ -349,4 +349,5 @@ class _MemberListItem extends StatelessWidget {
     );
   }
 }
+
 

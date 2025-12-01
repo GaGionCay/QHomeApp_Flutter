@@ -214,7 +214,7 @@ class _EditPostScreenState extends State<EditPostScreen> {
             Consumer<EditPostViewModel>(
               builder: (context, viewModel, child) {
                 return DropdownButtonFormField<String>(
-                  value: viewModel.selectedCategory ?? widget.post.category,
+                  initialValue: viewModel.selectedCategory ?? widget.post.category,
                   decoration: InputDecoration(
                     labelText: 'Danh mục *',
                     border: OutlineInputBorder(
@@ -649,9 +649,9 @@ class _EditPostScreenState extends State<EditPostScreen> {
     String formatted = '';
     for (int i = priceStr.length - 1; i >= 0; i--) {
       if ((priceStr.length - 1 - i) > 0 && (priceStr.length - 1 - i) % 3 == 0) {
-        formatted = ',' + formatted;
+        formatted = ',$formatted';
       }
-      formatted = priceStr[i] + formatted;
+      formatted = '${priceStr[i]}$formatted';
     }
     return formatted;
   }

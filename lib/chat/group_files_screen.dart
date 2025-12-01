@@ -615,7 +615,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
         child: Text(
           'Chưa có ảnh nào',
           style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurface.withOpacity(0.6),
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
           ),
         ),
       );
@@ -680,7 +680,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.6),
+                color: Colors.black.withValues(alpha: 0.6),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: const Icon(
@@ -701,7 +701,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
         child: Text(
           'Chưa có file nào',
           style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurface.withOpacity(0.6),
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
           ),
         ),
       );
@@ -751,7 +751,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: categoryColor.withOpacity(0.1),
+                      color: categoryColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
@@ -801,7 +801,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: categoryColor.withOpacity(0.15),
+                            color: categoryColor.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
@@ -819,7 +819,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
                     Text(
                       _formatFileSize(file.fileSize),
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withOpacity(0.6),
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -830,7 +830,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
                             child: Text(
                               file.senderName!,
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -840,13 +840,13 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
                           Text(
                             ' • ',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurface.withOpacity(0.6),
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                             ),
                           ),
                         Text(
                           _formatDate(file.createdAt),
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withOpacity(0.6),
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                           ),
                         ),
                       ],
@@ -857,7 +857,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
               const SizedBox(width: 8),
               Icon(
                 CupertinoIcons.chevron_right,
-                color: theme.colorScheme.onSurface.withOpacity(0.4),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
               ),
             ],
           ),
@@ -1037,7 +1037,7 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
       ),
       bottomNavigationBar: widget.images.length > 1
           ? Container(
-              color: Colors.black.withOpacity(0.7),
+              color: Colors.black.withValues(alpha: 0.7),
               padding: const EdgeInsets.all(16),
               child: Text(
                 '${_currentIndex + 1} / ${widget.images.length}',
@@ -1049,3 +1049,4 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
     );
   }
 }
+
