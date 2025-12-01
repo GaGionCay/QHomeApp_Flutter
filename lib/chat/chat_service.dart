@@ -213,20 +213,42 @@ class ChatService {
     String? replyToMessageId,
   }) async {
     try {
+      final requestData = {
+        'content': content,
+        'messageType': messageType ?? 'TEXT',
+        'imageUrl': imageUrl,
+        'fileUrl': fileUrl,
+        'fileName': fileName,
+        'fileSize': fileSize,
+        'replyToMessageId': replyToMessageId,
+      };
+      
+      print('📨 [ChatService] Gửi message, groupId: $groupId');
+      print('📨 [ChatService] Request data: $requestData');
+      
       final response = await _apiClient.dio.post(
         '/groups/$groupId/messages',
-        data: {
-          'content': content,
-          'messageType': messageType ?? 'TEXT',
-          'imageUrl': imageUrl,
-          'fileUrl': fileUrl,
-          'fileName': fileName,
-          'fileSize': fileSize,
-          'replyToMessageId': replyToMessageId,
-        },
+        data: requestData,
       );
-      return ChatMessage.fromJson(response.data);
-    } catch (e) {
+
+      print('📥 [ChatService] Response status: ${response.statusCode}');
+      print('📥 [ChatService] Response data: ${response.data}');
+      
+      final message = ChatMessage.fromJson(response.data);
+      print('✅ [ChatService] Parse message thành công!');
+      print('📋 [ChatService] Message ID: ${message.id}');
+      print('📋 [ChatService] Message type: ${message.messageType}');
+      print('📋 [ChatService] Message imageUrl: ${message.imageUrl}');
+      print('📋 [ChatService] Message content: ${message.content}');
+      
+      return message;
+    } catch (e, stackTrace) {
+      print('❌ [ChatService] Lỗi khi gửi tin nhắn: $e');
+      print('📋 [ChatService] Stack trace: $stackTrace');
+      if (e is DioException) {
+        print('📋 [ChatService] DioException response: ${e.response?.data}');
+        print('📋 [ChatService] DioException statusCode: ${e.response?.statusCode}');
+      }
       throw Exception('Lỗi khi gửi tin nhắn: ${e.toString()}');
     }
   }
@@ -285,17 +307,41 @@ class ChatService {
     required XFile image,
   }) async {
     try {
+      print('📤 [ChatService] Bắt đầu upload ảnh cho groupId: $groupId');
+      print('📤 [ChatService] Image path: ${image.path}');
+      print('📤 [ChatService] Image name: ${image.name}');
+      
+      final fileSize = await image.length();
+      print('📤 [ChatService] Image size: $fileSize bytes');
+      
       final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(image.path),
+        'file': await MultipartFile.fromFile(image.path, filename: image.name),
       });
 
+      print('📤 [ChatService] Gửi request POST /uploads/chat/$groupId/image');
       final response = await _apiClient.dio.post(
         '/uploads/chat/$groupId/image',
         data: formData,
       );
 
-      return response.data['imageUrl'] as String;
-    } catch (e) {
+      print('📥 [ChatService] Response status: ${response.statusCode}');
+      print('📥 [ChatService] Response data: ${response.data}');
+      
+      final imageUrl = response.data['imageUrl'] as String?;
+      if (imageUrl == null) {
+        print('❌ [ChatService] Response không có imageUrl! Response: ${response.data}');
+        throw Exception('Response không có imageUrl: ${response.data}');
+      }
+      
+      print('✅ [ChatService] Upload thành công! imageUrl: $imageUrl');
+      return imageUrl;
+    } catch (e, stackTrace) {
+      print('❌ [ChatService] Lỗi khi upload ảnh: $e');
+      print('📋 [ChatService] Stack trace: $stackTrace');
+      if (e is DioException) {
+        print('📋 [ChatService] DioException response: ${e.response?.data}');
+        print('📋 [ChatService] DioException statusCode: ${e.response?.statusCode}');
+      }
       throw Exception('Lỗi khi upload ảnh: ${e.toString()}');
     }
   }

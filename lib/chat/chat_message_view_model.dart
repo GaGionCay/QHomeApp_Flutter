@@ -174,11 +174,16 @@ class ChatMessageViewModel extends ChangeNotifier {
 
   Future<String> uploadImage(XFile image) async {
     try {
-      return await _service.uploadImage(
+      print('📤 [ChatMessageViewModel] Bắt đầu upload ảnh, groupId: $_groupId');
+      final imageUrl = await _service.uploadImage(
         groupId: _groupId!,
         image: image,
       );
-    } catch (e) {
+      print('✅ [ChatMessageViewModel] Upload ảnh thành công, imageUrl: $imageUrl');
+      return imageUrl;
+    } catch (e, stackTrace) {
+      print('❌ [ChatMessageViewModel] Lỗi khi upload ảnh: $e');
+      print('📋 [ChatMessageViewModel] Stack trace: $stackTrace');
       _error = 'Lỗi khi upload ảnh: ${e.toString()}';
       notifyListeners();
       rethrow;
@@ -187,14 +192,25 @@ class ChatMessageViewModel extends ChangeNotifier {
 
   Future<void> sendImageMessage(String imageUrl) async {
     try {
+      print('📨 [ChatMessageViewModel] Bắt đầu gửi message ảnh, imageUrl: $imageUrl');
       final message = await _service.sendMessage(
         groupId: _groupId!,
         messageType: 'IMAGE',
         imageUrl: imageUrl,
       );
+      print('✅ [ChatMessageViewModel] Gửi message thành công!');
+      print('📋 [ChatMessageViewModel] Message ID: ${message.id}');
+      print('📋 [ChatMessageViewModel] Message type: ${message.messageType}');
+      print('📋 [ChatMessageViewModel] Message imageUrl: ${message.imageUrl}');
+      print('📋 [ChatMessageViewModel] Tổng số messages hiện tại: ${_messages.length}');
+      
       _messages.add(message);
+      print('✅ [ChatMessageViewModel] Đã thêm message vào list, tổng số: ${_messages.length}');
       notifyListeners();
-    } catch (e) {
+      print('✅ [ChatMessageViewModel] Đã notify listeners');
+    } catch (e, stackTrace) {
+      print('❌ [ChatMessageViewModel] Lỗi khi gửi ảnh: $e');
+      print('📋 [ChatMessageViewModel] Stack trace: $stackTrace');
       _error = 'Lỗi khi gửi ảnh: ${e.toString()}';
       notifyListeners();
       rethrow;

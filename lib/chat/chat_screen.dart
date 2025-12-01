@@ -145,6 +145,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
+      print('📸 [ChatScreen] Bắt đầu chọn ảnh từ ${source == ImageSource.gallery ? "gallery" : "camera"}');
       final XFile? image = await _imagePicker.pickImage(
         source: source,
         imageQuality: 85,
@@ -152,18 +153,37 @@ class _ChatScreenState extends State<ChatScreen> {
         maxHeight: 1920,
       );
 
-      if (image != null && mounted) {
+      if (image == null) {
+        print('⚠️ [ChatScreen] Người dùng hủy chọn ảnh');
+        return;
+      }
+
+      print('✅ [ChatScreen] Đã chọn ảnh: ${image.path}, size: ${await image.length()} bytes');
+
+      if (mounted) {
         // Show loading
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Đang upload ảnh...')),
         );
 
         try {
+          print('📤 [ChatScreen] Bắt đầu upload ảnh...');
           final imageUrl = await _viewModel.uploadImage(image);
+          print('✅ [ChatScreen] Upload ảnh thành công! imageUrl: $imageUrl');
+          
+          print('📨 [ChatScreen] Bắt đầu gửi message với ảnh...');
           await _viewModel.sendImageMessage(imageUrl);
+          print('✅ [ChatScreen] Gửi message ảnh thành công!');
           
           if (mounted) {
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✅ Đã gửi ảnh thành công!'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
             // Auto-scroll to bottom
             if (_scrollController.hasClients) {
               _scrollController.animateTo(
@@ -173,18 +193,31 @@ class _ChatScreenState extends State<ChatScreen> {
               );
             }
           }
-        } catch (e) {
+        } catch (e, stackTrace) {
+          print('❌ [ChatScreen] Lỗi khi gửi ảnh: $e');
+          print('📋 [ChatScreen] Stack trace: $stackTrace');
           if (mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Lỗi khi gửi ảnh: ${e.toString()}')),
+              SnackBar(
+                content: Text('❌ Lỗi khi gửi ảnh: ${e.toString()}'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 5),
+              ),
             );
           }
         }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [ChatScreen] Lỗi khi chọn ảnh: $e');
+      print('📋 [ChatScreen] Stack trace: $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi chọn ảnh: ${e.toString()}')),
+          SnackBar(
+            content: Text('❌ Lỗi khi chọn ảnh: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
         );
       }
     }
@@ -691,28 +724,53 @@ class _MessageBubble extends StatelessWidget {
               ),
             // Display based on message type
             if (message.messageType == 'IMAGE' && message.imageUrl != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: GestureDetector(
-                  onTap: () {
-                    _showFullScreenImage(context, message.imageUrl!);
-                  },
-                  child: CachedNetworkImage(
-                    imageUrl: _buildFullUrl(message.imageUrl!),
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(
-                      height: 200,
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      child: const Center(child: CircularProgressIndicator()),
+              Builder(
+                builder: (context) {
+                  final fullImageUrl = _buildFullUrl(message.imageUrl!);
+                  print('🖼️ [MessageBubble] Hiển thị ảnh, messageId: ${message.id}');
+                  print('🖼️ [MessageBubble] Original imageUrl: ${message.imageUrl}');
+                  print('🖼️ [MessageBubble] Full imageUrl: $fullImageUrl');
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: GestureDetector(
+                      onTap: () {
+                        print('👆 [MessageBubble] Tap vào ảnh, mở full screen');
+                        _showFullScreenImage(context, message.imageUrl!);
+                      },
+                      child: CachedNetworkImage(
+                        imageUrl: fullImageUrl,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) {
+                          print('⏳ [MessageBubble] Đang load ảnh: $url');
+                          return Container(
+                            height: 200,
+                            color: theme.colorScheme.surfaceContainerHighest,
+                            child: const Center(child: CircularProgressIndicator()),
+                          );
+                        },
+                        errorWidget: (context, url, error) {
+                          print('❌ [MessageBubble] Lỗi load ảnh: $url, error: $error');
+                          return Container(
+                            height: 200,
+                            color: theme.colorScheme.errorContainer,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(CupertinoIcons.exclamationmark_triangle),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Lỗi tải ảnh',
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                     ),
-                    errorWidget: (context, url, error) => Container(
-                      height: 200,
-                      color: theme.colorScheme.errorContainer,
-                      child: const Icon(CupertinoIcons.exclamationmark_triangle),
-                    ),
-                  ),
-                ),
+                  );
+                },
               )
             else if (message.messageType == 'AUDIO' && message.fileUrl != null)
               _AudioMessageWidget(
