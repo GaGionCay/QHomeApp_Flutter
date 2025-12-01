@@ -37,7 +37,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final _audioPlayer = AudioPlayer();
   bool _isRecording = false;
   Duration _recordingDuration = Duration.zero;
-  String? _recordingPath;
 
   bool _isLoadingMore = false;
   int _previousMessageCount = 0;
@@ -225,9 +224,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _startRecording() async {
     try {
+      print('🎤 [ChatScreen] Bắt đầu ghi âm...');
+      
       // Request microphone permission
       final status = await Permission.microphone.request();
       if (!status.isGranted) {
+        print('❌ [ChatScreen] Không có quyền microphone');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Cần quyền truy cập microphone')),
@@ -235,20 +237,25 @@ class _ChatScreenState extends State<ChatScreen> {
         }
         return;
       }
+      print('✅ [ChatScreen] Đã có quyền microphone');
 
       // Open recorder
+      print('🔧 [ChatScreen] Đang mở recorder...');
       await _audioRecorder.openRecorder();
+      print('✅ [ChatScreen] Recorder đã mở');
 
       final directory = await getTemporaryDirectory();
       final path = '${directory.path}/${DateTime.now().millisecondsSinceEpoch}.m4a';
-      _recordingPath = path;
+      print('📁 [ChatScreen] File path: $path');
       
+      print('▶️ [ChatScreen] Đang bắt đầu ghi âm với codec aacMP4...');
       await _audioRecorder.startRecorder(
         toFile: path,
-        codec: Codec.aacADTS,
+        codec: Codec.aacMP4, // Changed from aacADTS to aacMP4 for better Android support
         bitRate: 128000,
         sampleRate: 44100,
       );
+      print('✅ [ChatScreen] Đã bắt đầu ghi âm thành công!');
 
       setState(() {
         _isRecording = true;
@@ -263,39 +270,79 @@ class _ChatScreenState extends State<ChatScreen> {
           });
         }
       });
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [ChatScreen] Lỗi khi bắt đầu ghi âm: $e');
+      print('📋 [ChatScreen] Stack trace: $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Lỗi khi bắt đầu ghi âm: ${e.toString()}')),
         );
       }
+      // Clean up on error
+      try {
+        await _audioRecorder.closeRecorder();
+      } catch (_) {}
     }
   }
 
   Future<void> _stopRecording({bool send = true}) async {
     try {
+      print('⏹️ [ChatScreen] Đang dừng ghi âm...');
       final path = await _audioRecorder.stopRecorder();
+      print('✅ [ChatScreen] Đã dừng ghi âm, path: $path');
       
       setState(() {
         _isRecording = false;
       });
 
       if (send && path != null && mounted) {
+        // Verify file exists
+        final audioFile = File(path);
+        if (!await audioFile.exists()) {
+          print('❌ [ChatScreen] File ghi âm không tồn tại: $path');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('File ghi âm không tồn tại')),
+            );
+          }
+          return;
+        }
+
+        final fileSize = await audioFile.length();
+        print('📊 [ChatScreen] File size: $fileSize bytes');
+        
         // Show loading
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Đang upload ghi âm...')),
         );
 
         try {
-          final audioFile = File(path);
+          print('📤 [ChatScreen] Đang upload audio...');
           final result = await _viewModel.uploadAudio(audioFile);
+          print('✅ [ChatScreen] Upload audio thành công: ${result['audioUrl']}');
+          
+          // Parse fileSize (backend returns it as String)
+          final fileSizeValue = result['fileSize'];
+          final fileSizeInt = fileSizeValue is int 
+              ? fileSizeValue 
+              : int.parse(fileSizeValue.toString());
+          
+          print('📨 [ChatScreen] Đang gửi audio message...');
           await _viewModel.sendAudioMessage(
             result['audioUrl'] as String,
-            result['fileSize'] as int,
+            fileSizeInt,
           );
+          print('✅ [ChatScreen] Đã gửi audio message thành công!');
           
           if (mounted) {
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✅ Đã gửi ghi âm thành công!'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
             // Auto-scroll to bottom
             if (_scrollController.hasClients) {
               _scrollController.animateTo(
@@ -305,7 +352,9 @@ class _ChatScreenState extends State<ChatScreen> {
               );
             }
           }
-        } catch (e) {
+        } catch (e, stackTrace) {
+          print('❌ [ChatScreen] Lỗi khi gửi ghi âm: $e');
+          print('📋 [ChatScreen] Stack trace: $stackTrace');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Lỗi khi gửi ghi âm: ${e.toString()}')),
@@ -319,9 +368,12 @@ class _ChatScreenState extends State<ChatScreen> {
         final file = File(path);
         if (await file.exists()) {
           await file.delete();
+          print('🗑️ [ChatScreen] Đã xóa file tạm: $path');
         }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [ChatScreen] Lỗi khi dừng ghi âm: $e');
+      print('📋 [ChatScreen] Stack trace: $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Lỗi khi dừng ghi âm: ${e.toString()}')),
@@ -349,10 +401,17 @@ class _ChatScreenState extends State<ChatScreen> {
 
         try {
           final uploadResult = await _viewModel.uploadFile(file);
+          
+          // Parse fileSize (backend returns it as String)
+          final fileSizeValue = uploadResult['fileSize'];
+          final fileSizeInt = fileSizeValue is int 
+              ? fileSizeValue 
+              : (fileSizeValue != null ? int.parse(fileSizeValue.toString()) : fileSize);
+          
           await _viewModel.sendFileMessage(
             uploadResult['fileUrl'] as String,
             uploadResult['fileName'] as String? ?? fileName,
-            uploadResult['fileSize'] as int? ?? fileSize,
+            fileSizeInt,
           );
           
           if (mounted) {
