@@ -5,6 +5,7 @@ import '../models/chat/group.dart';
 import '../models/chat/message.dart';
 import '../models/chat/invitation.dart';
 import '../models/chat/invite_members_response.dart';
+import '../models/chat/group_file.dart';
 import 'chat_api_client.dart';
 
 class ChatService {
@@ -38,6 +39,26 @@ class ChatService {
       return ChatGroup.fromJson(response.data);
     } catch (e) {
       throw Exception('Lỗi khi lấy thông tin nhóm: ${e.toString()}');
+    }
+  }
+
+  /// Get group files with pagination
+  Future<GroupFilePagedResponse> getGroupFiles({
+    required String groupId,
+    int page = 0,
+    int size = 20,
+  }) async {
+    try {
+      final response = await _apiClient.dio.get(
+        '/groups/$groupId/files',
+        queryParameters: {
+          'page': page,
+          'size': size,
+        },
+      );
+      return GroupFilePagedResponse.fromJson(response.data);
+    } catch (e) {
+      throw Exception('Lỗi khi lấy danh sách file: ${e.toString()}');
     }
   }
 

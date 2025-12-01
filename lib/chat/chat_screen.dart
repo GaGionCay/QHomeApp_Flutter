@@ -11,15 +11,16 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:open_file/open_file.dart';
-import 'package:dio/dio.dart';
 import '../models/chat/message.dart';
 import '../auth/api_client.dart';
-import '../auth/token_storage.dart';
 import 'chat_service.dart';
 import 'chat_message_view_model.dart';
 import 'file_cache_service.dart';
+import 'public_file_storage_service.dart';
+import 'message_local_path_service.dart';
 import 'invite_members_dialog.dart';
 import 'group_members_screen.dart';
+import 'group_files_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final String groupId;
@@ -483,12 +484,28 @@ class _ChatScreenState extends State<ChatScreen> {
           // Get mimeType from upload result
           final mimeType = uploadResult['mimeType'] as String?;
           
+          // Determine file type and extension
+          final fileType = PublicFileStorageService.getFileType(mimeType, fileName);
+          final fileExtension = PublicFileStorageService.getFileExtension(fileName);
+          
+          // Send message
           await _viewModel.sendFileMessage(
             uploadResult['fileUrl'] as String,
             uploadResult['fileName'] as String? ?? fileName,
             fileSizeInt,
             mimeType,
           );
+          
+          // Get the last message (the one we just sent) and save local path
+          if (_viewModel.messages.isNotEmpty) {
+            final lastMessage = _viewModel.messages.last;
+            await MessageLocalPathService.saveLocalPath(
+              lastMessage.id,
+              file.path, // Local path of the uploaded file
+              fileType,
+              fileExtension,
+            );
+          }
           
           if (mounted) {
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -662,6 +679,26 @@ class _ChatScreenState extends State<ChatScreen> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           actions: [
+            // Files button
+            Consumer<ChatMessageViewModel>(
+              builder: (context, viewModel, child) {
+                return IconButton(
+                  icon: const Icon(CupertinoIcons.folder),
+                  tooltip: 'Files',
+                  onPressed: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => GroupFilesScreen(
+                          groupId: widget.groupId,
+                          groupName: viewModel.groupName ?? 'Nhóm chat',
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
             IconButton(
               icon: const Icon(CupertinoIcons.person_add),
               onPressed: () async {
@@ -816,6 +853,12 @@ class _ChatScreenState extends State<ChatScreen> {
                         key: messageKey,
                         message: message,
                         currentResidentId: viewModel.currentResidentId,
+                        onImageTap: (msg) {
+                          _showFullScreenImage(context, msg);
+                        },
+                        onImageLongPress: (msg) {
+                          _showImageOptionsBottomSheet(context, msg);
+                        },
                       );
                     },
                   );
@@ -837,16 +880,153 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
+
+  void _showFullScreenImage(BuildContext context, ChatMessage message) {
+    if (message.imageUrl == null) return;
+    
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _FullScreenImageViewer(
+          imageUrl: _buildFullUrl(message.imageUrl!),
+          message: message,
+          onLongPress: () {
+            Navigator.pop(context); // Close full screen viewer
+            _showImageOptionsBottomSheet(context, message);
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showImageOptionsBottomSheet(BuildContext context, ChatMessage message) async {
+    if (message.imageUrl == null) return;
+
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(CupertinoIcons.arrow_down_circle),
+              title: const Text('Tải ảnh về máy'),
+              onTap: () => Navigator.pop(context, 'download'),
+            ),
+            ListTile(
+              leading: const Icon(CupertinoIcons.xmark_circle),
+              title: const Text('Hủy'),
+              onTap: () => Navigator.pop(context),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == 'download' && context.mounted) {
+      await _downloadImageToGallery(context, message);
+    }
+  }
+
+  Future<void> _downloadImageToGallery(BuildContext context, ChatMessage message) async {
+    if (message.imageUrl == null) return;
+
+    try {
+      final imageUrl = message.imageUrl!;
+      final fullImageUrl = _buildFullUrl(imageUrl);
+      
+      // Extract file name from URL or use message ID
+      String fileName = message.fileName ?? 
+                       (imageUrl.split('/').isNotEmpty 
+                        ? imageUrl.split('/').last.split('?').first 
+                        : null) ??
+                       'image_${message.id}.jpg';
+      
+      // Ensure fileName has extension
+      if (!fileName.contains('.')) {
+        fileName = '$fileName.jpg';
+      }
+      
+      // Check if image already exists in gallery
+      final fileType = PublicFileStorageService.getFileType('image', fileName);
+      final existingPath = await PublicFileStorageService.getExistingFilePath(fileName, fileType);
+      
+      if (existingPath != null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Ảnh đã có trong máy'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Show loading
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đang tải ảnh...'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
+      // Download and save image (PublicFileStorageService will handle gallery save via gal)
+      await PublicFileStorageService.downloadAndSave(
+        fullImageUrl,
+        fileName,
+        'image',
+        (received, total) {
+          // Progress callback - but we won't show it to avoid interrupting
+        },
+      );
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã tải ảnh vào thư viện'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi tải ảnh: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  String _buildFullUrl(String url) {
+    // If URL already starts with http:// or https://, return as is
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    // Otherwise, build full URL from base URL
+    return '${ApiClient.activeFileBaseUrl}$url';
+  }
 }
 
 class _MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final String? currentResidentId;
+  final Function(ChatMessage)? onImageTap;
+  final Function(ChatMessage)? onImageLongPress;
 
   const _MessageBubble({
     super.key,
     required this.message,
     this.currentResidentId,
+    this.onImageTap,
+    this.onImageLongPress,
   });
 
   @override
@@ -894,7 +1074,15 @@ class _MessageBubble extends StatelessWidget {
                     child: GestureDetector(
                       onTap: () {
                         print('👆 [MessageBubble] Tap vào ảnh, mở full screen');
-                        _showFullScreenImage(context, message.imageUrl!);
+                        if (onImageTap != null) {
+                          onImageTap!(message);
+                        }
+                      },
+                      onLongPress: () {
+                        print('👆 [MessageBubble] Long press vào ảnh, hiển thị menu');
+                        if (onImageLongPress != null) {
+                          onImageLongPress!(message);
+                        }
                       },
                       child: CachedNetworkImage(
                         imageUrl: fullImageUrl,
@@ -939,10 +1127,13 @@ class _MessageBubble extends StatelessWidget {
               )
             else if (message.messageType == 'FILE' && message.fileUrl != null)
               _FileMessageWidget(
+                messageId: message.id,
                 fileUrl: _buildFullUrl(message.fileUrl!),
                 fileName: message.fileName ?? 'File',
                 fileSize: message.fileSize ?? 0,
                 mimeType: message.mimeType,
+                senderId: message.senderId,
+                currentResidentId: currentResidentId,
                 isMe: isMe,
                 theme: theme,
               )
@@ -986,16 +1177,6 @@ class _MessageBubble extends StatelessWidget {
     }
     // Otherwise, build full URL from base URL
     return '${ApiClient.activeFileBaseUrl}$url';
-  }
-
-  void _showFullScreenImage(BuildContext context, String imageUrl) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => _FullScreenImageViewer(
-          imageUrl: _buildFullUrl(imageUrl),
-        ),
-      ),
-    );
   }
 }
 
@@ -1185,18 +1366,24 @@ class _AudioMessageWidgetState extends State<_AudioMessageWidget> {
 }
 
 class _FileMessageWidget extends StatefulWidget {
+  final String messageId;
   final String fileUrl;
   final String fileName;
   final int fileSize;
   final String? mimeType;
+  final String senderId;
+  final String? currentResidentId;
   final bool isMe;
   final ThemeData theme;
 
   const _FileMessageWidget({
+    required this.messageId,
     required this.fileUrl,
     required this.fileName,
     required this.fileSize,
     this.mimeType,
+    required this.senderId,
+    this.currentResidentId,
     required this.isMe,
     required this.theme,
   });
@@ -1224,6 +1411,44 @@ class _FileMessageWidgetState extends State<_FileMessageWidget> {
     });
     
     try {
+      // First, check if this is a file sent by current user (has localPath)
+      final isSender = widget.currentResidentId != null && 
+                       widget.senderId == widget.currentResidentId;
+      
+      if (isSender) {
+        final localPath = await MessageLocalPathService.getLocalPath(widget.messageId);
+        if (localPath != null) {
+          final file = File(localPath);
+          if (await file.exists()) {
+            if (mounted) {
+              setState(() {
+                _cachedFilePath = localPath;
+                _isCheckingCache = false;
+              });
+            }
+            return;
+          }
+        }
+      }
+      
+      // Check if file exists in public directory
+      final fileType = PublicFileStorageService.getFileType(widget.mimeType, widget.fileName);
+      final existingPath = await PublicFileStorageService.getExistingFilePath(
+        widget.fileName,
+        fileType,
+      );
+      
+      if (existingPath != null) {
+        if (mounted) {
+          setState(() {
+            _cachedFilePath = existingPath;
+            _isCheckingCache = false;
+          });
+        }
+        return;
+      }
+      
+      // Fallback to old cache service
       final cachedPath = await _fileCacheService.getCachedFilePath(widget.fileUrl);
       if (mounted) {
         setState(() {
@@ -1312,38 +1537,26 @@ class _FileMessageWidgetState extends State<_FileMessageWidget> {
     });
     
     try {
-      // Show initial loading message (only once)
+      // Determine file type
+      final fileType = PublicFileStorageService.getFileType(widget.mimeType, widget.fileName);
+      
+      // Show initial loading message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Đang tải file: ${widget.fileName}'),
-          duration: const Duration(days: 1), // Keep it until we manually close it
+          duration: const Duration(days: 1),
         ),
       );
 
-      // Note: No storage permission needed for Android 13+ when saving to app's private directory
-      // getTemporaryDirectory() and getApplicationDocumentsDirectory() don't require permissions
-
-      // Get temporary directory for download
-      final tempDir = await getTemporaryDirectory();
-      final tempFilePath = '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}_${widget.fileName}';
-
-      // Download file to temp location
-      final dio = Dio();
-      final token = await TokenStorage().readAccessToken();
-      if (token != null) {
-        dio.options.headers['Authorization'] = 'Bearer $token';
-      }
-
-      // Build full URL
-      final fullUrl = widget.fileUrl.startsWith('http') 
-          ? widget.fileUrl 
-          : '${ApiClient.activeFileBaseUrl}${widget.fileUrl}';
-
-      await dio.download(
-        fullUrl,
-        tempFilePath,
-        onReceiveProgress: (received, total) {
-          if (total != -1 && context.mounted) {
+      // Download and save to public directory
+      final savedPath = await PublicFileStorageService.downloadAndSave(
+        widget.fileUrl.startsWith('http') 
+            ? widget.fileUrl 
+            : '${ApiClient.activeFileBaseUrl}${widget.fileUrl}',
+        widget.fileName,
+        fileType,
+        (received, total) {
+          if (total > 0 && context.mounted) {
             final progressPercent = ((received / total) * 100).toInt();
             // Only update every 5% to avoid too frequent updates
             if (progressPercent != _lastProgressPercent && 
@@ -1353,50 +1566,48 @@ class _FileMessageWidgetState extends State<_FileMessageWidget> {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text('Đang tải: $progressPercent%'),
-                  duration: const Duration(days: 1), // Keep it until we manually close it
+                  duration: const Duration(days: 1),
                 ),
               );
             }
           }
         },
       );
-      
+
       // Hide progress snackbar after download completes
       if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
       }
 
-      // Save to cache
-      final downloadedFile = File(tempFilePath);
-      final cachedPath = await _fileCacheService.saveToCache(
-        widget.fileUrl,
-        downloadedFile,
-        widget.fileName,
-      );
-
       // Update state
       if (mounted) {
         setState(() {
-          _cachedFilePath = cachedPath;
+          _cachedFilePath = savedPath;
           _isDownloading = false;
         });
       }
 
       // Open file
-      await _openFile(context, cachedPath);
+      await _openFile(context, savedPath);
     } catch (e) {
       if (mounted) {
         setState(() {
           _isDownloading = false;
         });
+      }
+      
+      if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi tải file: ${e.toString()}')),
+          SnackBar(
+            content: Text('Lỗi khi tải file: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
   }
-
+  
   Future<void> _openFile(BuildContext context, String filePath) async {
     try {
       // Check if file exists
@@ -1570,8 +1781,14 @@ class _FileMessageWidgetState extends State<_FileMessageWidget> {
 
 class _FullScreenImageViewer extends StatelessWidget {
   final String imageUrl;
+  final ChatMessage message;
+  final VoidCallback? onLongPress;
 
-  const _FullScreenImageViewer({required this.imageUrl});
+  const _FullScreenImageViewer({
+    required this.imageUrl,
+    required this.message,
+    this.onLongPress,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1582,20 +1799,23 @@ class _FullScreenImageViewer extends StatelessWidget {
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Center(
-        child: InteractiveViewer(
-          minScale: 0.5,
-          maxScale: 4.0,
-          child: CachedNetworkImage(
-            imageUrl: imageUrl,
-            fit: BoxFit.contain,
-            placeholder: (context, url) => const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            ),
-            errorWidget: (context, url, error) => const Center(
-              child: Icon(
-                CupertinoIcons.exclamationmark_triangle,
-                color: Colors.white,
-                size: 48,
+        child: GestureDetector(
+          onLongPress: onLongPress,
+          child: InteractiveViewer(
+            minScale: 0.5,
+            maxScale: 4.0,
+            child: CachedNetworkImage(
+              imageUrl: imageUrl,
+              fit: BoxFit.contain,
+              placeholder: (context, url) => const Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+              errorWidget: (context, url, error) => const Center(
+                child: Icon(
+                  CupertinoIcons.exclamationmark_triangle,
+                  color: Colors.white,
+                  size: 48,
+                ),
               ),
             ),
           ),

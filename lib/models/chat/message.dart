@@ -13,6 +13,10 @@ class ChatMessage {
   final String? fileName;
   final int? fileSize;
   final String? mimeType;
+  final String? localPath; // Local path of the file (for sender's uploaded file)
+  final bool? isDownloaded; // Whether file is downloaded to public directory
+  final String? fileType; // image, video, audio, document
+  final String? fileExtension; // File extension (jpg, pdf, etc.)
   final String? replyToMessageId;
   final ChatMessage? replyToMessage;
   final bool isEdited;
@@ -33,6 +37,10 @@ class ChatMessage {
     this.fileName,
     this.fileSize,
     this.mimeType,
+    this.localPath,
+    this.isDownloaded,
+    this.fileType,
+    this.fileExtension,
     this.replyToMessageId,
     this.replyToMessage,
     required this.isEdited,
@@ -55,6 +63,10 @@ class ChatMessage {
       fileName: json['fileName'],
       fileSize: json['fileSize'],
       mimeType: json['mimeType'],
+      localPath: json['localPath'],
+      isDownloaded: json['isDownloaded'],
+      fileType: json['fileType'],
+      fileExtension: json['fileExtension'],
       replyToMessageId: json['replyToMessageId']?.toString(),
       replyToMessage: json['replyToMessage'] != null
           ? ChatMessage.fromJson(json['replyToMessage'])
@@ -84,6 +96,10 @@ class ChatMessage {
       'fileName': fileName,
       'fileSize': fileSize,
       'mimeType': mimeType,
+      'localPath': localPath,
+      'isDownloaded': isDownloaded,
+      'fileType': fileType,
+      'fileExtension': fileExtension,
       'replyToMessageId': replyToMessageId,
       'replyToMessage': replyToMessage?.toJson(),
       'isEdited': isEdited,
