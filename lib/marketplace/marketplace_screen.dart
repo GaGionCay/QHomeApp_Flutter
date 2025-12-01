@@ -8,7 +8,6 @@ import 'marketplace_view_model.dart';
 import 'marketplace_service.dart';
 import '../models/marketplace_post.dart';
 import '../models/marketplace_category.dart';
-import '../common/layout_insets.dart';
 import 'create_post_screen.dart';
 import 'post_detail_screen.dart';
 import 'image_viewer_screen.dart';
@@ -68,6 +67,28 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           actions: [
+            // Đăng bài button
+            IconButton(
+              icon: Icon(
+                CupertinoIcons.add_circled,
+                color: theme.colorScheme.primary,
+              ),
+              onPressed: () async {
+                final result = await Navigator.push<MarketplacePost>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const CreatePostScreen(),
+                  ),
+                );
+                
+                // Refresh posts if a new post was created
+                if (result != null && mounted) {
+                  _viewModel.refresh();
+                }
+              },
+              tooltip: 'Đăng bài',
+            ),
+            // Filter button
             Consumer<MarketplaceViewModel>(
               builder: (context, viewModel, child) {
                 return IconButton(
@@ -94,6 +115,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                     ],
                   ),
                   onPressed: () => _showFilterBottomSheet(context, viewModel),
+                  tooltip: 'Bộ lọc',
                 );
               },
             ),
@@ -258,32 +280,6 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
             );
           },
         ),
-        floatingActionButton: Padding(
-          padding: EdgeInsets.only(
-            bottom: LayoutInsets.navBarHeight + 
-                   LayoutInsets.navBarVerticalPadding * 2 + 
-                   MediaQuery.of(context).padding.bottom + 
-                   16, // Extra spacing above nav bar
-          ),
-          child: FloatingActionButton.extended(
-            onPressed: () async {
-              final result = await Navigator.push<MarketplacePost>(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const CreatePostScreen(),
-                ),
-              );
-              
-              // Refresh posts if a new post was created
-              if (result != null && mounted) {
-                _viewModel.refresh();
-              }
-            },
-            icon: const Icon(CupertinoIcons.add),
-            label: const Text('Đăng bài'),
-          ),
-        ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       ),
     );
   }
@@ -537,49 +533,16 @@ class _PostCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  post.author?.name ?? 'Người dùng',
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    color: (currentResidentId != null && 
-                                            post.residentId == currentResidentId)
-                                        ? theme.colorScheme.primary
-                                        : theme.colorScheme.onSurface,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: (currentResidentId != null && 
-                                          post.residentId == currentResidentId)
-                                      ? theme.colorScheme.primary
-                                      : theme.colorScheme.primaryContainer,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  (currentResidentId != null && 
-                                   post.residentId == currentResidentId)
-                                      ? 'Bạn'
-                                      : 'Người đăng',
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    color: (currentResidentId != null && 
-                                            post.residentId == currentResidentId)
-                                        ? theme.colorScheme.onPrimary
-                                        : theme.colorScheme.onPrimaryContainer,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ],
+                          Text(
+                            post.author?.name ?? 'Người dùng',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: (currentResidentId != null && 
+                                      post.residentId == currentResidentId)
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.onSurface,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
                           if (post.author?.unitNumber != null || post.author?.buildingName != null)
@@ -908,49 +871,6 @@ class _PostCard extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: 12),
-                // Price and Category
-                Row(
-                  children: [
-                    if (post.price != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primaryContainer,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          _formatPrice(post.price!),
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            color: theme.colorScheme.onPrimaryContainer,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    if (post.category.isNotEmpty) ...[
-                      if (post.price != null) const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.secondaryContainer,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          post.category,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSecondaryContainer,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 12),
                 // Actions
                 Row(
                   children: [
@@ -996,13 +916,5 @@ class _PostCard extends StatelessWidget {
     }
   }
 
-  String _formatPrice(double price) {
-    if (price >= 1000000) {
-      return '${(price / 1000000).toStringAsFixed(1)}M đ';
-    } else if (price >= 1000) {
-      return '${(price / 1000).toStringAsFixed(0)}K đ';
-    }
-    return '${price.toStringAsFixed(0)} đ';
-  }
 }
 
