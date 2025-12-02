@@ -1,0 +1,2055 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_application_1/models/chat/direct_chat_view_model.dart';
+import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter_sound/flutter_sound.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:open_file/open_file.dart';
+import '../models/chat/direct_message.dart';
+import '../auth/api_client.dart';
+import '../auth/token_storage.dart';
+import '../core/event_bus.dart';
+import 'chat_service.dart';
+import 'public_file_storage_service.dart';
+import 'message_local_path_service.dart';
+// Reuse widgets from ChatScreen - import only what we need
+
+class DirectChatScreen extends StatefulWidget {
+  final String conversationId;
+  final String otherParticipantName;
+
+  const DirectChatScreen({
+    super.key,
+    required this.conversationId,
+    required this.otherParticipantName,
+  });
+
+  @override
+  State<DirectChatScreen> createState() => _DirectChatScreenState();
+}
+
+class _DirectChatScreenState extends State<DirectChatScreen> {
+  late final DirectChatViewModel _viewModel;
+  final _messageController = TextEditingController();
+  final _scrollController = ScrollController();
+  final _imagePicker = ImagePicker();
+  final _audioRecorder = FlutterSoundRecorder();
+  final _audioPlayer = AudioPlayer();
+  final _tokenStorage = TokenStorage();
+  
+  bool _isRecording = false;
+  Duration _recordingDuration = Duration.zero;
+  Timer? _recordingTimer;
+  DateTime? _recordingStartTime;
+  
+  bool _isLoadingMore = false;
+  bool _isUserScrolling = false;
+  Timer? _scrollEndTimer;
+  int _lastMessageCount = 0;
+  String? _currentResidentId;
+
+  @override
+  void initState() {
+    super.initState();
+    final service = ChatService();
+    _viewModel = DirectChatViewModel(service);
+    _viewModel.initialize(widget.conversationId);
+    _loadCurrentResidentId();
+    
+    _scrollController.addListener(_onScroll);
+    
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _lastMessageCount = _viewModel.messages.length;
+      }
+    });
+  }
+
+  Future<void> _loadCurrentResidentId() async {
+    _currentResidentId = await _tokenStorage.readResidentId();
+    if (mounted) setState(() {});
+  }
+
+  void _onScroll() {
+    _isUserScrolling = true;
+    _scrollEndTimer?.cancel();
+    _scrollEndTimer = Timer(const Duration(milliseconds: 150), () {
+      _isUserScrolling = false;
+    });
+  }
+
+  bool _isNearBottom() {
+    if (!_scrollController.hasClients) return true;
+    return _scrollController.position.pixels <= 100;
+  }
+
+  Future<void> _loadMoreMessages() async {
+    if (_isLoadingMore || !_viewModel.hasMore || _viewModel.isLoading) return;
+    
+    setState(() {
+      _isLoadingMore = true;
+    });
+
+    try {
+      await _viewModel.loadMessages(widget.conversationId);
+    } catch (e) {
+      print('❌ [DirectChatScreen] Lỗi khi load more messages: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingMore = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollEndTimer?.cancel();
+    _recordingTimer?.cancel();
+    _messageController.dispose();
+    _scrollController.dispose();
+    _audioRecorder.closeRecorder().catchError((e) {
+      print('⚠️ [DirectChatScreen] Error closing audio recorder: $e');
+    });
+    _audioPlayer.dispose();
+    _viewModel.dispose();
+    super.dispose();
+  }
+
+  Future<void> _sendMessage() async {
+    print('🔵 [DirectChatScreen] _sendMessage called');
+    
+    final content = _messageController.text.trim();
+    print('🔵 [DirectChatScreen] Content: "$content"');
+    
+    if (content.isEmpty) {
+      print('⚠️ [DirectChatScreen] Content is empty, returning');
+      return;
+    }
+
+    // Check conversation status
+    final conversation = _viewModel.conversation;
+    
+    print('📤 [DirectChatScreen] Attempting to send message:');
+    print('   Conversation ID: ${widget.conversationId}');
+    print('   Conversation: ${conversation != null ? "exists" : "NULL"}');
+    print('   Conversation status: ${conversation?.status ?? "unknown"}');
+    print('   Content length: ${content.length}');
+    print('   Content preview: ${content.substring(0, content.length > 50 ? 50 : content.length)}...');
+    
+    if (conversation == null) {
+      print('⚠️ [DirectChatScreen] Conversation is null, trying to load...');
+      try {
+        await _viewModel.initialize(widget.conversationId);
+        final loadedConversation = _viewModel.conversation;
+        print('✅ [DirectChatScreen] Conversation loaded. Status: ${loadedConversation?.status}');
+        
+        if (loadedConversation == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Không thể tải thông tin cuộc trò chuyện'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+      } catch (e) {
+        print('❌ [DirectChatScreen] Error loading conversation: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi khi tải cuộc trò chuyện: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+    }
+    
+    final finalConversation = _viewModel.conversation;
+    if (finalConversation == null) {
+      print('❌ [DirectChatScreen] Conversation is still null after loading');
+      return;
+    }
+    
+    if (finalConversation.status == 'BLOCKED') {
+      print('🚫 [DirectChatScreen] Conversation is BLOCKED');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Không thể gửi tin nhắn: Cuộc trò chuyện đã bị chặn'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+    
+    if (finalConversation.status != 'ACTIVE') {
+      print('⚠️ [DirectChatScreen] Conversation is not ACTIVE: ${finalConversation.status}');
+      // Try to refresh conversation status
+      try {
+        print('🔄 [DirectChatScreen] Refreshing conversation...');
+        await _viewModel.initialize(widget.conversationId);
+        final refreshedConversation = _viewModel.conversation;
+        print('✅ [DirectChatScreen] Conversation refreshed. New status: ${refreshedConversation?.status}');
+        
+        if (refreshedConversation == null) {
+          print('❌ [DirectChatScreen] Conversation is null after refresh');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Không thể tải thông tin cuộc trò chuyện'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+        
+        // Update finalConversation reference
+        final updatedConversation = refreshedConversation;
+        
+        if (updatedConversation.status != 'ACTIVE') {
+          print('⚠️ [DirectChatScreen] Conversation status is still not ACTIVE: ${updatedConversation.status}');
+          // For now, allow sending if status is not BLOCKED (might be PENDING, etc.)
+          if (updatedConversation.status == 'BLOCKED') {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Cuộc trò chuyện đã bị chặn'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+            return;
+          }
+          // Allow sending even if status is not ACTIVE (might be a timing issue)
+          print('⚠️ [DirectChatScreen] Allowing message send despite non-ACTIVE status: ${updatedConversation.status}');
+        }
+      } catch (e, stackTrace) {
+        print('❌ [DirectChatScreen] Error refreshing conversation: $e');
+        print('❌ [DirectChatScreen] Stack trace: $stackTrace');
+        // Don't block sending if refresh fails - might be a network issue
+        print('⚠️ [DirectChatScreen] Continuing despite refresh error...');
+      }
+    }
+
+    print('✅ [DirectChatScreen] All checks passed, calling sendMessage...');
+    try {
+      // Clear controller BEFORE sending to prevent double-send
+      final messageContent = content;
+      _messageController.clear();
+      
+      await _viewModel.sendMessage(
+        conversationId: widget.conversationId,
+        content: messageContent,
+      );
+      print('✅ [DirectChatScreen] sendMessage completed successfully');
+      _scrollToBottomIfNeeded();
+    } catch (e, stackTrace) {
+      print('❌ [DirectChatScreen] Error sending message: $e');
+      print('❌ [DirectChatScreen] Stack trace: $stackTrace');
+      // Restore message content if send failed
+      if (content.isNotEmpty) {
+        _messageController.text = content;
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi gửi tin nhắn: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
+  void _scrollToBottomIfNeeded() {
+    if (!_scrollController.hasClients) return;
+    if (_isNearBottom() && !_isUserScrolling) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _scrollController.hasClients) {
+          _scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    // Check if conversation is blocked
+    final conversation = _viewModel.conversation;
+    if (conversation != null && conversation.status == 'BLOCKED') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Không thể gửi ảnh: Cuộc trò chuyện đã bị chặn'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      if (source == ImageSource.gallery) {
+        final images = await _imagePicker.pickMultiImage(
+          imageQuality: 85,
+          maxWidth: 1920,
+          maxHeight: 1920,
+        );
+
+        if (images.isEmpty) return;
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Đang upload ${images.length} ảnh...'),
+              duration: const Duration(days: 1),
+            ),
+          );
+
+          try {
+            await _viewModel.uploadImages(widget.conversationId, images);
+            if (mounted) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('✅ Đã gửi ${images.length} ảnh thành công!'),
+                  backgroundColor: Colors.green,
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+              _scrollToBottomIfNeeded();
+            }
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('❌ Lỗi khi gửi ảnh: ${e.toString()}'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          }
+        }
+      } else {
+        final image = await _imagePicker.pickImage(
+          source: source,
+          imageQuality: 85,
+          maxWidth: 1920,
+          maxHeight: 1920,
+        );
+
+        if (image == null) return;
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Đang upload ảnh...')),
+          );
+
+          try {
+            await _viewModel.uploadImage(widget.conversationId, image);
+            if (mounted) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('✅ Đã gửi ảnh thành công!'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+              _scrollToBottomIfNeeded();
+            }
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('❌ Lỗi khi gửi ảnh: ${e.toString()}'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Lỗi khi chọn ảnh: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _startRecording() async {
+    // Check if conversation is blocked
+    final conversation = _viewModel.conversation;
+    if (conversation != null && conversation.status == 'BLOCKED') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Không thể ghi âm: Cuộc trò chuyện đã bị chặn'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      final status = await Permission.microphone.request();
+      if (!status.isGranted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Cần quyền truy cập microphone')),
+          );
+        }
+        return;
+      }
+
+      await _audioRecorder.openRecorder();
+      final directory = await getTemporaryDirectory();
+      final path = '${directory.path}/${DateTime.now().millisecondsSinceEpoch}.m4a';
+      
+      await _audioRecorder.startRecorder(
+        toFile: path,
+        codec: Codec.aacMP4,
+        bitRate: 128000,
+        sampleRate: 44100,
+      );
+
+      _recordingStartTime = DateTime.now();
+      setState(() {
+        _isRecording = true;
+        _recordingDuration = Duration.zero;
+      });
+
+      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (mounted && _isRecording && _recordingStartTime != null) {
+          setState(() {
+            _recordingDuration = DateTime.now().difference(_recordingStartTime!);
+          });
+        } else {
+          timer.cancel();
+        }
+      });
+    } catch (e) {
+      _recordingTimer?.cancel();
+      _recordingTimer = null;
+      _recordingStartTime = null;
+      if (mounted) {
+        setState(() {
+          _isRecording = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi khi bắt đầu ghi âm: ${e.toString()}')),
+        );
+      }
+      try {
+        await _audioRecorder.closeRecorder();
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _stopRecording({bool send = true}) async {
+    try {
+      _recordingTimer?.cancel();
+      _recordingTimer = null;
+      
+      final path = await _audioRecorder.stopRecorder();
+      
+      setState(() {
+        _isRecording = false;
+        _recordingStartTime = null;
+      });
+
+      if (send && path != null && mounted) {
+        // Check if conversation is blocked
+        final conversation = _viewModel.conversation;
+        if (conversation != null && conversation.status == 'BLOCKED') {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Không thể gửi ghi âm: Cuộc trò chuyện đã bị chặn'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+
+        final audioFile = File(path);
+        if (!await audioFile.exists()) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('File ghi âm không tồn tại')),
+            );
+          }
+          return;
+        }
+        
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Đang upload ghi âm...')),
+        );
+
+        try {
+          await _viewModel.uploadAudio(widget.conversationId, audioFile);
+          if (mounted) {
+            messenger.hideCurrentSnackBar();
+            messenger.showSnackBar(
+              const SnackBar(
+                content: Text('✅ Đã gửi ghi âm thành công!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            _scrollToBottomIfNeeded();
+          }
+        } catch (e) {
+          if (mounted) {
+            messenger.showSnackBar(
+              SnackBar(content: Text('Lỗi khi gửi ghi âm: ${e.toString()}')),
+            );
+          }
+        }
+      }
+
+      if (path != null) {
+        final file = File(path);
+        if (await file.exists()) {
+          await file.delete();
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi khi dừng ghi âm: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickFile() async {
+    // Check if conversation is blocked
+    final conversation = _viewModel.conversation;
+    if (conversation != null && conversation.status == 'BLOCKED') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Không thể gửi file: Cuộc trò chuyện đã bị chặn'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      final messenger = ScaffoldMessenger.of(context);
+      
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        allowMultiple: false,
+      );
+
+      if (result != null && result.files.single.path != null && mounted) {
+        final file = File(result.files.single.path!);
+        final fileName = result.files.single.name;
+
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Đang upload file...')),
+        );
+
+        try {
+          await _viewModel.uploadFile(widget.conversationId, file);
+          
+          if (_viewModel.messages.isNotEmpty) {
+            final lastMessage = _viewModel.messages.last;
+            await MessageLocalPathService.saveLocalPath(
+              lastMessage.id,
+              file.path,
+              PublicFileStorageService.getFileType(result.files.single.extension, fileName),
+              PublicFileStorageService.getFileExtension(fileName),
+            );
+          }
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            _scrollToBottomIfNeeded();
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Lỗi khi gửi file: ${e.toString()}')),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi khi chọn file: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  String _buildFullUrl(String url) {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    return '${ApiClient.activeFileBaseUrl}$url';
+  }
+
+  void _showFullScreenImage(BuildContext context, DirectMessage message) {
+    if (message.imageUrl == null) return;
+    
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _FullScreenImageViewer(
+          imageUrl: _buildFullUrl(message.imageUrl!),
+          message: message,
+          onLongPress: () {
+            Navigator.pop(context);
+            _showImageOptionsBottomSheet(context, message);
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showImageOptionsBottomSheet(BuildContext context, DirectMessage message) async {
+    if (message.imageUrl == null) return;
+
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(CupertinoIcons.arrow_down_circle),
+              title: const Text('Tải ảnh về máy'),
+              onTap: () => Navigator.pop(context, 'download'),
+            ),
+            ListTile(
+              leading: const Icon(CupertinoIcons.xmark_circle),
+              title: const Text('Hủy'),
+              onTap: () => Navigator.pop(context),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == 'download' && context.mounted) {
+      await _downloadImageToGallery(context, message);
+    }
+  }
+
+  Future<void> _downloadImageToGallery(BuildContext context, DirectMessage message) async {
+    if (message.imageUrl == null) return;
+
+    try {
+      final imageUrl = message.imageUrl!;
+      final fullImageUrl = _buildFullUrl(imageUrl);
+      
+      String fileName = message.fileName ?? 
+                       (imageUrl.split('/').isNotEmpty 
+                        ? imageUrl.split('/').last.split('?').first 
+                        : null) ??
+                       'image_${message.id}.jpg';
+      
+      if (!fileName.contains('.')) {
+        fileName = '$fileName.jpg';
+      }
+      
+      final fileType = PublicFileStorageService.getFileType('image', fileName);
+      final existingPath = await PublicFileStorageService.getExistingFilePath(fileName, fileType);
+      
+      if (existingPath != null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Ảnh đã có trong máy'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đang tải ảnh...'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
+      await PublicFileStorageService.downloadAndSave(
+        fullImageUrl,
+        fileName,
+        'image',
+        'image/jpeg',
+        (received, total) {},
+      );
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã tải ảnh vào thư viện'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi tải ảnh: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _showBlockConfirmation(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Chặn người dùng'),
+        content: const Text(
+          'Bạn có chắc chắn muốn chặn người dùng này? Sau khi chặn, bạn sẽ không thể gửi hoặc nhận tin nhắn từ người này.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('Chặn'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        if (_currentResidentId == null || _viewModel.conversation == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Không thể xác định người dùng để chặn'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+
+        final otherParticipantId = _viewModel.conversation!.getOtherParticipantId(_currentResidentId!);
+        await _viewModel.blockUser(otherParticipantId);
+        
+        // Refresh conversation status
+        await _viewModel.initialize(widget.conversationId);
+        
+        // Emit event to update badges
+        AppEventBus().emit('direct_chat_activity_updated');
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Đã chặn người dùng'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi khi chặn người dùng: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _unblockUser(BuildContext context) async {
+    try {
+      if (_currentResidentId == null || _viewModel.conversation == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Không thể xác định người dùng để bỏ chặn'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      final otherParticipantId = _viewModel.conversation!.getOtherParticipantId(_currentResidentId!);
+      await _viewModel.unblockUser(otherParticipantId);
+      
+      // Refresh conversation status
+      await _viewModel.initialize(widget.conversationId);
+      
+      // Emit event to update badges
+      AppEventBus().emit('direct_chat_activity_updated');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã bỏ chặn người dùng'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi bỏ chặn người dùng: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ChangeNotifierProvider.value(
+      value: _viewModel,
+      child: Scaffold(
+        backgroundColor: theme.colorScheme.surface,
+        appBar: AppBar(
+          title: Text(
+            widget.otherParticipantName,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          actions: [
+            Consumer<DirectChatViewModel>(
+              builder: (context, viewModel, child) {
+                return PopupMenuButton<String>(
+                  icon: const Icon(CupertinoIcons.ellipsis),
+                  onSelected: (value) async {
+                    if (value == 'block') {
+                      await _showBlockConfirmation(context);
+                    } else if (value == 'unblock') {
+                      await _unblockUser(context);
+                    }
+                  },
+                  itemBuilder: (context) {
+                    final isBlocked = _viewModel.conversation?.status == 'BLOCKED';
+                    return [
+                      if (isBlocked)
+                        const PopupMenuItem(
+                          value: 'unblock',
+                          child: Row(
+                            children: [
+                              Icon(CupertinoIcons.check_mark_circled, size: 20),
+                              SizedBox(width: 8),
+                              Text('Bỏ chặn'),
+                            ],
+                          ),
+                        )
+                      else
+                        const PopupMenuItem(
+                          value: 'block',
+                          child: Row(
+                            children: [
+                              Icon(CupertinoIcons.xmark_circle, size: 20, color: Colors.red),
+                              SizedBox(width: 8),
+                              Text('Chặn người dùng', style: TextStyle(color: Colors.red)),
+                            ],
+                          ),
+                        ),
+                    ];
+                  },
+                );
+              },
+            ),
+          ],
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: Consumer<DirectChatViewModel>(
+                builder: (context, viewModel, child) {
+                  final currentMessageCount = viewModel.messages.length;
+                  final hasNewMessages = currentMessageCount > _lastMessageCount;
+                  
+                  if (hasNewMessages && mounted) {
+                    _lastMessageCount = currentMessageCount;
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted && !_isUserScrolling) {
+                        _scrollToBottomIfNeeded();
+                      }
+                    });
+                  } else if (!hasNewMessages && currentMessageCount != _lastMessageCount) {
+                    _lastMessageCount = currentMessageCount;
+                  }
+
+                  if (viewModel.isLoading && viewModel.messages.isEmpty) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  if (viewModel.messages.isEmpty) {
+                    return Center(
+                      child: Text(
+                        'Chưa có tin nhắn nào',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    );
+                  }
+
+                  return ListView.builder(
+                    controller: _scrollController,
+                    reverse: true,
+                    padding: const EdgeInsets.all(16),
+                    cacheExtent: 500,
+                    key: const PageStorageKey<String>('direct_chat_messages_list'),
+                    itemCount: viewModel.messages.length + (viewModel.hasMore ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index == viewModel.messages.length) {
+                        return _DirectLoadMoreButton(
+                          key: const ValueKey('load_more_button'),
+                          isLoading: _isLoadingMore || viewModel.isLoading,
+                          hasMore: viewModel.hasMore,
+                          onLoadMore: _loadMoreMessages,
+                        );
+                      }
+
+                      final message = viewModel.messages[viewModel.messages.length - 1 - index];
+                      final messageKey = ValueKey<String>('message_${message.id}');
+                      
+                      if (message.messageType == 'SYSTEM') {
+                        return _DirectSystemMessageBubble(
+                          key: messageKey,
+                          message: message,
+                        );
+                      }
+                      
+                      return _DirectMessageBubble(
+                        key: messageKey,
+                        message: message,
+                        currentResidentId: _currentResidentId,
+                        onImageTap: (msg) {
+                          _showFullScreenImage(context, msg);
+                        },
+                        onImageLongPress: (msg) {
+                          _showImageOptionsBottomSheet(context, msg);
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+            Consumer<DirectChatViewModel>(
+              builder: (context, viewModel, child) {
+                final isBlocked = viewModel.conversation?.status == 'BLOCKED';
+                return _DirectMessageInput(
+                  controller: _messageController,
+                  onSend: _sendMessage,
+                  onPickImage: _pickImage,
+                  onStartRecording: _startRecording,
+                  onStopRecording: _stopRecording,
+                  onPickFile: _pickFile,
+                  isRecording: _isRecording,
+                  recordingDuration: _recordingDuration,
+                  enabled: !isBlocked,
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+}
+
+class _DirectLoadMoreButton extends StatelessWidget {
+  final bool isLoading;
+  final bool hasMore;
+  final VoidCallback onLoadMore;
+
+  const _DirectLoadMoreButton({
+    super.key,
+    required this.isLoading,
+    required this.hasMore,
+    required this.onLoadMore,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!hasMore) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Center(
+        child: isLoading
+            ? const Padding(
+                padding: EdgeInsets.all(16),
+                child: CircularProgressIndicator(),
+              )
+            : OutlinedButton.icon(
+                onPressed: onLoadMore,
+                icon: const Icon(CupertinoIcons.arrow_up, size: 16),
+                label: const Text('Hiển thị thêm tin nhắn'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+class _DirectSystemMessageBubble extends StatelessWidget {
+  final DirectMessage message;
+
+  const _DirectSystemMessageBubble({super.key, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(
+                  child: Divider(
+                    color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                    thickness: 1,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    message.content ?? '',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF6B7280),
+                      fontSize: 12,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                Expanded(
+                  child: Divider(
+                    color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                    thickness: 1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DirectMessageInput extends StatelessWidget {
+  final TextEditingController controller;
+  final VoidCallback onSend;
+  final Function(ImageSource) onPickImage;
+  final VoidCallback onStartRecording;
+  final Function({bool send}) onStopRecording;
+  final VoidCallback onPickFile;
+  final bool isRecording;
+  final Duration recordingDuration;
+  final bool enabled;
+
+  const _DirectMessageInput({
+    required this.controller,
+    required this.onSend,
+    required this.onPickImage,
+    required this.onStartRecording,
+    required this.onStopRecording,
+    required this.onPickFile,
+    this.isRecording = false,
+    this.recordingDuration = Duration.zero,
+    this.enabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border(
+          top: BorderSide(
+            color: theme.colorScheme.outline.withValues(alpha: 0.2),
+          ),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isRecording)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.errorContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _formatDuration(recordingDuration),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onErrorContainer,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => onStopRecording(send: false),
+                    child: const Text('Hủy'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: () => onStopRecording(send: true),
+                    child: const Text('Gửi'),
+                  ),
+                ],
+              ),
+            ),
+          if (!enabled)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.errorContainer.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    CupertinoIcons.xmark_circle,
+                    color: theme.colorScheme.error,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Cuộc trò chuyện đã bị chặn',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            Row(
+              children: [
+                PopupMenuButton<String>(
+                  icon: Icon(
+                    isRecording ? CupertinoIcons.mic_fill : CupertinoIcons.plus_circle,
+                    color: isRecording ? Colors.red : theme.colorScheme.primary,
+                  ),
+                  onSelected: (value) {
+                    if (value == 'image_gallery') {
+                      onPickImage(ImageSource.gallery);
+                    } else if (value == 'image_camera') {
+                      onPickImage(ImageSource.camera);
+                    } else if (value == 'file') {
+                      onPickFile();
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'image_gallery',
+                      child: Row(
+                        children: [
+                          Icon(CupertinoIcons.photo, size: 20),
+                          SizedBox(width: 8),
+                          Text('Chọn nhiều ảnh'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'image_camera',
+                      child: Row(
+                        children: [
+                          Icon(CupertinoIcons.camera, size: 20),
+                          SizedBox(width: 8),
+                          Text('Chụp ảnh'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'file',
+                      child: Row(
+                        children: [
+                          Icon(CupertinoIcons.doc, size: 20),
+                          SizedBox(width: 8),
+                          Text('Chọn file'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onLongPress: isRecording ? null : onStartRecording,
+                  onLongPressEnd: (details) {
+                    if (isRecording) {
+                      onStopRecording(send: true);
+                    }
+                  },
+                  child: IconButton(
+                    icon: Icon(
+                      isRecording ? CupertinoIcons.mic_fill : CupertinoIcons.mic,
+                      color: isRecording ? Colors.red : theme.colorScheme.primary,
+                    ),
+                    onPressed: () {
+                      if (isRecording) {
+                        onStopRecording(send: true);
+                      } else {
+                        onStartRecording();
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    enabled: !isRecording,
+                    decoration: InputDecoration(
+                      hintText: isRecording ? 'Đang ghi âm...' : 'Nhập tin nhắn...',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    ),
+                    maxLines: null,
+                    textCapitalization: TextCapitalization.sentences,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(
+                    isRecording ? CupertinoIcons.stop_circle_fill : CupertinoIcons.paperplane_fill,
+                    color: isRecording ? Colors.red : Colors.white,
+                  ),
+                  onPressed: isRecording
+                      ? () {
+                          print('🔵 [DirectMessageInput] Stop recording button pressed');
+                          onStopRecording(send: true);
+                        }
+                      : (controller.text.trim().isEmpty
+                          ? null
+                          : () {
+                              print('🔵 [DirectMessageInput] Send button pressed');
+                              print('   Controller text: "${controller.text}"');
+                              print('   Controller text trimmed: "${controller.text.trim()}"');
+                              print('   Is empty: ${controller.text.trim().isEmpty}');
+                              try {
+                                onSend();
+                                print('✅ [DirectMessageInput] onSend callback executed');
+                              } catch (e, stackTrace) {
+                                print('❌ [DirectMessageInput] Error in onSend callback: $e');
+                                print('❌ [DirectMessageInput] Stack trace: $stackTrace');
+                              }
+                            }),
+                  style: IconButton.styleFrom(
+                    backgroundColor: isRecording
+                        ? Colors.red.withValues(alpha: 0.1)
+                        : theme.colorScheme.primary,
+                    foregroundColor: isRecording ? Colors.red : Colors.white,
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
+  }
+}
+
+class _DirectMessageBubble extends StatelessWidget {
+  final DirectMessage message;
+  final String? currentResidentId;
+  final Function(DirectMessage)? onImageTap;
+  final Function(DirectMessage)? onImageLongPress;
+
+  const _DirectMessageBubble({
+    super.key,
+    required this.message,
+    this.currentResidentId,
+    this.onImageTap,
+    this.onImageLongPress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isMe = currentResidentId != null && message.senderId == currentResidentId;
+
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isMe
+              ? theme.colorScheme.primary
+              : theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!isMe)
+              Text(
+                message.senderName ?? 'Người dùng',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: isMe
+                      ? Colors.white.withValues(alpha: 0.8)
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            if (message.messageType == 'IMAGE' && message.imageUrl != null)
+              Builder(
+                builder: (context) {
+                  final fullImageUrl = _buildFullUrl(message.imageUrl!);
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: GestureDetector(
+                      onTap: () => onImageTap?.call(message),
+                      onLongPress: () => onImageLongPress?.call(message),
+                      child: CachedNetworkImage(
+                        imageUrl: fullImageUrl,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          height: 200,
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          child: const Center(child: CircularProgressIndicator()),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          height: 200,
+                          color: theme.colorScheme.errorContainer,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(CupertinoIcons.exclamationmark_triangle),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Lỗi tải ảnh',
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              )
+            else if (message.messageType == 'AUDIO' && message.fileUrl != null)
+              _DirectAudioMessageWidget(
+                audioUrl: _buildFullUrl(message.fileUrl!),
+                isMe: isMe,
+                theme: theme,
+              )
+            else if (message.messageType == 'FILE' && message.fileUrl != null)
+              _DirectFileMessageWidget(
+                messageId: message.id,
+                fileUrl: _buildFullUrl(message.fileUrl!),
+                fileName: message.fileName ?? 'File',
+                fileSize: message.fileSize ?? 0,
+                mimeType: message.mimeType,
+                senderId: message.senderId ?? '',
+                currentResidentId: currentResidentId,
+                isMe: isMe,
+                theme: theme,
+              )
+            else if (message.content != null && message.content!.isNotEmpty)
+              Text(
+                message.content!,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: isMe ? Colors.white : theme.colorScheme.onSurface,
+                ),
+              ),
+            const SizedBox(height: 4),
+            Text(
+              _formatTime(message.createdAt),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: isMe
+                    ? Colors.white.withValues(alpha: 0.7)
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.5),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatTime(DateTime time) {
+    final now = DateTime.now();
+    final diff = now.difference(time);
+
+    if (diff.inMinutes < 1) return 'Vừa xong';
+    if (diff.inHours < 1) return '${diff.inMinutes} phút trước';
+    if (diff.inDays < 1) return '${time.hour}:${time.minute.toString().padLeft(2, '0')}';
+    if (diff.inDays < 7) return '${diff.inDays} ngày trước';
+    return '${time.day}/${time.month}/${time.year}';
+  }
+
+  String _buildFullUrl(String url) {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    return '${ApiClient.activeFileBaseUrl}$url';
+  }
+}
+
+class _DirectAudioMessageWidget extends StatefulWidget {
+  final String audioUrl;
+  final bool isMe;
+  final ThemeData theme;
+
+  const _DirectAudioMessageWidget({
+    required this.audioUrl,
+    required this.isMe,
+    required this.theme,
+  });
+
+  @override
+  State<_DirectAudioMessageWidget> createState() => _DirectAudioMessageWidgetState();
+}
+
+class _DirectAudioMessageWidgetState extends State<_DirectAudioMessageWidget> {
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _isPlaying = false;
+  bool _isLoading = false;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _audioPlayer.playerStateStream.listen((state) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = state.playing;
+        });
+        if (state.processingState == ProcessingState.completed) {
+          _resetAudioState();
+        }
+      }
+    });
+    _audioPlayer.durationStream.listen((duration) {
+      if (mounted) {
+        setState(() {
+          _duration = duration ?? Duration.zero;
+        });
+      }
+    });
+    _audioPlayer.positionStream.listen((position) {
+      if (mounted) {
+        setState(() {
+          _position = position;
+        });
+      }
+    });
+  }
+
+  Future<void> _resetAudioState() async {
+    try {
+      await _audioPlayer.pause();
+      await _audioPlayer.seek(Duration.zero);
+      if (mounted) {
+        setState(() {
+          _isPlaying = false;
+          _position = Duration.zero;
+        });
+      }
+    } catch (e) {
+      print('⚠️ [DirectAudioMessageWidget] Error resetting audio state: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _togglePlay() async {
+    try {
+      if (_isPlaying) {
+        await _audioPlayer.pause();
+      } else {
+        if (_position >= _duration && _duration > Duration.zero) {
+          await _audioPlayer.seek(Duration.zero);
+          setState(() {
+            _position = Duration.zero;
+          });
+        }
+        if (_position == Duration.zero || _duration == Duration.zero) {
+          setState(() {
+            _isLoading = true;
+          });
+          await _audioPlayer.setUrl(widget.audioUrl);
+          setState(() {
+            _isLoading = false;
+          });
+        }
+        await _audioPlayer.play();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi khi phát audio: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: _isLoading
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(
+                    _isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
+                    color: widget.isMe ? Colors.white : widget.theme.colorScheme.primary,
+                  ),
+            onPressed: _togglePlay,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  child: LinearProgressIndicator(
+                    value: _duration.inMilliseconds > 0
+                        ? _position.inMilliseconds / _duration.inMilliseconds
+                        : 0,
+                    backgroundColor: widget.isMe
+                        ? Colors.white.withValues(alpha: 0.3)
+                        : widget.theme.colorScheme.primary.withValues(alpha: 0.3),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      widget.isMe ? Colors.white : widget.theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${_formatDuration(_position)} / ${_formatDuration(_duration)}',
+                  style: widget.theme.textTheme.bodySmall?.copyWith(
+                    color: widget.isMe
+                        ? Colors.white.withValues(alpha: 0.8)
+                        : widget.theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DirectFileMessageWidget extends StatefulWidget {
+  final String messageId;
+  final String fileUrl;
+  final String fileName;
+  final int fileSize;
+  final String? mimeType;
+  final String senderId;
+  final String? currentResidentId;
+  final bool isMe;
+  final ThemeData theme;
+
+  const _DirectFileMessageWidget({
+    required this.messageId,
+    required this.fileUrl,
+    required this.fileName,
+    required this.fileSize,
+    this.mimeType,
+    required this.senderId,
+    this.currentResidentId,
+    required this.isMe,
+    required this.theme,
+  });
+
+  @override
+  State<_DirectFileMessageWidget> createState() => _DirectFileMessageWidgetState();
+}
+
+class _DirectFileMessageWidgetState extends State<_DirectFileMessageWidget> {
+  String? _cachedFilePath;
+  bool _isCheckingCache = true;
+  bool _isDownloading = false;
+  int _lastProgressPercent = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkCache();
+  }
+
+  Future<void> _checkCache() async {
+    setState(() {
+      _isCheckingCache = true;
+    });
+    
+    try {
+      final isSender = widget.currentResidentId != null && 
+                       widget.senderId == widget.currentResidentId;
+      
+      if (isSender) {
+        final localPath = await MessageLocalPathService.getLocalPath(widget.messageId);
+        if (localPath != null) {
+          final file = File(localPath);
+          if (await file.exists()) {
+            if (mounted) {
+              setState(() {
+                _cachedFilePath = localPath;
+                _isCheckingCache = false;
+              });
+            }
+            return;
+          }
+        }
+      }
+      
+      final fileType = PublicFileStorageService.getFileType(widget.mimeType, widget.fileName);
+      final existingPath = await PublicFileStorageService.getExistingFilePath(
+        widget.fileName,
+        fileType,
+      );
+      
+      if (existingPath != null) {
+        if (mounted) {
+          setState(() {
+            _cachedFilePath = existingPath;
+            _isCheckingCache = false;
+          });
+        }
+        return;
+      }
+      
+      if (mounted) {
+        setState(() {
+          _isCheckingCache = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isCheckingCache = false;
+        });
+      }
+    }
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  IconData _getFileIcon(String? mimeType, String fileName) {
+    if (mimeType != null) {
+      if (mimeType.startsWith('image/')) return CupertinoIcons.photo_fill;
+      if (mimeType.startsWith('video/')) return CupertinoIcons.videocam_fill;
+      if (mimeType.startsWith('audio/')) return CupertinoIcons.music_note;
+      if (mimeType == 'application/pdf') return CupertinoIcons.doc_text_fill;
+      if (mimeType.contains('word') || mimeType.contains('document')) return CupertinoIcons.doc_fill;
+      if (mimeType.contains('excel') || mimeType.contains('spreadsheet')) return CupertinoIcons.table_fill;
+      if (mimeType.contains('zip') || mimeType.contains('archive')) return CupertinoIcons.archivebox_fill;
+    }
+    
+    final extension = fileName.split('.').last.toLowerCase();
+    switch (extension) {
+      case 'pdf': return CupertinoIcons.doc_text_fill;
+      case 'doc':
+      case 'docx': return CupertinoIcons.doc_fill;
+      case 'xls':
+      case 'xlsx': return CupertinoIcons.table_fill;
+      case 'zip':
+      case 'rar': return CupertinoIcons.archivebox_fill;
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif': return CupertinoIcons.photo_fill;
+      case 'mp4':
+      case 'avi':
+      case 'mov': return CupertinoIcons.videocam_fill;
+      default: return CupertinoIcons.doc_fill;
+    }
+  }
+
+  Future<void> _downloadAndOpenFile(BuildContext context) async {
+    if (_isDownloading) return;
+
+    if (_cachedFilePath != null) {
+      await _openFile(context, _cachedFilePath!);
+      return;
+    }
+
+    setState(() {
+      _isDownloading = true;
+      _lastProgressPercent = -1;
+    });
+    
+    try {
+      final messenger = ScaffoldMessenger.of(context);
+      final fileType = PublicFileStorageService.getFileType(widget.mimeType, widget.fileName);
+      
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Đang tải file: ${widget.fileName}'),
+          duration: const Duration(days: 1),
+        ),
+      );
+
+      final savedPath = await PublicFileStorageService.downloadAndSave(
+        widget.fileUrl.startsWith('http') 
+            ? widget.fileUrl 
+            : '${ApiClient.activeFileBaseUrl}${widget.fileUrl}',
+        widget.fileName,
+        fileType,
+        widget.mimeType,
+        (received, total) {
+          if (total > 0 && context.mounted) {
+            final progressPercent = ((received / total) * 100).toInt();
+            if (progressPercent != _lastProgressPercent && 
+                (progressPercent % 5 == 0 || progressPercent == 100)) {
+              _lastProgressPercent = progressPercent;
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Đang tải: $progressPercent%'),
+                  duration: const Duration(days: 1),
+                ),
+              );
+            }
+          }
+        },
+      );
+
+      if (context.mounted) {
+        messenger.hideCurrentSnackBar();
+      }
+
+      if (mounted) {
+        setState(() {
+          _cachedFilePath = savedPath;
+          _isDownloading = false;
+        });
+      }
+
+      await _openFile(context, savedPath);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+        });
+      }
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi tải file: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+  
+  Future<void> _openFile(BuildContext context, String filePath) async {
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('File không tồn tại')),
+          );
+        }
+        return;
+      }
+
+      String? mimeType = widget.mimeType;
+      if (mimeType == null || mimeType.isEmpty) {
+        mimeType = _getMimeTypeFromFileName(widget.fileName);
+      }
+
+      final result = await OpenFile.open(
+        filePath,
+        type: mimeType ?? 'application/octet-stream',
+      );
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        if (result.type != ResultType.done) {
+          final errorMessage = result.message.isNotEmpty 
+              ? result.message 
+              : 'Không tìm thấy app phù hợp để mở file này';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Không thể mở file: $errorMessage'),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi mở file: ${e.toString()}'),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
+  String? _getMimeTypeFromFileName(String fileName) {
+    final extension = fileName.split('.').last.toLowerCase();
+    switch (extension) {
+      case 'pdf': return 'application/pdf';
+      case 'doc': return 'application/msword';
+      case 'docx': return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case 'xls': return 'application/vnd.ms-excel';
+      case 'xlsx': return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      case 'zip': return 'application/zip';
+      case 'jpg':
+      case 'jpeg': return 'image/jpeg';
+      case 'png': return 'image/png';
+      case 'mp4': return 'video/mp4';
+      case 'mp3': return 'audio/mpeg';
+      default: return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasCachedFile = _cachedFilePath != null && !_isCheckingCache;
+    final isLoading = _isCheckingCache || _isDownloading;
+
+    return InkWell(
+      onTap: isLoading ? null : () => _downloadAndOpenFile(context),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: widget.isMe
+              ? Colors.white.withValues(alpha: 0.2)
+              : widget.theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            if (isLoading)
+              SizedBox(
+                width: 32,
+                height: 32,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: widget.isMe ? Colors.white : widget.theme.colorScheme.primary,
+                ),
+              )
+            else
+              Icon(
+                _getFileIcon(widget.mimeType, widget.fileName),
+                size: 32,
+                color: widget.isMe ? Colors.white : widget.theme.colorScheme.primary,
+              ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.fileName,
+                    style: widget.theme.textTheme.bodyMedium?.copyWith(
+                      color: widget.isMe ? Colors.white : widget.theme.colorScheme.onSurface,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _formatFileSize(widget.fileSize),
+                    style: widget.theme.textTheme.bodySmall?.copyWith(
+                      color: widget.isMe
+                          ? Colors.white.withValues(alpha: 0.7)
+                          : widget.theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              hasCachedFile 
+                  ? CupertinoIcons.arrow_right_circle_fill
+                  : CupertinoIcons.arrow_down_circle,
+              color: widget.isMe ? Colors.white : widget.theme.colorScheme.primary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FullScreenImageViewer extends StatelessWidget {
+  final String imageUrl;
+  final DirectMessage message;
+  final VoidCallback? onLongPress;
+
+  const _FullScreenImageViewer({
+    required this.imageUrl,
+    required this.message,
+    this.onLongPress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: Center(
+        child: GestureDetector(
+          onLongPress: onLongPress,
+          child: InteractiveViewer(
+            minScale: 0.5,
+            maxScale: 4.0,
+            child: CachedNetworkImage(
+              imageUrl: imageUrl,
+              fit: BoxFit.contain,
+              placeholder: (context, url) => const Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+              errorWidget: (context, url, error) => const Center(
+                child: Icon(
+                  CupertinoIcons.exclamationmark_triangle,
+                  color: Colors.white,
+                  size: 48,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+

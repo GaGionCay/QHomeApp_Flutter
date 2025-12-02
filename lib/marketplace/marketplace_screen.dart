@@ -10,6 +10,7 @@ import '../models/marketplace_category.dart';
 import 'create_post_screen.dart';
 import 'post_detail_screen.dart';
 import 'image_viewer_screen.dart';
+import '../chat/chat_service.dart';
 
 class MarketplaceScreen extends StatefulWidget {
   const MarketplaceScreen({super.key});
@@ -38,6 +39,79 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
   Future<void> _loadCurrentUser() async {
     _currentResidentId = await _tokenStorage.readResidentId();
     if (mounted) setState(() {});
+  }
+
+  Future<void> _showDirectChatPopup(BuildContext context, MarketplacePost post) async {
+    // Don't show popup if user is viewing their own post
+    if (_currentResidentId != null && post.residentId == _currentResidentId) {
+      return;
+    }
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Trò chuyện'),
+        content: Text(
+          'Bạn có muốn gửi tin nhắn trực tiếp cho ${post.author?.name ?? 'cư dân này'} không?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Gửi tin nhắn'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && context.mounted) {
+      try {
+        final chatService = ChatService();
+        
+        // Show loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đang tạo lời mời...')),
+        );
+
+        // Create direct invitation
+        print('📤 [MarketplaceScreen] Creating direct invitation:');
+        print('   InviteeId (post.residentId): ${post.residentId}');
+        print('   Post author: ${post.author?.name}');
+        print('   Post author residentId: ${post.author?.residentId}');
+        
+        await chatService.createDirectInvitation(
+          inviteeId: post.residentId,
+          initialMessage: null, // User will send first message after acceptance
+        );
+        
+        print('✅ [MarketplaceScreen] Direct invitation created successfully');
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          
+          // Navigate to invitations screen or show success message
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Đã gửi lời mời trò chuyện'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
   }
 
   @override
@@ -300,6 +374,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                         ),
                       );
                     },
+                    onAuthorTap: () => _showDirectChatPopup(context, post),
                   );
                 },
               ),
@@ -501,6 +576,7 @@ class _PostCard extends StatelessWidget {
   final String? currentResidentId;
   final List<MarketplaceCategory> categories;
   final VoidCallback onTap;
+  final VoidCallback? onAuthorTap;
 
   const _PostCard({
     super.key,
@@ -508,6 +584,7 @@ class _PostCard extends StatelessWidget {
     this.currentResidentId,
     required this.categories,
     required this.onTap,
+    this.onAuthorTap,
   });
 
   @override
@@ -548,31 +625,36 @@ class _PostCard extends StatelessWidget {
                 // Header - Người đăng bài
                 Row(
                   children: [
-                    CircleAvatar(
-                      radius: 22,
-                      backgroundColor: theme.colorScheme.primaryContainer,
-                      child: Icon(
-                        CupertinoIcons.person_fill,
-                        color: theme.colorScheme.onPrimaryContainer,
-                        size: 22,
+                    GestureDetector(
+                      onTap: onAuthorTap,
+                      child: CircleAvatar(
+                        radius: 22,
+                        backgroundColor: theme.colorScheme.primaryContainer,
+                        child: Icon(
+                          CupertinoIcons.person_fill,
+                          color: theme.colorScheme.onPrimaryContainer,
+                          size: 22,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            post.author?.name ?? 'Người dùng',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: (currentResidentId != null && 
-                                      post.residentId == currentResidentId)
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.onSurface,
+                      child: GestureDetector(
+                        onTap: onAuthorTap,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              post.author?.name ?? 'Người dùng',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: (currentResidentId != null && 
+                                        post.residentId == currentResidentId)
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.onSurface,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
                           const SizedBox(height: 4),
                           if (post.author?.unitNumber != null || post.author?.buildingName != null)
                             Row(
@@ -610,7 +692,8 @@ class _PostCard extends StatelessWidget {
                                   ),
                               ],
                             ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                     Column(

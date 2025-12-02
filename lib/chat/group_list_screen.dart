@@ -2,11 +2,15 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/chat/group.dart';
+import '../models/chat/conversation.dart';
 import 'chat_service.dart';
 import 'chat_view_model.dart';
 import 'create_group_screen.dart';
 import 'chat_screen.dart';
 import 'invitations_screen.dart';
+import 'direct_chat_screen.dart';
+import 'direct_invitations_screen.dart';
+import '../auth/token_storage.dart';
 
 class GroupListScreen extends StatefulWidget {
   const GroupListScreen({super.key});
@@ -18,7 +22,11 @@ class GroupListScreen extends StatefulWidget {
 class _GroupListScreenState extends State<GroupListScreen> {
   late final ChatViewModel _viewModel;
   final ChatService _chatService = ChatService();
+  final TokenStorage _tokenStorage = TokenStorage();
   int _pendingInvitationsCount = 0;
+  int _pendingDirectInvitationsCount = 0;
+  List<Conversation> _directConversations = [];
+  String? _currentResidentId;
 
   @override
   void initState() {
@@ -27,6 +35,14 @@ class _GroupListScreenState extends State<GroupListScreen> {
     _viewModel = ChatViewModel(service);
     _viewModel.initialize();
     _loadInvitationsCount();
+    _loadDirectInvitationsCount();
+    _loadDirectConversations();
+    _loadCurrentResidentId();
+  }
+
+  Future<void> _loadCurrentResidentId() async {
+    _currentResidentId = await _tokenStorage.readResidentId();
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadInvitationsCount() async {
@@ -41,6 +57,40 @@ class _GroupListScreenState extends State<GroupListScreen> {
       if (mounted) {
         setState(() {
           _pendingInvitationsCount = 0;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadDirectInvitationsCount() async {
+    try {
+      final count = await _chatService.countPendingDirectInvitations();
+      if (mounted) {
+        setState(() {
+          _pendingDirectInvitationsCount = count;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _pendingDirectInvitationsCount = 0;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadDirectConversations() async {
+    try {
+      final conversations = await _chatService.getConversations();
+      if (mounted) {
+        setState(() {
+          _directConversations = conversations;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _directConversations = [];
         });
       }
     }
@@ -215,15 +265,23 @@ class _GroupListScreenState extends State<GroupListScreen> {
               onRefresh: () async {
                 await viewModel.refresh();
                 await _loadInvitationsCount();
+                await _loadDirectInvitationsCount();
+                await _loadDirectConversations();
               },
               child: ListView.builder(
                 padding: const EdgeInsets.all(16),
-                itemCount: (_pendingInvitationsCount > 0 ? 1 : 0) + 
+                itemCount: (_pendingInvitationsCount > 0 ? 1 : 0) + // Group invitations
+                          (_pendingDirectInvitationsCount > 0 ? 1 : 0) + // Direct invitations
+                          (_directConversations.isNotEmpty ? 1 : 0) + // Direct chat section header
+                          _directConversations.length +
+                          (viewModel.groups.isNotEmpty ? 1 : 0) + // Group chat section header
                           viewModel.groups.length + 
                           (viewModel.hasMore ? 1 : 0),
                 itemBuilder: (context, index) {
-                  // Invitations section (first item if there are invitations)
-                  if (_pendingInvitationsCount > 0 && index == 0) {
+                  int currentIndex = index;
+                  
+                  // Group invitations section (first item if there are invitations)
+                  if (_pendingInvitationsCount > 0 && currentIndex == 0) {
                     return _InvitationsSection(
                       count: _pendingInvitationsCount,
                       onTap: () async {
@@ -240,12 +298,172 @@ class _GroupListScreenState extends State<GroupListScreen> {
                       },
                     );
                   }
-
-                  // Adjust index for groups if invitations section is shown
-                  final groupIndex = _pendingInvitationsCount > 0 ? index - 1 : index;
-
+                  
+                  // Adjust index after group invitations
+                  if (_pendingInvitationsCount > 0) {
+                    currentIndex--;
+                  }
+                  
+                  // Direct invitations section
+                  if (_pendingDirectInvitationsCount > 0 && currentIndex == 0) {
+                    return _DirectInvitationsSection(
+                      count: _pendingDirectInvitationsCount,
+                      onTap: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const DirectInvitationsScreen(),
+                          ),
+                        );
+                        if (mounted) {
+                          _loadDirectInvitationsCount();
+                          _loadDirectConversations();
+                        }
+                      },
+                    );
+                  }
+                  
+                  // Adjust index after direct invitations
+                  if (_pendingDirectInvitationsCount > 0) {
+                    currentIndex--;
+                  }
+                  
+                  // Direct chat section header
+                  if (_directConversations.isNotEmpty && currentIndex == 0) {
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 12),
+                      child: Text(
+                        'Trò chuyện',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    );
+                  }
+                  
+                  // Adjust index after direct chat header
+                  if (_directConversations.isNotEmpty) {
+                    currentIndex--;
+                  }
+                  
+                  // Direct chat conversations
+                  if (currentIndex < _directConversations.length) {
+                    final conversation = _directConversations[currentIndex];
+                    final otherParticipantName = _currentResidentId != null
+                        ? (conversation.getOtherParticipantName(_currentResidentId!) ?? 'Người dùng')
+                        : (conversation.participant1Name ?? conversation.participant2Name ?? 'Người dùng');
+                    final unreadCount = conversation.unreadCount ?? 0;
+                    
+                    String _getLastMessagePreview(Conversation conv) {
+                      final lastMessage = conv.lastMessage;
+                      if (lastMessage == null) return 'Chưa có tin nhắn';
+                      if (lastMessage.isDeleted) return 'Tin nhắn đã bị xóa';
+                      if (lastMessage.messageType == 'IMAGE') return '📷 Đã gửi một hình ảnh';
+                      if (lastMessage.messageType == 'FILE') return '📎 Đã gửi một tệp';
+                      if (lastMessage.messageType == 'AUDIO') return '🎤 Đã gửi một tin nhắn thoại';
+                      final content = lastMessage.content;
+                      if (content != null && content.isNotEmpty) {
+                        return content.length > 50
+                            ? '${content.substring(0, 50)}...'
+                            : content;
+                      }
+                      return 'Tin nhắn mới';
+                    }
+                    
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        leading: CircleAvatar(
+                          radius: 28,
+                          backgroundColor: theme.colorScheme.secondaryContainer,
+                          child: Text(
+                            otherParticipantName.isNotEmpty
+                                ? otherParticipantName[0].toUpperCase()
+                                : '?',
+                            style: TextStyle(
+                              color: theme.colorScheme.onSecondaryContainer,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        title: Text(
+                          otherParticipantName,
+                          style: TextStyle(
+                            fontWeight: unreadCount > 0 ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                        subtitle: Text(
+                          _getLastMessagePreview(conversation),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: unreadCount > 0
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ),
+                        trailing: unreadCount > 0
+                            ? Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.primary,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  unreadCount > 99 ? '99+' : '$unreadCount',
+                                  style: TextStyle(
+                                    color: theme.colorScheme.onPrimary,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              )
+                            : null,
+                        onTap: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => DirectChatScreen(
+                                conversationId: conversation.id,
+                                otherParticipantName: otherParticipantName,
+                              ),
+                            ),
+                          );
+                          if (mounted) {
+                            _loadDirectConversations();
+                            _viewModel.refresh();
+                          }
+                        },
+                      ),
+                    );
+                  }
+                  
+                  // Adjust index after direct conversations
+                  currentIndex -= _directConversations.length;
+                  
+                  // Group chat section header
+                  if (viewModel.groups.isNotEmpty && currentIndex == 0) {
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 12),
+                      child: Text(
+                        'Nhóm chat',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    );
+                  }
+                  
+                  // Adjust index after group chat header
+                  if (viewModel.groups.isNotEmpty) {
+                    currentIndex--;
+                  }
+                  
                   // Load more indicator
-                  if (groupIndex == viewModel.groups.length) {
+                  if (currentIndex == viewModel.groups.length) {
                     return const Center(
                       child: Padding(
                         padding: EdgeInsets.all(16),
@@ -254,7 +472,7 @@ class _GroupListScreenState extends State<GroupListScreen> {
                     );
                   }
 
-                  final group = viewModel.groups[groupIndex];
+                  final group = viewModel.groups[currentIndex];
                   return _GroupListItem(
                     group: group,
                     onTap: () async {
@@ -441,6 +659,90 @@ class _GroupListItem extends StatelessWidget {
               )
             : null,
         onTap: onTap,
+      ),
+    );
+  }
+}
+
+class _DirectInvitationsSection extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
+
+  const _DirectInvitationsSection({
+    required this.count,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                height: 48,
+                width: 48,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  CupertinoIcons.chat_bubble_2,
+                  color: theme.colorScheme.onSecondaryContainer,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Lời mời trò chuyện',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Bạn có $count lời mời trò chuyện',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.error,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  count > 99 ? '99+' : '$count',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                CupertinoIcons.right_chevron,
+                size: 18,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

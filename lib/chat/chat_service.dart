@@ -6,6 +6,10 @@ import '../models/chat/message.dart';
 import '../models/chat/invitation.dart';
 import '../models/chat/invite_members_response.dart';
 import '../models/chat/group_file.dart';
+import '../models/chat/conversation.dart';
+import '../models/chat/direct_message.dart';
+import '../models/chat/direct_invitation.dart';
+import '../auth/api_client.dart';
 import 'chat_api_client.dart';
 
 class ChatService {
@@ -459,6 +463,395 @@ class ChatService {
       return response.data as Map<String, dynamic>;
     } catch (e) {
       throw Exception('Lỗi khi upload file: ${e.toString()}');
+    }
+  }
+
+  // ==================== DIRECT CHAT 1-1 METHODS ====================
+
+  /// Get all conversations
+  Future<List<Conversation>> getConversations() async {
+    try {
+      // Use ApiClient directly since /api/direct-chat is not under /api/chat
+      final apiClient = ApiClient();
+      final url = '/direct-chat/conversations';
+      
+      print('📤 [ChatService] Getting conversations...');
+      print('   Base URL: ${apiClient.dio.options.baseUrl}');
+      print('   Full URL: ${apiClient.dio.options.baseUrl}$url');
+      
+      final response = await apiClient.dio.get(url);
+      
+      print('✅ [ChatService] Got conversations:');
+      print('   Status: ${response.statusCode}');
+      print('   Count: ${(response.data as List).length}');
+      
+      return (response.data as List<dynamic>)
+          .map((json) => Conversation.fromJson(json))
+          .toList();
+    } on DioException catch (e) {
+      print('❌ [ChatService] Error getting conversations:');
+      print('   Status code: ${e.response?.statusCode}');
+      print('   Response data: ${e.response?.data}');
+      print('   Request URL: ${e.requestOptions.uri}');
+      throw Exception('Lỗi khi lấy danh sách cuộc trò chuyện: ${e.message ?? e.toString()}');
+    } catch (e) {
+      print('❌ [ChatService] Unexpected error getting conversations: $e');
+      throw Exception('Lỗi khi lấy danh sách cuộc trò chuyện: ${e.toString()}');
+    }
+  }
+
+  /// Get conversation by ID
+  Future<Conversation> getConversation(String conversationId) async {
+    try {
+      // Use ApiClient directly since /api/direct-chat is not under /api/chat
+      final apiClient = ApiClient();
+      final response = await apiClient.dio.get('/direct-chat/conversations/$conversationId');
+      return Conversation.fromJson(response.data);
+    } catch (e) {
+      throw Exception('Lỗi khi lấy thông tin cuộc trò chuyện: ${e.toString()}');
+    }
+  }
+
+  /// Get messages in a conversation
+  Future<DirectMessagePagedResponse> getDirectMessages({
+    required String conversationId,
+    int page = 0,
+    int size = 25,
+  }) async {
+    try {
+      // Use ApiClient directly since /api/direct-chat is not under /api/chat
+      final apiClient = ApiClient();
+      final response = await apiClient.dio.get(
+        '/direct-chat/conversations/$conversationId/messages',
+        queryParameters: {
+          'page': page,
+          'size': size,
+        },
+      );
+      return DirectMessagePagedResponse.fromJson(response.data);
+    } catch (e) {
+      throw Exception('Lỗi khi lấy tin nhắn: ${e.toString()}');
+    }
+  }
+
+  /// Send direct message
+  Future<DirectMessage> sendDirectMessage({
+    required String conversationId,
+    String? content,
+    String? messageType,
+    String? imageUrl,
+    String? fileUrl,
+    String? fileName,
+    int? fileSize,
+    String? mimeType,
+    String? replyToMessageId,
+  }) async {
+    try {
+      // Use ApiClient directly since /api/direct-chat is not under /api/chat
+      final apiClient = ApiClient();
+      final requestData = {
+        'content': content,
+        'messageType': messageType ?? 'TEXT',
+        'imageUrl': imageUrl,
+        'fileUrl': fileUrl,
+        'fileName': fileName,
+        'fileSize': fileSize,
+        'mimeType': mimeType,
+        'replyToMessageId': replyToMessageId,
+      };
+      
+      print('📤 [ChatService] Sending direct message:');
+      print('   Conversation ID: $conversationId');
+      print('   Message type: ${messageType ?? 'TEXT'}');
+      print('   Content: ${content?.substring(0, content.length > 50 ? 50 : content.length)}...');
+      
+      final response = await apiClient.dio.post(
+        '/direct-chat/conversations/$conversationId/messages',
+        data: requestData,
+      );
+      
+      print('✅ [ChatService] Message sent successfully');
+      print('   Status: ${response.statusCode}');
+      
+      return DirectMessage.fromJson(response.data);
+    } on DioException catch (e) {
+      print('❌ [ChatService] Error sending message:');
+      print('   Status code: ${e.response?.statusCode}');
+      print('   Response data: ${e.response?.data}');
+      print('   Request URL: ${e.requestOptions.uri}');
+      
+      if (e.response?.statusCode == 400 || e.response?.statusCode == 403) {
+        final errorMessage = e.response?.data?.toString() ?? e.message ?? 'Lỗi không xác định';
+        throw Exception(errorMessage);
+      }
+      
+      throw Exception('Lỗi khi gửi tin nhắn: ${e.message ?? e.toString()}');
+    } catch (e) {
+      print('❌ [ChatService] Unexpected error sending message: $e');
+      throw Exception('Lỗi khi gửi tin nhắn: ${e.toString()}');
+    }
+  }
+
+  /// Get unread count for a conversation
+  Future<int> getDirectUnreadCount(String conversationId) async {
+    try {
+      // Use ApiClient directly since /api/direct-chat is not under /api/chat
+      final apiClient = ApiClient();
+      final response = await apiClient.dio.get(
+        '/direct-chat/conversations/$conversationId/unread-count',
+      );
+      return response.data ?? 0;
+    } catch (e) {
+      throw Exception('Lỗi khi lấy số tin nhắn chưa đọc: ${e.toString()}');
+    }
+  }
+
+  // Direct Chat Invitations
+  /// Create direct invitation
+  Future<DirectInvitation> createDirectInvitation({
+    required String inviteeId,
+    String? initialMessage,
+  }) async {
+    try {
+      // Use ApiClient.activeBaseUrl directly since /api/direct-invitations is not under /api/chat
+      final apiClient = ApiClient();
+      final url = '/direct-invitations';
+      final requestData = {
+        'inviteeId': inviteeId,
+        'initialMessage': initialMessage,
+      };
+      
+      print('📤 [ChatService] Creating direct invitation:');
+      print('   Base URL: ${apiClient.dio.options.baseUrl}');
+      print('   Full URL: ${apiClient.dio.options.baseUrl}$url');
+      print('   Data: $requestData');
+      
+      final response = await apiClient.dio.post(
+        url,
+        data: requestData,
+      );
+      
+      print('✅ [ChatService] Direct invitation created successfully');
+      print('   Response status: ${response.statusCode}');
+      print('   Response data: ${response.data}');
+      
+      return DirectInvitation.fromJson(response.data);
+    } on DioException catch (e) {
+      print('❌ [ChatService] Error creating direct invitation:');
+      print('   Type: ${e.type}');
+      print('   Status code: ${e.response?.statusCode}');
+      print('   Response data: ${e.response?.data}');
+      print('   Request URL: ${e.requestOptions.uri}');
+      print('   Request headers: ${e.requestOptions.headers}');
+      
+      if (e.response?.statusCode == 403) {
+        throw Exception('Không có quyền tạo lời mời. Vui lòng kiểm tra quyền truy cập của bạn.');
+      }
+      
+      throw Exception('Lỗi khi tạo lời mời: ${e.message ?? e.toString()}');
+    } catch (e) {
+      print('❌ [ChatService] Unexpected error creating direct invitation: $e');
+      throw Exception('Lỗi khi tạo lời mời: ${e.toString()}');
+    }
+  }
+
+  /// Accept direct invitation
+  Future<DirectInvitation> acceptDirectInvitation(String invitationId) async {
+    try {
+      // Use ApiClient directly since /api/direct-invitations is not under /api/chat
+      final apiClient = ApiClient();
+      final response = await apiClient.dio.post(
+        '/direct-invitations/$invitationId/accept',
+      );
+      return DirectInvitation.fromJson(response.data);
+    } catch (e) {
+      throw Exception('Lỗi khi chấp nhận lời mời: ${e.toString()}');
+    }
+  }
+
+  /// Decline direct invitation
+  Future<void> declineDirectInvitation(String invitationId) async {
+    try {
+      // Use ApiClient directly since /api/direct-invitations is not under /api/chat
+      final apiClient = ApiClient();
+      await apiClient.dio.post('/direct-invitations/$invitationId/decline');
+    } catch (e) {
+      throw Exception('Lỗi khi từ chối lời mời: ${e.toString()}');
+    }
+  }
+
+  /// Get pending direct invitations
+  Future<List<DirectInvitation>> getPendingDirectInvitations() async {
+    try {
+      // Use ApiClient directly since /api/direct-invitations is not under /api/chat
+      final apiClient = ApiClient();
+      final url = '/direct-invitations/pending';
+      
+      print('📤 [ChatService] Getting pending direct invitations...');
+      print('   Base URL: ${apiClient.dio.options.baseUrl}');
+      print('   Full URL: ${apiClient.dio.options.baseUrl}$url');
+      
+      final response = await apiClient.dio.get(url);
+      
+      print('✅ [ChatService] Got response:');
+      print('   Status: ${response.statusCode}');
+      print('   Data: ${response.data}');
+      print('   Data type: ${response.data.runtimeType}');
+      
+      final invitations = (response.data as List<dynamic>)
+          .map((json) => DirectInvitation.fromJson(json))
+          .toList();
+      
+      print('✅ [ChatService] Parsed ${invitations.length} invitations');
+      for (var inv in invitations) {
+        print('   - Invitation ID: ${inv.id}, Inviter: ${inv.inviterId}, Invitee: ${inv.inviteeId}, Status: ${inv.status}');
+      }
+      
+      return invitations;
+    } catch (e) {
+      print('❌ [ChatService] Error getting pending invitations: $e');
+      if (e is DioException) {
+        print('   Status code: ${e.response?.statusCode}');
+        print('   Response data: ${e.response?.data}');
+        print('   Request URL: ${e.requestOptions.uri}');
+      }
+      throw Exception('Lỗi khi lấy danh sách lời mời: ${e.toString()}');
+    }
+  }
+
+  /// Count pending direct invitations
+  Future<int> countPendingDirectInvitations() async {
+    try {
+      // Use ApiClient directly since /api/direct-invitations is not under /api/chat
+      final apiClient = ApiClient();
+      final response = await apiClient.dio.get('/direct-invitations/pending/count');
+      return response.data ?? 0;
+    } catch (e) {
+      throw Exception('Lỗi khi đếm lời mời: ${e.toString()}');
+    }
+  }
+
+  // Direct Chat File Uploads
+  /// Upload image for direct chat
+  Future<String> uploadDirectImage({
+    required String conversationId,
+    required XFile image,
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(image.path, filename: image.name),
+      });
+
+      final response = await _apiClient.dio.post(
+        '/uploads/chat/direct/$conversationId/image',
+        data: formData,
+      );
+
+      return response.data['imageUrl'] as String;
+    } catch (e) {
+      throw Exception('Lỗi khi upload ảnh: ${e.toString()}');
+    }
+  }
+
+  /// Upload multiple images for direct chat
+  Future<List<String>> uploadDirectImages({
+    required String conversationId,
+    required List<XFile> images,
+  }) async {
+    try {
+      final formData = FormData();
+      for (var image in images) {
+        formData.files.add(
+          MapEntry(
+            'files',
+            await MultipartFile.fromFile(image.path, filename: image.name),
+          ),
+        );
+      }
+
+      final response = await _apiClient.dio.post(
+        '/uploads/chat/direct/$conversationId/images',
+        data: formData,
+      );
+
+      final imageUrls = (response.data['imageUrls'] as List<dynamic>?)
+          ?.map((e) => e.toString())
+          .toList();
+      
+      return imageUrls ?? [];
+    } catch (e) {
+      throw Exception('Lỗi khi upload nhiều ảnh: ${e.toString()}');
+    }
+  }
+
+  /// Upload audio for direct chat
+  Future<Map<String, dynamic>> uploadDirectAudio({
+    required String conversationId,
+    required File audioFile,
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(
+          audioFile.path,
+          filename: audioFile.path.split('/').last,
+        ),
+      });
+
+      final response = await _apiClient.dio.post(
+        '/uploads/chat/direct/$conversationId/audio',
+        data: formData,
+      );
+
+      return response.data as Map<String, dynamic>;
+    } catch (e) {
+      throw Exception('Lỗi khi upload audio: ${e.toString()}');
+    }
+  }
+
+  /// Upload file for direct chat
+  Future<Map<String, dynamic>> uploadDirectFile({
+    required String conversationId,
+    required File file,
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(
+          file.path,
+          filename: file.path.split('/').last,
+        ),
+      });
+
+      final response = await _apiClient.dio.post(
+        '/uploads/chat/direct/$conversationId/file',
+        data: formData,
+      );
+
+      return response.data as Map<String, dynamic>;
+    } catch (e) {
+      throw Exception('Lỗi khi upload file: ${e.toString()}');
+    }
+  }
+
+  // Blocking
+  /// Block user
+  Future<void> blockUser(String blockedId) async {
+    try {
+      // Use ApiClient directly since /api/direct-chat is not under /api/chat
+      final apiClient = ApiClient();
+      await apiClient.dio.post('/direct-chat/block/$blockedId');
+    } catch (e) {
+      throw Exception('Lỗi khi chặn người dùng: ${e.toString()}');
+    }
+  }
+
+  /// Unblock user
+  Future<void> unblockUser(String blockedId) async {
+    try {
+      // Use ApiClient directly since /api/direct-chat is not under /api/chat
+      final apiClient = ApiClient();
+      await apiClient.dio.delete('/direct-chat/block/$blockedId');
+    } catch (e) {
+      throw Exception('Lỗi khi bỏ chặn người dùng: ${e.toString()}');
     }
   }
 }

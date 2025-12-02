@@ -182,6 +182,10 @@ class _HomeScreenState extends State<HomeScreen> {
     _eventBus.on('chat_activity_updated', (_) async {
       await _loadGroupChatActivity();
     });
+    // Listen for direct chat activity updates
+    _eventBus.on('direct_chat_activity_updated', (_) async {
+      await _loadGroupChatActivity();
+    });
   }
 
   Future<void> _initialize() async {
@@ -467,12 +471,28 @@ class _HomeScreenState extends State<HomeScreen> {
         totalUnreadMessages += group.unreadCount ?? 0;
       }
 
-      // Get pending invitations count
+      // Get pending invitations count (group chat)
       final pendingInvitations = await _chatService.getMyPendingInvitations();
       final pendingInvitationsCount = pendingInvitations.length;
 
-      // Show badge if there are unread messages or pending invitations
-      final hasActivity = totalUnreadMessages > 0 || pendingInvitationsCount > 0;
+      // Get direct chat activity (unread messages + pending invitations)
+      int directChatUnreadCount = 0;
+      int directChatPendingInvitations = 0;
+      try {
+        final conversations = await _chatService.getConversations();
+        for (final conversation in conversations) {
+          directChatUnreadCount += conversation.unreadCount ?? 0;
+        }
+        directChatPendingInvitations = await _chatService.countPendingDirectInvitations();
+      } catch (e) {
+        debugPrint('⚠️ Không thể tải direct chat activity: $e');
+      }
+
+      // Show badge if there are unread messages or pending invitations (group or direct)
+      final hasActivity = totalUnreadMessages > 0 || 
+                         pendingInvitationsCount > 0 ||
+                         directChatUnreadCount > 0 ||
+                         directChatPendingInvitations > 0;
 
       if (mounted) {
         setState(() {
