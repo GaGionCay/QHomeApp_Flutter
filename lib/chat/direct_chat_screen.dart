@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/models/chat/direct_chat_view_model.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
@@ -17,8 +16,10 @@ import '../auth/api_client.dart';
 import '../auth/token_storage.dart';
 import '../core/event_bus.dart';
 import 'chat_service.dart';
+import 'direct_chat_view_model.dart';
 import 'public_file_storage_service.dart';
 import 'message_local_path_service.dart';
+import 'direct_files_screen.dart';
 // Reuse widgets from ChatScreen - import only what we need
 
 class DirectChatScreen extends StatefulWidget {
@@ -509,6 +510,29 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
           return;
         }
         
+        // Save audio file to public storage before uploading
+        try {
+          final fileName = 'audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+          final savedPath = await PublicFileStorageService.saveToPublicDirectory(
+            audioFile,
+            fileName,
+            'audio',
+            'audio/m4a',
+          );
+          print('✅ [DirectChatScreen] Audio file saved to public storage: $savedPath');
+          
+          // Save local path for message
+          await MessageLocalPathService.saveLocalPath(
+            'temp_${DateTime.now().millisecondsSinceEpoch}',
+            savedPath,
+            'audio',
+            'm4a',
+          );
+        } catch (e) {
+          print('⚠️ [DirectChatScreen] Failed to save audio to public storage: $e');
+          // Continue with upload even if saving to public storage fails
+        }
+        
         final messenger = ScaffoldMessenger.of(context);
         messenger.showSnackBar(
           const SnackBar(content: Text('Đang upload ghi âm...')),
@@ -686,7 +710,8 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
       }
       
       final fileType = PublicFileStorageService.getFileType('image', fileName);
-      final existingPath = await PublicFileStorageService.getExistingFilePath(fileName, fileType);
+      final mimeType = PublicFileStorageService.getMimeTypeFromFileName(fileName);
+      final existingPath = await PublicFileStorageService.getExistingFilePath(fileName, fileType, mimeType);
       
       if (existingPath != null) {
         if (context.mounted) {
@@ -874,11 +899,31 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                       await _showBlockConfirmation(context);
                     } else if (value == 'unblock') {
                       await _unblockUser(context);
+                    } else if (value == 'files') {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => DirectFilesScreen(
+                            conversationId: widget.conversationId,
+                            otherParticipantName: widget.otherParticipantName,
+                          ),
+                        ),
+                      );
                     }
                   },
                   itemBuilder: (context) {
                     final isBlocked = _viewModel.conversation?.status == 'BLOCKED';
                     return [
+                      const PopupMenuItem(
+                        value: 'files',
+                        child: Row(
+                          children: [
+                            Icon(CupertinoIcons.folder, size: 20),
+                            SizedBox(width: 8),
+                            Text('Files & Ảnh'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuDivider(),
                       if (isBlocked)
                         const PopupMenuItem(
                           value: 'unblock',
@@ -1096,7 +1141,7 @@ class _DirectSystemMessageBubble extends StatelessWidget {
   }
 }
 
-class _DirectMessageInput extends StatelessWidget {
+class _DirectMessageInput extends StatefulWidget {
   final TextEditingController controller;
   final VoidCallback onSend;
   final Function(ImageSource) onPickImage;
@@ -1120,6 +1165,35 @@ class _DirectMessageInput extends StatelessWidget {
   });
 
   @override
+  State<_DirectMessageInput> createState() => _DirectMessageInputState();
+}
+
+class _DirectMessageInputState extends State<_DirectMessageInput> {
+  bool _hasText = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _hasText = widget.controller.text.trim().isNotEmpty;
+    widget.controller.addListener(_onTextChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onTextChanged);
+    super.dispose();
+  }
+
+  void _onTextChanged() {
+    final newHasText = widget.controller.text.trim().isNotEmpty;
+    if (newHasText != _hasText) {
+      setState(() {
+        _hasText = newHasText;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
@@ -1135,7 +1209,7 @@ class _DirectMessageInput extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (isRecording)
+          if (widget.isRecording)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               margin: const EdgeInsets.only(bottom: 8),
@@ -1155,7 +1229,7 @@ class _DirectMessageInput extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    _formatDuration(recordingDuration),
+                    _formatDuration(widget.recordingDuration),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onErrorContainer,
                       fontWeight: FontWeight.bold,
@@ -1163,18 +1237,18 @@ class _DirectMessageInput extends StatelessWidget {
                   ),
                   const Spacer(),
                   TextButton(
-                    onPressed: () => onStopRecording(send: false),
+                    onPressed: () => widget.onStopRecording(send: false),
                     child: const Text('Hủy'),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
-                    onPressed: () => onStopRecording(send: true),
+                    onPressed: () => widget.onStopRecording(send: true),
                     child: const Text('Gửi'),
                   ),
                 ],
               ),
             ),
-          if (!enabled)
+          if (!widget.enabled)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
@@ -1205,16 +1279,16 @@ class _DirectMessageInput extends StatelessWidget {
               children: [
                 PopupMenuButton<String>(
                   icon: Icon(
-                    isRecording ? CupertinoIcons.mic_fill : CupertinoIcons.plus_circle,
-                    color: isRecording ? Colors.red : theme.colorScheme.primary,
+                    widget.isRecording ? CupertinoIcons.mic_fill : CupertinoIcons.plus_circle,
+                    color: widget.isRecording ? Colors.red : theme.colorScheme.primary,
                   ),
                   onSelected: (value) {
                     if (value == 'image_gallery') {
-                      onPickImage(ImageSource.gallery);
+                      widget.onPickImage(ImageSource.gallery);
                     } else if (value == 'image_camera') {
-                      onPickImage(ImageSource.camera);
+                      widget.onPickImage(ImageSource.camera);
                     } else if (value == 'file') {
-                      onPickFile();
+                      widget.onPickFile();
                     }
                   },
                   itemBuilder: (context) => [
@@ -1252,22 +1326,22 @@ class _DirectMessageInput extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
-                  onLongPress: isRecording ? null : onStartRecording,
+                  onLongPress: widget.isRecording ? null : widget.onStartRecording,
                   onLongPressEnd: (details) {
-                    if (isRecording) {
-                      onStopRecording(send: true);
+                    if (widget.isRecording) {
+                      widget.onStopRecording(send: true);
                     }
                   },
                   child: IconButton(
                     icon: Icon(
-                      isRecording ? CupertinoIcons.mic_fill : CupertinoIcons.mic,
-                      color: isRecording ? Colors.red : theme.colorScheme.primary,
+                      widget.isRecording ? CupertinoIcons.mic_fill : CupertinoIcons.mic,
+                      color: widget.isRecording ? Colors.red : theme.colorScheme.primary,
                     ),
                     onPressed: () {
-                      if (isRecording) {
-                        onStopRecording(send: true);
+                      if (widget.isRecording) {
+                        widget.onStopRecording(send: true);
                       } else {
-                        onStartRecording();
+                        widget.onStartRecording();
                       }
                     },
                   ),
@@ -1275,10 +1349,10 @@ class _DirectMessageInput extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
-                    controller: controller,
-                    enabled: !isRecording,
+                    controller: widget.controller,
+                    enabled: !widget.isRecording,
                     decoration: InputDecoration(
-                      hintText: isRecording ? 'Đang ghi âm...' : 'Nhập tin nhắn...',
+                      hintText: widget.isRecording ? 'Đang ghi âm...' : 'Nhập tin nhắn...',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
                       ),
@@ -1294,23 +1368,24 @@ class _DirectMessageInput extends StatelessWidget {
                 const SizedBox(width: 8),
                 IconButton(
                   icon: Icon(
-                    isRecording ? CupertinoIcons.stop_circle_fill : CupertinoIcons.paperplane_fill,
-                    color: isRecording ? Colors.red : Colors.white,
+                    widget.isRecording ? CupertinoIcons.stop_circle_fill : CupertinoIcons.paperplane_fill,
+                    color: widget.isRecording ? Colors.red : Colors.white,
                   ),
-                  onPressed: isRecording
+                  onPressed: widget.isRecording
                       ? () {
                           print('🔵 [DirectMessageInput] Stop recording button pressed');
-                          onStopRecording(send: true);
+                          widget.onStopRecording(send: true);
                         }
-                      : (controller.text.trim().isEmpty
+                      : (!_hasText || !widget.enabled
                           ? null
                           : () {
                               print('🔵 [DirectMessageInput] Send button pressed');
-                              print('   Controller text: "${controller.text}"');
-                              print('   Controller text trimmed: "${controller.text.trim()}"');
-                              print('   Is empty: ${controller.text.trim().isEmpty}');
+                              print('   Controller text: "${widget.controller.text}"');
+                              print('   Controller text trimmed: "${widget.controller.text.trim()}"');
+                              print('   Is empty: ${widget.controller.text.trim().isEmpty}');
+                              print('   _hasText: $_hasText');
                               try {
-                                onSend();
+                                widget.onSend();
                                 print('✅ [DirectMessageInput] onSend callback executed');
                               } catch (e, stackTrace) {
                                 print('❌ [DirectMessageInput] Error in onSend callback: $e');
@@ -1318,10 +1393,12 @@ class _DirectMessageInput extends StatelessWidget {
                               }
                             }),
                   style: IconButton.styleFrom(
-                    backgroundColor: isRecording
+                    backgroundColor: widget.isRecording
                         ? Colors.red.withValues(alpha: 0.1)
-                        : theme.colorScheme.primary,
-                    foregroundColor: isRecording ? Colors.red : Colors.white,
+                        : (_hasText && widget.enabled
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurface.withValues(alpha: 0.3)),
+                    foregroundColor: widget.isRecording ? Colors.red : Colors.white,
                   ),
                 ),
               ],
@@ -1513,7 +1590,9 @@ class _DirectAudioMessageWidgetState extends State<_DirectAudioMessageWidget> {
           _isPlaying = state.playing;
         });
         if (state.processingState == ProcessingState.completed) {
+          // Reset to 00:00 and change button to Play when finished
           _resetAudioState();
+          _audioPlayer.seek(Duration.zero);
         }
       }
     });
@@ -1724,6 +1803,7 @@ class _DirectFileMessageWidgetState extends State<_DirectFileMessageWidget> {
       final existingPath = await PublicFileStorageService.getExistingFilePath(
         widget.fileName,
         fileType,
+        widget.mimeType,
       );
       
       if (existingPath != null) {
@@ -1804,6 +1884,31 @@ class _DirectFileMessageWidgetState extends State<_DirectFileMessageWidget> {
       final messenger = ScaffoldMessenger.of(context);
       final fileType = PublicFileStorageService.getFileType(widget.mimeType, widget.fileName);
       
+      // Check if file already exists before downloading
+      final existingPath = await PublicFileStorageService.getExistingFilePath(
+        widget.fileName,
+        fileType,
+        widget.mimeType,
+      );
+      
+      if (existingPath != null) {
+        if (mounted) {
+          setState(() {
+            _cachedFilePath = existingPath;
+            _isDownloading = false;
+          });
+        }
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('File đã có trong máy, đang mở...'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+        await Future.delayed(const Duration(milliseconds: 500));
+        await _openFile(context, existingPath);
+        return;
+      }
+      
       messenger.showSnackBar(
         SnackBar(
           content: Text('Đang tải file: ${widget.fileName}'),
@@ -1869,14 +1974,20 @@ class _DirectFileMessageWidgetState extends State<_DirectFileMessageWidget> {
   
   Future<void> _openFile(BuildContext context, String filePath) async {
     try {
-      final file = File(filePath);
-      if (!await file.exists()) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('File không tồn tại')),
-          );
+      // Check if filePath is a MediaStore URI (content://) or a file path
+      final isMediaStoreUri = filePath.startsWith('content://');
+      
+      if (!isMediaStoreUri) {
+        // Check if file exists (for regular file paths)
+        final file = File(filePath);
+        if (!await file.exists()) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('File không tồn tại')),
+            );
+          }
+          return;
         }
-        return;
       }
 
       String? mimeType = widget.mimeType;
@@ -1884,6 +1995,7 @@ class _DirectFileMessageWidgetState extends State<_DirectFileMessageWidget> {
         mimeType = _getMimeTypeFromFileName(widget.fileName);
       }
 
+      // Open file with mimeType (OpenFile supports both file paths and content URIs)
       final result = await OpenFile.open(
         filePath,
         type: mimeType ?? 'application/octet-stream',

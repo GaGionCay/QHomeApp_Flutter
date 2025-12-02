@@ -1,11 +1,14 @@
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:gal/gal.dart';
 import 'package:path/path.dart' as path;
 
 /// Service to manage file storage in Android public directories
+/// Uses MediaStore API to save files to public storage (Pictures, Movies, Music, Documents)
 class PublicFileStorageService {
   static const String appFolderName = 'QHomeBase';
+  static const MethodChannel _mediaStoreChannel = MethodChannel('com.qhome.resident/media_store');
 
   /// Get file type from mimeType or file extension
   static String getFileType(String? mimeType, String fileName) {
@@ -93,10 +96,45 @@ class PublicFileStorageService {
     return documentsDir;
   }
 
-  /// Check if file already exists in public directory
-  static Future<String?> getExistingFilePath(String fileName, String fileType) async {
+  /// Check if file already exists in MediaStore public storage
+  static Future<String?> getExistingFilePath(String fileName, String fileType, [String? mimeType]) async {
     try {
-      // Check app documents directory
+      if (Platform.isAndroid) {
+        // Use MediaStore API to check if file exists
+        try {
+          final mime = mimeType ?? getMimeTypeFromFileName(fileName);
+          final exists = await _mediaStoreChannel.invokeMethod<bool>(
+            'checkFileExists',
+            {
+              'fileName': fileName,
+              'mimeType': mime,
+              'fileType': fileType,
+            },
+          );
+          
+          if (exists == true) {
+            // Get the URI of the existing file
+            final uriString = await _mediaStoreChannel.invokeMethod<String>(
+              'getFileUri',
+              {
+                'fileName': fileName,
+                'mimeType': mime,
+                'fileType': fileType,
+              },
+            );
+            
+            if (uriString != null) {
+              print('✅ [PublicFileStorageService] File exists in MediaStore: $fileName -> $uriString');
+              return uriString;
+            }
+          }
+        } catch (e) {
+          print('⚠️ [PublicFileStorageService] Error checking MediaStore: $e');
+          // Fall through to file system check
+        }
+      }
+      
+      // Fallback: Check app documents directory
       final publicDir = await getPublicDirectory(fileType);
       if (!await publicDir.exists()) {
         return null;
@@ -104,7 +142,7 @@ class PublicFileStorageService {
 
       final file = File('${publicDir.path}/$fileName');
       if (await file.exists()) {
-        print('✅ [PublicFileStorageService] File exists: ${file.path}');
+        print('✅ [PublicFileStorageService] File exists in file system: ${file.path}');
         return file.path;
       }
       return null;
@@ -113,10 +151,70 @@ class PublicFileStorageService {
       return null;
     }
   }
+  
+  /// Get MIME type from file name extension
+  static String getMimeTypeFromFileName(String fileName) {
+    final ext = path.extension(fileName).toLowerCase();
+    switch (ext) {
+      case '.jpg':
+      case '.jpeg':
+        return 'image/jpeg';
+      case '.png':
+        return 'image/png';
+      case '.gif':
+        return 'image/gif';
+      case '.webp':
+        return 'image/webp';
+      case '.bmp':
+        return 'image/bmp';
+      case '.mp4':
+        return 'video/mp4';
+      case '.avi':
+        return 'video/x-msvideo';
+      case '.mov':
+        return 'video/quicktime';
+      case '.mkv':
+        return 'video/x-matroska';
+      case '.webm':
+        return 'video/webm';
+      case '.mp3':
+        return 'audio/mpeg';
+      case '.wav':
+        return 'audio/wav';
+      case '.aac':
+        return 'audio/aac';
+      case '.ogg':
+        return 'audio/ogg';
+      case '.m4a':
+        return 'audio/mp4';
+      case '.pdf':
+        return 'application/pdf';
+      case '.doc':
+        return 'application/msword';
+      case '.docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case '.xls':
+        return 'application/vnd.ms-excel';
+      case '.xlsx':
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      case '.ppt':
+        return 'application/vnd.ms-powerpoint';
+      case '.pptx':
+        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      case '.txt':
+        return 'text/plain';
+      case '.zip':
+        return 'application/zip';
+      default:
+        return 'application/octet-stream';
+    }
+  }
 
-  /// Save file to public directory
-  /// For images/videos on Android, uses gal package to save to gallery
-  /// For documents on Android, saves to Download directory
+  /// Save file to public directory using MediaStore API
+  /// - Images -> Pictures/QHomeBase (via MediaStore)
+  /// - Videos -> Movies/QHomeBase (via MediaStore)
+  /// - Audio -> Music/Recordings (via MediaStore)
+  /// - Documents -> Documents/QHomeBase (via MediaStore)
   static Future<String> saveToPublicDirectory(
     File sourceFile,
     String fileName,
@@ -124,81 +222,66 @@ class PublicFileStorageService {
     String? mimeType,
   ) async {
     try {
-      // For images on Android, use gal package to save directly to gallery
-      if (Platform.isAndroid && fileType == 'image') {
+      if (Platform.isAndroid) {
+        // Use MediaStore API to save to public storage
         try {
-          final bytes = await sourceFile.readAsBytes();
-          await Gal.putImageBytes(
-            bytes,
-            name: fileName,
-            album: appFolderName,
+          final mime = mimeType ?? getMimeTypeFromFileName(fileName);
+          
+          // Save to MediaStore using platform channel
+          final uriString = await _mediaStoreChannel.invokeMethod<String>(
+            'saveFileToMediaStore',
+            {
+              'filePath': sourceFile.path,
+              'fileName': fileName,
+              'mimeType': mime,
+              'fileType': fileType,
+            },
           );
-          print('✅ [PublicFileStorageService] Saved image to gallery: $fileName');
           
-          // Also save a copy to app documents directory for easy access
-          final documentsDir = await getAndroidAppDocumentsDirectory();
-          try {
-            final documentsFile = File('${documentsDir.path}/$fileName');
-            await sourceFile.copy(documentsFile.path);
-            print('✅ [PublicFileStorageService] Also saved image to Documents: ${documentsFile.path}');
-            return documentsFile.path;
-          } catch (e) {
-            print('⚠️ [PublicFileStorageService] Error saving image to Documents: $e');
+          if (uriString != null && uriString.isNotEmpty) {
+            print('✅ [PublicFileStorageService] Saved $fileType to MediaStore: $fileName -> $uriString');
+            
+            // For images, also use gal package as fallback/backup
+            if (fileType == 'image') {
+              try {
+                final bytes = await sourceFile.readAsBytes();
+                await Gal.putImageBytes(
+                  bytes,
+                  name: fileName,
+                  album: appFolderName,
+                );
+                print('✅ [PublicFileStorageService] Also saved image via gal package');
+              } catch (e) {
+                print('⚠️ [PublicFileStorageService] Error saving image via gal: $e');
+              }
+            }
+            
+            // Return MediaStore URI as string (can be used to open file)
+            return uriString;
           }
-          
-          // Return gallery path reference
-          return sourceFile.path;
         } catch (e) {
-          print('⚠️ [PublicFileStorageService] Error saving to gallery: $e');
-          // Fall through to regular file save
+          print('⚠️ [PublicFileStorageService] Error saving to MediaStore: $e');
+          // Fall through to fallback methods
         }
-      }
-
-      // For videos on Android, use gal package
-      if (Platform.isAndroid && fileType == 'video') {
-        try {
-          final bytes = await sourceFile.readAsBytes();
-          await Gal.putImageBytes(
-            bytes,
-            name: fileName,
-            album: appFolderName,
-          );
-          print('✅ [PublicFileStorageService] Saved video to gallery: $fileName');
-          
-          // Also save to app documents directory
-          final documentsDir = await getAndroidAppDocumentsDirectory();
+        
+        // Fallback for images: use gal package
+        if (fileType == 'image') {
           try {
-            final documentsFile = File('${documentsDir.path}/$fileName');
-            await sourceFile.copy(documentsFile.path);
-            print('✅ [PublicFileStorageService] Also saved video to Documents: ${documentsFile.path}');
-            return documentsFile.path;
+            final bytes = await sourceFile.readAsBytes();
+            await Gal.putImageBytes(
+              bytes,
+              name: fileName,
+              album: appFolderName,
+            );
+            print('✅ [PublicFileStorageService] Saved image via gal package (fallback): $fileName');
+            return sourceFile.path;
           } catch (e) {
-            print('⚠️ [PublicFileStorageService] Error saving video to Documents: $e');
+            print('⚠️ [PublicFileStorageService] Error saving image via gal: $e');
           }
-          
-          return sourceFile.path;
-        } catch (e) {
-          print('⚠️ [PublicFileStorageService] Error saving video to gallery: $e');
-          // Fall through to regular file save
-        }
-      }
-
-      // For documents and audio files on Android, save to app documents directory
-      // This is accessible via file manager without special permissions
-      if (Platform.isAndroid && (fileType == 'document' || fileType == 'audio')) {
-        final documentsDir = await getAndroidAppDocumentsDirectory();
-        try {
-          final documentsFile = File('${documentsDir.path}/$fileName');
-          await sourceFile.copy(documentsFile.path);
-          print('✅ [PublicFileStorageService] Saved $fileType to Documents: ${documentsFile.path}');
-          return documentsFile.path;
-        } catch (e) {
-          print('⚠️ [PublicFileStorageService] Error saving $fileType to Documents: $e');
-          // Fall through to app directory
         }
       }
       
-      // Fallback: save to app-private directory
+      // Final fallback: save to app-private directory
       final storageDir = await getPublicDirectory(fileType);
       if (!await storageDir.exists()) {
         await storageDir.create(recursive: true);
@@ -206,7 +289,7 @@ class PublicFileStorageService {
 
       final targetFile = File('${storageDir.path}/$fileName');
       await sourceFile.copy(targetFile.path);
-      print('✅ [PublicFileStorageService] Saved file to app directory: ${targetFile.path}');
+      print('✅ [PublicFileStorageService] Saved file to app directory (fallback): ${targetFile.path}');
 
       return targetFile.path;
     } catch (e) {
@@ -225,7 +308,7 @@ class PublicFileStorageService {
   ) async {
     try {
       // Check if file already exists
-      final existingPath = await getExistingFilePath(fileName, fileType);
+      final existingPath = await getExistingFilePath(fileName, fileType, mimeType);
       if (existingPath != null) {
         print('✅ [PublicFileStorageService] File already exists: $existingPath');
         return existingPath;

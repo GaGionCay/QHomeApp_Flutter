@@ -453,6 +453,22 @@ class _ChatScreenState extends State<ChatScreen> {
         final fileSize = await audioFile.length();
         print('📊 [ChatScreen] File size: $fileSize bytes');
         
+        // Save audio file to public storage before uploading
+        String? savedPublicPath;
+        try {
+          final fileName = 'audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+          savedPublicPath = await PublicFileStorageService.saveToPublicDirectory(
+            audioFile,
+            fileName,
+            'audio',
+            'audio/m4a',
+          );
+          print('✅ [ChatScreen] Audio file saved to public storage: $savedPublicPath');
+        } catch (e) {
+          print('⚠️ [ChatScreen] Failed to save audio to public storage: $e');
+          // Continue with upload even if saving to public storage fails
+        }
+        
         if (messenger != null) {
           messenger.showSnackBar(
             const SnackBar(content: Text('Đang upload ghi âm...')),
@@ -500,12 +516,22 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
 
-      // Clean up
+      // Clean up temporary file only if it's not the same as saved public path
       if (path != null) {
         final file = File(path);
         if (await file.exists()) {
-          await file.delete();
-          print('🗑️ [ChatScreen] Đã xóa file tạm: $path');
+          // Don't delete if it's the same as saved public path
+          final savedPublicPath = await PublicFileStorageService.getExistingFilePath(
+            path.split('/').last,
+            'audio',
+            'audio/m4a', // Default mimeType for audio recordings
+          );
+          if (savedPublicPath != path) {
+            await file.delete();
+            print('🗑️ [ChatScreen] Đã xóa file tạm: $path');
+          } else {
+            print('✅ [ChatScreen] Giữ lại file vì đã lưu vào public storage: $path');
+          }
         }
       }
     } catch (e, stackTrace) {
@@ -1019,7 +1045,8 @@ class _ChatScreenState extends State<ChatScreen> {
       
       // Check if image already exists in gallery
       final fileType = PublicFileStorageService.getFileType('image', fileName);
-      final existingPath = await PublicFileStorageService.getExistingFilePath(fileName, fileType);
+      final mimeType = PublicFileStorageService.getMimeTypeFromFileName(fileName);
+      final existingPath = await PublicFileStorageService.getExistingFilePath(fileName, fileType, mimeType);
       
       if (existingPath != null) {
         if (context.mounted) {
@@ -1508,6 +1535,7 @@ class _FileMessageWidgetState extends State<_FileMessageWidget> {
       final existingPath = await PublicFileStorageService.getExistingFilePath(
         widget.fileName,
         fileType,
+        widget.mimeType,
       );
       
       if (existingPath != null) {
@@ -1618,6 +1646,31 @@ class _FileMessageWidgetState extends State<_FileMessageWidget> {
       // Determine file type
       final fileType = PublicFileStorageService.getFileType(widget.mimeType, widget.fileName);
       
+      // Check if file already exists before downloading
+      final existingPath = await PublicFileStorageService.getExistingFilePath(
+        widget.fileName,
+        fileType,
+        widget.mimeType,
+      );
+      
+      if (existingPath != null) {
+        if (mounted) {
+          setState(() {
+            _cachedFilePath = existingPath;
+            _isDownloading = false;
+          });
+        }
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('File đã có trong máy, đang mở...'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+        await Future.delayed(const Duration(milliseconds: 500));
+        await _openFile(openFileContext, existingPath);
+        return;
+      }
+      
       // Show initial loading message
       messenger.showSnackBar(
         SnackBar(
@@ -1691,19 +1744,25 @@ class _FileMessageWidgetState extends State<_FileMessageWidget> {
   
   Future<void> _openFile(BuildContext context, String filePath) async {
     try {
-      // Check if file exists
-      final file = File(filePath);
-      if (!await file.exists()) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('File không tồn tại')),
-          );
+      // Check if filePath is a MediaStore URI (content://) or a file path
+      final isMediaStoreUri = filePath.startsWith('content://');
+      
+      if (!isMediaStoreUri) {
+        // Check if file exists (for regular file paths)
+        final file = File(filePath);
+        if (!await file.exists()) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('File không tồn tại')),
+            );
+          }
+          return;
         }
-        return;
       }
 
       print('📂 [FileMessageWidget] Mở file: $filePath');
+      print('📂 [FileMessageWidget] Is MediaStore URI: $isMediaStoreUri');
       print('📂 [FileMessageWidget] MimeType: ${widget.mimeType}');
       print('📂 [FileMessageWidget] FileName: ${widget.fileName}');
 
@@ -1714,7 +1773,7 @@ class _FileMessageWidgetState extends State<_FileMessageWidget> {
         print('📂 [FileMessageWidget] Detected mimeType: $mimeType');
       }
 
-      // Open file with mimeType
+      // Open file with mimeType (OpenFile supports both file paths and content URIs)
       final result = await OpenFile.open(
         filePath,
         type: mimeType ?? 'application/octet-stream',

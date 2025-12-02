@@ -9,6 +9,7 @@ import '../models/chat/group_file.dart';
 import '../models/chat/conversation.dart';
 import '../models/chat/direct_message.dart';
 import '../models/chat/direct_invitation.dart';
+import '../models/chat/direct_chat_file.dart';
 import '../auth/api_client.dart';
 import 'chat_api_client.dart';
 
@@ -852,6 +853,28 @@ class ChatService {
       await apiClient.dio.delete('/direct-chat/block/$blockedId');
     } catch (e) {
       throw Exception('Lỗi khi bỏ chặn người dùng: ${e.toString()}');
+    }
+  }
+
+  /// Get direct chat files with pagination
+  Future<DirectChatFilePagedResponse> getDirectFiles({
+    required String conversationId,
+    int page = 0,
+    int size = 20,
+  }) async {
+    try {
+      // Use ApiClient directly since /api/direct-chat is not under /api/chat
+      final apiClient = ApiClient();
+      final response = await apiClient.dio.get(
+        '/direct-chat/conversations/$conversationId/files',
+        queryParameters: {
+          'page': page,
+          'size': size,
+        },
+      );
+      return DirectChatFilePagedResponse.fromJson(response.data);
+    } catch (e) {
+      throw Exception('Lỗi khi lấy danh sách file: ${e.toString()}');
     }
   }
 }

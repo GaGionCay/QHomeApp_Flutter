@@ -2,20 +2,30 @@ package com.qhome.resident
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ContentResolver
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
+import java.io.FileInputStream
+import java.io.OutputStream
 
 class MainActivity : FlutterFragmentActivity() {
     private val CHANNEL = "com.qhome.resident/app_launcher"
+    private val MEDIA_STORE_CHANNEL = "com.qhome.resident/media_store"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         
+        // App launcher channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "launchApp" -> {
@@ -88,6 +98,67 @@ class MainActivity : FlutterFragmentActivity() {
                         result.success(shown)
                     } else {
                         result.error("INVALID_ARGUMENT", "Text is null", null)
+                    }
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
+        
+        // MediaStore channel for saving files to public storage
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MEDIA_STORE_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "saveFileToMediaStore" -> {
+                    val filePath = call.argument<String>("filePath")
+                    val fileName = call.argument<String>("fileName")
+                    val mimeType = call.argument<String>("mimeType")
+                    val fileType = call.argument<String>("fileType") // "image", "video", "audio", "document"
+                    
+                    if (filePath != null && fileName != null && mimeType != null && fileType != null) {
+                        try {
+                            val uri = saveFileToMediaStore(filePath, fileName, mimeType, fileType)
+                            result.success(uri?.toString())
+                        } catch (e: Exception) {
+                            Log.e("MainActivity", "Error saving file to MediaStore: ${e.message}", e)
+                            result.error("SAVE_ERROR", e.message, null)
+                        }
+                    } else {
+                        result.error("INVALID_ARGUMENT", "Missing required arguments", null)
+                    }
+                }
+                "checkFileExists" -> {
+                    val fileName = call.argument<String>("fileName")
+                    val mimeType = call.argument<String>("mimeType")
+                    val fileType = call.argument<String>("fileType")
+                    
+                    if (fileName != null && mimeType != null && fileType != null) {
+                        try {
+                            val exists = checkFileExistsInMediaStore(fileName, mimeType, fileType)
+                            result.success(exists)
+                        } catch (e: Exception) {
+                            Log.e("MainActivity", "Error checking file existence: ${e.message}", e)
+                            result.error("CHECK_ERROR", e.message, null)
+                        }
+                    } else {
+                        result.error("INVALID_ARGUMENT", "Missing required arguments", null)
+                    }
+                }
+                "getFileUri" -> {
+                    val fileName = call.argument<String>("fileName")
+                    val mimeType = call.argument<String>("mimeType")
+                    val fileType = call.argument<String>("fileType")
+                    
+                    if (fileName != null && mimeType != null && fileType != null) {
+                        try {
+                            val uri = getFileUriFromMediaStore(fileName, mimeType, fileType)
+                            result.success(uri?.toString())
+                        } catch (e: Exception) {
+                            Log.e("MainActivity", "Error getting file URI: ${e.message}", e)
+                            result.error("GET_URI_ERROR", e.message, null)
+                        }
+                    } else {
+                        result.error("INVALID_ARGUMENT", "Missing required arguments", null)
                     }
                 }
                 else -> {
@@ -458,6 +529,151 @@ class MainActivity : FlutterFragmentActivity() {
             Log.e("MainActivity", "Error showing text chooser: ${e.message}", e)
             false
         }
+    }
+    
+    /**
+     * Save file to MediaStore using appropriate collection based on file type
+     * - Images -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+     * - Videos -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+     * - Audio -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+     * - Documents -> MediaStore.Files.getContentUri("external") with RELATIVE_PATH
+     */
+    private fun saveFileToMediaStore(filePath: String, fileName: String, mimeType: String, fileType: String): Uri? {
+        val file = File(filePath)
+        if (!file.exists()) {
+            throw Exception("Source file does not exist: $filePath")
+        }
+        
+        val contentResolver = contentResolver
+        val contentValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+        }
+        
+        val uri: Uri? = when (fileType) {
+            "image" -> {
+                // Save to Pictures/QHomeBase
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    contentValues.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/QHomeBase")
+                }
+                contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+            }
+            "video" -> {
+                // Save to Movies/QHomeBase
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    contentValues.put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/QHomeBase")
+                }
+                contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, contentValues)
+            }
+            "audio" -> {
+                // Save to Music/Recordings or Recordings
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    contentValues.put(MediaStore.Audio.Media.RELATIVE_PATH, Environment.DIRECTORY_MUSIC + "/Recordings")
+                    contentValues.put(MediaStore.Audio.Media.IS_MUSIC, false)
+                    contentValues.put(MediaStore.Audio.Media.IS_RINGTONE, false)
+                    contentValues.put(MediaStore.Audio.Media.IS_ALARM, false)
+                    contentValues.put(MediaStore.Audio.Media.IS_NOTIFICATION, false)
+                    contentValues.put(MediaStore.Audio.Media.IS_PODCAST, false)
+                }
+                contentResolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, contentValues)
+            }
+            "document" -> {
+                // Save to Documents/QHomeBase
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    contentValues.put(MediaStore.Files.FileColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS + "/QHomeBase")
+                }
+                contentResolver.insert(MediaStore.Files.getContentUri("external"), contentValues)
+            }
+            else -> {
+                // Default to Documents
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    contentValues.put(MediaStore.Files.FileColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS + "/QHomeBase")
+                }
+                contentResolver.insert(MediaStore.Files.getContentUri("external"), contentValues)
+            }
+        }
+        
+        if (uri == null) {
+            throw Exception("Failed to create MediaStore entry")
+        }
+        
+        // Write file content to MediaStore URI
+        try {
+            val outputStream: OutputStream? = contentResolver.openOutputStream(uri)
+            if (outputStream != null) {
+                val inputStream = FileInputStream(file)
+                inputStream.copyTo(outputStream)
+                inputStream.close()
+                outputStream.close()
+                Log.d("MainActivity", "✅ Saved file to MediaStore: $fileName -> $uri")
+                return uri
+            } else {
+                throw Exception("Failed to open output stream for URI: $uri")
+            }
+        } catch (e: Exception) {
+            // Clean up the entry if writing failed
+            try {
+                contentResolver.delete(uri, null, null)
+            } catch (deleteException: Exception) {
+                Log.e("MainActivity", "Error deleting failed MediaStore entry: ${deleteException.message}")
+            }
+            throw Exception("Failed to write file content: ${e.message}")
+        }
+    }
+    
+    /**
+     * Check if file exists in MediaStore by querying with display name and mime type
+     */
+    private fun checkFileExistsInMediaStore(fileName: String, mimeType: String, fileType: String): Boolean {
+        val contentResolver = contentResolver
+        val projection = arrayOf(MediaStore.MediaColumns._ID)
+        val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.MIME_TYPE} = ?"
+        val selectionArgs = arrayOf(fileName, mimeType)
+        
+        val uri: Uri = when (fileType) {
+            "image" -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            "video" -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            "audio" -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            "document" -> MediaStore.Files.getContentUri("external")
+            else -> MediaStore.Files.getContentUri("external")
+        }
+        
+        val cursor = contentResolver.query(uri, projection, selection, selectionArgs, null)
+        val exists = cursor?.count ?: 0 > 0
+        cursor?.close()
+        
+        Log.d("MainActivity", "File $fileName exists in MediaStore: $exists")
+        return exists
+    }
+    
+    /**
+     * Get file URI from MediaStore by querying with display name and mime type
+     */
+    private fun getFileUriFromMediaStore(fileName: String, mimeType: String, fileType: String): Uri? {
+        val contentResolver = contentResolver
+        val projection = arrayOf(MediaStore.MediaColumns._ID)
+        val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.MIME_TYPE} = ?"
+        val selectionArgs = arrayOf(fileName, mimeType)
+        
+        val uri: Uri = when (fileType) {
+            "image" -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            "video" -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            "audio" -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            "document" -> MediaStore.Files.getContentUri("external")
+            else -> MediaStore.Files.getContentUri("external")
+        }
+        
+        val cursor = contentResolver.query(uri, projection, selection, selectionArgs, null)
+        val fileUri: Uri? = if (cursor != null && cursor.moveToFirst()) {
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+            val id = cursor.getLong(idColumn)
+            Uri.withAppendedPath(uri, id.toString())
+        } else {
+            null
+        }
+        cursor?.close()
+        
+        return fileUri
     }
 }
 

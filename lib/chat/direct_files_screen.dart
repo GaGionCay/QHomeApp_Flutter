@@ -4,33 +4,33 @@ import 'package:flutter/cupertino.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path/path.dart' as path;
-import '../models/chat/group_file.dart';
+import '../models/chat/direct_chat_file.dart';
 import '../chat/chat_service.dart';
 import '../chat/public_file_storage_service.dart';
 import '../auth/api_client.dart';
 
-class GroupFilesScreen extends StatefulWidget {
-  final String groupId;
-  final String groupName;
+class DirectFilesScreen extends StatefulWidget {
+  final String conversationId;
+  final String otherParticipantName;
 
-  const GroupFilesScreen({
+  const DirectFilesScreen({
     super.key,
-    required this.groupId,
-    required this.groupName,
+    required this.conversationId,
+    required this.otherParticipantName,
   });
 
   @override
-  State<GroupFilesScreen> createState() => _GroupFilesScreenState();
+  State<DirectFilesScreen> createState() => _DirectFilesScreenState();
 }
 
-class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerProviderStateMixin {
+class _DirectFilesScreenState extends State<DirectFilesScreen> with SingleTickerProviderStateMixin {
   final ChatService _chatService = ChatService();
   final ScrollController _scrollController = ScrollController();
   late TabController _tabController;
 
-  List<GroupFile> _allFiles = [];
-  List<GroupFile> _imageFiles = [];
-  List<GroupFile> _documentFiles = [];
+  List<DirectChatFile> _allFiles = [];
+  List<DirectChatFile> _imageFiles = [];
+  List<DirectChatFile> _documentFiles = [];
   
   bool _isLoading = false;
   bool _isLoadingMore = false;
@@ -65,7 +65,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
   }
 
   /// Check if file is an image based on mimeType, fileType, or file extension
-  bool _isImageFile(GroupFile file) {
+  bool _isImageFile(DirectChatFile file) {
     // First check mimeType (preferred)
     if (file.mimeType != null && file.mimeType!.isNotEmpty) {
       final mimeType = file.mimeType!.toLowerCase();
@@ -139,16 +139,16 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
     }
 
     try {
-      final response = await _chatService.getGroupFiles(
-        groupId: widget.groupId,
+      final response = await _chatService.getDirectFiles(
+        conversationId: widget.conversationId,
         page: _currentPage,
         size: _pageSize,
       );
 
       // Debug: Print file information
-      print('📋 [GroupFilesScreen] Loaded ${response.content.length} files');
+      print('📋 [DirectFilesScreen] Loaded ${response.content.length} files');
       for (var file in response.content) {
-        print('📄 [GroupFilesScreen] File: ${file.fileName}, mimeType: ${file.mimeType}, fileType: ${file.fileType}, size: ${file.fileSize}');
+        print('📄 [DirectFilesScreen] File: ${file.fileName}, mimeType: ${file.mimeType}, fileType: ${file.fileType}, size: ${file.fileSize}');
       }
 
       setState(() {
@@ -166,7 +166,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
       });
       
       // Debug: Print categorized files
-      print('🖼️ [GroupFilesScreen] Images: ${_imageFiles.length}, Documents: ${_documentFiles.length}');
+      print('🖼️ [DirectFilesScreen] Images: ${_imageFiles.length}, Documents: ${_documentFiles.length}');
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -186,7 +186,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
   }
 
   /// Download image to Pictures/<AppName> directory
-  Future<void> _downloadImage(GroupFile file) async {
+  Future<void> _downloadImage(DirectChatFile file) async {
     try {
       // Check if image already exists
       final fileType = PublicFileStorageService.getFileType(file.mimeType ?? file.fileType, file.fileName);
@@ -250,7 +250,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
   }
 
   /// Open image in full-screen viewer
-  void _openImageViewer(GroupFile file, List<GroupFile> allImages) {
+  void _openImageViewer(DirectChatFile file, List<DirectChatFile> allImages) {
     final initialIndex = allImages.indexOf(file);
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -264,7 +264,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
   }
 
   /// Download and open document file
-  Future<void> _downloadAndOpenFile(GroupFile file) async {
+  Future<void> _downloadAndOpenFile(DirectChatFile file) async {
     try {
       // Determine file type and mime type
       final fileType = PublicFileStorageService.getFileType(
@@ -281,7 +281,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
       );
       
       if (existingPath != null) {
-        print('✅ [GroupFilesScreen] File already exists: $existingPath');
+        print('✅ [DirectFilesScreen] File already exists: $existingPath');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -340,7 +340,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
       // Open file
       await _openFile(savedPath, mimeType);
     } catch (e) {
-      print('❌ [GroupFilesScreen] Error downloading file: $e');
+      print('❌ [DirectFilesScreen] Error downloading file: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -376,20 +376,20 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
       String? detectedMimeType = mimeType;
       if (detectedMimeType == null || detectedMimeType.isEmpty || detectedMimeType == 'IMAGE' || detectedMimeType == 'DOCUMENT') {
         detectedMimeType = _getMimeTypeFromFileName(filePath);
-        print('📂 [GroupFilesScreen] Detected mimeType: $detectedMimeType for file: $filePath');
+        print('📂 [DirectFilesScreen] Detected mimeType: $detectedMimeType for file: $filePath');
       }
 
-      print('📂 [GroupFilesScreen] Opening file: $filePath with mimeType: $detectedMimeType');
+      print('📂 [DirectFilesScreen] Opening file: $filePath with mimeType: $detectedMimeType');
       final result = await OpenFile.open(
         filePath, 
         type: detectedMimeType ?? 'application/octet-stream',
       );
       
-      print('📂 [GroupFilesScreen] Open result: ${result.type}, message: ${result.message}');
+      print('📂 [DirectFilesScreen] Open result: ${result.type}, message: ${result.message}');
       
       // If permission denied and file is in Download directory (and not MediaStore URI), try to copy to app documents directory
       if (result.type == ResultType.permissionDenied && !isMediaStoreUri && filePath.contains('/Download/')) {
-        print('⚠️ [GroupFilesScreen] Permission denied for Download directory, copying to app documents directory');
+        print('⚠️ [DirectFilesScreen] Permission denied for Download directory, copying to app documents directory');
         try {
           // Get file name from path
           final fileName = filePath.split('/').last;
@@ -400,7 +400,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
           final file = File(filePath);
           await file.copy(newFilePath);
           
-          print('✅ [GroupFilesScreen] Copied file to app documents directory: $newFilePath');
+          print('✅ [DirectFilesScreen] Copied file to app documents directory: $newFilePath');
           
           // Try to open from new location
           final newResult = await OpenFile.open(
@@ -418,7 +418,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
           }
           return;
         } catch (e) {
-          print('❌ [GroupFilesScreen] Error copying file: $e');
+          print('❌ [DirectFilesScreen] Error copying file: $e');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -439,7 +439,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
         );
       }
     } catch (e) {
-      print('❌ [GroupFilesScreen] Error opening file: $e');
+      print('❌ [DirectFilesScreen] Error opening file: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Lỗi khi mở file: ${e.toString()}')),
@@ -448,11 +448,9 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
     }
   }
 
-  /// Get MIME type from file name - Enhanced to match DirectFilesScreen
   String? _getMimeTypeFromFileName(String filePath) {
     final extension = path.extension(filePath).toLowerCase();
     switch (extension) {
-      // Documents
       case '.pdf':
         return 'application/pdf';
       case '.doc':
@@ -467,9 +465,6 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
         return 'application/zip';
       case '.rar':
         return 'application/x-rar-compressed';
-      case '.txt':
-        return 'text/plain';
-      // Images
       case '.jpg':
       case '.jpeg':
         return 'image/jpeg';
@@ -481,32 +476,14 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
         return 'image/webp';
       case '.heic':
         return 'image/heic';
-      case '.bmp':
-        return 'image/bmp';
-      case '.svg':
-        return 'image/svg+xml';
-      // Videos
       case '.mp4':
         return 'video/mp4';
-      case '.avi':
-        return 'video/x-msvideo';
-      case '.mov':
-        return 'video/quicktime';
-      case '.mkv':
-        return 'video/x-matroska';
-      case '.webm':
-        return 'video/webm';
-      // Audio
       case '.mp3':
         return 'audio/mpeg';
       case '.m4a':
         return 'audio/mp4';
-      case '.wav':
-        return 'audio/wav';
-      case '.aac':
-        return 'audio/aac';
-      case '.ogg':
-        return 'audio/ogg';
+      case '.txt':
+        return 'text/plain';
       default:
         return null;
     }
@@ -593,18 +570,18 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Files - ${widget.groupName}'),
+        title: Text('Files - ${widget.otherParticipantName}'),
         backgroundColor: theme.colorScheme.surface,
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
             Tab(
               icon: Icon(CupertinoIcons.photo),
-              text: 'Images',
+              text: 'Ảnh',
             ),
             Tab(
               icon: Icon(CupertinoIcons.doc),
-              text: 'Documents',
+              text: 'Files',
             ),
           ],
         ),
@@ -700,7 +677,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
     );
   }
 
-  Widget _buildImageThumbnail(GroupFile file, ThemeData theme) {
+  Widget _buildImageThumbnail(DirectChatFile file, ThemeData theme) {
     return GestureDetector(
       onTap: () => _openImageViewer(file, _imageFiles),
       child: Stack(
@@ -797,7 +774,7 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
     );
   }
 
-  Widget _buildDocumentItem(GroupFile file, ThemeData theme) {
+  Widget _buildDocumentItem(DirectChatFile file, ThemeData theme) {
     // Determine file category for badge
     String fileCategory = _getFileCategory(file);
     Color categoryColor = _getCategoryColor(fileCategory);
@@ -933,12 +910,11 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
     );
   }
 
-  /// Get file category for display - Same logic as DirectFilesScreen
-  String _getFileCategory(GroupFile file) {
+  /// Get file category for display
+  String _getFileCategory(DirectChatFile file) {
     final mimeType = file.mimeType ?? file.fileType ?? '';
     final lowerMimeType = mimeType.toLowerCase();
     
-    // Check mimeType first (preferred)
     if (lowerMimeType.startsWith('image/') || file.fileType == 'IMAGE') {
       return 'ẢNH';
     } else if (lowerMimeType.startsWith('video/') || file.fileType == 'VIDEO') {
@@ -960,15 +936,6 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
                path.extension(file.fileName).toLowerCase() == '.rar') {
       return 'ZIP';
     } else {
-      // Fallback: check file extension for common types
-      final ext = path.extension(file.fileName).toLowerCase();
-      if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.bmp', '.svg'].contains(ext)) {
-        return 'ẢNH';
-      } else if (['.mp4', '.avi', '.mov', '.mkv', '.webm'].contains(ext)) {
-        return 'VIDEO';
-      } else if (['.mp3', '.wav', '.aac', '.ogg', '.m4a'].contains(ext)) {
-        return 'AUDIO';
-      }
       return 'FILE';
     }
   }
@@ -1020,9 +987,9 @@ class _GroupFilesScreenState extends State<GroupFilesScreen> with SingleTickerPr
 
 /// Full-screen image viewer with zoom, swipe to close, and download
 class _FullScreenImageViewer extends StatefulWidget {
-  final List<GroupFile> images;
+  final List<DirectChatFile> images;
   final int initialIndex;
-  final Function(GroupFile) onDownload;
+  final Function(DirectChatFile) onDownload;
 
   const _FullScreenImageViewer({
     required this.images,
