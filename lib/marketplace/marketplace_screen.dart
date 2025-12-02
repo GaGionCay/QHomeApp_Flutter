@@ -838,10 +838,9 @@ class _PostCard extends StatelessWidget {
                                   borderRadius: BorderRadius.circular(12),
                                   child: Builder(
                                     builder: (context) {
-                                      // Use thumbnail for lazy loading, fallback to full image
-                                      final imageUrl = (image.thumbnailUrl != null && image.thumbnailUrl!.isNotEmpty)
-                                          ? image.thumbnailUrl!
-                                          : image.imageUrl;
+                                      // Use full imageUrl for better quality (same as PostDetailScreen)
+                                      // CachedNetworkImage will handle lazy loading automatically
+                                      final imageUrl = image.imageUrl;
                                       
                                       if (imageUrl.isNotEmpty) {
                                         return CachedNetworkImage(
