@@ -1,9 +1,10 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_application_1/chat/chat_service.dart';
-import 'package:flutter_application_1/models/chat/conversation.dart';
-import 'package:flutter_application_1/models/chat/direct_message.dart';
 import 'package:image_picker/image_picker.dart';
+import '../models/chat/direct_message.dart';
+import '../models/chat/conversation.dart';
+import 'chat_service.dart';
+
 class DirectChatViewModel extends ChangeNotifier {
   final ChatService _service;
   
@@ -257,6 +258,29 @@ class DirectChatViewModel extends ChangeNotifier {
     } catch (e) {
       _error = 'Lỗi khi upload file: ${e.toString()}';
       print('❌ [DirectChatViewModel] Error uploading file: $e');
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> uploadVideo(String conversationId, File videoFile) async {
+    try {
+      final result = await _service.uploadDirectVideo(
+        conversationId: conversationId,
+        videoFile: videoFile,
+      );
+      
+      await sendMessage(
+        conversationId: conversationId,
+        messageType: 'VIDEO',
+        fileUrl: result['fileUrl'],
+        fileName: result['fileName'] ?? 'video.mp4',
+        fileSize: int.tryParse(result['fileSize']?.toString() ?? '0'),
+        mimeType: result['mimeType'] ?? 'video/mp4',
+      );
+    } catch (e) {
+      _error = 'Lỗi khi upload video: ${e.toString()}';
+      print('❌ [DirectChatViewModel] Error uploading video: $e');
       notifyListeners();
       rethrow;
     }

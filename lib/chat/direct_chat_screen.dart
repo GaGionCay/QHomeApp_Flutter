@@ -11,6 +11,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:open_file/open_file.dart';
+import 'package:video_compress/video_compress.dart';
 import '../models/chat/direct_message.dart';
 import '../auth/api_client.dart';
 import '../auth/token_storage.dart';
@@ -396,6 +397,164 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('❌ Lỗi khi chọn ảnh: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickVideo(ImageSource source) async {
+    // Check if conversation is blocked
+    final conversation = _viewModel.conversation;
+    if (conversation != null && conversation.status == 'BLOCKED') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Không thể gửi video: Cuộc trò chuyện đã bị chặn'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      print('🎥 [DirectChatScreen] Bắt đầu chọn video từ ${source == ImageSource.gallery ? "gallery" : "camera"}');
+      
+      // Request camera permission if needed
+      if (source == ImageSource.camera) {
+        final cameraStatus = await Permission.camera.request();
+        if (!cameraStatus.isGranted) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Cần quyền truy cập camera để quay video'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+      }
+
+      // Pick video with max duration 10 seconds
+      final video = await _imagePicker.pickVideo(
+        source: source,
+        maxDuration: const Duration(seconds: 10),
+      );
+
+      if (video == null) {
+        print('⚠️ [DirectChatScreen] Người dùng hủy chọn video');
+        return;
+      }
+
+      print('✅ [DirectChatScreen] Đã chọn video: ${video.path}');
+
+      if (mounted) {
+        // Show loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đang xử lý video (tối đa 10 giây)...'),
+            duration: Duration(days: 1),
+          ),
+        );
+
+        try {
+          // Compress and trim video to 10 seconds
+          print('🎬 [DirectChatScreen] Bắt đầu compress và trim video...');
+          final compressedVideo = await VideoCompress.compressVideo(
+            video.path,
+            quality: VideoQuality.MediumQuality,
+            deleteOrigin: false,
+            includeAudio: true,
+            frameRate: 30,
+          );
+
+          if (compressedVideo == null) {
+            throw Exception('Không thể compress video');
+          }
+
+          print('✅ [DirectChatScreen] Video đã được compress: ${compressedVideo.path}');
+
+          // Get video duration
+          final mediaInfo = await VideoCompress.getMediaInfo(compressedVideo.path!);
+          final duration = mediaInfo.duration ?? 0;
+          print('📹 [DirectChatScreen] Video duration: ${duration}ms');
+
+          // If video is longer than 10 seconds, trim it
+          File? finalVideoFile;
+          if (duration > 10000) {
+            print('✂️ [DirectChatScreen] Video dài hơn 10 giây, đang trim...');
+            // Trim video to first 10 seconds
+            final trimmedVideo = await VideoCompress.compressVideo(
+              compressedVideo.path!,
+              quality: VideoQuality.MediumQuality,
+              deleteOrigin: false,
+              includeAudio: true,
+              frameRate: 30,
+              startTime: 0,
+              duration: 10,
+            );
+
+            if (trimmedVideo == null) {
+              throw Exception('Không thể trim video');
+            }
+
+            finalVideoFile = File(trimmedVideo.path!);
+            print('✅ [DirectChatScreen] Video đã được trim: ${finalVideoFile.path}');
+          } else {
+            finalVideoFile = File(compressedVideo.path!);
+          }
+
+          // Save to public storage
+          final fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+          final savedPath = await PublicFileStorageService.saveToPublicDirectory(
+            finalVideoFile,
+            fileName,
+            'video',
+            'video/mp4',
+          );
+          print('✅ [DirectChatScreen] Video đã được lưu vào public storage: $savedPath');
+
+          // Upload video
+          print('📤 [DirectChatScreen] Bắt đầu upload video...');
+          await _viewModel.uploadVideo(widget.conversationId, File(savedPath));
+          print('✅ [DirectChatScreen] Upload và gửi video thành công!');
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✅ Đã gửi video thành công!'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
+            _scrollToBottomIfNeeded();
+          }
+        } catch (e, stackTrace) {
+          print('❌ [DirectChatScreen] Lỗi khi xử lý video: $e');
+          print('📋 [DirectChatScreen] Stack trace: $stackTrace');
+          if (mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('❌ Lỗi khi gửi video: ${e.toString()}'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 5),
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      print('❌ [DirectChatScreen] Lỗi khi chọn video: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Lỗi: ${e.toString()}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -1037,6 +1196,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                   controller: _messageController,
                   onSend: _sendMessage,
                   onPickImage: _pickImage,
+                  onPickVideo: _pickVideo,
                   onStartRecording: _startRecording,
                   onStopRecording: _stopRecording,
                   onPickFile: _pickFile,
@@ -1145,6 +1305,7 @@ class _DirectMessageInput extends StatefulWidget {
   final TextEditingController controller;
   final VoidCallback onSend;
   final Function(ImageSource) onPickImage;
+  final Function(ImageSource) onPickVideo;
   final VoidCallback onStartRecording;
   final Function({bool send}) onStopRecording;
   final VoidCallback onPickFile;
@@ -1156,6 +1317,7 @@ class _DirectMessageInput extends StatefulWidget {
     required this.controller,
     required this.onSend,
     required this.onPickImage,
+    required this.onPickVideo,
     required this.onStartRecording,
     required this.onStopRecording,
     required this.onPickFile,
@@ -1287,6 +1449,10 @@ class _DirectMessageInputState extends State<_DirectMessageInput> {
                       widget.onPickImage(ImageSource.gallery);
                     } else if (value == 'image_camera') {
                       widget.onPickImage(ImageSource.camera);
+                    } else if (value == 'video_gallery') {
+                      widget.onPickVideo(ImageSource.gallery);
+                    } else if (value == 'video_camera') {
+                      widget.onPickVideo(ImageSource.camera);
                     } else if (value == 'file') {
                       widget.onPickFile();
                     }
@@ -1309,6 +1475,26 @@ class _DirectMessageInputState extends State<_DirectMessageInput> {
                           Icon(CupertinoIcons.camera, size: 20),
                           SizedBox(width: 8),
                           Text('Chụp ảnh'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'video_gallery',
+                      child: Row(
+                        children: [
+                          Icon(CupertinoIcons.videocam, size: 20),
+                          SizedBox(width: 8),
+                          Text('Chọn video (10s)'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'video_camera',
+                      child: Row(
+                        children: [
+                          Icon(CupertinoIcons.videocam_fill, size: 20),
+                          SizedBox(width: 8),
+                          Text('Quay video (10s)'),
                         ],
                       ),
                     ),

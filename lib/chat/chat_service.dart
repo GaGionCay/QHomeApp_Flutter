@@ -467,6 +467,38 @@ class ChatService {
     }
   }
 
+  /// Upload video
+  Future<Map<String, dynamic>> uploadVideo({
+    required String groupId,
+    required File videoFile,
+  }) async {
+    try {
+      print('📤 [ChatService] Bắt đầu upload video cho groupId: $groupId');
+      print('📤 [ChatService] Video path: ${videoFile.path}');
+      print('📤 [ChatService] Video size: ${await videoFile.length()} bytes');
+      
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(
+          videoFile.path,
+          filename: videoFile.path.split('/').last,
+        ),
+      });
+
+      print('📤 [ChatService] Gửi request POST /uploads/chat/$groupId/video');
+      final response = await _apiClient.dio.post(
+        '/uploads/chat/$groupId/video',
+        data: formData,
+      );
+
+      print('✅ [ChatService] Upload video thành công!');
+      return response.data as Map<String, dynamic>;
+    } catch (e, stackTrace) {
+      print('❌ [ChatService] Lỗi khi upload video: $e');
+      print('📋 [ChatService] Stack trace: $stackTrace');
+      throw Exception('Lỗi khi upload video: ${e.toString()}');
+    }
+  }
+
   // ==================== DIRECT CHAT 1-1 METHODS ====================
 
   /// Get all conversations
@@ -806,6 +838,38 @@ class ChatService {
       return response.data as Map<String, dynamic>;
     } catch (e) {
       throw Exception('Lỗi khi upload audio: ${e.toString()}');
+    }
+  }
+
+  /// Upload video for direct chat
+  Future<Map<String, dynamic>> uploadDirectVideo({
+    required String conversationId,
+    required File videoFile,
+  }) async {
+    try {
+      print('📤 [ChatService] Bắt đầu upload video cho conversationId: $conversationId');
+      print('📤 [ChatService] Video path: ${videoFile.path}');
+      print('📤 [ChatService] Video size: ${await videoFile.length()} bytes');
+      
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(
+          videoFile.path,
+          filename: videoFile.path.split('/').last,
+        ),
+      });
+
+      print('📤 [ChatService] Gửi request POST /uploads/chat/direct/$conversationId/video');
+      final response = await _apiClient.dio.post(
+        '/uploads/chat/direct/$conversationId/video',
+        data: formData,
+      );
+
+      print('✅ [ChatService] Upload video thành công!');
+      return response.data as Map<String, dynamic>;
+    } catch (e, stackTrace) {
+      print('❌ [ChatService] Lỗi khi upload video: $e');
+      print('📋 [ChatService] Stack trace: $stackTrace');
+      throw Exception('Lỗi khi upload video: ${e.toString()}');
     }
   }
 

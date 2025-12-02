@@ -309,6 +309,38 @@ class ChatMessageViewModel extends ChangeNotifier {
     }
   }
 
+  Future<Map<String, dynamic>> uploadVideo(File videoFile) async {
+    try {
+      return await _service.uploadVideo(
+        groupId: _groupId!,
+        videoFile: videoFile,
+      );
+    } catch (e) {
+      _error = 'Lỗi khi upload video: ${e.toString()}';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> sendVideoMessage(String fileUrl, String fileName, int fileSize) async {
+    try {
+      final message = await _service.sendMessage(
+        groupId: _groupId!,
+        messageType: 'VIDEO',
+        fileUrl: fileUrl,
+        fileName: fileName,
+        fileSize: fileSize,
+        mimeType: 'video/mp4',
+      );
+      _messages.add(message);
+      notifyListeners();
+    } catch (e) {
+      _error = 'Lỗi khi gửi video: ${e.toString()}';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
   /// Add a new incoming message (from WebSocket or real-time updates)
   void addIncomingMessage(ChatMessage message) {
     // Check if message already exists to avoid duplicates
