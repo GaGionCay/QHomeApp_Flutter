@@ -178,15 +178,28 @@ class CreatePostViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // Always create contactInfo if phone or email is provided, even if empty strings
       MarketplaceContactInfo? contactInfo;
-      if ((_phone != null && _phone!.isNotEmpty) || 
-          (_email != null && _email!.isNotEmpty)) {
+      final phoneValue = _phone?.trim();
+      final emailValue = _email?.trim();
+      
+      print('📞 [CreatePostViewModel] Preparing contactInfo:');
+      print('   - phone: $phoneValue');
+      print('   - email: $emailValue');
+      print('   - showPhone: $_showPhone');
+      print('   - showEmail: $_showEmail');
+      
+      if ((phoneValue != null && phoneValue.isNotEmpty) || 
+          (emailValue != null && emailValue.isNotEmpty)) {
         contactInfo = MarketplaceContactInfo(
-          phone: _phone?.isNotEmpty == true ? _phone : null,
-          email: _email?.isNotEmpty == true ? _email : null,
+          phone: phoneValue?.isNotEmpty == true ? phoneValue : null,
+          email: emailValue?.isNotEmpty == true ? emailValue : null,
           showPhone: _showPhone,
           showEmail: _showEmail,
         );
+        print('✅ [CreatePostViewModel] Created contactInfo: ${contactInfo.toJson()}');
+      } else {
+        print('⚠️ [CreatePostViewModel] No phone or email provided, contactInfo will be null');
       }
 
       final post = await _service.createPost(

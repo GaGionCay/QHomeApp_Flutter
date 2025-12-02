@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:dio/dio.dart';
 import '../auth/token_storage.dart';
 import 'marketplace_view_model.dart';
 import 'marketplace_service.dart';
@@ -49,9 +48,12 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
   }
 
   void _onScroll() {
+    // Load more when user scrolls to 80% of the list
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent * 0.8) {
-      _viewModel.loadMore();
+      if (!_viewModel.isLoadingMore && _viewModel.hasMore) {
+        _viewModel.loadMore();
+      }
     }
   }
 
@@ -248,9 +250,15 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
               child: ListView.builder(
                 controller: _scrollController,
                 padding: const EdgeInsets.all(16),
-                itemCount: viewModel.posts.length + (viewModel.isLoading ? 1 : 0),
+                // Use key to preserve scroll position when items are added
+                key: const PageStorageKey<String>('marketplace_posts_list'),
+                cacheExtent: 500, // Cache items outside viewport for smoother scrolling
+                itemCount: viewModel.posts.length + 
+                          (viewModel.isLoadingMore ? 1 : 0) + 
+                          (!viewModel.hasMore && viewModel.posts.isNotEmpty ? 1 : 0),
                 itemBuilder: (context, index) {
-                  if (index >= viewModel.posts.length) {
+                  // Show loading indicator at the end when loading more
+                  if (index == viewModel.posts.length && viewModel.isLoadingMore) {
                     return const Center(
                       child: Padding(
                         padding: EdgeInsets.all(16.0),
@@ -258,11 +266,29 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                       ),
                     );
                   }
+                  
+                  // Show "No more posts" indicator
+                  if (index == viewModel.posts.length && !viewModel.hasMore) {
+                    return Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Center(
+                        child: Text(
+                          'Không còn bài viết nào nữa',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ),
+                    );
+                  }
 
                   final post = viewModel.posts[index];
+                  // Use stable key to preserve scroll position
                   return _PostCard(
+                    key: ValueKey(post.id),
                     post: post,
                     currentResidentId: _currentResidentId,
+                    categories: viewModel.categories,
                     onTap: () {
                       Navigator.push(
                         context,
@@ -473,11 +499,14 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
 class _PostCard extends StatelessWidget {
   final MarketplacePost post;
   final String? currentResidentId;
+  final List<MarketplaceCategory> categories;
   final VoidCallback onTap;
 
   const _PostCard({
+    super.key,
     required this.post,
     this.currentResidentId,
+    required this.categories,
     required this.onTap,
   });
 
@@ -671,7 +700,7 @@ class _PostCard extends StatelessWidget {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              post.categoryName.isNotEmpty ? post.categoryName : post.category,
+                              _getCategoryDisplayName(post),
                               style: theme.textTheme.labelSmall?.copyWith(
                                 color: theme.colorScheme.onSecondaryContainer,
                               ),
@@ -763,19 +792,17 @@ class _PostCard extends StatelessWidget {
                     ],
                   ),
                 ],
-                // Images
+                // Images - Only show first 3 images, click to view all
                 if (post.images.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   SizedBox(
                     height: 200,
                     child: ListView.builder(
                       scrollDirection: Axis.horizontal,
-                      itemCount: post.images.length,
+                      itemCount: post.images.length > 3 ? 3 : post.images.length,
                       itemBuilder: (context, index) {
                         final image = post.images[index];
-                        // Debug: Log image URLs
-                        print('🖼️ [MarketplaceScreen] Displaying image $index: thumbnailUrl=${image.thumbnailUrl}, imageUrl=${image.imageUrl}');
-                        print('🖼️ [MarketplaceScreen] Image widget created for index $index');
+                        final isLastVisible = index == 2 && post.images.length > 3;
                         return GestureDetector(
                           onTap: () {
                             // Open image viewer
@@ -789,81 +816,96 @@ class _PostCard extends StatelessWidget {
                               ),
                             );
                           },
-                          child: Container(
-                            width: 200,
-                            margin: EdgeInsets.only(
-                              right: index < post.images.length - 1 ? 8 : 0,
-                            ),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              color: theme.colorScheme.surfaceContainerHighest,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.08),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
+                          child: Stack(
+                            children: [
+                              Container(
+                                width: 200,
+                                margin: EdgeInsets.only(
+                                  right: index < (post.images.length > 3 ? 2 : post.images.length - 1) ? 8 : 0,
                                 ),
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Builder(
-                                builder: (context) {
-                                  // Use original imageUrl for better quality, fallback to thumbnail if needed
-                                  if (image.imageUrl.isNotEmpty) {
-                                    print('🖼️ [MarketplaceScreen] Building image widget: ${image.imageUrl}');
-                                    return CachedNetworkImage(
-                                      imageUrl: image.imageUrl,
-                                      fit: BoxFit.cover,
-                                      httpHeaders: {
-                                        'ngrok-skip-browser-warning': 'true', // Skip ngrok browser warning
-                                      },
-                                      placeholder: (context, url) {
-                                        print('🖼️ [MarketplaceScreen] Loading image: $url');
-                                            return Container(
-                                              color: theme.colorScheme.surfaceContainerHighest,
-                                              child: Center(
-                                                child: SizedBox(
-                                                  width: 24,
-                                                  height: 24,
-                                                  child: CircularProgressIndicator(
-                                                    strokeWidth: 2,
-                                                    color: theme.colorScheme.primary,
-                                                  ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  color: theme.colorScheme.surfaceContainerHighest,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.08),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Builder(
+                                    builder: (context) {
+                                      // Use thumbnail for lazy loading, fallback to full image
+                                      final imageUrl = (image.thumbnailUrl != null && image.thumbnailUrl!.isNotEmpty)
+                                          ? image.thumbnailUrl!
+                                          : image.imageUrl;
+                                      
+                                      if (imageUrl.isNotEmpty) {
+                                        return CachedNetworkImage(
+                                          imageUrl: imageUrl,
+                                          fit: BoxFit.cover,
+                                          httpHeaders: {
+                                            'ngrok-skip-browser-warning': 'true',
+                                          },
+                                          placeholder: (context, url) => Container(
+                                            color: theme.colorScheme.surfaceContainerHighest,
+                                            child: Center(
+                                              child: SizedBox(
+                                                width: 24,
+                                                height: 24,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  color: theme.colorScheme.primary,
                                                 ),
                                               ),
-                                            );
-                                          },
-                                          errorWidget: (context, url, error) {
-                                            print('❌ [MarketplaceScreen] Error loading image: url=$url, error=$error');
-                                            print('❌ [MarketplaceScreen] Error type: ${error.runtimeType}');
-                                            if (error is DioException) {
-                                              print('❌ [MarketplaceScreen] DioException: statusCode=${error.response?.statusCode}, message=${error.message}');
-                                            }
-                                            return Container(
-                                              color: theme.colorScheme.surfaceContainerHighest,
-                                              child: Icon(
-                                                CupertinoIcons.photo,
-                                                size: 48,
-                                                color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
-                                              ),
-                                            );
-                                          },
+                                            ),
+                                          ),
+                                          errorWidget: (context, url, error) => Container(
+                                            color: theme.colorScheme.surfaceContainerHighest,
+                                            child: Icon(
+                                              CupertinoIcons.photo,
+                                              size: 48,
+                                              color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                                            ),
+                                          ),
                                         );
-                                  } else {
-                                    print('⚠️ [MarketplaceScreen] No image URL available');
-                                    return Container(
-                                      color: theme.colorScheme.surfaceContainerHighest,
-                                      child: Icon(
-                                        CupertinoIcons.photo,
-                                        size: 48,
-                                        color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
-                                      ),
-                                    );
-                                  }
-                                },
+                                      } else {
+                                        return Container(
+                                          color: theme.colorScheme.surfaceContainerHighest,
+                                          child: Icon(
+                                            CupertinoIcons.photo,
+                                            size: 48,
+                                            color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                  ),
+                                ),
                               ),
-                            ),
+                              // Show "+X more" badge on last visible image if there are more images
+                              if (isLastVisible)
+                                Positioned.fill(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      color: Colors.black.withValues(alpha: 0.5),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        '+${post.images.length - 3}',
+                                        style: theme.textTheme.titleLarge?.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         );
                       },
@@ -916,5 +958,26 @@ class _PostCard extends StatelessWidget {
     }
   }
 
+  String _getCategoryDisplayName(MarketplacePost post) {
+    // Backend có thể trả về categoryName = category code, nên luôn map từ danh sách categories
+    if (post.category.isNotEmpty) {
+      try {
+        final category = categories.firstWhere(
+          (cat) => cat.code == post.category,
+        );
+        // Luôn dùng name (tiếng Việt) từ danh sách categories
+        return category.name;
+      } catch (e) {
+        // Nếu không tìm thấy category, kiểm tra categoryName
+        if (post.categoryName.isNotEmpty && post.categoryName != post.category) {
+          return post.categoryName;
+        }
+        // Fallback về code
+        return post.category;
+      }
+    }
+    
+    return '';
+  }
 }
 

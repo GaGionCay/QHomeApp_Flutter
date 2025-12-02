@@ -67,9 +67,21 @@ class MarketplacePost {
       category: json['category'] ?? '',
       categoryName: json['categoryName'] ?? json['category'] ?? '',
       status: json['status'] ?? 'ACTIVE',
-      contactInfo: json['contactInfo'] != null 
-          ? MarketplaceContactInfo.fromJson(json['contactInfo'] is Map ? json['contactInfo'] : {})
-          : null,
+      contactInfo: () {
+        final contactInfoJson = json['contactInfo'];
+        print('📞 [MarketplacePost] ContactInfo data: $contactInfoJson');
+        if (contactInfoJson == null) {
+          print('⚠️ [MarketplacePost] ContactInfo is null for post: ${json['id']}');
+          return null;
+        }
+        if (contactInfoJson is Map) {
+          final contactInfo = MarketplaceContactInfo.fromJson(Map<String, dynamic>.from(contactInfoJson));
+          print('✅ [MarketplacePost] Parsed ContactInfo - phone: ${contactInfo.phone}, email: ${contactInfo.email}, showPhone: ${contactInfo.showPhone}, showEmail: ${contactInfo.showEmail}');
+          return contactInfo;
+        }
+        print('⚠️ [MarketplacePost] ContactInfo is not a Map for post: ${json['id']}');
+        return null;
+      }(),
       location: json['location'],
       viewCount: json['viewCount'] ?? 0,
       commentCount: json['commentCount'] ?? 0,

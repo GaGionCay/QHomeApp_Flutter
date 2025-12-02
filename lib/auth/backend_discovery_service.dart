@@ -242,13 +242,26 @@ class BackendDiscoveryService {
 
     // Priority 8: If we have saved manual URL but it wasn't reachable,
     // try it again as last resort (might be temporary network issue)
+    // BUT: Don't use ngrok URLs as last resort if they're offline (they won't come back)
     if (savedManualUrl != null && savedManualUrl.isNotEmpty) {
-      final parsedInfo = _parseUrl(savedManualUrl);
-      if (parsedInfo != null) {
+      final isSavedNgrokUrl = savedManualUrl.contains('ngrok') || savedManualUrl.contains('ngrok-free.app');
+      
+      // If it's an ngrok URL and we already checked it's not reachable, don't use it
+      // (ngrok URLs don't come back - they're permanently offline if not reachable)
+      if (isSavedNgrokUrl) {
         if (kDebugMode) {
-          print('⚠️ Using saved manual URL as last resort: $savedManualUrl');
+          print('⚠️ Saved ngrok URL was not reachable, skipping as last resort (ngrok URLs don\'t recover)');
         }
-        return parsedInfo;
+        // Don't use offline ngrok URL - continue to fallback
+      } else {
+        // For non-ngrok URLs (IP addresses), try as last resort (might be temporary network issue)
+        final parsedInfo = _parseUrl(savedManualUrl);
+        if (parsedInfo != null) {
+          if (kDebugMode) {
+            print('⚠️ Using saved manual URL (IP address) as last resort: $savedManualUrl');
+          }
+          return parsedInfo;
+        }
       }
     }
 
@@ -292,14 +305,18 @@ class BackendDiscoveryService {
       );
     } else if (Platform.isAndroid) {
       // Android: try emulator IP first
-      // If saved URL exists, use it as last resort
+      // If saved URL exists and it's NOT an offline ngrok URL, use it as last resort
       if (savedManualUrl != null && savedManualUrl.isNotEmpty) {
-        final parsedInfo = _parseUrl(savedManualUrl);
-        if (parsedInfo != null) {
-          if (kDebugMode) {
-            print('⚠️ Using saved URL as last resort (may not be reachable): $savedManualUrl');
+        final isSavedNgrokUrl = savedManualUrl.contains('ngrok') || savedManualUrl.contains('ngrok-free.app');
+        if (!isSavedNgrokUrl) {
+          // Only use non-ngrok URLs (IP addresses) as last resort
+          final parsedInfo = _parseUrl(savedManualUrl);
+          if (parsedInfo != null) {
+            if (kDebugMode) {
+              print('⚠️ Using saved URL (IP address) as last resort: $savedManualUrl');
+            }
+            return parsedInfo;
           }
-          return parsedInfo;
         }
       }
       return BackendInfo(
@@ -309,14 +326,18 @@ class BackendDiscoveryService {
       );
     } else if (Platform.isIOS) {
       // iOS: use localhost (works on simulator)
-      // If saved URL exists, use it as last resort
+      // If saved URL exists and it's NOT an offline ngrok URL, use it as last resort
       if (savedManualUrl != null && savedManualUrl.isNotEmpty) {
-        final parsedInfo = _parseUrl(savedManualUrl);
-        if (parsedInfo != null) {
-          if (kDebugMode) {
-            print('⚠️ Using saved URL as last resort (may not be reachable): $savedManualUrl');
+        final isSavedNgrokUrl = savedManualUrl.contains('ngrok') || savedManualUrl.contains('ngrok-free.app');
+        if (!isSavedNgrokUrl) {
+          // Only use non-ngrok URLs (IP addresses) as last resort
+          final parsedInfo = _parseUrl(savedManualUrl);
+          if (parsedInfo != null) {
+            if (kDebugMode) {
+              print('⚠️ Using saved URL (IP address) as last resort: $savedManualUrl');
+            }
+            return parsedInfo;
           }
-          return parsedInfo;
         }
       }
       return BackendInfo(
@@ -457,14 +478,68 @@ class BackendDiscoveryService {
       
       try {
         final response = await dio.get(healthUrl).timeout(timeout);
+        
+        // Check for ngrok offline error in response
+        if (response.headers.value('ngrok-error-code') == 'ERR_NGROK_3200') {
+          if (kDebugMode) {
+            print('⚠️ Ngrok offline error detected in reachability check: ${info.baseUrl}');
+          }
+          return false;
+        }
+        
+        // Check response data for offline message
+        if (response.data is String && (response.data as String).contains('is offline')) {
+          if (kDebugMode) {
+            print('⚠️ Ngrok offline message detected in reachability check: ${info.baseUrl}');
+          }
+          return false;
+        }
+        
         return response.statusCode == 200;
-      } catch (_) {
+      } catch (e) {
         // If health endpoint fails, try base URL
         try {
           final response = await dio.get(url).timeout(timeout);
+          
+          // Check for ngrok offline error
+          if (response.headers.value('ngrok-error-code') == 'ERR_NGROK_3200') {
+            if (kDebugMode) {
+              print('⚠️ Ngrok offline error detected in reachability check: ${info.baseUrl}');
+            }
+            return false;
+          }
+          
+          // Check response data for offline message
+          if (response.data is String && (response.data as String).contains('is offline')) {
+            if (kDebugMode) {
+              print('⚠️ Ngrok offline message detected in reachability check: ${info.baseUrl}');
+            }
+            return false;
+          }
+          
           // Accept 200-499 (even 4xx means server is reachable, just endpoint might not exist)
+          // But reject 404 with ngrok error code (means ngrok is offline)
+          if (response.statusCode == 404 && isNgrokUrl) {
+            // This might be ngrok offline, but we can't be sure without checking headers/data
+            // Let's be conservative and return false for 404 on ngrok URLs
+            return false;
+          }
+          
           return response.statusCode != null && response.statusCode! < 500;
-        } catch (_) {
+        } catch (err) {
+          // Check if error response contains ngrok offline info
+          if (err is DioException && err.response != null) {
+            final headers = err.response!.headers;
+            final responseData = err.response!.data;
+            
+            if (headers.value('ngrok-error-code') == 'ERR_NGROK_3200' ||
+                (responseData is String && responseData.contains('is offline'))) {
+              if (kDebugMode) {
+                print('⚠️ Ngrok offline error detected in error response: ${info.baseUrl}');
+              }
+              return false;
+            }
+          }
           return false;
         }
       }

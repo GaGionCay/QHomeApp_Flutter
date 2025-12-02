@@ -19,10 +19,14 @@ class MarketplaceViewModel extends ChangeNotifier {
   List<MarketplacePost> _posts = [];
   List<MarketplaceCategory> _categories = [];
   bool _isLoading = false;
+  bool _isLoadingMore = false;
   String? _error;
   int _currentPage = 0;
   int? _pageSize;
   bool _hasMore = true;
+  
+  // Memory management: keep max 100 posts in memory
+  static const int _maxPostsInMemory = 100;
 
   // Filters
   String? _selectedCategory;
@@ -35,6 +39,7 @@ class MarketplaceViewModel extends ChangeNotifier {
   List<MarketplacePost> get posts => _posts;
   List<MarketplaceCategory> get categories => _categories;
   bool get isLoading => _isLoading;
+  bool get isLoadingMore => _isLoadingMore;
   String? get error => _error;
   bool get hasMore => _hasMore;
   String? get selectedCategory => _selectedCategory;
@@ -160,18 +165,23 @@ class MarketplaceViewModel extends ChangeNotifier {
 
     if (!_hasMore && !refresh) return;
 
-    _isLoading = true;
+    // Set loading state
+    if (refresh) {
+      _isLoading = true;
+    } else {
+      _isLoadingMore = true;
+    }
     _error = null;
     notifyListeners();
 
     try {
-      final targetPage = page ?? _currentPage;
+      final targetPage = page ?? (refresh ? 0 : _currentPage + 1);
       // If showAllBuildings is true, don't send buildingId (null = all buildings)
       // If showAllBuildings is false, send buildingId to filter by user's building
       final response = await _service.getPosts(
         buildingId: _showAllBuildings ? null : _buildingId,
         page: targetPage,
-        size: _pageSize ?? 20,
+        size: _pageSize ?? 15, // Reduced from 20 to 15 for initial load
         search: _searchQuery,
         category: _selectedCategory,
         status: _statusFilter,
@@ -183,17 +193,26 @@ class MarketplaceViewModel extends ChangeNotifier {
       if (refresh) {
         _posts = response.content;
       } else {
+        // Append new posts
         _posts.addAll(response.content);
+        
+        // Memory management: remove old posts if exceeding limit
+        if (_posts.length > _maxPostsInMemory) {
+          final removeCount = _posts.length - _maxPostsInMemory;
+          _posts.removeRange(0, removeCount);
+        }
       }
 
       _currentPage = targetPage;
       _hasMore = !response.last;
 
       _isLoading = false;
+      _isLoadingMore = false;
       _error = null;
       notifyListeners();
     } catch (e) {
       _isLoading = false;
+      _isLoadingMore = false;
       _error = 'Lỗi khi tải danh sách bài đăng: ${e.toString()}';
       notifyListeners();
     }

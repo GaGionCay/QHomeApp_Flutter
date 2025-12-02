@@ -116,6 +116,18 @@ class MarketplaceService {
         if (location != null) 'location': location,
         if (contactInfo != null) 'contactInfo': contactInfo.toJson(),
       };
+      
+      // Debug logging
+      print('📞 [MarketplaceService] Creating post with contactInfo:');
+      print('   - contactInfo: $contactInfo');
+      if (contactInfo != null) {
+        print('   - phone: ${contactInfo.phone}');
+        print('   - email: ${contactInfo.email}');
+        print('   - showPhone: ${contactInfo.showPhone}');
+        print('   - showEmail: ${contactInfo.showEmail}');
+        print('   - contactInfo.toJson(): ${contactInfo.toJson()}');
+      }
+      print('   - requestData: $requestData');
 
       // Convert to JSON string
       final jsonString = jsonEncode(requestData);
@@ -147,6 +159,10 @@ class MarketplaceService {
         );
       }
 
+      print('📤 [MarketplaceService] Sending POST request to /posts');
+      print('   - FormData keys: ${formData.fields.map((e) => e.key).toList()}');
+      print('   - FormData files: ${formData.files.map((e) => e.key).toList()}');
+      
       final response = await _apiClient.dio.post(
         '/posts',
         data: formData,
@@ -154,6 +170,16 @@ class MarketplaceService {
           contentType: 'multipart/form-data',
         ),
       );
+      
+      print('✅ [MarketplaceService] Received response: ${response.statusCode}');
+      if (response.data != null) {
+        print('   - Response data keys: ${(response.data as Map).keys.toList()}');
+        if (response.data['contactInfo'] != null) {
+          print('   - Response contactInfo: ${response.data['contactInfo']}');
+        } else {
+          print('   - ⚠️ Response contactInfo is null');
+        }
+      }
 
       return MarketplacePost.fromJson(response.data);
     } catch (e) {

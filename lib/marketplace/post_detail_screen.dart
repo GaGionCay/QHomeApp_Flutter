@@ -283,6 +283,29 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     });
   }
 
+  String _getCategoryDisplayName(MarketplacePost post) {
+    // Backend có thể trả về categoryName = category code, nên luôn map từ danh sách categories
+    if (post.category.isNotEmpty) {
+      try {
+        final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+        final category = viewModel.categories.firstWhere(
+          (cat) => cat.code == post.category,
+        );
+        // Luôn dùng name (tiếng Việt) từ danh sách categories
+        return category.name;
+      } catch (e) {
+        // Nếu không tìm thấy category, kiểm tra categoryName
+        if (post.categoryName.isNotEmpty && post.categoryName != post.category) {
+          return post.categoryName;
+        }
+        // Fallback về code
+        return post.category;
+      }
+    }
+    
+    return '';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -805,31 +828,33 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             
             const SizedBox(height: 12),
             
-            // Price and Category
-            Row(
+            // Price, Category, Location
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 if (post.price != null)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
+                      horizontal: 10,
+                      vertical: 4,
                     ),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           CupertinoIcons.money_dollar,
-                          size: 16,
+                          size: 14,
                           color: theme.colorScheme.onPrimaryContainer,
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          _formatPrice(post.price!),
-                          style: theme.textTheme.titleSmall?.copyWith(
+                          post.priceDisplay,
+                          style: theme.textTheme.labelSmall?.copyWith(
                             color: theme.colorScheme.onPrimaryContainer,
                             fontWeight: FontWeight.w600,
                           ),
@@ -837,135 +862,164 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                       ],
                     ),
                   ),
-                if (post.category.isNotEmpty) ...[
-                  if (post.price != null) const SizedBox(width: 8),
+                if (post.category.isNotEmpty)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
+                      horizontal: 10,
+                      vertical: 4,
                     ),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.secondaryContainer,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           CupertinoIcons.square_grid_2x2,
-                          size: 14,
+                          size: 12,
                           color: theme.colorScheme.onSecondaryContainer,
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          post.categoryName.isNotEmpty ? post.categoryName : post.category,
-                          style: theme.textTheme.bodySmall?.copyWith(
+                          _getCategoryDisplayName(post),
+                          style: theme.textTheme.labelSmall?.copyWith(
                             color: theme.colorScheme.onSecondaryContainer,
                           ),
                         ),
                       ],
                     ),
                   ),
-                ],
-              ],
-            ),
-            
-            // Location
-            if (post.location != null && post.location!.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(
-                    CupertinoIcons.location,
-                    size: 16,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      post.location!,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
-                      ),
+                if (post.location != null && post.location!.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
                     ),
-                  ),
-                ],
-              ),
-            ],
-            
-            // Contact Info
-            if (post.contactInfo != null && 
-                ((post.contactInfo!.showPhone && post.contactInfo!.phone != null && post.contactInfo!.phone!.isNotEmpty) ||
-                 (post.contactInfo!.showEmail && post.contactInfo!.email != null && post.contactInfo!.email!.isNotEmpty))) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: theme.colorScheme.outline.withValues(alpha: 0.12),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.tertiaryContainer,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          CupertinoIcons.phone_circle,
-                          size: 18,
-                          color: theme.colorScheme.primary,
+                          CupertinoIcons.location,
+                          size: 12,
+                          color: theme.colorScheme.onTertiaryContainer,
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Thông tin liên hệ',
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            post.location!,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.onTertiaryContainer,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    if (post.contactInfo!.showPhone && post.contactInfo!.phone != null && post.contactInfo!.phone!.isNotEmpty) ...[
-                      Row(
-                        children: [
-                          Icon(
-                            CupertinoIcons.phone,
-                            size: 16,
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                  ),
+              ],
+            ),
+            
+            // Contact Info - Always show phone and email if available
+            Builder(
+              builder: (context) {
+                // Debug logging
+                print('📞 [PostDetailScreen] Checking contactInfo:');
+                print('   - contactInfo is null: ${post.contactInfo == null}');
+                if (post.contactInfo != null) {
+                  print('   - phone: ${post.contactInfo!.phone}');
+                  print('   - email: ${post.contactInfo!.email}');
+                  print('   - showPhone: ${post.contactInfo!.showPhone}');
+                  print('   - showEmail: ${post.contactInfo!.showEmail}');
+                }
+                
+                if (post.contactInfo != null && 
+                    ((post.contactInfo!.phone != null && post.contactInfo!.phone!.isNotEmpty) ||
+                     (post.contactInfo!.email != null && post.contactInfo!.email!.isNotEmpty))) {
+                  return Column(
+                    children: [
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: theme.colorScheme.outline.withValues(alpha: 0.12),
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            post.contactInfo!.phone!,
-                            style: theme.textTheme.bodyMedium,
-                          ),
-                        ],
-                      ),
-                      if (post.contactInfo!.showEmail && post.contactInfo!.email != null && post.contactInfo!.email!.isNotEmpty)
-                        const SizedBox(height: 8),
-                    ],
-                    if (post.contactInfo!.showEmail && post.contactInfo!.email != null && post.contactInfo!.email!.isNotEmpty)
-                      Row(
-                        children: [
-                          Icon(
-                            CupertinoIcons.mail,
-                            size: 16,
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              post.contactInfo!.email!,
-                              style: theme.textTheme.bodyMedium,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  CupertinoIcons.phone_circle,
+                                  size: 18,
+                                  color: theme.colorScheme.primary,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Thông tin liên hệ',
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 12),
+                            if (post.contactInfo!.phone != null && post.contactInfo!.phone!.isNotEmpty) ...[
+                              Row(
+                                children: [
+                                  Icon(
+                                    CupertinoIcons.phone,
+                                    size: 16,
+                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      post.contactInfo!.phone!,
+                                      style: theme.textTheme.bodyMedium,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (post.contactInfo!.email != null && post.contactInfo!.email!.isNotEmpty)
+                                const SizedBox(height: 12),
+                            ],
+                            if (post.contactInfo!.email != null && post.contactInfo!.email!.isNotEmpty)
+                              Row(
+                                children: [
+                                  Icon(
+                                    CupertinoIcons.mail,
+                                    size: 16,
+                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      post.contactInfo!.email!,
+                                      style: theme.textTheme.bodyMedium,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
                       ),
-                  ],
-                ),
-              ),
-            ],
+                    ],
+                  );
+                } else {
+                  return const SizedBox.shrink();
+                }
+              },
+            ),
             
             const SizedBox(height: 12),
             
@@ -1274,13 +1328,5 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
-  String _formatPrice(double price) {
-    if (price >= 1000000) {
-      return '${(price / 1000000).toStringAsFixed(1)}M đ';
-    } else if (price >= 1000) {
-      return '${(price / 1000).toStringAsFixed(0)}K đ';
-    }
-    return '${price.toStringAsFixed(0)} đ';
-  }
 }
 

@@ -378,6 +378,54 @@ class ApiClient {
           }
         }
 
+        // Check for ngrok offline error (ERR_NGROK_3200)
+        // This happens when ngrok URL is cached but ngrok has stopped or URL changed
+        if (err.response != null) {
+          final statusCode = err.response!.statusCode;
+          final headers = err.response!.headers;
+          final responseData = err.response!.data;
+          
+          // Check for ngrok offline error
+          final isNgrokOffline = headers.value('ngrok-error-code') == 'ERR_NGROK_3200' ||
+                                (responseData is String && responseData.contains('is offline')) ||
+                                (statusCode == 404 && 
+                                 (_activeHostIp.contains('ngrok') || _activeHostIp.contains('ngrok-free.app')));
+          
+          if (isNgrokOffline && !kIsWeb && _isInitialized) {
+            print('⚠️ Detected ngrok offline error (ERR_NGROK_3200)');
+            print('   Current ngrok URL is offline: $_activeHostIp');
+            print('   Clearing cached ngrok URL and re-discovering...');
+            
+            try {
+              // Clear cached ngrok URL
+              await _discoveryService.clearManualBackendUrl();
+              print('✅ Cleared cached ngrok URL');
+              
+              // Re-discover backend (will find new ngrok URL or fall back to IP)
+              final backendInfo = await _discoveryService.discoverBackend();
+              print('✅ Re-discovered backend: ${backendInfo.hostname}:${backendInfo.port} (${backendInfo.discoveryMethod})');
+              
+              // Update active host
+              _setActiveHost(backendInfo.hostname, backendInfo.port, backendInfo.isHttps);
+              
+              // Update base URL for this request
+              options.baseUrl = _activeBaseUrl;
+              
+              // Retry the request with new base URL
+              try {
+                final clonedResponse = await dio.fetch(options);
+                print('✅ Retry successful after clearing offline ngrok URL');
+                return handler.resolve(clonedResponse);
+              } catch (retryErr) {
+                print('⚠️ Retry after clearing ngrok URL failed: $retryErr');
+                // Continue to next error handler (401, etc.)
+              }
+            } catch (clearErr) {
+              print('⚠️ Failed to clear ngrok URL and re-discover: $clearErr');
+            }
+          }
+        }
+
         if (err.response?.statusCode == 401) {
           final refreshToken = await _storage.readRefreshToken();
 
