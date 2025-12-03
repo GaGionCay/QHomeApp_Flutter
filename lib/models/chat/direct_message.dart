@@ -21,6 +21,12 @@ class DirectMessage {
   final bool isDeleted;
   final DateTime createdAt;
   final DateTime updatedAt;
+  // Marketplace post fields (for MARKETPLACE_POST message type)
+  final String? postId;
+  final String? postTitle;
+  final String? postThumbnailUrl;
+  final double? postPrice;
+  final String? deepLink;
 
   DirectMessage({
     required this.id,
@@ -44,6 +50,12 @@ class DirectMessage {
     required this.isDeleted,
     required this.createdAt,
     required this.updatedAt,
+    // Marketplace post fields
+    this.postId,
+    this.postTitle,
+    this.postThumbnailUrl,
+    this.postPrice,
+    this.deepLink,
   });
 
   factory DirectMessage.fromJson(Map<String, dynamic> json) {
@@ -73,6 +85,14 @@ class DirectMessage {
           : null,
       isEdited: json['isEdited'] ?? false,
       isDeleted: json['isDeleted'] ?? false,
+      // Marketplace post fields
+      postId: json['postId']?.toString(),
+      postTitle: json['postTitle']?.toString(),
+      postThumbnailUrl: json['postThumbnailUrl']?.toString(),
+      postPrice: json['postPrice'] != null 
+          ? (json['postPrice'] is num ? json['postPrice'].toDouble() : double.tryParse(json['postPrice'].toString()))
+          : null,
+      deepLink: json['deepLink']?.toString(),
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'])
           : DateTime.now(),
@@ -105,6 +125,12 @@ class DirectMessage {
       'isDeleted': isDeleted,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      // Marketplace post fields
+      'postId': postId,
+      'postTitle': postTitle,
+      'postThumbnailUrl': postThumbnailUrl,
+      'postPrice': postPrice,
+      'deepLink': deepLink,
     };
   }
 }

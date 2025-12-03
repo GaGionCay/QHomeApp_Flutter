@@ -11,8 +11,11 @@ import 'create_post_screen.dart';
 import 'post_detail_screen.dart';
 import 'image_viewer_screen.dart';
 import '../chat/chat_service.dart';
+import '../chat/group_list_screen.dart';
+import '../chat/direct_chat_list_screen.dart';
 import '../auth/api_client.dart';
 import '../core/event_bus.dart';
+import 'package:flutter/services.dart';
 
 class MarketplaceScreen extends StatefulWidget {
   const MarketplaceScreen({super.key});
@@ -260,6 +263,127 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
         );
       }
     }
+  }
+
+  Future<void> _showShareBottomSheet(BuildContext context, MarketplacePost post) async {
+    final theme = Theme.of(context);
+    final deepLink = 'app://marketplace/post/${post.id}';
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            ListTile(
+              leading: Icon(
+                CupertinoIcons.link,
+                color: theme.colorScheme.primary,
+              ),
+              title: const Text('Sao chép liên kết'),
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: deepLink));
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Đã sao chép liên kết'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                CupertinoIcons.chat_bubble_2,
+                color: theme.colorScheme.primary,
+              ),
+              title: const Text('Chia sẻ vào chat'),
+              onTap: () {
+                Navigator.pop(context);
+                _navigateToChatSelection(context, post);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _navigateToChatSelection(BuildContext context, MarketplacePost post) async {
+    final theme = Theme.of(context);
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            ListTile(
+              leading: Icon(
+                CupertinoIcons.group_solid,
+                color: theme.colorScheme.primary,
+              ),
+              title: const Text('Chia sẻ vào nhóm chat'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => GroupListScreen(sharePost: post),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                CupertinoIcons.person_2,
+                color: theme.colorScheme.primary,
+              ),
+              title: const Text('Chia sẻ vào tin nhắn riêng'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => DirectChatListScreen(sharePost: post),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -544,6 +668,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                       );
                     },
                     onAuthorTap: () => _showUserOptions(context, post),
+                    onShareTap: () => _showShareBottomSheet(context, post),
                   );
                 },
               ),
@@ -746,6 +871,7 @@ class _PostCard extends StatelessWidget {
   final List<MarketplaceCategory> categories;
   final VoidCallback onTap;
   final VoidCallback? onAuthorTap;
+  final VoidCallback? onShareTap;
 
   const _PostCard({
     super.key,
@@ -754,6 +880,7 @@ class _PostCard extends StatelessWidget {
     required this.categories,
     required this.onTap,
     this.onAuthorTap,
+    this.onShareTap,
   });
 
   @override
@@ -868,11 +995,32 @@ class _PostCard extends StatelessWidget {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                          _formatDate(post.createdAt),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (onShareTap != null)
+                              GestureDetector(
+                                onTap: () {
+                                  if (onShareTap != null) {
+                                    onShareTap!();
+                                  }
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: Icon(
+                                    CupertinoIcons.share,
+                                    size: 18,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                              ),
+                            Text(
+                              _formatDate(post.createdAt),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),

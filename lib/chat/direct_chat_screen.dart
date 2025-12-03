@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:open_file/open_file.dart';
 import 'package:video_compress/video_compress.dart';
+import 'package:video_player/video_player.dart';
 import '../models/chat/direct_message.dart';
 import '../auth/api_client.dart';
 import '../auth/token_storage.dart';
@@ -21,6 +22,8 @@ import 'direct_chat_view_model.dart';
 import 'public_file_storage_service.dart';
 import 'message_local_path_service.dart';
 import 'direct_files_screen.dart';
+import '../marketplace/post_detail_screen.dart';
+import '../marketplace/marketplace_service.dart';
 // Reuse widgets from ChatScreen - import only what we need
 
 class DirectChatScreen extends StatefulWidget {
@@ -451,18 +454,37 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
 
       print('✅ [DirectChatScreen] Đã chọn video: ${video.path}');
 
+      // Check video duration BEFORE compression to avoid unnecessary processing
+      final originalMediaInfo = await VideoCompress.getMediaInfo(video.path);
+      final originalDuration = originalMediaInfo.duration ?? 0;
+      print('📹 [DirectChatScreen] Video gốc duration: ${originalDuration}ms (${(originalDuration / 1000).toStringAsFixed(2)}s)');
+
+      // Check if video is longer than 10.5 seconds (add 0.5s buffer for encoding tolerance)
+      if (originalDuration > 10500) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Video có thời lượng quá dài. Vui lòng chọn video ngắn hơn 10 giây.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+
       if (mounted) {
         // Show loading
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Đang xử lý video (tối đa 10 giây)...'),
+            content: Text('Đang xử lý video...'),
             duration: Duration(days: 1),
           ),
         );
 
         try {
-          // Compress and trim video to 10 seconds
-          print('🎬 [DirectChatScreen] Bắt đầu compress và trim video...');
+          // Compress video
+          print('🎬 [DirectChatScreen] Bắt đầu compress video...');
           final compressedVideo = await VideoCompress.compressVideo(
             video.path,
             quality: VideoQuality.MediumQuality,
@@ -477,50 +499,47 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
 
           print('✅ [DirectChatScreen] Video đã được compress: ${compressedVideo.path}');
 
-          // Get video duration
-          final mediaInfo = await VideoCompress.getMediaInfo(compressedVideo.path!);
-          final duration = mediaInfo.duration ?? 0;
-          print('📹 [DirectChatScreen] Video duration: ${duration}ms');
+          // Double-check duration after compression (with buffer)
+          final compressedMediaInfo = await VideoCompress.getMediaInfo(compressedVideo.path!);
+          final compressedDuration = compressedMediaInfo.duration ?? 0;
+          print('📹 [DirectChatScreen] Video sau compress duration: ${compressedDuration}ms (${(compressedDuration / 1000).toStringAsFixed(2)}s)');
 
-          // If video is longer than 10 seconds, trim it
-          File? finalVideoFile;
-          if (duration > 10000) {
-            print('✂️ [DirectChatScreen] Video dài hơn 10 giây, đang trim...');
-            // Trim video to first 10 seconds
-            final trimmedVideo = await VideoCompress.compressVideo(
-              compressedVideo.path!,
-              quality: VideoQuality.MediumQuality,
-              deleteOrigin: false,
-              includeAudio: true,
-              frameRate: 30,
-              startTime: 0,
-              duration: 10,
-            );
-
-            if (trimmedVideo == null) {
-              throw Exception('Không thể trim video');
+          // Check again with buffer (10.5 seconds) to account for encoding variations
+          if (compressedDuration > 10500) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('❌ Video có thời lượng quá dài sau khi xử lý. Vui lòng chọn video ngắn hơn 10 giây.'),
+                  backgroundColor: Colors.red,
+                  duration: Duration(seconds: 4),
+                ),
+              );
             }
-
-            finalVideoFile = File(trimmedVideo.path!);
-            print('✅ [DirectChatScreen] Video đã được trim: ${finalVideoFile.path}');
-          } else {
-            finalVideoFile = File(compressedVideo.path!);
+            return;
           }
 
-          // Save to public storage
-          final fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
-          final savedPath = await PublicFileStorageService.saveToPublicDirectory(
-            finalVideoFile,
-            fileName,
-            'video',
-            'video/mp4',
-          );
-          print('✅ [DirectChatScreen] Video đã được lưu vào public storage: $savedPath');
+          final finalVideoFile = File(compressedVideo.path!);
 
-          // Upload video
+          // Upload video first (from original file path)
           print('📤 [DirectChatScreen] Bắt đầu upload video...');
-          await _viewModel.uploadVideo(widget.conversationId, File(savedPath));
+          await _viewModel.uploadVideo(widget.conversationId, finalVideoFile);
           print('✅ [DirectChatScreen] Upload và gửi video thành công!');
+
+          // Save to public storage after successful upload
+          try {
+            final fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+            final savedPath = await PublicFileStorageService.saveToPublicDirectory(
+              finalVideoFile,
+              fileName,
+              'video',
+              'video/mp4',
+            );
+            print('✅ [DirectChatScreen] Video đã được lưu vào public storage: $savedPath');
+          } catch (e) {
+            print('⚠️ [DirectChatScreen] Lỗi khi lưu video vào public storage: $e');
+            // Don't fail the whole operation if saving to gallery fails
+          }
 
           if (mounted) {
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -1204,6 +1223,9 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                         onImageTap: (msg) {
                           _showFullScreenImage(context, msg);
                         },
+                        onDeepLinkTap: (deepLink) {
+                          _handleDeepLink(deepLink);
+                        },
                         onImageLongPress: (msg) {
                           _showImageOptionsBottomSheet(context, msg);
                         },
@@ -1236,6 +1258,38 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
     );
   }
 
+  void _handleDeepLink(String deepLink) {
+    // Parse deep-link: app://marketplace/post/{id}
+    final uri = Uri.parse(deepLink);
+    if (uri.scheme == 'app' && uri.host == 'marketplace' && uri.pathSegments.length >= 2) {
+      final postId = uri.pathSegments[1];
+      _navigateToPostDetail(postId);
+    }
+  }
+
+  Future<void> _navigateToPostDetail(String postId) async {
+    try {
+      final marketplaceService = MarketplaceService();
+      final post = await marketplaceService.getPostById(postId);
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PostDetailScreen(post: post),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể tải bài viết: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 }
 
 class _DirectLoadMoreButton extends StatelessWidget {
@@ -1631,6 +1685,7 @@ class _DirectMessageBubble extends StatelessWidget {
   final String? currentResidentId;
   final Function(DirectMessage)? onImageTap;
   final Function(DirectMessage)? onImageLongPress;
+  final Function(String)? onDeepLinkTap;
 
   const _DirectMessageBubble({
     super.key,
@@ -1638,6 +1693,7 @@ class _DirectMessageBubble extends StatelessWidget {
     this.currentResidentId,
     this.onImageTap,
     this.onImageLongPress,
+    this.onDeepLinkTap,
   });
 
   @override
@@ -1716,6 +1772,17 @@ class _DirectMessageBubble extends StatelessWidget {
                 isMe: isMe,
                 theme: theme,
               )
+            else if (message.messageType == 'VIDEO' && message.fileUrl != null)
+              _DirectVideoMessageWidget(
+                messageId: message.id,
+                videoUrl: _buildFullUrl(message.fileUrl!),
+                fileName: message.fileName ?? 'video.mp4',
+                fileSize: message.fileSize ?? 0,
+                senderId: message.senderId ?? '',
+                currentResidentId: currentResidentId,
+                isMe: isMe,
+                theme: theme,
+              )
             else if (message.messageType == 'FILE' && message.fileUrl != null)
               _DirectFileMessageWidget(
                 messageId: message.id,
@@ -1727,6 +1794,21 @@ class _DirectMessageBubble extends StatelessWidget {
                 currentResidentId: currentResidentId,
                 isMe: isMe,
                 theme: theme,
+              )
+            else if (message.messageType == 'MARKETPLACE_POST' && message.content != null)
+              _MarketplacePostCard(
+                postId: message.postId ?? '',
+                postTitle: message.postTitle ?? '',
+                postThumbnailUrl: message.postThumbnailUrl,
+                postPrice: message.postPrice,
+                deepLink: message.deepLink ?? '',
+                theme: theme,
+                onTap: () {
+                  // Handle deep-link navigation
+                  if (message.deepLink != null && message.deepLink!.isNotEmpty && onDeepLinkTap != null) {
+                    onDeepLinkTap!(message.deepLink!);
+                  }
+                },
               )
             else if (message.content != null && message.content!.isNotEmpty)
               Text(
@@ -2369,6 +2451,876 @@ class _FullScreenImageViewer extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DirectVideoMessageWidget extends StatefulWidget {
+  final String messageId;
+  final String videoUrl;
+  final String fileName;
+  final int fileSize;
+  final String senderId;
+  final String? currentResidentId;
+  final bool isMe;
+  final ThemeData theme;
+
+  const _DirectVideoMessageWidget({
+    required this.messageId,
+    required this.videoUrl,
+    required this.fileName,
+    required this.fileSize,
+    required this.senderId,
+    this.currentResidentId,
+    required this.isMe,
+    required this.theme,
+  });
+
+  @override
+  State<_DirectVideoMessageWidget> createState() => _DirectVideoMessageWidgetState();
+}
+
+class _DirectVideoMessageWidgetState extends State<_DirectVideoMessageWidget> {
+  VideoPlayerController? _controller;
+  bool _isInitialized = false;
+  bool _isPlaying = false;
+  bool _isLoading = true;
+  String? _error;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeVideo();
+  }
+
+  Future<void> _initializeVideo() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+
+      // Use network URL directly - no need to download
+      _controller = VideoPlayerController.networkUrl(
+        Uri.parse(widget.videoUrl),
+      );
+
+      await _controller!.initialize();
+      
+      // Add listener to update position and duration
+      _controller!.addListener(_videoListener);
+      
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+          _isLoading = false;
+          _duration = _controller!.value.duration;
+          _position = _controller!.value.position;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ [DirectVideoMessageWidget] Lỗi khởi tạo video: $e');
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _videoListener() {
+    if (mounted && _controller != null) {
+      setState(() {
+        _isPlaying = _controller!.value.isPlaying;
+        _duration = _controller!.value.duration;
+        _position = _controller!.value.position;
+      });
+    }
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  Future<void> _downloadVideo(BuildContext context) async {
+    try {
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Đang tải video: ${widget.fileName}'),
+          duration: const Duration(days: 1),
+        ),
+      );
+
+      final fileType = PublicFileStorageService.getFileType('video/mp4', widget.fileName);
+      await PublicFileStorageService.downloadAndSave(
+        widget.videoUrl,
+        widget.fileName,
+        fileType,
+        'video/mp4',
+        (received, total) {
+          if (total > 0 && context.mounted) {
+            final progressPercent = ((received / total) * 100).toInt();
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Đang tải: $progressPercent%'),
+                duration: const Duration(days: 1),
+              ),
+            );
+          }
+        },
+      );
+
+      if (context.mounted) {
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('✅ Đã tải video thành công!'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Lỗi khi tải video: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.removeListener(_videoListener);
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  void _showVideoOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: widget.theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: widget.theme.colorScheme.outline.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            ListTile(
+              leading: Icon(
+                CupertinoIcons.arrow_down_circle,
+                color: widget.theme.colorScheme.primary,
+              ),
+              title: const Text('Tải video về máy'),
+              onTap: () {
+                Navigator.pop(context);
+                _downloadVideo(context);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showFullScreenVideo() {
+    if (_controller == null || !_isInitialized) return;
+    
+    final context = this.context;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => _FullScreenVideoViewer(
+          controller: _controller!,
+          videoUrl: widget.videoUrl,
+          fileName: widget.fileName,
+          fileSize: widget.fileSize,
+          theme: widget.theme,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Container(
+        height: 200,
+        decoration: BoxDecoration(
+          color: widget.theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 8),
+              Text(
+                'Đang tải video...',
+                style: widget.theme.textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_error != null || !_isInitialized || _controller == null) {
+      return Container(
+        height: 200,
+        decoration: BoxDecoration(
+          color: widget.theme.colorScheme.errorContainer,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              CupertinoIcons.exclamationmark_triangle,
+              color: widget.theme.colorScheme.onErrorContainer,
+              size: 32,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Không thể tải video',
+              style: widget.theme.textTheme.bodySmall?.copyWith(
+                color: widget.theme.colorScheme.onErrorContainer,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: _showFullScreenVideo,
+      onLongPress: () => _showVideoOptions(context),
+      child: Container(
+        constraints: const BoxConstraints(
+          maxHeight: 300,
+          maxWidth: 250,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.black,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Stack(
+          children: [
+            // Video player - fill container
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox.expand(
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: _controller!.value.size.width,
+                    height: _controller!.value.size.height,
+                    child: VideoPlayer(_controller!),
+                  ),
+                ),
+              ),
+            ),
+            // Play/Pause overlay
+            Center(
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                padding: const EdgeInsets.all(12),
+                child: Icon(
+                  _isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
+                  color: Colors.white,
+                  size: 32,
+                ),
+              ),
+            ),
+            // Duration and file size (bottom)
+            Positioned(
+              bottom: 8,
+              left: 8,
+              right: 8,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Duration (current / total)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${_formatDuration(_position)} / ${_formatDuration(_duration)}',
+                      style: widget.theme.textTheme.labelSmall?.copyWith(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  // File size
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _formatFileSize(widget.fileSize),
+                      style: widget.theme.textTheme.labelSmall?.copyWith(
+                        color: Colors.white,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Full screen icon (top right)
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(
+                  CupertinoIcons.fullscreen,
+                  color: Colors.white,
+                  size: 16,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FullScreenVideoViewer extends StatefulWidget {
+  final VideoPlayerController controller;
+  final String videoUrl;
+  final String fileName;
+  final int fileSize;
+  final ThemeData theme;
+
+  const _FullScreenVideoViewer({
+    required this.controller,
+    required this.videoUrl,
+    required this.fileName,
+    required this.fileSize,
+    required this.theme,
+  });
+
+  @override
+  State<_FullScreenVideoViewer> createState() => _FullScreenVideoViewerState();
+}
+
+class _FullScreenVideoViewerState extends State<_FullScreenVideoViewer> {
+  bool _isPlaying = false;
+  bool _showControls = true;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
+  bool _isDragging = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _isPlaying = widget.controller.value.isPlaying;
+    _duration = widget.controller.value.duration;
+    _position = widget.controller.value.position;
+    widget.controller.addListener(_videoListener);
+  }
+
+  void _videoListener() {
+    if (mounted && !_isDragging) {
+      setState(() {
+        _isPlaying = widget.controller.value.isPlaying;
+        _duration = widget.controller.value.duration;
+        _position = widget.controller.value.position;
+      });
+    }
+  }
+
+  void _togglePlayPause() {
+    setState(() {
+      if (_isPlaying) {
+        widget.controller.pause();
+      } else {
+        widget.controller.play();
+      }
+      _isPlaying = !_isPlaying;
+    });
+  }
+
+  void _toggleControls() {
+    setState(() {
+      _showControls = !_showControls;
+    });
+  }
+
+  Future<void> _seekTo(Duration position) async {
+    await widget.controller.seekTo(position);
+    if (mounted) {
+      setState(() {
+        _position = position;
+      });
+    }
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  Future<void> _downloadVideo() async {
+    try {
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Đang tải video: ${widget.fileName}'),
+          duration: const Duration(days: 1),
+        ),
+      );
+
+      final fileType = PublicFileStorageService.getFileType('video/mp4', widget.fileName);
+      await PublicFileStorageService.downloadAndSave(
+        widget.videoUrl,
+        widget.fileName,
+        fileType,
+        'video/mp4',
+        (received, total) {
+          if (total > 0 && context.mounted) {
+            final progressPercent = ((received / total) * 100).toInt();
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Đang tải: $progressPercent%'),
+                duration: const Duration(days: 1),
+              ),
+            );
+          }
+        },
+      );
+
+      if (context.mounted) {
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('✅ Đã tải video thành công!'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Lỗi khi tải video: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showVideoOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: widget.theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: widget.theme.colorScheme.outline.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            ListTile(
+              leading: Icon(
+                CupertinoIcons.arrow_down_circle,
+                color: widget.theme.colorScheme.primary,
+              ),
+              title: const Text('Tải video về máy'),
+              onTap: () {
+                Navigator.pop(context);
+                _downloadVideo();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_videoListener);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: GestureDetector(
+        onTap: _toggleControls,
+        child: Stack(
+          children: [
+            // Video player
+            Center(
+              child: AspectRatio(
+                aspectRatio: widget.controller.value.aspectRatio,
+                child: VideoPlayer(widget.controller),
+              ),
+            ),
+            // Controls overlay
+            if (_showControls)
+              Stack(
+                children: [
+                  // Top bar with back button
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: SafeArea(
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.black.withValues(alpha: 0.7),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            IconButton(
+                              icon: const Icon(
+                                CupertinoIcons.back,
+                                color: Colors.white,
+                              ),
+                              onPressed: () => Navigator.pop(context),
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    widget.fileName,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    _formatFileSize(widget.fileSize),
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.7),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                CupertinoIcons.ellipsis,
+                                color: Colors.white,
+                              ),
+                              onPressed: _showVideoOptions,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Center play/pause button
+                  Center(
+                    child: GestureDetector(
+                      onTap: _togglePlayPause,
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          color: Colors.black54,
+                          shape: BoxShape.circle,
+                        ),
+                        padding: const EdgeInsets.all(20),
+                        child: Icon(
+                          _isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
+                          color: Colors.white,
+                          size: 48,
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Bottom controls with seek bar
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: SafeArea(
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [
+                              Colors.black.withValues(alpha: 0.7),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Seek slider
+                            SliderTheme(
+                              data: SliderTheme.of(context).copyWith(
+                                activeTrackColor: Colors.white,
+                                inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
+                                thumbColor: Colors.white,
+                                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                                overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                              ),
+                              child: Slider(
+                                value: _duration.inMilliseconds > 0
+                                    ? _position.inMilliseconds.toDouble()
+                                    : 0.0,
+                                max: _duration.inMilliseconds > 0
+                                    ? _duration.inMilliseconds.toDouble()
+                                    : 1.0,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _isDragging = true;
+                                    _position = Duration(milliseconds: value.toInt());
+                                  });
+                                },
+                                onChangeEnd: (value) {
+                                  _seekTo(Duration(milliseconds: value.toInt()));
+                                  setState(() {
+                                    _isDragging = false;
+                                  });
+                                },
+                              ),
+                            ),
+                            // Duration text
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  _formatDuration(_position),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                Text(
+                                  _formatDuration(_duration),
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.7),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MarketplacePostCard extends StatelessWidget {
+  final String postId;
+  final String postTitle;
+  final String? postThumbnailUrl;
+  final double? postPrice;
+  final String deepLink;
+  final ThemeData theme;
+  final VoidCallback onTap;
+
+  const _MarketplacePostCard({
+    required this.postId,
+    required this.postTitle,
+    this.postThumbnailUrl,
+    this.postPrice,
+    required this.deepLink,
+    required this.theme,
+    required this.onTap,
+  });
+
+  String _formatPrice(double? price) {
+    if (price == null) return 'Thỏa thuận';
+    return '${price.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')} đ';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(maxWidth: 280),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: theme.colorScheme.outline.withValues(alpha: 0.2),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Thumbnail
+            if (postThumbnailUrl != null && postThumbnailUrl!.isNotEmpty)
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                child: CachedNetworkImage(
+                  imageUrl: postThumbnailUrl!,
+                  width: double.infinity,
+                  height: 150,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    height: 150,
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    child: const Center(child: CircularProgressIndicator()),
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    height: 150,
+                    color: theme.colorScheme.errorContainer,
+                    child: Icon(
+                      CupertinoIcons.photo,
+                      color: theme.colorScheme.onErrorContainer,
+                    ),
+                  ),
+                ),
+              ),
+            // Content
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Title
+                  Text(
+                    postTitle,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  // Price
+                  Row(
+                    children: [
+                      Icon(
+                        CupertinoIcons.money_dollar,
+                        size: 16,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _formatPrice(postPrice),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // Link indicator
+                  Row(
+                    children: [
+                      Icon(
+                        CupertinoIcons.link,
+                        size: 14,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Xem bài viết',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -10,6 +10,7 @@ import '../models/chat/conversation.dart';
 import '../models/chat/direct_message.dart';
 import '../models/chat/direct_invitation.dart';
 import '../models/chat/direct_chat_file.dart';
+import '../models/marketplace_post.dart';
 import '../auth/api_client.dart';
 import 'chat_api_client.dart';
 
@@ -238,6 +239,12 @@ class ChatService {
     int? fileSize,
     String? mimeType,
     String? replyToMessageId,
+    // Marketplace post fields
+    String? postId,
+    String? postTitle,
+    String? postThumbnailUrl,
+    double? postPrice,
+    String? deepLink,
   }) async {
     try {
       final requestData = {
@@ -578,6 +585,12 @@ class ChatService {
     int? fileSize,
     String? mimeType,
     String? replyToMessageId,
+    // Marketplace post fields
+    String? postId,
+    String? postTitle,
+    String? postThumbnailUrl,
+    double? postPrice,
+    String? deepLink,
   }) async {
     try {
       // Use ApiClient directly since /api/direct-chat is not under /api/chat
@@ -591,6 +604,12 @@ class ChatService {
         'fileSize': fileSize,
         'mimeType': mimeType,
         'replyToMessageId': replyToMessageId,
+        // Marketplace post fields
+        if (postId != null) 'postId': postId,
+        if (postTitle != null) 'postTitle': postTitle,
+        if (postThumbnailUrl != null) 'postThumbnailUrl': postThumbnailUrl,
+        if (postPrice != null) 'postPrice': postPrice,
+        if (deepLink != null) 'deepLink': deepLink,
       };
       
       print('📤 [ChatService] Sending direct message:');
@@ -1028,6 +1047,68 @@ class ChatService {
       await apiClient.dio.post('/direct-chat/conversations/$conversationId/hide');
     } catch (e) {
       throw Exception('Lỗi khi ẩn cuộc trò chuyện: ${e.toString()}');
+    }
+  }
+
+  /// Share marketplace post to group chat
+  Future<ChatMessage> shareMarketplacePostToGroup({
+    required String groupId,
+    required MarketplacePost post,
+  }) async {
+    try {
+      final deepLink = 'app://marketplace/post/${post.id}';
+      final thumbnailUrl = post.images.isNotEmpty ? post.images.first.imageUrl : null;
+      
+      return await sendMessage(
+        groupId: groupId,
+        messageType: 'MARKETPLACE_POST',
+        content: null, // Will be set by backend from postId, postTitle, etc.
+        imageUrl: thumbnailUrl,
+        fileUrl: null,
+        fileName: null,
+        fileSize: null,
+        mimeType: null,
+        replyToMessageId: null,
+        // Marketplace post fields
+        postId: post.id,
+        postTitle: post.title,
+        postThumbnailUrl: thumbnailUrl,
+        postPrice: post.price,
+        deepLink: deepLink,
+      );
+    } catch (e) {
+      throw Exception('Lỗi khi chia sẻ bài viết: ${e.toString()}');
+    }
+  }
+
+  /// Share marketplace post to direct chat
+  Future<DirectMessage> shareMarketplacePostToDirect({
+    required String conversationId,
+    required MarketplacePost post,
+  }) async {
+    try {
+      final deepLink = 'app://marketplace/post/${post.id}';
+      final thumbnailUrl = post.images.isNotEmpty ? post.images.first.imageUrl : null;
+      
+      return await sendDirectMessage(
+        conversationId: conversationId,
+        messageType: 'MARKETPLACE_POST',
+        content: null, // Will be set by backend from postId, postTitle, etc.
+        imageUrl: thumbnailUrl,
+        fileUrl: null,
+        fileName: null,
+        fileSize: null,
+        mimeType: null,
+        replyToMessageId: null,
+        // Marketplace post fields
+        postId: post.id,
+        postTitle: post.title,
+        postThumbnailUrl: thumbnailUrl,
+        postPrice: post.price,
+        deepLink: deepLink,
+      );
+    } catch (e) {
+      throw Exception('Lỗi khi chia sẻ bài viết: ${e.toString()}');
     }
   }
 }

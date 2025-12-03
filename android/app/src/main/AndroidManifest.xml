@@ -97,6 +97,16 @@
                     android:scheme="qhomeapp"
                     android:host="vnpay-elevator-card-result" />
             </intent-filter>
+            <!-- Deep-link for marketplace posts -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="app"
+                    android:host="marketplace"
+                    android:pathPrefix="/post" />
+            </intent-filter>
         </activity>
 
         <meta-data

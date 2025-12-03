@@ -13,9 +13,12 @@ import 'direct_invitations_screen.dart';
 import 'blocked_users_screen.dart';
 import '../auth/token_storage.dart';
 import '../core/event_bus.dart';
+import '../models/marketplace_post.dart';
 
 class GroupListScreen extends StatefulWidget {
-  const GroupListScreen({super.key});
+  final MarketplacePost? sharePost;
+  
+  const GroupListScreen({super.key, this.sharePost});
 
   @override
   State<GroupListScreen> createState() => _GroupListScreenState();
@@ -466,18 +469,47 @@ class _GroupListScreenState extends State<GroupListScreen> {
                         ),
                         onLongPress: () => _showDirectConversationOptions(context, conversation),
                         onTap: () async {
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => DirectChatScreen(
+                          if (widget.sharePost != null) {
+                            // Share post to direct chat
+                            try {
+                              await _chatService.shareMarketplacePostToDirect(
                                 conversationId: conversation.id,
-                                otherParticipantName: otherParticipantName,
+                                post: widget.sharePost!,
+                              );
+                              if (mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('✅ Đã chia sẻ bài viết'),
+                                    duration: Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Lỗi: ${e.toString()}'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
+                          } else {
+                            // Normal navigation to chat
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => DirectChatScreen(
+                                  conversationId: conversation.id,
+                                  otherParticipantName: otherParticipantName,
+                                ),
                               ),
-                            ),
-                          );
-                          if (mounted) {
-                            _loadDirectConversations();
-                            _viewModel.refresh();
+                            );
+                            if (mounted) {
+                              _loadDirectConversations();
+                              _viewModel.refresh();
+                            }
                           }
                         },
                       ),
@@ -512,14 +544,43 @@ class _GroupListScreenState extends State<GroupListScreen> {
                     return _GroupListItem(
                       group: group,
                       onTap: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ChatScreen(groupId: group.id),
-                          ),
-                        );
-                        if (mounted) {
-                          viewModel.refresh();
+                        if (widget.sharePost != null) {
+                          // Share post to group
+                          try {
+                            await _chatService.shareMarketplacePostToGroup(
+                              groupId: group.id,
+                              post: widget.sharePost!,
+                            );
+                            if (mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('✅ Đã chia sẻ bài viết'),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Lỗi: ${e.toString()}'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        } else {
+                          // Normal navigation to chat
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ChatScreen(groupId: group.id),
+                            ),
+                          );
+                          if (mounted) {
+                            viewModel.refresh();
+                          }
                         }
                       },
                       onLongPress: () => _showGroupOptions(context, group),

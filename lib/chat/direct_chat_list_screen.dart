@@ -5,9 +5,12 @@ import 'chat_service.dart';
 import 'direct_chat_screen.dart';
 import 'direct_invitations_screen.dart';
 import '../core/event_bus.dart';
+import '../models/marketplace_post.dart';
 
 class DirectChatListScreen extends StatefulWidget {
-  const DirectChatListScreen({super.key});
+  final MarketplacePost? sharePost;
+  
+  const DirectChatListScreen({super.key, this.sharePost});
 
   @override
   State<DirectChatListScreen> createState() => _DirectChatListScreenState();
@@ -321,17 +324,46 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
                             ),
                             onLongPress: () => _showConversationOptions(context, conversation),
                             onTap: () async {
-                              await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => DirectChatScreen(
+                              if (widget.sharePost != null) {
+                                // Share post to direct chat
+                                try {
+                                  await _service.shareMarketplacePostToDirect(
                                     conversationId: conversation.id,
-                                    otherParticipantName: otherParticipantName,
+                                    post: widget.sharePost!,
+                                  );
+                                  if (mounted) {
+                                    Navigator.pop(context);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('✅ Đã chia sẻ bài viết'),
+                                        duration: Duration(seconds: 2),
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Lỗi: ${e.toString()}'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                }
+                              } else {
+                                // Normal navigation to chat
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => DirectChatScreen(
+                                      conversationId: conversation.id,
+                                      otherParticipantName: otherParticipantName,
+                                    ),
                                   ),
-                                ),
-                              );
-                              if (mounted) {
-                                _loadConversations();
+                                );
+                                if (mounted) {
+                                  _loadConversations();
+                                }
                               }
                             },
                           );
