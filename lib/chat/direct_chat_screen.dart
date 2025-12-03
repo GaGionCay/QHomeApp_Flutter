@@ -24,6 +24,7 @@ import 'message_local_path_service.dart';
 import 'direct_files_screen.dart';
 import '../marketplace/post_detail_screen.dart';
 import '../marketplace/marketplace_service.dart';
+import 'linkable_text_widget.dart';
 // Reuse widgets from ChatScreen - import only what we need
 
 class DirectChatScreen extends StatefulWidget {
@@ -1885,11 +1886,12 @@ class _DirectMessageBubble extends StatelessWidget {
                 },
               )
             else if (message.content != null && message.content!.isNotEmpty)
-              Text(
-                message.content!,
+              LinkableText(
+                text: message.content!,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: isMe ? Colors.white : theme.colorScheme.onSurface,
                 ),
+                linkColor: isMe ? Colors.blue.shade300 : Colors.blue.shade700,
               ),
             const SizedBox(height: 4),
             Text(
