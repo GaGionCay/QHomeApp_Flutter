@@ -31,7 +31,12 @@ class _DirectInvitationsScreenState extends State<DirectInvitationsScreen> {
     });
 
     try {
+      print('📤 [DirectInvitationsScreen] Loading pending invitations...');
       final invitations = await _service.getPendingDirectInvitations();
+      print('✅ [DirectInvitationsScreen] Loaded ${invitations.length} invitations');
+      for (var inv in invitations) {
+        print('   - Invitation ID: ${inv.id}, Inviter: ${inv.inviterId}, Invitee: ${inv.inviteeId}, Status: ${inv.status}');
+      }
       if (mounted) {
         setState(() {
           _invitations = invitations;
@@ -39,6 +44,7 @@ class _DirectInvitationsScreenState extends State<DirectInvitationsScreen> {
         });
       }
     } catch (e) {
+      print('❌ [DirectInvitationsScreen] Error loading invitations: $e');
       if (mounted) {
         setState(() {
           _error = 'Lỗi khi tải lời mời: ${e.toString()}';

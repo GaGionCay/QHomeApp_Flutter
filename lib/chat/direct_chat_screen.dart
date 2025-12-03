@@ -59,14 +59,19 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
   Timer? _scrollEndTimer;
   int _lastMessageCount = 0;
   String? _currentResidentId;
+  final ChatService _chatService = ChatService();
+  Set<String> _blockedUserIds = {}; // Cache blocked user IDs
 
   @override
   void initState() {
     super.initState();
     final service = ChatService();
     _viewModel = DirectChatViewModel(service);
+    _viewModel.addListener(_onViewModelChanged);
     _viewModel.initialize(widget.conversationId);
     _loadCurrentResidentId();
+    _loadBlockedUsers();
+    _setupBlockedUsersListener();
     
     _scrollController.addListener(_onScroll);
     
@@ -75,6 +80,85 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
         _lastMessageCount = _viewModel.messages.length;
       }
     });
+  }
+
+  void _onViewModelChanged() {
+    // Check if conversation is hidden
+    if (_viewModel.error != null && 
+        (_viewModel.error!.contains('hidden') || _viewModel.error!.contains('Hidden'))) {
+      // Conversation is hidden, navigate back
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Cuộc trò chuyện đã bị xóa. Tin nhắn mới sẽ xuất hiện lại khi có tin nhắn mới.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _viewModel.removeListener(_onViewModelChanged);
+    _scrollController.removeListener(_onScroll);
+    _scrollEndTimer?.cancel();
+    _recordingTimer?.cancel();
+    _audioRecorder.closeRecorder().catchError((e) {
+      print('⚠️ [DirectChatScreen] Error closing audio recorder: $e');
+    });
+    _audioPlayer.dispose();
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadBlockedUsers() async {
+    try {
+      final blockedUserIds = await _chatService.getBlockedUsers();
+      if (mounted) {
+        setState(() {
+          _blockedUserIds = blockedUserIds.toSet();
+        });
+      }
+    } catch (e) {
+      print('⚠️ [DirectChatScreen] Error loading blocked users: $e');
+    }
+  }
+
+  void _setupBlockedUsersListener() {
+    AppEventBus().on('blocked_users_updated', (_) async {
+      await _loadBlockedUsers();
+      // Refresh conversation to update isBlockedByOther status
+      if (mounted && _viewModel.conversation != null) {
+        await _viewModel.initialize(widget.conversationId);
+        if (mounted) {
+          setState(() {
+            // Trigger rebuild to update UI
+          });
+        }
+      }
+    });
+  }
+
+  /// Check if conversation input should be disabled
+  /// Returns true if current user is blocked by the other participant
+  bool _isConversationBlocked() {
+    if (_currentResidentId == null || _viewModel.conversation == null) {
+      return false;
+    }
+    
+    try {
+      // Only disable input if the other participant has blocked current user
+      // If current user blocked the other participant, they can still send messages
+      // but the other participant won't receive FCM notifications
+      return _viewModel.conversation?.isBlockedByOther == true;
+    } catch (e) {
+      return false;
+    }
   }
 
   Future<void> _loadCurrentResidentId() async {
@@ -115,19 +199,6 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _scrollEndTimer?.cancel();
-    _recordingTimer?.cancel();
-    _messageController.dispose();
-    _scrollController.dispose();
-    _audioRecorder.closeRecorder().catchError((e) {
-      print('⚠️ [DirectChatScreen] Error closing audio recorder: $e');
-    });
-    _audioPlayer.dispose();
-    _viewModel.dispose();
-    super.dispose();
-  }
 
   Future<void> _sendMessage() async {
     print('🔵 [DirectChatScreen] _sendMessage called');
@@ -1050,7 +1121,10 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
       final otherParticipantId = _viewModel.conversation!.getOtherParticipantId(_currentResidentId!);
       await _viewModel.unblockUser(otherParticipantId);
       
-      // Refresh conversation status
+      // Reload blocked users list
+      await _loadBlockedUsers();
+      
+      // Refresh conversation status and messages
       await _viewModel.initialize(widget.conversationId);
       
       // Emit event to update badges and refresh blocked users list
@@ -1060,8 +1134,8 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Đã bỏ chặn người dùng'),
-            duration: Duration(seconds: 2),
+            content: Text('Đã bỏ chặn người dùng. Tin nhắn đã gửi trong lúc chặn sẽ được hiển thị.'),
+            duration: Duration(seconds: 3),
           ),
         );
       }
@@ -1237,7 +1311,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
             ),
             Consumer<DirectChatViewModel>(
               builder: (context, viewModel, child) {
-                final isBlocked = viewModel.conversation?.status == 'BLOCKED';
+                final isBlocked = _isConversationBlocked();
                 return _DirectMessageInput(
                   controller: _messageController,
                   onSend: _sendMessage,
@@ -1492,22 +1566,22 @@ class _DirectMessageInputState extends State<_DirectMessageInput> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: theme.colorScheme.errorContainer.withValues(alpha: 0.1),
+                color: theme.colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
                   Icon(
-                    CupertinoIcons.xmark_circle,
-                    color: theme.colorScheme.error,
+                    CupertinoIcons.person_crop_circle_badge_xmark,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                     size: 20,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Cuộc trò chuyện đã bị chặn',
+                      'Hiện tại không tìm thấy người dùng',
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.error,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                       ),
                     ),
                   ),

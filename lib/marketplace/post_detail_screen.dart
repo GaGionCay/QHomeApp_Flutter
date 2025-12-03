@@ -8,9 +8,11 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shimmer/shimmer.dart';
 import '../models/marketplace_post.dart';
 import '../models/marketplace_comment.dart';
+import '../models/comment_paged_response.dart';
 import '../auth/token_storage.dart';
 import '../auth/api_client.dart';
 import 'marketplace_view_model.dart';
+import 'marketplace_service.dart';
 import '../core/event_bus.dart';
 import 'image_viewer_screen.dart';
 import 'edit_post_screen.dart';
@@ -34,6 +36,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   final TokenStorage _tokenStorage = TokenStorage();
   final ChatService _chatService = ChatService();
   final ApiClient _apiClient = ApiClient();
+  final MarketplaceService _marketplaceService = MarketplaceService();
+  bool _commentsLoaded = false; // Track if comments have been loaded
   List<MarketplaceComment> _comments = [];
   bool _isLoadingComments = false;
   bool _isLoadingMoreComments = false;
@@ -54,8 +58,18 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     _loadCurrentUser();
     _loadBlockedUsers();
     _setupBlockedUsersListener();
-    _loadComments();
     _setupRealtimeUpdates();
+    // Don't load comments here - wait for didChangeDependencies
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Load comments after context is available
+    if (!_commentsLoaded) {
+      _commentsLoaded = true;
+      _loadComments();
+    }
   }
 
   Future<void> _loadBlockedUsers() async {
@@ -72,8 +86,16 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   void _setupBlockedUsersListener() {
-    AppEventBus().on('blocked_users_updated', (_) {
-      _loadBlockedUsers();
+    AppEventBus().on('blocked_users_updated', (_) async {
+      print('🔄 [PostDetailScreen] blocked_users_updated event received, reloading blocked users...');
+      await _loadBlockedUsers();
+      // Refresh comments to show/hide comments from unblocked users
+      if (mounted) {
+        setState(() {
+          // Trigger rebuild to refresh filtered comments
+          print('✅ [PostDetailScreen] Blocked users reloaded, refreshing UI. Blocked count: ${_blockedUserIds.length}');
+        });
+      }
     });
   }
 
@@ -93,8 +115,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Future<void> _editPost(BuildContext context, MarketplacePost post) async {
-    // Capture dependencies before async gap
-    final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+    // Try to get viewModel if available
+    MarketplaceViewModel? viewModel;
+    try {
+      viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+    } catch (e) {
+      // No provider available - edit will still work but won't refresh marketplace
+    }
+    
     final navigator = Navigator.of(context);
     // Navigate to edit post screen
     final result = await navigator.push(
@@ -102,9 +130,13 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         builder: (context) => EditPostScreen(
           post: post,
           onPostUpdated: () async {
-            // Refresh marketplace view model
-            final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
-            await viewModel.refresh();
+            // Refresh marketplace view model if available
+            try {
+              final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+              await viewModel.refresh();
+            } catch (e) {
+              // No provider available
+            }
           },
         ),
       ),
@@ -112,16 +144,24 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     
     // If post was updated, refresh the screen
     if (result == true && mounted) {
-      // Reload post data
-      await viewModel.refresh();
+      // Reload post data if viewModel is available
+      if (viewModel != null) {
+        await viewModel.refresh();
+      }
       // Pop to go back to marketplace screen, or refresh current screen
       navigator.pop(true);
     }
   }
 
   Future<void> _deletePost(BuildContext context, MarketplacePost post) async {
-    // Capture dependencies before async gap
-    final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+    // Try to get viewModel if available
+    MarketplaceViewModel? viewModel;
+    try {
+      viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+    } catch (e) {
+      // No provider available - use service directly
+    }
+    
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     // Show confirmation dialog
@@ -148,7 +188,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
     if (confirmed == true && mounted) {
       try {
-        await viewModel.deletePost(post.id);
+        if (viewModel != null) {
+          await viewModel.deletePost(post.id);
+        } else {
+          // Use service directly if no viewModel
+          await _marketplaceService.deletePost(post.id);
+        }
         
         if (mounted) {
           messenger.showSnackBar(
@@ -208,12 +253,24 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
 
     try {
-      final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
-      final pagedResponse = await viewModel.getCommentsPaged(
-        widget.post.id,
-        page: _currentPage,
-        size: _pageSize,
-      );
+      CommentPagedResponse pagedResponse;
+      
+      // Try to use MarketplaceViewModel if available, otherwise use MarketplaceService directly
+      try {
+        final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+        pagedResponse = await viewModel.getCommentsPaged(
+          widget.post.id,
+          page: _currentPage,
+          size: _pageSize,
+        );
+      } catch (e) {
+        // No provider available, use service directly
+        pagedResponse = await _marketplaceService.getCommentsPaged(
+          widget.post.id,
+          page: _currentPage,
+          size: _pageSize,
+        );
+      }
       
       if (mounted) {
         setState(() {
@@ -234,9 +291,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           _isLoadingComments = false;
           _isLoadingMoreComments = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi tải bình luận: $e')),
-        );
+        // Only show error if context is available (not in initState)
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Lỗi khi tải bình luận: $e')),
+          );
+        }
       }
     }
   }
@@ -253,12 +313,24 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
     setState(() => _isPostingComment = true);
     try {
-      final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
-      final newComment = await viewModel.addComment(
-        widget.post.id, 
-        content,
-        parentCommentId: _replyingToCommentId,
-      );
+      MarketplaceComment? newComment;
+      
+      // Try to use MarketplaceViewModel if available, otherwise use MarketplaceService directly
+      try {
+        final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+        newComment = await viewModel.addComment(
+          widget.post.id, 
+          content,
+          parentCommentId: _replyingToCommentId,
+        );
+      } catch (e) {
+        // No provider available, use service directly
+        newComment = await _marketplaceService.addComment(
+          postId: widget.post.id,
+          content: content,
+          parentCommentId: _replyingToCommentId,
+        );
+      }
       
       if (newComment != null && mounted) {
         _commentController.clear();
@@ -385,13 +457,20 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             ),
         ],
       ),
-      body: Consumer<MarketplaceViewModel>(
-        builder: (context, viewModel, child) {
-          // Get updated post from viewModel
-          final updatedPost = viewModel.posts.firstWhere(
-            (p) => p.id == widget.post.id,
-            orElse: () => widget.post,
-          );
+      body: Builder(
+        builder: (context) {
+          // Try to get updated post from viewModel if available
+          MarketplacePost updatedPost = widget.post;
+          try {
+            final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+            updatedPost = viewModel.posts.firstWhere(
+              (p) => p.id == widget.post.id,
+              orElse: () => widget.post,
+            );
+          } catch (e) {
+            // No provider available, use widget.post
+            updatedPost = widget.post;
+          }
 
           return Column(
             children: [
@@ -404,7 +483,18 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Post Card
-                      _buildPostCard(context, theme, isDark, updatedPost, viewModel),
+                      Builder(
+                        builder: (context) {
+                          MarketplaceViewModel? viewModel;
+                          try {
+                            viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+                          } catch (e) {
+                            // No provider available
+                            viewModel = null;
+                          }
+                          return _buildPostCard(context, theme, isDark, updatedPost, viewModel);
+                        },
+                      ),
                       
                       const SizedBox(height: 24),
                       
@@ -604,7 +694,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     ThemeData theme,
     bool isDark,
     MarketplacePost post,
-    MarketplaceViewModel viewModel,
+    MarketplaceViewModel? viewModel,
   ) {
     return Container(
       decoration: BoxDecoration(

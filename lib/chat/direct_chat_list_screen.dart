@@ -40,18 +40,26 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
         final chatId = data['chatId']?.toString();
         
         if (type == 'directMessage' && chatId != null) {
-          // Refresh conversations to update unreadCount
+          // Refresh conversations to update unreadCount and show unhidden conversations
+          // When a new message arrives, hidden conversations will be unhidden automatically
           _loadConversations();
         }
       } catch (e) {
         print('⚠️ Error handling chat notification: $e');
       }
     });
+    
+    // Also listen for direct chat activity updates
+    AppEventBus().on('direct_chat_activity_updated', (_) {
+      if (!mounted) return;
+      _loadConversations();
+    });
   }
 
   @override
   void dispose() {
     AppEventBus().off('chat_notification_received');
+    AppEventBus().off('direct_chat_activity_updated');
     super.dispose();
   }
 
@@ -81,13 +89,16 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
 
   Future<void> _loadInvitationsCount() async {
     try {
+      print('📤 [DirectChatListScreen] Loading pending invitations count...');
       final count = await _service.countPendingDirectInvitations();
+      print('✅ [DirectChatListScreen] Pending invitations count: $count');
       if (mounted) {
         setState(() {
           _pendingInvitationsCount = count;
         });
       }
     } catch (e) {
+      print('❌ [DirectChatListScreen] Error loading invitations count: $e');
       // Ignore error
     }
   }
@@ -116,6 +127,16 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
     if (lastMessage.messageType == 'IMAGE') return '📷 Đã gửi một hình ảnh';
     if (lastMessage.messageType == 'FILE') return '📎 Đã gửi một tệp';
     if (lastMessage.messageType == 'AUDIO') return '🎤 Đã gửi một tin nhắn thoại';
+    if (lastMessage.messageType == 'VIDEO') return '🎥 Đã gửi một video';
+    if (lastMessage.messageType == 'MARKETPLACE_POST') {
+      // Hiển thị tiêu đề bài viết thay vì JSON
+      if (lastMessage.postTitle != null && lastMessage.postTitle!.isNotEmpty) {
+        return '📦 ${lastMessage.postTitle!.length > 45 
+            ? '${lastMessage.postTitle!.substring(0, 45)}...' 
+            : lastMessage.postTitle!}';
+      }
+      return '📦 Đã chia sẻ một bài viết';
+    }
     if (lastMessage.content != null && lastMessage.content!.isNotEmpty) {
       return lastMessage.content!.length > 50
           ? '${lastMessage.content!.substring(0, 50)}...'

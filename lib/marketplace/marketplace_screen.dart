@@ -65,8 +65,17 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
   }
 
   void _setupBlockedUsersListener() {
-    AppEventBus().on('blocked_users_updated', (_) {
-      _loadBlockedUsers();
+    AppEventBus().on('blocked_users_updated', (_) async {
+      print('🔄 [MarketplaceScreen] blocked_users_updated event received, reloading blocked users...');
+      await _loadBlockedUsers();
+      // Refresh posts to show/hide posts from unblocked users
+      // setState will trigger rebuild and re-filter posts based on updated _blockedUserIds
+      if (mounted) {
+        setState(() {
+          // Trigger rebuild to refresh filtered posts
+          print('✅ [MarketplaceScreen] Blocked users reloaded, refreshing UI. Blocked count: ${_blockedUserIds.length}');
+        });
+      }
     });
   }
 

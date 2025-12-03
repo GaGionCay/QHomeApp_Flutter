@@ -10,6 +10,7 @@ import '../models/chat/conversation.dart';
 import '../models/chat/direct_message.dart';
 import '../models/chat/direct_invitation.dart';
 import '../models/chat/direct_chat_file.dart';
+import '../models/chat/friend.dart';
 import '../models/marketplace_post.dart';
 import '../auth/api_client.dart';
 import 'chat_api_client.dart';
@@ -1078,6 +1079,19 @@ class ChatService {
       );
     } catch (e) {
       throw Exception('Lỗi khi chia sẻ bài viết: ${e.toString()}');
+    }
+  }
+
+  /// Get friends list
+  Future<List<Friend>> getFriends() async {
+    try {
+      final apiClient = ApiClient();
+      final response = await apiClient.dio.get('/direct-chat/friends');
+      final List<dynamic> friendsJson = response.data ?? [];
+      return friendsJson.map((json) => Friend.fromJson(json as Map<String, dynamic>)).toList();
+    } catch (e) {
+      print('❌ [ChatService] Error getting friends: $e');
+      throw Exception('Lỗi khi lấy danh sách bạn bè: ${e.toString()}');
     }
   }
 

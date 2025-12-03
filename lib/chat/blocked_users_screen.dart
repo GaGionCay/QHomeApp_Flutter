@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../auth/api_client.dart';
+import '../core/event_bus.dart';
 import 'chat_service.dart';
 
 class BlockedUsersScreen extends StatefulWidget {
@@ -130,6 +131,9 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
 
         // Reload blocked users list
         await _loadBlockedUsers();
+        
+        // Emit event to refresh marketplace and other screens
+        AppEventBus().emit('blocked_users_updated');
       }
     } catch (e) {
       print('❌ [BlockedUsersScreen] Error unblocking user: $e');

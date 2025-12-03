@@ -38,20 +38,30 @@ class DirectChatViewModel extends ChangeNotifier {
       print('📤 [DirectChatViewModel] Initializing conversation: $conversationId');
       
       // Load conversation
-      _conversation = await _service.getConversation(conversationId);
-      
-      print('✅ [DirectChatViewModel] Conversation loaded:');
-      print('   ID: ${_conversation?.id}');
-      print('   Status: ${_conversation?.status}');
-      print('   Participant1: ${_conversation?.participant1Id}');
-      print('   Participant2: ${_conversation?.participant2Id}');
-      
-      if (_conversation != null && _conversation!.status != 'ACTIVE') {
-        print('⚠️ [DirectChatViewModel] Conversation status is not ACTIVE: ${_conversation!.status}');
+      try {
+        _conversation = await _service.getConversation(conversationId);
+        
+        print('✅ [DirectChatViewModel] Conversation loaded:');
+        print('   ID: ${_conversation?.id}');
+        print('   Status: ${_conversation?.status}');
+        print('   Participant1: ${_conversation?.participant1Id}');
+        print('   Participant2: ${_conversation?.participant2Id}');
+        
+        if (_conversation != null && _conversation!.status != 'ACTIVE') {
+          print('⚠️ [DirectChatViewModel] Conversation status is not ACTIVE: ${_conversation!.status}');
+        }
+        
+        // Load initial messages
+        await loadMessages(conversationId, refresh: true);
+      } catch (e) {
+        // Check if conversation is hidden
+        if (e.toString().contains('hidden') || e.toString().contains('Hidden')) {
+          _error = 'Cuộc trò chuyện đã bị xóa. Tin nhắn mới sẽ xuất hiện lại khi có tin nhắn mới.';
+          print('⚠️ [DirectChatViewModel] Conversation is hidden');
+        } else {
+          rethrow;
+        }
       }
-      
-      // Load initial messages
-      await loadMessages(conversationId, refresh: true);
     } catch (e) {
       _error = 'Lỗi khi khởi tạo: ${e.toString()}';
       print('❌ [DirectChatViewModel] Error initializing: $e');

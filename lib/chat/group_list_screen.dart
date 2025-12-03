@@ -11,6 +11,7 @@ import 'invitations_screen.dart';
 import 'direct_chat_screen.dart';
 import 'direct_invitations_screen.dart';
 import 'blocked_users_screen.dart';
+import 'friends_screen.dart';
 import '../auth/token_storage.dart';
 import '../core/event_bus.dart';
 import '../models/marketplace_post.dart';
@@ -91,13 +92,16 @@ class _GroupListScreenState extends State<GroupListScreen> {
 
   Future<void> _loadDirectInvitationsCount() async {
     try {
+      print('📤 [GroupListScreen] Loading pending direct invitations count...');
       final count = await _chatService.countPendingDirectInvitations();
+      print('✅ [GroupListScreen] Pending direct invitations count: $count');
       if (mounted) {
         setState(() {
           _pendingDirectInvitationsCount = count;
         });
       }
     } catch (e) {
+      print('❌ [GroupListScreen] Error loading direct invitations count: $e');
       if (mounted) {
         setState(() {
           _pendingDirectInvitationsCount = 0;
@@ -305,7 +309,7 @@ class _GroupListScreenState extends State<GroupListScreen> {
                           _directConversations.length +
                           (viewModel.groups.isNotEmpty ? 1 : 0) + // Group chat section header
                           viewModel.groups.length + 
-                          1 + // Blocked users section
+                          2 + // Blocked users section + Friends section
                           (viewModel.hasMore ? 1 : 0),
                 itemBuilder: (context, index) {
                   int currentIndex = index;
@@ -395,6 +399,16 @@ class _GroupListScreenState extends State<GroupListScreen> {
                       if (lastMessage.messageType == 'IMAGE') return '📷 Đã gửi một hình ảnh';
                       if (lastMessage.messageType == 'FILE') return '📎 Đã gửi một tệp';
                       if (lastMessage.messageType == 'AUDIO') return '🎤 Đã gửi một tin nhắn thoại';
+                      if (lastMessage.messageType == 'VIDEO') return '🎥 Đã gửi một video';
+                      if (lastMessage.messageType == 'MARKETPLACE_POST') {
+                        // Hiển thị tiêu đề bài viết thay vì JSON
+                        if (lastMessage.postTitle != null && lastMessage.postTitle!.isNotEmpty) {
+                          return '📦 ${lastMessage.postTitle!.length > 45 
+                              ? '${lastMessage.postTitle!.substring(0, 45)}...' 
+                              : lastMessage.postTitle!}';
+                        }
+                        return '📦 Đã chia sẻ một bài viết';
+                      }
                       final content = lastMessage.content;
                       if (content != null && content.isNotEmpty) {
                         return content.length > 50
@@ -591,6 +605,23 @@ class _GroupListScreenState extends State<GroupListScreen> {
                   if (viewModel.groups.isNotEmpty) {
                     currentIndex -= viewModel.groups.length;
                   }
+                  
+                  // Friends section
+                  if (currentIndex == 0) {
+                    return _FriendsSection(
+                      onTap: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const FriendsScreen(),
+                          ),
+                        );
+                      },
+                    );
+                  }
+                  
+                  // Adjust index after friends section
+                  currentIndex--;
                   
                   // Blocked users section
                   if (currentIndex == 0) {
@@ -1031,6 +1062,71 @@ class _GroupListItem extends StatelessWidget {
         ),
         onLongPress: onLongPress,
         onTap: onTap,
+      ),
+    );
+  }
+}
+
+class _FriendsSection extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _FriendsSection({
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                height: 48,
+                width: 48,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  CupertinoIcons.person_2,
+                  color: theme.colorScheme.onPrimaryContainer,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Bạn bè',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Xem danh sách bạn bè và liên lạc lại',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                CupertinoIcons.chevron_right,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
