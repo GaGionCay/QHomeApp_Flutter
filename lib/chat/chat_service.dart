@@ -257,6 +257,12 @@ class ChatService {
         'fileSize': fileSize,
         'mimeType': mimeType,
         'replyToMessageId': replyToMessageId,
+        // Marketplace post fields
+        if (postId != null) 'postId': postId,
+        if (postTitle != null) 'postTitle': postTitle,
+        if (postThumbnailUrl != null) 'postThumbnailUrl': postThumbnailUrl,
+        if (postPrice != null) 'postPrice': postPrice,
+        if (deepLink != null) 'deepLink': deepLink,
       };
       
       print('📨 [ChatService] Gửi message, groupId: $groupId');
@@ -1057,6 +1063,14 @@ class ChatService {
     required MarketplacePost post,
   }) async {
     try {
+      // Validate required fields
+      if (post.id.isEmpty) {
+        throw Exception('Post ID không được để trống');
+      }
+      if (post.title.isEmpty) {
+        throw Exception('Post title không được để trống');
+      }
+      
       final deepLink = 'app://marketplace/post/${post.id}';
       final thumbnailUrl = post.images.isNotEmpty ? post.images.first.imageUrl : null;
       
@@ -1101,6 +1115,14 @@ class ChatService {
     required MarketplacePost post,
   }) async {
     try {
+      // Validate required fields
+      if (post.id.isEmpty) {
+        throw Exception('Post ID không được để trống');
+      }
+      if (post.title.isEmpty) {
+        throw Exception('Post title không được để trống');
+      }
+      
       final deepLink = 'app://marketplace/post/${post.id}';
       final thumbnailUrl = post.images.isNotEmpty ? post.images.first.imageUrl : null;
       

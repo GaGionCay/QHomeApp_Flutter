@@ -17,6 +17,9 @@ import '../core/event_bus.dart';
 import 'image_viewer_screen.dart';
 import 'edit_post_screen.dart';
 import '../chat/chat_service.dart';
+import '../models/chat/group.dart';
+import 'select_group_dialog.dart';
+import 'create_group_dialog.dart';
 
 class PostDetailScreen extends StatefulWidget {
   final MarketplacePost post;
@@ -723,13 +726,16 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             // Header - Người đăng bài
             Row(
               children: [
-                CircleAvatar(
-                  radius: 24,
-                  backgroundColor: theme.colorScheme.primaryContainer,
-                  child: Icon(
-                    CupertinoIcons.person_fill,
-                    color: theme.colorScheme.onPrimaryContainer,
-                    size: 24,
+                GestureDetector(
+                  onTap: () => _showPostAuthorOptions(context, post),
+                  child: CircleAvatar(
+                    radius: 24,
+                    backgroundColor: theme.colorScheme.primaryContainer,
+                    child: Icon(
+                      CupertinoIcons.person_fill,
+                      color: theme.colorScheme.onPrimaryContainer,
+                      size: 24,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -740,16 +746,19 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                       Row(
                         children: [
                           Flexible(
-                            child: Text(
-                              post.author?.name ?? 'Người dùng',
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: (_currentResidentId != null && 
-                                        post.residentId == _currentResidentId)
-                                    ? theme.colorScheme.primary
-                                    : theme.colorScheme.onSurface,
+                            child: GestureDetector(
+                              onTap: () => _showPostAuthorOptions(context, post),
+                              child: Text(
+                                post.author?.name ?? 'Người dùng',
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: (_currentResidentId != null && 
+                                          post.residentId == _currentResidentId)
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.onSurface,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -1304,6 +1313,335 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     );
   }
 
+  Future<void> _showPostAuthorOptions(BuildContext context, MarketplacePost post) async {
+    // Don't show options if user is viewing their own post
+    if (_currentResidentId != null && post.residentId == _currentResidentId) {
+      return;
+    }
+
+    // Get author userId from residentId (check cache first)
+    String? authorUserId = post.author?.userId ?? _residentIdToUserIdCache[post.residentId];
+    
+    if (authorUserId == null) {
+      try {
+        final response = await _apiClient.dio.get('/residents/${post.residentId}');
+        authorUserId = response.data['userId']?.toString();
+        
+        // Cache it for future use
+        if (authorUserId != null) {
+          _residentIdToUserIdCache[post.residentId] = authorUserId;
+        }
+      } catch (e) {
+        print('⚠️ [PostDetailScreen] Error getting userId: $e');
+      }
+    }
+
+    // Check if user is blocked
+    final isBlocked = authorUserId != null && _blockedUserIds.contains(authorUserId);
+    
+    // If blocked, show message that user is not found
+    if (isBlocked) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Không tìm thấy người dùng'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+
+    // Show options menu
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(CupertinoIcons.chat_bubble),
+              title: const Text('Gửi tin nhắn'),
+              onTap: () => Navigator.pop(context, 'message'),
+            ),
+            ListTile(
+              leading: const Icon(CupertinoIcons.group),
+              title: const Text('Mời vào nhóm'),
+              onTap: () => Navigator.pop(context, 'invite_group'),
+            ),
+            ListTile(
+              leading: const Icon(CupertinoIcons.person_crop_circle_badge_xmark, color: Colors.red),
+              title: const Text('Chặn người dùng'),
+              onTap: () => Navigator.pop(context, 'block'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (result == 'message' && context.mounted && authorUserId != null) {
+      await _showDirectChatFromPost(context, post, authorUserId);
+    } else if (result == 'invite_group' && context.mounted) {
+      await _inviteToGroupFromPost(context, post);
+    } else if (result == 'block' && context.mounted && authorUserId != null) {
+      await _blockUserFromPost(context, authorUserId, post.author?.name ?? 'Người dùng');
+    }
+  }
+
+  Future<void> _showDirectChatFromPost(BuildContext context, MarketplacePost post, String userId) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Trò chuyện'),
+        content: Text(
+          'Bạn có muốn gửi tin nhắn trực tiếp cho ${post.author?.name ?? 'cư dân này'} không?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Gửi tin nhắn'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && context.mounted) {
+      try {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đang tạo lời mời...')),
+        );
+
+        await _chatService.createDirectInvitation(
+          inviteeId: post.residentId,
+          initialMessage: null,
+        );
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Đã gửi lời mời trò chuyện'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _inviteToGroupFromPost(BuildContext context, MarketplacePost post) async {
+    try {
+      // Get phone number from residentId first
+      String? phoneNumber;
+      try {
+        final response = await _apiClient.dio.get('/residents/${post.residentId}');
+        phoneNumber = response.data['phone']?.toString();
+      } catch (e) {
+        print('⚠️ [PostDetailScreen] Error getting phone number: $e');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Không thể lấy số điện thoại của người dùng'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+      
+      if (phoneNumber == null || phoneNumber.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Người dùng này chưa có số điện thoại'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+      
+      // Get user's groups
+      final groupsResponse = await _chatService.getMyGroups(page: 0, size: 100);
+      final groups = groupsResponse.content;
+      
+      ChatGroup? selectedGroup;
+      
+      if (groups.isEmpty) {
+        // No groups, create a new one
+        final groupData = await showDialog<Map<String, String?>>(
+          context: context,
+          builder: (context) => CreateGroupDialog(
+            defaultName: 'Nhóm với ${post.author?.name ?? 'người dùng'}',
+          ),
+        );
+        
+        if (groupData == null || !context.mounted) {
+          return;
+        }
+        
+        // Show loading
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Đang tạo nhóm...')),
+          );
+        }
+        
+        // Create new group
+        try {
+          selectedGroup = await _chatService.createGroup(
+            name: groupData['name']!,
+            description: groupData['description'],
+          );
+          
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Đang gửi lời mời...')),
+            );
+          }
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Lỗi khi tạo nhóm: ${e.toString()}'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+      } else {
+        // Show group selection dialog
+        selectedGroup = await showDialog<ChatGroup>(
+          context: context,
+          builder: (context) => SelectGroupDialog(groups: groups),
+        );
+        
+        if (selectedGroup == null || !context.mounted) {
+          return;
+        }
+        
+        // Show loading
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Đang gửi lời mời...')),
+          );
+        }
+      }
+      
+      // Invite to group
+      await _chatService.inviteMembersByPhone(
+        groupId: selectedGroup.id,
+        phoneNumbers: [phoneNumber],
+      );
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đã gửi lời mời vào nhóm "${selectedGroup.name}"'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _blockUserFromPost(BuildContext context, String userId, String userName) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Chặn người dùng'),
+        content: Text('Bạn có chắc chắn muốn chặn $userName không?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('Chặn'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đang chặn...')),
+        );
+      }
+
+      await _chatService.blockUser(userId);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Đã chặn $userName'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+
+        // Reload blocked users list and refresh comments
+        await _loadBlockedUsers();
+        await _loadComments();
+        
+        // Emit event
+        AppEventBus().emit('blocked_users_updated');
+      }
+    } catch (e) {
+      print('❌ [PostDetailScreen] Error blocking user: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi chặn: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _showCommentAuthorOptions(BuildContext context, MarketplaceComment comment) async {
     // Don't show options if user is viewing their own comment
     if (_currentResidentId != null && comment.residentId == _currentResidentId) {
@@ -1359,6 +1697,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               onTap: () => Navigator.pop(context, 'message'),
             ),
             ListTile(
+              leading: const Icon(CupertinoIcons.group),
+              title: const Text('Mời vào nhóm'),
+              onTap: () => Navigator.pop(context, 'invite_group'),
+            ),
+            ListTile(
               leading: const Icon(CupertinoIcons.person_crop_circle_badge_xmark, color: Colors.red),
               title: const Text('Chặn người dùng'),
               onTap: () => Navigator.pop(context, 'block'),
@@ -1371,6 +1714,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
     if (result == 'message' && context.mounted && authorUserId != null) {
       await _showDirectChatFromComment(context, comment, authorUserId);
+    } else if (result == 'invite_group' && context.mounted) {
+      await _inviteToGroupFromComment(context, comment);
     } else if (result == 'block' && context.mounted && authorUserId != null) {
       await _blockUserFromComment(context, authorUserId, comment.author?.name ?? 'Người dùng');
     }
@@ -1427,6 +1772,99 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             ),
           );
         }
+      }
+    }
+  }
+
+  Future<void> _inviteToGroupFromComment(BuildContext context, MarketplaceComment comment) async {
+    try {
+      // Get user's groups
+      final groupsResponse = await _chatService.getMyGroups(page: 0, size: 100);
+      final groups = groupsResponse.content;
+      
+      if (groups.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Bạn chưa có nhóm nào. Vui lòng tạo nhóm trước.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+      
+      // Show group selection dialog
+      final selectedGroup = await showDialog<ChatGroup>(
+        context: context,
+        builder: (context) => SelectGroupDialog(groups: groups),
+      );
+      
+      if (selectedGroup == null || !context.mounted) {
+        return;
+      }
+      
+      // Get phone number from residentId
+      String? phoneNumber;
+      try {
+        final response = await _apiClient.dio.get('/residents/${comment.residentId}');
+        phoneNumber = response.data['phone']?.toString();
+      } catch (e) {
+        print('⚠️ [PostDetailScreen] Error getting phone number: $e');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Không thể lấy số điện thoại của người dùng'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+      
+      if (phoneNumber == null || phoneNumber.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Người dùng này chưa có số điện thoại'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+      
+      // Show loading
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đang gửi lời mời...')),
+        );
+      }
+      
+      // Invite to group
+      await _chatService.inviteMembersByPhone(
+        groupId: selectedGroup.id,
+        phoneNumbers: [phoneNumber],
+      );
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đã gửi lời mời vào nhóm "${selectedGroup.name}"'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }

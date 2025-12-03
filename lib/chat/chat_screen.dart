@@ -2296,7 +2296,7 @@ class _SystemMessageBubble extends StatelessWidget {
   }
 }
 
-class _MessageInput extends StatelessWidget {
+class _MessageInput extends StatefulWidget {
   final TextEditingController controller;
   final VoidCallback onSend;
   final Function(ImageSource) onPickImage;
@@ -2320,6 +2320,35 @@ class _MessageInput extends StatelessWidget {
   });
 
   @override
+  State<_MessageInput> createState() => _MessageInputState();
+}
+
+class _MessageInputState extends State<_MessageInput> {
+  bool _hasText = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _hasText = widget.controller.text.trim().isNotEmpty;
+    widget.controller.addListener(_onTextChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onTextChanged);
+    super.dispose();
+  }
+
+  void _onTextChanged() {
+    final newHasText = widget.controller.text.trim().isNotEmpty;
+    if (newHasText != _hasText) {
+      setState(() {
+        _hasText = newHasText;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
@@ -2336,7 +2365,7 @@ class _MessageInput extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           // Recording indicator
-          if (isRecording)
+          if (widget.isRecording)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               margin: const EdgeInsets.only(bottom: 8),
@@ -2356,7 +2385,7 @@ class _MessageInput extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    _formatDuration(recordingDuration),
+                    _formatDuration(widget.recordingDuration),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onErrorContainer,
                       fontWeight: FontWeight.bold,
@@ -2364,12 +2393,12 @@ class _MessageInput extends StatelessWidget {
                   ),
                   const Spacer(),
                   TextButton(
-                    onPressed: () => onStopRecording(send: false),
+                    onPressed: () => widget.onStopRecording(send: false),
                     child: const Text('Hủy'),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
-                    onPressed: () => onStopRecording(send: true),
+                    onPressed: () => widget.onStopRecording(send: true),
                     child: const Text('Gửi'),
                   ),
                 ],
@@ -2380,20 +2409,20 @@ class _MessageInput extends StatelessWidget {
               // Attachment button
               PopupMenuButton<String>(
                 icon: Icon(
-                  isRecording ? CupertinoIcons.mic_fill : CupertinoIcons.plus_circle,
-                  color: isRecording ? Colors.red : theme.colorScheme.primary,
+                  widget.isRecording ? CupertinoIcons.mic_fill : CupertinoIcons.plus_circle,
+                  color: widget.isRecording ? Colors.red : theme.colorScheme.primary,
                 ),
                 onSelected: (value) {
                   if (value == 'image_gallery') {
-                    onPickImage(ImageSource.gallery);
+                    widget.onPickImage(ImageSource.gallery);
                   } else if (value == 'image_camera') {
-                    onPickImage(ImageSource.camera);
+                    widget.onPickImage(ImageSource.camera);
                   } else if (value == 'video_gallery') {
-                    onPickVideo(ImageSource.gallery);
+                    widget.onPickVideo(ImageSource.gallery);
                   } else if (value == 'video_camera') {
-                    onPickVideo(ImageSource.camera);
+                    widget.onPickVideo(ImageSource.camera);
                   } else if (value == 'file') {
-                    onPickFile();
+                    widget.onPickFile();
                   }
                 },
                 itemBuilder: (context) => [
@@ -2452,22 +2481,22 @@ class _MessageInput extends StatelessWidget {
               const SizedBox(width: 8),
               // Voice message button
               GestureDetector(
-                onLongPress: isRecording ? null : onStartRecording,
+                onLongPress: widget.isRecording ? null : widget.onStartRecording,
                 onLongPressEnd: (details) {
-                  if (isRecording) {
-                    onStopRecording(send: true);
+                  if (widget.isRecording) {
+                    widget.onStopRecording(send: true);
                   }
                 },
                 child: IconButton(
                   icon: Icon(
-                    isRecording ? CupertinoIcons.mic_fill : CupertinoIcons.mic,
-                    color: isRecording ? Colors.red : theme.colorScheme.primary,
+                    widget.isRecording ? CupertinoIcons.mic_fill : CupertinoIcons.mic,
+                    color: widget.isRecording ? Colors.red : theme.colorScheme.primary,
                   ),
                   onPressed: () {
-                    if (isRecording) {
-                      onStopRecording(send: true);
+                    if (widget.isRecording) {
+                      widget.onStopRecording(send: true);
                     } else {
-                      onStartRecording();
+                      widget.onStartRecording();
                     }
                   },
                 ),
@@ -2475,10 +2504,10 @@ class _MessageInput extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: TextField(
-                  controller: controller,
-                  enabled: !isRecording,
+                  controller: widget.controller,
+                  enabled: !widget.isRecording,
                   decoration: InputDecoration(
-                    hintText: isRecording ? 'Đang ghi âm...' : 'Nhập tin nhắn...',
+                    hintText: widget.isRecording ? 'Đang ghi âm...' : 'Nhập tin nhắn...',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(24),
                     ),
@@ -2494,17 +2523,17 @@ class _MessageInput extends StatelessWidget {
               const SizedBox(width: 8),
               IconButton(
                 icon: Icon(
-                  isRecording ? CupertinoIcons.stop_circle_fill : CupertinoIcons.paperplane_fill,
-                  color: isRecording ? Colors.red : Colors.white,
+                  widget.isRecording ? CupertinoIcons.stop_circle_fill : CupertinoIcons.paperplane_fill,
+                  color: widget.isRecording ? Colors.red : Colors.white,
                 ),
-                onPressed: isRecording
-                    ? () => onStopRecording(send: true)
-                    : (controller.text.trim().isEmpty ? null : onSend),
+                onPressed: widget.isRecording
+                    ? () => widget.onStopRecording(send: true)
+                    : (_hasText ? widget.onSend : null),
                 style: IconButton.styleFrom(
-                  backgroundColor: isRecording
+                  backgroundColor: widget.isRecording
                       ? Colors.red.withValues(alpha: 0.1)
                       : theme.colorScheme.primary,
-                  foregroundColor: isRecording ? Colors.red : Colors.white,
+                  foregroundColor: widget.isRecording ? Colors.red : Colors.white,
                 ),
               ),
             ],

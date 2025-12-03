@@ -13,8 +13,11 @@ import 'image_viewer_screen.dart';
 import '../chat/chat_service.dart';
 import '../chat/group_list_screen.dart';
 import '../chat/direct_chat_list_screen.dart';
+import '../models/chat/group.dart';
 import '../auth/api_client.dart';
 import '../core/event_bus.dart';
+import 'select_group_dialog.dart';
+import 'create_group_dialog.dart';
 import 'package:flutter/services.dart';
 
 class MarketplaceScreen extends StatefulWidget {
@@ -135,6 +138,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
               onTap: () => Navigator.pop(context, 'message'),
             ),
             ListTile(
+              leading: const Icon(CupertinoIcons.group),
+              title: const Text('Mời vào nhóm'),
+              onTap: () => Navigator.pop(context, 'invite_group'),
+            ),
+            ListTile(
               leading: const Icon(CupertinoIcons.person_crop_circle_badge_xmark, color: Colors.red),
               title: const Text('Chặn người dùng'),
               onTap: () => Navigator.pop(context, 'block'),
@@ -147,6 +155,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
 
     if (result == 'message' && context.mounted) {
       await _showDirectChatPopup(context, post);
+    } else if (result == 'invite_group' && context.mounted) {
+      await _inviteToGroup(context, post);
     } else if (result == 'block' && context.mounted && authorUserId != null) {
       await _blockUser(context, authorUserId, post.author?.name ?? 'Người dùng');
     }
@@ -205,6 +215,137 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
             ),
           );
         }
+      }
+    }
+  }
+
+  Future<void> _inviteToGroup(BuildContext context, MarketplacePost post) async {
+    try {
+      // Get phone number from residentId first
+      String? phoneNumber;
+      try {
+        final apiClient = ApiClient();
+        final response = await apiClient.dio.get('/residents/${post.residentId}');
+        phoneNumber = response.data['phone']?.toString();
+      } catch (e) {
+        print('⚠️ [MarketplaceScreen] Error getting phone number: $e');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Không thể lấy số điện thoại của người dùng'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+      
+      if (phoneNumber == null || phoneNumber.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Người dùng này chưa có số điện thoại'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+      
+      // Get user's groups
+      final groupsResponse = await _chatService.getMyGroups(page: 0, size: 100);
+      final groups = groupsResponse.content;
+      
+      ChatGroup? selectedGroup;
+      
+      if (groups.isEmpty) {
+        // No groups, create a new one
+        final groupData = await showDialog<Map<String, String?>>(
+          context: context,
+          builder: (context) => CreateGroupDialog(
+            defaultName: 'Nhóm với ${post.author?.name ?? 'người dùng'}',
+          ),
+        );
+        
+        if (groupData == null || !context.mounted) {
+          return;
+        }
+        
+        // Show loading
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Đang tạo nhóm...')),
+          );
+        }
+        
+        // Create new group
+        try {
+          selectedGroup = await _chatService.createGroup(
+            name: groupData['name']!,
+            description: groupData['description'],
+          );
+          
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Đang gửi lời mời...')),
+            );
+          }
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Lỗi khi tạo nhóm: ${e.toString()}'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+      } else {
+        // Show group selection dialog
+        selectedGroup = await showDialog<ChatGroup>(
+          context: context,
+          builder: (context) => SelectGroupDialog(groups: groups),
+        );
+        
+        if (selectedGroup == null || !context.mounted) {
+          return;
+        }
+        
+        // Show loading
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Đang gửi lời mời...')),
+          );
+        }
+      }
+      
+      // Invite to group
+      await _chatService.inviteMembersByPhone(
+        groupId: selectedGroup.id,
+        phoneNumbers: [phoneNumber],
+      );
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đã gửi lời mời vào nhóm "${selectedGroup.name}"'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
