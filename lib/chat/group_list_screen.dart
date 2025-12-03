@@ -96,9 +96,15 @@ class _GroupListScreenState extends State<GroupListScreen> {
       final count = await _chatService.countPendingDirectInvitations();
       print('✅ [GroupListScreen] Pending direct invitations count: $count');
       if (mounted) {
+        final oldCount = _pendingDirectInvitationsCount;
         setState(() {
           _pendingDirectInvitationsCount = count;
         });
+        print('🔍 [GroupListScreen] Updated _pendingDirectInvitationsCount from $oldCount to: $_pendingDirectInvitationsCount');
+        // Force rebuild to ensure UI updates
+        if (mounted) {
+          setState(() {});
+        }
       }
     } catch (e) {
       print('❌ [GroupListScreen] Error loading direct invitations count: $e');
@@ -217,8 +223,10 @@ class _GroupListScreenState extends State<GroupListScreen> {
             ),
           ],
         ),
-        body: Consumer<ChatViewModel>(
-          builder: (context, viewModel, child) {
+        body: Builder(
+          builder: (context) {
+            final viewModel = Provider.of<ChatViewModel>(context);
+            
             if (viewModel.isLoading && viewModel.groups.isEmpty) {
               return const Center(child: CircularProgressIndicator());
             }
@@ -249,7 +257,8 @@ class _GroupListScreenState extends State<GroupListScreen> {
               );
             }
 
-            if (viewModel.groups.isEmpty) {
+            // Show empty state only if no groups AND no direct invitations AND no direct conversations
+            if (viewModel.groups.isEmpty && _pendingDirectInvitationsCount == 0 && _directConversations.isEmpty) {
               return Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -294,6 +303,16 @@ class _GroupListScreenState extends State<GroupListScreen> {
               );
             }
 
+            // Calculate itemCount - use state variables directly so it rebuilds when they change
+            final itemCount = (_pendingInvitationsCount > 0 ? 1 : 0) + // Group invitations
+                            (_pendingDirectInvitationsCount > 0 ? 1 : 0) + // Direct invitations
+                            (_directConversations.isNotEmpty ? 1 : 0) + // Direct chat section header
+                            _directConversations.length +
+                            (viewModel.groups.isNotEmpty ? 1 : 0) + // Group chat section header
+                            viewModel.groups.length + 
+                            2 + // Blocked users section + Friends section
+                            (viewModel.hasMore ? 1 : 0);
+            
             return RefreshIndicator(
               onRefresh: () async {
                 await viewModel.refresh();
@@ -302,15 +321,9 @@ class _GroupListScreenState extends State<GroupListScreen> {
                 await _loadDirectConversations();
               },
               child: ListView.builder(
+                key: ValueKey('list_${_pendingDirectInvitationsCount}_${_pendingInvitationsCount}_${_directConversations.length}_${viewModel.groups.length}'),
                 padding: const EdgeInsets.all(16),
-                itemCount: (_pendingInvitationsCount > 0 ? 1 : 0) + // Group invitations
-                          (_pendingDirectInvitationsCount > 0 ? 1 : 0) + // Direct invitations
-                          (_directConversations.isNotEmpty ? 1 : 0) + // Direct chat section header
-                          _directConversations.length +
-                          (viewModel.groups.isNotEmpty ? 1 : 0) + // Group chat section header
-                          viewModel.groups.length + 
-                          2 + // Blocked users section + Friends section
-                          (viewModel.hasMore ? 1 : 0),
+                itemCount: itemCount,
                 itemBuilder: (context, index) {
                   int currentIndex = index;
                   
@@ -339,8 +352,10 @@ class _GroupListScreenState extends State<GroupListScreen> {
                   }
                   
                   // Direct invitations section
+                  // Always show if there are pending direct invitations and currentIndex is 0
                   if (_pendingDirectInvitationsCount > 0 && currentIndex == 0) {
                     return _DirectInvitationsSection(
+                      key: ValueKey('direct_invitations_${_pendingDirectInvitationsCount}_$index'),
                       count: _pendingDirectInvitationsCount,
                       onTap: () async {
                         await Navigator.push(
@@ -1202,6 +1217,7 @@ class _DirectInvitationsSection extends StatelessWidget {
   final VoidCallback onTap;
 
   const _DirectInvitationsSection({
+    super.key,
     required this.count,
     required this.onTap,
   });
@@ -1209,71 +1225,79 @@ class _DirectInvitationsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
+    return Container(
+      key: ValueKey('direct_invitations_$count'),
       margin: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                height: 48,
-                width: 48,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.secondaryContainer,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  CupertinoIcons.chat_bubble_2,
-                  color: theme.colorScheme.onSecondaryContainer,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Lời mời trò chuyện',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Bạn có $count lời mời trò chuyện',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.error,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  count > 99 ? '99+' : '$count',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
+      child: Card(
+        elevation: 2,
+        child: InkWell(
+          onTap: () {
+            print('🔍 [_DirectInvitationsSection] Tapped!');
+            onTap();
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  height: 48,
+                  width: 48,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.secondaryContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    CupertinoIcons.chat_bubble_2,
+                    color: theme.colorScheme.onSecondaryContainer,
+                    size: 24,
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Icon(
-                CupertinoIcons.right_chevron,
-                size: 18,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
-              ),
-            ],
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Lời mời trò chuyện',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Bạn có $count lời mời trò chuyện',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.error,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    count > 99 ? '99+' : '$count',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  CupertinoIcons.chevron_right,
+                  size: 18,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                ),
+              ],
+            ),
           ),
         ),
       ),
