@@ -920,6 +920,31 @@ class ChatService {
     }
   }
 
+  /// Get list of blocked user IDs
+  Future<List<String>> getBlockedUsers() async {
+    try {
+      final apiClient = ApiClient();
+      final response = await apiClient.dio.get('/direct-chat/blocked-users');
+      final List<dynamic> blockedUserIds = response.data ?? [];
+      return blockedUserIds.map((id) => id.toString()).toList();
+    } catch (e) {
+      print('❌ [ChatService] Error getting blocked users: $e');
+      throw Exception('Lỗi khi lấy danh sách người dùng đã chặn: ${e.toString()}');
+    }
+  }
+
+  /// Check if a user is blocked
+  Future<bool> isBlocked(String userId) async {
+    try {
+      final apiClient = ApiClient();
+      final response = await apiClient.dio.get('/direct-chat/is-blocked/$userId');
+      return response.data as bool? ?? false;
+    } catch (e) {
+      print('❌ [ChatService] Error checking if user is blocked: $e');
+      return false; // Default to not blocked if check fails
+    }
+  }
+
   /// Get direct chat files with pagination
   Future<DirectChatFilePagedResponse> getDirectFiles({
     required String conversationId,
@@ -939,6 +964,70 @@ class ChatService {
       return DirectChatFilePagedResponse.fromJson(response.data);
     } catch (e) {
       throw Exception('Lỗi khi lấy danh sách file: ${e.toString()}');
+    }
+  }
+
+  /// Mute group chat
+  /// durationHours: 1, 2, 24, or null (indefinitely)
+  Future<void> muteGroupChat({
+    required String groupId,
+    int? durationHours,
+  }) async {
+    try {
+      final apiClient = ApiClient();
+      await apiClient.dio.post(
+        '/groups/$groupId/messages/mute',
+        queryParameters: durationHours != null ? {'durationHours': durationHours} : null,
+      );
+    } catch (e) {
+      throw Exception('Lỗi khi tắt thông báo nhóm: ${e.toString()}');
+    }
+  }
+
+  /// Unmute group chat
+  Future<void> unmuteGroupChat(String groupId) async {
+    try {
+      final apiClient = ApiClient();
+      await apiClient.dio.delete('/groups/$groupId/messages/mute');
+    } catch (e) {
+      throw Exception('Lỗi khi bật lại thông báo nhóm: ${e.toString()}');
+    }
+  }
+
+  /// Mute direct conversation
+  /// durationHours: 1, 2, 24, or null (indefinitely)
+  Future<void> muteDirectConversation({
+    required String conversationId,
+    int? durationHours,
+  }) async {
+    try {
+      final apiClient = ApiClient();
+      await apiClient.dio.post(
+        '/direct-chat/conversations/$conversationId/mute',
+        queryParameters: durationHours != null ? {'durationHours': durationHours} : null,
+      );
+    } catch (e) {
+      throw Exception('Lỗi khi tắt thông báo cuộc trò chuyện: ${e.toString()}');
+    }
+  }
+
+  /// Unmute direct conversation
+  Future<void> unmuteDirectConversation(String conversationId) async {
+    try {
+      final apiClient = ApiClient();
+      await apiClient.dio.delete('/direct-chat/conversations/$conversationId/mute');
+    } catch (e) {
+      throw Exception('Lỗi khi bật lại thông báo cuộc trò chuyện: ${e.toString()}');
+    }
+  }
+
+  /// Hide direct conversation (client-side only)
+  Future<void> hideDirectConversation(String conversationId) async {
+    try {
+      final apiClient = ApiClient();
+      await apiClient.dio.post('/direct-chat/conversations/$conversationId/hide');
+    } catch (e) {
+      throw Exception('Lỗi khi ẩn cuộc trò chuyện: ${e.toString()}');
     }
   }
 }

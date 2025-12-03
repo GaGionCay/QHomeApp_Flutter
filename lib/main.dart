@@ -54,6 +54,26 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(channel);
 
+  // Handle chat notifications
+  final type = message.data['type']?.toString();
+  if (type == 'groupMessage' || type == 'directMessage') {
+    try {
+      final chatId = message.data['chatId']?.toString();
+      final unreadCountStr = message.data['unreadCount']?.toString();
+      
+      if (chatId != null) {
+        final unreadCount = unreadCountStr != null ? int.tryParse(unreadCountStr) ?? 0 : 0;
+        
+        // Emit event to update chat unreadCount (if AppEventBus is available)
+        // Note: Background handler runs in isolate, so we can't use AppEventBus directly
+        // The event will be handled when app comes to foreground
+        debugPrint('🔔 [FCM Background] Chat notification: type=$type, chatId=$chatId, unreadCount=$unreadCount');
+      }
+    } catch (e) {
+      debugPrint('⚠️ [FCM Background] Error handling chat notification: $e');
+    }
+  }
+
   final notification = message.notification;
   if (notification != null) {
     final payload = jsonEncode(message.data);

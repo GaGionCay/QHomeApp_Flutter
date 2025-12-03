@@ -279,6 +279,7 @@ class MarketplaceResidentInfo {
   final String? avatarUrl;
   final String? unitNumber; // Số căn hộ
   final String? buildingName; // Tên tòa nhà (e.g., "Tòa A", "Tòa B")
+  final String? userId; // User ID for blocking functionality
 
   MarketplaceResidentInfo({
     required this.residentId,
@@ -286,6 +287,7 @@ class MarketplaceResidentInfo {
     this.avatarUrl,
     this.unitNumber,
     this.buildingName,
+    this.userId,
   });
 
   factory MarketplaceResidentInfo.fromJson(Map<String, dynamic> json) {
@@ -296,8 +298,9 @@ class MarketplaceResidentInfo {
       avatarUrl: json['avatarUrl'],
       unitNumber: json['unitNumber'],
       buildingName: json['buildingName'],
+      userId: json['userId']?.toString(),
     );
-    print('✅ [MarketplaceResidentInfo] Parsed - name: ${result.name}, residentId: ${result.residentId}, unitNumber: ${result.unitNumber}, buildingName: ${result.buildingName}');
+    print('✅ [MarketplaceResidentInfo] Parsed - name: ${result.name}, residentId: ${result.residentId}, userId: ${result.userId}, unitNumber: ${result.unitNumber}, buildingName: ${result.buildingName}');
     return result;
   }
 }

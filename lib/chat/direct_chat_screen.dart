@@ -967,13 +967,15 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
         // Refresh conversation status
         await _viewModel.initialize(widget.conversationId);
         
-        // Emit event to update badges
+        // Emit event to update badges and refresh blocked users list
         AppEventBus().emit('direct_chat_activity_updated');
+        AppEventBus().emit('blocked_users_updated');
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Đã chặn người dùng'),
+              content: Text('✅ Đã chặn người dùng'),
+              backgroundColor: Colors.green,
               duration: Duration(seconds: 2),
             ),
           );
@@ -992,6 +994,27 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
   }
 
   Future<void> _unblockUser(BuildContext context) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Gỡ chặn'),
+        content: const Text('Bạn có chắc chắn muốn gỡ chặn người dùng này không?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Gỡ chặn'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     try {
       if (_currentResidentId == null || _viewModel.conversation == null) {
         if (mounted) {
@@ -1011,8 +1034,9 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
       // Refresh conversation status
       await _viewModel.initialize(widget.conversationId);
       
-      // Emit event to update badges
+      // Emit event to update badges and refresh blocked users list
       AppEventBus().emit('direct_chat_activity_updated');
+      AppEventBus().emit('blocked_users_updated');
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

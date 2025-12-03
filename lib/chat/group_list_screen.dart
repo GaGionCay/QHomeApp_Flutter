@@ -10,7 +10,9 @@ import 'chat_screen.dart';
 import 'invitations_screen.dart';
 import 'direct_chat_screen.dart';
 import 'direct_invitations_screen.dart';
+import 'blocked_users_screen.dart';
 import '../auth/token_storage.dart';
+import '../core/event_bus.dart';
 
 class GroupListScreen extends StatefulWidget {
   const GroupListScreen({super.key});
@@ -38,6 +40,28 @@ class _GroupListScreenState extends State<GroupListScreen> {
     _loadDirectInvitationsCount();
     _loadDirectConversations();
     _loadCurrentResidentId();
+    _setupChatNotificationListener();
+  }
+
+  void _setupChatNotificationListener() {
+    AppEventBus().on('chat_notification_received', (data) {
+      if (!mounted) return;
+      
+      try {
+        final type = data['type']?.toString();
+        final chatId = data['chatId']?.toString();
+        
+        if (type == 'groupMessage' && chatId != null) {
+          // Refresh groups to update unreadCount
+          _viewModel.refresh();
+        } else if (type == 'directMessage' && chatId != null) {
+          // Refresh direct conversations to update unreadCount
+          _loadDirectConversations();
+        }
+      } catch (e) {
+        print('⚠️ Error handling chat notification: $e');
+      }
+    });
   }
 
   Future<void> _loadCurrentResidentId() async {
@@ -99,6 +123,8 @@ class _GroupListScreenState extends State<GroupListScreen> {
   @override
   void dispose() {
     _viewModel.dispose();
+    AppEventBus().off('blocked_users_updated');
+    AppEventBus().off('chat_notification_received');
     super.dispose();
   }
 
@@ -276,6 +302,7 @@ class _GroupListScreenState extends State<GroupListScreen> {
                           _directConversations.length +
                           (viewModel.groups.isNotEmpty ? 1 : 0) + // Group chat section header
                           viewModel.groups.length + 
+                          1 + // Blocked users section
                           (viewModel.hasMore ? 1 : 0),
                 itemBuilder: (context, index) {
                   int currentIndex = index;
@@ -354,6 +381,9 @@ class _GroupListScreenState extends State<GroupListScreen> {
                         ? (conversation.getOtherParticipantName(_currentResidentId!) ?? 'Người dùng')
                         : (conversation.participant1Name ?? conversation.participant2Name ?? 'Người dùng');
                     final unreadCount = conversation.unreadCount ?? 0;
+                    final isMuted = conversation.isMuted || 
+                        (conversation.muteUntil != null && 
+                         conversation.muteUntil!.isAfter(DateTime.now()));
                     
                     String _getLastMessagePreview(Conversation conv) {
                       final lastMessage = conv.lastMessage;
@@ -404,8 +434,20 @@ class _GroupListScreenState extends State<GroupListScreen> {
                                 : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                           ),
                         ),
-                        trailing: unreadCount > 0
-                            ? Container(
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (isMuted)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: Icon(
+                                  CupertinoIcons.bell_slash,
+                                  size: 18,
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                                ),
+                              ),
+                            if (unreadCount > 0)
+                              Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
                                   color: theme.colorScheme.primary,
@@ -419,8 +461,10 @@ class _GroupListScreenState extends State<GroupListScreen> {
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                              )
-                            : null,
+                              ),
+                          ],
+                        ),
+                        onLongPress: () => _showDirectConversationOptions(context, conversation),
                         onTap: () async {
                           await Navigator.push(
                             context,
@@ -462,8 +506,50 @@ class _GroupListScreenState extends State<GroupListScreen> {
                     currentIndex--;
                   }
                   
+                  // Group chat groups
+                  if (currentIndex < viewModel.groups.length) {
+                    final group = viewModel.groups[currentIndex];
+                    return _GroupListItem(
+                      group: group,
+                      onTap: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ChatScreen(groupId: group.id),
+                          ),
+                        );
+                        if (mounted) {
+                          viewModel.refresh();
+                        }
+                      },
+                      onLongPress: () => _showGroupOptions(context, group),
+                    );
+                  }
+                  
+                  // Adjust index after groups
+                  if (viewModel.groups.isNotEmpty) {
+                    currentIndex -= viewModel.groups.length;
+                  }
+                  
+                  // Blocked users section
+                  if (currentIndex == 0) {
+                    return _BlockedUsersSection(
+                      onTap: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const BlockedUsersScreen(),
+                          ),
+                        );
+                      },
+                    );
+                  }
+                  
+                  // Adjust index after blocked users section
+                  currentIndex--;
+                  
                   // Load more indicator
-                  if (currentIndex == viewModel.groups.length) {
+                  if (viewModel.hasMore && currentIndex == 0) {
                     return const Center(
                       child: Padding(
                         padding: EdgeInsets.all(16),
@@ -495,6 +581,213 @@ class _GroupListScreenState extends State<GroupListScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _showDirectConversationOptions(BuildContext context, Conversation conversation) async {
+    final isMuted = conversation.isMuted || 
+        (conversation.muteUntil != null && conversation.muteUntil!.isAfter(DateTime.now()));
+    
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isMuted)
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell),
+                title: const Text('Bật thông báo'),
+                onTap: () => Navigator.pop(context, 'unmute'),
+              )
+            else ...[
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell_slash),
+                title: const Text('Tắt thông báo trong 1 giờ'),
+                onTap: () => Navigator.pop(context, 'mute_1h'),
+              ),
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell_slash),
+                title: const Text('Tắt thông báo trong 2 giờ'),
+                onTap: () => Navigator.pop(context, 'mute_2h'),
+              ),
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell_slash),
+                title: const Text('Tắt thông báo trong 24 giờ'),
+                onTap: () => Navigator.pop(context, 'mute_24h'),
+              ),
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell_slash),
+                title: const Text('Tắt thông báo cho đến khi mở lại'),
+                onTap: () => Navigator.pop(context, 'mute_indefinite'),
+              ),
+            ],
+            const Divider(),
+            ListTile(
+              leading: const Icon(CupertinoIcons.delete, color: Colors.red),
+              title: const Text('Xóa đoạn chat', style: TextStyle(color: Colors.red)),
+              onTap: () => Navigator.pop(context, 'hide'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null && mounted) {
+      try {
+        if (result == 'unmute') {
+          await _chatService.unmuteDirectConversation(conversation.id);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('✅ Đã bật lại thông báo')),
+          );
+        } else if (result.startsWith('mute_')) {
+          int? durationHours;
+          if (result == 'mute_1h') {
+            durationHours = 1;
+          } else if (result == 'mute_2h') {
+            durationHours = 2;
+          } else if (result == 'mute_24h') {
+            durationHours = 24;
+          } else if (result == 'mute_indefinite') {
+            durationHours = null;
+          }
+          await _chatService.muteDirectConversation(
+            conversationId: conversation.id,
+            durationHours: durationHours,
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('✅ Đã tắt thông báo${durationHours != null ? ' trong $durationHours giờ' : ''}')),
+          );
+        } else if (result == 'hide') {
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Xóa đoạn chat'),
+              content: const Text('Bạn có chắc chắn muốn xóa đoạn chat này? Đoạn chat sẽ xuất hiện lại khi có tin nhắn mới.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Hủy'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                  child: const Text('Xóa'),
+                ),
+              ],
+            ),
+          );
+          
+          if (confirmed == true && mounted) {
+            await _chatService.hideDirectConversation(conversation.id);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('✅ Đã xóa đoạn chat')),
+            );
+          }
+        }
+        
+        if (mounted) {
+          _loadDirectConversations();
+          _viewModel.refresh();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Lỗi: ${e.toString()}'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _showGroupOptions(BuildContext context, ChatGroup group) async {
+    final isMuted = group.isMuted || 
+        (group.muteUntil != null && group.muteUntil!.isAfter(DateTime.now()));
+    
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isMuted)
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell),
+                title: const Text('Bật thông báo'),
+                onTap: () => Navigator.pop(context, 'unmute'),
+              )
+            else ...[
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell_slash),
+                title: const Text('Tắt thông báo trong 1 giờ'),
+                onTap: () => Navigator.pop(context, 'mute_1h'),
+              ),
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell_slash),
+                title: const Text('Tắt thông báo trong 2 giờ'),
+                onTap: () => Navigator.pop(context, 'mute_2h'),
+              ),
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell_slash),
+                title: const Text('Tắt thông báo trong 24 giờ'),
+                onTap: () => Navigator.pop(context, 'mute_24h'),
+              ),
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell_slash),
+                title: const Text('Tắt thông báo cho đến khi mở lại'),
+                onTap: () => Navigator.pop(context, 'mute_indefinite'),
+              ),
+            ],
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null && mounted) {
+      try {
+        if (result == 'unmute') {
+          await _chatService.unmuteGroupChat(group.id);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('✅ Đã bật lại thông báo')),
+          );
+        } else if (result.startsWith('mute_')) {
+          int? durationHours;
+          if (result == 'mute_1h') {
+            durationHours = 1;
+          } else if (result == 'mute_2h') {
+            durationHours = 2;
+          } else if (result == 'mute_24h') {
+            durationHours = 24;
+          } else if (result == 'mute_indefinite') {
+            durationHours = null;
+          }
+          await _chatService.muteGroupChat(
+            groupId: group.id,
+            durationHours: durationHours,
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('✅ Đã tắt thông báo${durationHours != null ? ' trong $durationHours giờ' : ''}')),
+          );
+        }
+        
+        if (mounted) {
+          _viewModel.refresh();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Lỗi: ${e.toString()}'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
   }
 }
 
@@ -586,16 +879,20 @@ class _InvitationsSection extends StatelessWidget {
 class _GroupListItem extends StatelessWidget {
   final ChatGroup group;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   const _GroupListItem({
     required this.group,
     required this.onTap,
+    this.onLongPress,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hasUnread = (group.unreadCount ?? 0) > 0;
+    final isMuted = group.isMuted || 
+        (group.muteUntil != null && group.muteUntil!.isAfter(DateTime.now()));
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -642,8 +939,20 @@ class _GroupListItem extends StatelessWidget {
             ),
           ],
         ),
-        trailing: hasUnread
-            ? Container(
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isMuted)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Icon(
+                  CupertinoIcons.bell_slash,
+                  size: 18,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                ),
+              ),
+            if (hasUnread)
+              Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.error,
@@ -656,9 +965,76 @@ class _GroupListItem extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-              )
-            : null,
+              ),
+          ],
+        ),
+        onLongPress: onLongPress,
         onTap: onTap,
+      ),
+    );
+  }
+}
+
+class _BlockedUsersSection extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _BlockedUsersSection({
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                height: 48,
+                width: 48,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  CupertinoIcons.person_crop_circle_badge_xmark,
+                  color: theme.colorScheme.onSecondaryContainer,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Người dùng đã chặn',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Xem và quản lý danh sách người dùng đã chặn',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                CupertinoIcons.chevron_right,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

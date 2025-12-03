@@ -23,6 +23,9 @@ import 'service_category_screen.dart';
 import '../theme/app_colors.dart';
 import 'menu_screen.dart';
 import '../marketplace/marketplace_screen.dart';
+import '../chat/chat_screen.dart';
+import '../chat/direct_chat_screen.dart';
+import '../chat/chat_service.dart';
 
 class MainShell extends StatefulWidget {
   final int initialIndex;
@@ -437,6 +440,13 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   void _handleNotificationTap(Map<String, dynamic> data) async {
     RealtimeNotificationBanner.dismiss();
 
+    // Handle chat notifications
+    final type = data['type']?.toString();
+    if (type == 'groupMessage' || type == 'directMessage') {
+      await _handleChatNotificationTap(data);
+      return;
+    }
+
     // Kiểm tra nếu là news notification
     final newsId = data['newsUuid'] ?? data['newsId'];
     if (newsId != null) {
@@ -508,6 +518,71 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
           ),
         );
       }
+    }
+  }
+
+  Future<void> _handleChatNotificationTap(Map<String, dynamic> data) async {
+    try {
+      final type = data['type']?.toString();
+      final chatId = data['chatId']?.toString();
+      final groupId = data['groupId']?.toString();
+      final conversationId = data['conversationId']?.toString();
+      
+      if (chatId == null) return;
+      
+      if (type == 'groupMessage' && groupId != null) {
+        // Navigate to group chat
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ChatScreen(groupId: groupId),
+            ),
+          );
+        }
+      } else if (type == 'directMessage' && conversationId != null) {
+        // Get conversation details to get other participant name
+        try {
+          final chatService = ChatService();
+          final conversations = await chatService.getConversations();
+          final conversation = conversations.firstWhere(
+            (c) => c.id == conversationId,
+            orElse: () => throw Exception('Conversation not found'),
+          );
+          
+          final otherParticipantName = _userResidentId != null
+              ? (conversation.getOtherParticipantName(_userResidentId!) ?? 'Người dùng')
+              : (conversation.participant1Name ?? conversation.participant2Name ?? 'Người dùng');
+          
+          if (mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DirectChatScreen(
+                  conversationId: conversationId,
+                  otherParticipantName: otherParticipantName,
+                ),
+              ),
+            );
+          }
+        } catch (e) {
+          debugPrint('⚠️ Error getting conversation details: $e');
+          // Fallback: navigate with default name
+          if (mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DirectChatScreen(
+                  conversationId: conversationId,
+                  otherParticipantName: data['senderName']?.toString() ?? 'Người dùng',
+                ),
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error handling chat notification tap: $e');
     }
   }
 

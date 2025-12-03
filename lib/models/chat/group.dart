@@ -15,6 +15,8 @@ class ChatGroup {
   final List<GroupMember>? members;
   final String? userRole;
   final int? unreadCount;
+  final DateTime? muteUntil;
+  final bool isMuted;
 
   ChatGroup({
     required this.id,
@@ -33,6 +35,8 @@ class ChatGroup {
     this.members,
     this.userRole,
     this.unreadCount,
+    this.muteUntil,
+    this.isMuted = false,
   });
 
   factory ChatGroup.fromJson(Map<String, dynamic> json) {
@@ -61,6 +65,10 @@ class ChatGroup {
           : null,
       userRole: json['userRole'],
       unreadCount: json['unreadCount'],
+      muteUntil: json['muteUntil'] != null
+          ? DateTime.parse(json['muteUntil'])
+          : null,
+      isMuted: json['isMuted'] ?? false,
     );
   }
 
@@ -82,6 +90,8 @@ class ChatGroup {
       'members': members?.map((m) => m.toJson()).toList(),
       'userRole': userRole,
       'unreadCount': unreadCount,
+      'muteUntil': muteUntil?.toIso8601String(),
+      'isMuted': isMuted,
     };
   }
 }
@@ -96,6 +106,7 @@ class GroupMember {
   final DateTime joinedAt;
   final DateTime? lastReadAt;
   final bool isMuted;
+  final DateTime? muteUntil;
 
   GroupMember({
     required this.id,
@@ -107,6 +118,7 @@ class GroupMember {
     required this.joinedAt,
     this.lastReadAt,
     required this.isMuted,
+    this.muteUntil,
   });
 
   factory GroupMember.fromJson(Map<String, dynamic> json) {
@@ -124,6 +136,9 @@ class GroupMember {
           ? DateTime.parse(json['lastReadAt'])
           : null,
       isMuted: json['isMuted'] ?? false,
+      muteUntil: json['muteUntil'] != null
+          ? DateTime.parse(json['muteUntil'])
+          : null,
     );
   }
 
@@ -138,6 +153,7 @@ class GroupMember {
       'joinedAt': joinedAt.toIso8601String(),
       'lastReadAt': lastReadAt?.toIso8601String(),
       'isMuted': isMuted,
+      'muteUntil': muteUntil?.toIso8601String(),
     };
   }
 }

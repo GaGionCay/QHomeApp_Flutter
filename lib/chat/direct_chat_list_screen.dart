@@ -4,6 +4,7 @@ import '../models/chat/conversation.dart';
 import 'chat_service.dart';
 import 'direct_chat_screen.dart';
 import 'direct_invitations_screen.dart';
+import '../core/event_bus.dart';
 
 class DirectChatListScreen extends StatefulWidget {
   const DirectChatListScreen({super.key});
@@ -24,6 +25,31 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
     super.initState();
     _loadConversations();
     _loadInvitationsCount();
+    _setupChatNotificationListener();
+  }
+
+  void _setupChatNotificationListener() {
+    AppEventBus().on('chat_notification_received', (data) {
+      if (!mounted) return;
+      
+      try {
+        final type = data['type']?.toString();
+        final chatId = data['chatId']?.toString();
+        
+        if (type == 'directMessage' && chatId != null) {
+          // Refresh conversations to update unreadCount
+          _loadConversations();
+        }
+      } catch (e) {
+        print('⚠️ Error handling chat notification: $e');
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    AppEventBus().off('chat_notification_received');
+    super.dispose();
   }
 
   Future<void> _loadConversations() async {
@@ -218,6 +244,9 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
                           final otherParticipantName = conversation.participant1Name ?? 
                               conversation.participant2Name ?? 'Người dùng';
                           final unreadCount = conversation.unreadCount ?? 0;
+                          final isMuted = conversation.isMuted || 
+                              (conversation.muteUntil != null && 
+                               conversation.muteUntil!.isAfter(DateTime.now()));
                           
                           return ListTile(
                             leading: CircleAvatar(
@@ -252,11 +281,23 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                Text(
-                                  _formatTime(conversation.lastMessage?.createdAt ?? conversation.updatedAt),
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.onSurface.withOpacity(0.6),
-                                  ),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (isMuted)
+                                      Icon(
+                                        CupertinoIcons.bell_slash,
+                                        size: 16,
+                                        color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                      ),
+                                    if (isMuted) const SizedBox(width: 4),
+                                    Text(
+                                      _formatTime(conversation.lastMessage?.createdAt ?? conversation.updatedAt),
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 if (unreadCount > 0) ...[
                                   const SizedBox(height: 4),
@@ -278,6 +319,7 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
                                 ],
                               ],
                             ),
+                            onLongPress: () => _showConversationOptions(context, conversation),
                             onTap: () async {
                               await Navigator.push(
                                 context,
@@ -297,6 +339,125 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
                       ),
       ),
     );
+  }
+
+  Future<void> _showConversationOptions(BuildContext context, Conversation conversation) async {
+    final isMuted = conversation.isMuted || 
+        (conversation.muteUntil != null && conversation.muteUntil!.isAfter(DateTime.now()));
+    
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isMuted)
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell),
+                title: const Text('Bật thông báo'),
+                onTap: () => Navigator.pop(context, 'unmute'),
+              )
+            else ...[
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell_slash),
+                title: const Text('Tắt thông báo trong 1 giờ'),
+                onTap: () => Navigator.pop(context, 'mute_1h'),
+              ),
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell_slash),
+                title: const Text('Tắt thông báo trong 2 giờ'),
+                onTap: () => Navigator.pop(context, 'mute_2h'),
+              ),
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell_slash),
+                title: const Text('Tắt thông báo trong 24 giờ'),
+                onTap: () => Navigator.pop(context, 'mute_24h'),
+              ),
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell_slash),
+                title: const Text('Tắt thông báo cho đến khi mở lại'),
+                onTap: () => Navigator.pop(context, 'mute_indefinite'),
+              ),
+            ],
+            const Divider(),
+            ListTile(
+              leading: const Icon(CupertinoIcons.delete, color: Colors.red),
+              title: const Text('Xóa đoạn chat', style: TextStyle(color: Colors.red)),
+              onTap: () => Navigator.pop(context, 'hide'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null && mounted) {
+      try {
+        if (result == 'unmute') {
+          await _service.unmuteDirectConversation(conversation.id);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('✅ Đã bật lại thông báo')),
+          );
+        } else if (result.startsWith('mute_')) {
+          int? durationHours;
+          if (result == 'mute_1h') {
+            durationHours = 1;
+          } else if (result == 'mute_2h') {
+            durationHours = 2;
+          } else if (result == 'mute_24h') {
+            durationHours = 24;
+          } else if (result == 'mute_indefinite') {
+            durationHours = null;
+          }
+          await _service.muteDirectConversation(
+            conversationId: conversation.id,
+            durationHours: durationHours,
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('✅ Đã tắt thông báo${durationHours != null ? ' trong $durationHours giờ' : ''}')),
+          );
+        } else if (result == 'hide') {
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Xóa đoạn chat'),
+              content: const Text('Bạn có chắc chắn muốn xóa đoạn chat này? Đoạn chat sẽ xuất hiện lại khi có tin nhắn mới.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Hủy'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                  child: const Text('Xóa'),
+                ),
+              ],
+            ),
+          );
+          
+          if (confirmed == true && mounted) {
+            await _service.hideDirectConversation(conversation.id);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('✅ Đã xóa đoạn chat')),
+            );
+          }
+        }
+        
+        if (mounted) {
+          _loadConversations();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Lỗi: ${e.toString()}'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
   }
 }
 

@@ -11,6 +11,8 @@ import 'create_post_screen.dart';
 import 'post_detail_screen.dart';
 import 'image_viewer_screen.dart';
 import '../chat/chat_service.dart';
+import '../auth/api_client.dart';
+import '../core/event_bus.dart';
 
 class MarketplaceScreen extends StatefulWidget {
   const MarketplaceScreen({super.key});
@@ -23,7 +25,10 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
   late final MarketplaceViewModel _viewModel;
   final ScrollController _scrollController = ScrollController();
   final TokenStorage _tokenStorage = TokenStorage();
+  final ChatService _chatService = ChatService();
   String? _currentResidentId;
+  Set<String> _blockedUserIds = {}; // Cache blocked user IDs
+  final Map<String, String> _residentIdToUserIdCache = {}; // Cache residentId -> userId mapping
 
   @override
   void initState() {
@@ -34,6 +39,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
     _viewModel.initialize();
     _scrollController.addListener(_onScroll);
     _loadCurrentUser();
+    _loadBlockedUsers();
+    _setupBlockedUsersListener();
   }
 
   Future<void> _loadCurrentUser() async {
@@ -41,12 +48,99 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _showDirectChatPopup(BuildContext context, MarketplacePost post) async {
-    // Don't show popup if user is viewing their own post
+  Future<void> _loadBlockedUsers() async {
+    try {
+      final blockedUserIds = await _chatService.getBlockedUsers();
+      if (mounted) {
+        setState(() {
+          _blockedUserIds = blockedUserIds.toSet();
+        });
+      }
+    } catch (e) {
+      print('⚠️ [MarketplaceScreen] Error loading blocked users: $e');
+    }
+  }
+
+  void _setupBlockedUsersListener() {
+    AppEventBus().on('blocked_users_updated', (_) {
+      _loadBlockedUsers();
+    });
+  }
+
+  Future<void> _showUserOptions(BuildContext context, MarketplacePost post) async {
+    // Don't show options if user is viewing their own post
     if (_currentResidentId != null && post.residentId == _currentResidentId) {
       return;
     }
 
+    // Get author userId from residentId (check cache first)
+    String? authorUserId = post.author?.userId ?? _residentIdToUserIdCache[post.residentId];
+    
+    if (authorUserId == null) {
+      try {
+        final apiClient = ApiClient();
+        final response = await apiClient.dio.get('/residents/${post.residentId}');
+        authorUserId = response.data['userId']?.toString();
+        
+        // Cache it for future use
+        if (authorUserId != null) {
+          _residentIdToUserIdCache[post.residentId] = authorUserId;
+        }
+      } catch (e) {
+        print('⚠️ [MarketplaceScreen] Error getting userId: $e');
+      }
+    }
+
+    // Check if user is blocked
+    final isBlocked = authorUserId != null && _blockedUserIds.contains(authorUserId);
+    
+    // If blocked, show message that user is not found
+    if (isBlocked) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Không tìm thấy người dùng'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+
+    // Show options menu
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(CupertinoIcons.chat_bubble),
+              title: const Text('Gửi tin nhắn'),
+              onTap: () => Navigator.pop(context, 'message'),
+            ),
+            ListTile(
+              leading: const Icon(CupertinoIcons.person_crop_circle_badge_xmark, color: Colors.red),
+              title: const Text('Chặn người dùng'),
+              onTap: () => Navigator.pop(context, 'block'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (result == 'message' && context.mounted) {
+      await _showDirectChatPopup(context, post);
+    } else if (result == 'block' && context.mounted && authorUserId != null) {
+      await _blockUser(context, authorUserId, post.author?.name ?? 'Người dùng');
+    }
+  }
+
+  Future<void> _showDirectChatPopup(BuildContext context, MarketplacePost post) async {
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -69,30 +163,19 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
 
     if (result == true && context.mounted) {
       try {
-        final chatService = ChatService();
-        
         // Show loading
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Đang tạo lời mời...')),
         );
 
         // Create direct invitation
-        print('📤 [MarketplaceScreen] Creating direct invitation:');
-        print('   InviteeId (post.residentId): ${post.residentId}');
-        print('   Post author: ${post.author?.name}');
-        print('   Post author residentId: ${post.author?.residentId}');
-        
-        await chatService.createDirectInvitation(
+        await _chatService.createDirectInvitation(
           inviteeId: post.residentId,
-          initialMessage: null, // User will send first message after acceptance
+          initialMessage: null,
         );
-        
-        print('✅ [MarketplaceScreen] Direct invitation created successfully');
 
         if (context.mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          
-          // Navigate to invitations screen or show success message
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Đã gửi lời mời trò chuyện'),
@@ -114,10 +197,76 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
     }
   }
 
+  Future<void> _blockUser(BuildContext context, String userId, String userName) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Chặn người dùng'),
+        content: Text('Bạn có chắc chắn muốn chặn $userName không?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('Chặn'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      // Show loading
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đang chặn...')),
+        );
+      }
+
+      await _chatService.blockUser(userId);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Đã chặn $userName'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+
+        // Reload blocked users list
+        await _loadBlockedUsers();
+        
+        // Emit event to refresh marketplace
+        AppEventBus().emit('blocked_users_updated');
+      }
+    } catch (e) {
+      print('❌ [MarketplaceScreen] Error blocking user: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi chặn: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
     _scrollController.dispose();
     _viewModel.dispose();
+    AppEventBus().off('blocked_users_updated');
     super.dispose();
   }
 
@@ -357,6 +506,26 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                   }
 
                   final post = viewModel.posts[index];
+                  
+                  // Filter out posts from blocked users
+                  String? authorUserId = post.author?.userId;
+                  
+                  // If userId not in author, try to get from cache or fetch
+                  if (authorUserId == null && post.residentId.isNotEmpty) {
+                    authorUserId = _residentIdToUserIdCache[post.residentId];
+                    
+                    // If not in cache, fetch it (async, but we'll skip for now and fetch later)
+                    if (authorUserId == null) {
+                      // Will be fetched when user clicks on author
+                      // For now, show the post
+                    }
+                  }
+                  
+                  // If author is blocked, skip this post
+                  if (authorUserId != null && _blockedUserIds.contains(authorUserId)) {
+                    return const SizedBox.shrink();
+                  }
+                  
                   // Use stable key to preserve scroll position
                   return _PostCard(
                     key: ValueKey(post.id),
@@ -374,7 +543,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                         ),
                       );
                     },
-                    onAuthorTap: () => _showDirectChatPopup(context, post),
+                    onAuthorTap: () => _showUserOptions(context, post),
                   );
                 },
               ),

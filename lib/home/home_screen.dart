@@ -186,6 +186,10 @@ class _HomeScreenState extends State<HomeScreen> {
     _eventBus.on('direct_chat_activity_updated', (_) async {
       await _loadGroupChatActivity();
     });
+    // Listen for chat notifications to update badge
+    _eventBus.on('chat_notification_received', (_) async {
+      await _loadGroupChatActivity();
+    });
   }
 
   Future<void> _initialize() async {

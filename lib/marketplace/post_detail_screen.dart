@@ -9,10 +9,12 @@ import 'package:shimmer/shimmer.dart';
 import '../models/marketplace_post.dart';
 import '../models/marketplace_comment.dart';
 import '../auth/token_storage.dart';
+import '../auth/api_client.dart';
 import 'marketplace_view_model.dart';
 import '../core/event_bus.dart';
 import 'image_viewer_screen.dart';
 import 'edit_post_screen.dart';
+import '../chat/chat_service.dart';
 
 class PostDetailScreen extends StatefulWidget {
   final MarketplacePost post;
@@ -30,6 +32,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   final TextEditingController _commentController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final TokenStorage _tokenStorage = TokenStorage();
+  final ChatService _chatService = ChatService();
+  final ApiClient _apiClient = ApiClient();
   List<MarketplaceComment> _comments = [];
   bool _isLoadingComments = false;
   bool _isLoadingMoreComments = false;
@@ -41,13 +45,36 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   int _pageSize = 10;
   bool _hasMoreComments = true;
   Map<String, bool> _expandedComments = {}; // Track expanded state for read more
+  Set<String> _blockedUserIds = {}; // Cache blocked user IDs
+  final Map<String, String> _residentIdToUserIdCache = {}; // Cache residentId -> userId mapping
 
   @override
   void initState() {
     super.initState();
     _loadCurrentUser();
+    _loadBlockedUsers();
+    _setupBlockedUsersListener();
     _loadComments();
     _setupRealtimeUpdates();
+  }
+
+  Future<void> _loadBlockedUsers() async {
+    try {
+      final blockedUserIds = await _chatService.getBlockedUsers();
+      if (mounted) {
+        setState(() {
+          _blockedUserIds = blockedUserIds.toSet();
+        });
+      }
+    } catch (e) {
+      print('⚠️ [PostDetailScreen] Error loading blocked users: $e');
+    }
+  }
+
+  void _setupBlockedUsersListener() {
+    AppEventBus().on('blocked_users_updated', (_) {
+      _loadBlockedUsers();
+    });
   }
 
   Future<void> _loadCurrentUser() async {
@@ -61,6 +88,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     _scrollController.dispose();
     AppEventBus().off('new_comment');
     AppEventBus().off('marketplace_update');
+    AppEventBus().off('blocked_users_updated');
     super.dispose();
   }
 
@@ -1076,13 +1104,16 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: isReply ? 14 : 16,
-                backgroundColor: theme.colorScheme.primaryContainer,
-                child: Icon(
-                  CupertinoIcons.person_fill,
-                  size: isReply ? 14 : 16,
-                  color: theme.colorScheme.onPrimaryContainer,
+              GestureDetector(
+                onTap: () => _showCommentAuthorOptions(context, comment),
+                child: CircleAvatar(
+                  radius: isReply ? 14 : 16,
+                  backgroundColor: theme.colorScheme.primaryContainer,
+                  child: Icon(
+                    CupertinoIcons.person_fill,
+                    size: isReply ? 14 : 16,
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1093,16 +1124,19 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                     Row(
                       children: [
                         Flexible(
-                          child: Text(
-                            comment.author?.name ?? 'Người dùng',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: (_currentResidentId != null && 
-                                      comment.residentId == _currentResidentId)
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.onSurface,
+                          child: GestureDetector(
+                            onTap: () => _showCommentAuthorOptions(context, comment),
+                            child: Text(
+                              comment.author?.name ?? 'Người dùng',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: (_currentResidentId != null && 
+                                        comment.residentId == _currentResidentId)
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.onSurface,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         if (_currentResidentId != null && 
@@ -1178,6 +1212,198 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         ],
       ],
     );
+  }
+
+  Future<void> _showCommentAuthorOptions(BuildContext context, MarketplaceComment comment) async {
+    // Don't show options if user is viewing their own comment
+    if (_currentResidentId != null && comment.residentId == _currentResidentId) {
+      return;
+    }
+
+    // Get author userId from residentId (check cache first)
+    String? authorUserId = comment.author?.userId ?? _residentIdToUserIdCache[comment.residentId];
+    
+    if (authorUserId == null) {
+      try {
+        final response = await _apiClient.dio.get('/residents/${comment.residentId}');
+        authorUserId = response.data['userId']?.toString();
+        
+        // Cache it for future use
+        if (authorUserId != null) {
+          _residentIdToUserIdCache[comment.residentId] = authorUserId;
+        }
+      } catch (e) {
+        print('⚠️ [PostDetailScreen] Error getting userId: $e');
+      }
+    }
+
+    // Check if user is blocked
+    final isBlocked = authorUserId != null && _blockedUserIds.contains(authorUserId);
+    
+    // If blocked, show message that user is not found
+    if (isBlocked) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Không tìm thấy người dùng'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+
+    // Show options menu
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(CupertinoIcons.chat_bubble),
+              title: const Text('Gửi tin nhắn'),
+              onTap: () => Navigator.pop(context, 'message'),
+            ),
+            ListTile(
+              leading: const Icon(CupertinoIcons.person_crop_circle_badge_xmark, color: Colors.red),
+              title: const Text('Chặn người dùng'),
+              onTap: () => Navigator.pop(context, 'block'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (result == 'message' && context.mounted && authorUserId != null) {
+      await _showDirectChatFromComment(context, comment, authorUserId);
+    } else if (result == 'block' && context.mounted && authorUserId != null) {
+      await _blockUserFromComment(context, authorUserId, comment.author?.name ?? 'Người dùng');
+    }
+  }
+
+  Future<void> _showDirectChatFromComment(BuildContext context, MarketplaceComment comment, String userId) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Trò chuyện'),
+        content: Text(
+          'Bạn có muốn gửi tin nhắn trực tiếp cho ${comment.author?.name ?? 'cư dân này'} không?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Gửi tin nhắn'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && context.mounted) {
+      try {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đang tạo lời mời...')),
+        );
+
+        await _chatService.createDirectInvitation(
+          inviteeId: comment.residentId,
+          initialMessage: null,
+        );
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Đã gửi lời mời trò chuyện'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _blockUserFromComment(BuildContext context, String userId, String userName) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Chặn người dùng'),
+        content: Text('Bạn có chắc chắn muốn chặn $userName không?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('Chặn'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đang chặn...')),
+        );
+      }
+
+      await _chatService.blockUser(userId);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Đã chặn $userName'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+
+        // Reload blocked users list and refresh comments
+        await _loadBlockedUsers();
+        await _loadComments();
+        
+        // Emit event
+        AppEventBus().emit('blocked_users_updated');
+      }
+    } catch (e) {
+      print('❌ [PostDetailScreen] Error blocking user: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi chặn: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildCommentSkeleton(ThemeData theme) {

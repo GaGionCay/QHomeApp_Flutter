@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'device_token_repository.dart';
+import 'event_bus.dart';
 
 typedef NotificationTapCallback = void Function(RemoteMessage message);
 
@@ -141,6 +142,14 @@ class PushNotificationService {
 
   Future<void> _handleForegroundMessage(RemoteMessage message) async {
     final notification = message.notification;
+    final data = message.data;
+    
+    // Handle chat notifications
+    final type = data['type']?.toString();
+    if (type == 'groupMessage' || type == 'directMessage') {
+      _handleChatNotification(data);
+    }
+
     final android = notification?.android;
     if (notification == null || android == null) return;
 
@@ -162,6 +171,35 @@ class PushNotificationService {
       ),
       payload: payload,
     );
+  }
+
+  void _handleChatNotification(Map<String, dynamic> data) {
+    try {
+      final type = data['type']?.toString();
+      final chatId = data['chatId']?.toString();
+      final groupId = data['groupId']?.toString();
+      final conversationId = data['conversationId']?.toString();
+      final unreadCountStr = data['unreadCount']?.toString();
+      
+      if (chatId == null) return;
+      
+      final unreadCount = unreadCountStr != null ? int.tryParse(unreadCountStr) ?? 0 : 0;
+      
+      // Emit event to update chat unreadCount
+      AppEventBus().emit('chat_notification_received', {
+        'type': type,
+        'chatId': chatId,
+        'groupId': groupId,
+        'conversationId': conversationId,
+        'unreadCount': unreadCount,
+        'senderName': data['senderName']?.toString(),
+        'excerptMessage': data['excerptMessage']?.toString(),
+      });
+      
+      debugPrint('🔔 [FCM] Chat notification received: type=$type, chatId=$chatId, unreadCount=$unreadCount');
+    } catch (e) {
+      debugPrint('⚠️ [FCM] Error handling chat notification: $e');
+    }
   }
 
   Future<void> _registerTokenWithServer({String? tokenOverride}) async {

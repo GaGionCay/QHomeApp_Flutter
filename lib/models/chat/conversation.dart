@@ -11,6 +11,8 @@ class Conversation {
   final DirectMessage? lastMessage;
   final int? unreadCount;
   final DateTime? lastReadAt;
+  final DateTime? muteUntil;
+  final bool isMuted;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -25,6 +27,8 @@ class Conversation {
     this.lastMessage,
     this.unreadCount,
     this.lastReadAt,
+    this.muteUntil,
+    this.isMuted = false,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -45,6 +49,10 @@ class Conversation {
       lastReadAt: json['lastReadAt'] != null
           ? DateTime.parse(json['lastReadAt'])
           : null,
+      muteUntil: json['muteUntil'] != null
+          ? DateTime.parse(json['muteUntil'])
+          : null,
+      isMuted: json['isMuted'] ?? false,
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'])
           : DateTime.now(),
@@ -66,6 +74,8 @@ class Conversation {
       'lastMessage': lastMessage?.toJson(),
       'unreadCount': unreadCount,
       'lastReadAt': lastReadAt?.toIso8601String(),
+      'muteUntil': muteUntil?.toIso8601String(),
+      'isMuted': isMuted,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
