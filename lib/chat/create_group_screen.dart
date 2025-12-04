@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'chat_service.dart';
+import '../models/chat/friend.dart';
 
 class CreateGroupScreen extends StatefulWidget {
   const CreateGroupScreen({super.key});
@@ -18,7 +19,16 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   final ChatService _service = ChatService();
   
   List<String> _phoneNumbers = [];
+  List<Friend> _friends = [];
+  Set<String> _selectedFriendIds = {}; // Selected friend residentIds
   bool _isLoading = false;
+  bool _isLoadingFriends = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFriends();
+  }
 
   @override
   void dispose() {
@@ -26,6 +36,40 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     _descriptionController.dispose();
     _phoneController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadFriends() async {
+    setState(() {
+      _isLoadingFriends = true;
+    });
+
+    try {
+      final friends = await _service.getFriends();
+      if (mounted) {
+        setState(() {
+          _friends = friends;
+          _isLoadingFriends = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingFriends = false;
+        });
+        // Don't show error, just log it - friends list is optional
+        debugPrint('⚠️ [CreateGroupScreen] Error loading friends: $e');
+      }
+    }
+  }
+
+  void _toggleFriendSelection(String friendId) {
+    setState(() {
+      if (_selectedFriendIds.contains(friendId)) {
+        _selectedFriendIds.remove(friendId);
+      } else {
+        _selectedFriendIds.add(friendId);
+      }
+    });
   }
 
   void _addPhoneNumber() {
@@ -82,6 +126,20 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
             ? null
             : _descriptionController.text.trim(),
       );
+
+      // Add friends as members if selected
+      if (_selectedFriendIds.isNotEmpty) {
+        try {
+          await _service.addMembers(
+            groupId: group.id,
+            memberIds: _selectedFriendIds.toList(),
+          );
+          debugPrint('✅ Added ${_selectedFriendIds.length} friends to group');
+        } catch (e) {
+          debugPrint('⚠️ Error adding friends to group: $e');
+          // Continue even if adding friends fails
+        }
+      }
 
       // Invite members by phone if provided
       if (_phoneNumbers.isNotEmpty) {
@@ -162,6 +220,83 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
               ),
               maxLines: 3,
             ),
+            const SizedBox(height: 24),
+            // Add friends section
+            Text(
+              'Thêm thành viên từ bạn bè',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Chọn bạn bè để thêm vào nhóm',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (_isLoadingFriends)
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_friends.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'Bạn chưa có bạn bè nào',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              )
+            else
+              Container(
+                constraints: const BoxConstraints(maxHeight: 200),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: theme.colorScheme.outline.withValues(alpha: 0.2),
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _friends.length,
+                  itemBuilder: (context, index) {
+                    final friend = _friends[index];
+                    final isSelected = _selectedFriendIds.contains(friend.friendId);
+                    return CheckboxListTile(
+                      title: Text(friend.friendName),
+                      subtitle: friend.friendPhone.isNotEmpty
+                          ? Text(friend.friendPhone)
+                          : null,
+                      value: isSelected,
+                      onChanged: (value) => _toggleFriendSelection(friend.friendId),
+                      dense: true,
+                    );
+                  },
+                ),
+              ),
+            if (_selectedFriendIds.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _selectedFriendIds.map((friendId) {
+                  final friend = _friends.firstWhere((f) => f.friendId == friendId);
+                  return Chip(
+                    label: Text(friend.friendName),
+                    onDeleted: () => _toggleFriendSelection(friendId),
+                    deleteIcon: const Icon(CupertinoIcons.xmark_circle_fill, size: 18),
+                  );
+                }).toList(),
+              ),
+            ],
             const SizedBox(height: 24),
             Text(
               'Thêm thành viên bằng số điện thoại',
