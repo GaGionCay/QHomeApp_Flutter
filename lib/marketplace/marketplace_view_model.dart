@@ -71,19 +71,32 @@ class MarketplaceViewModel extends ChangeNotifier {
     final type = data['type'] as String?;
     final postId = data['postId'] as String?;
     
-    if (postId == null) return;
+    debugPrint('📊 [MarketplaceViewModel] Received realtime update: type=$type, postId=$postId');
+    
+    if (postId == null) {
+      debugPrint('⚠️ [MarketplaceViewModel] postId is null, ignoring update');
+      return;
+    }
     
     final index = _posts.indexWhere((p) => p.id == postId);
-    if (index == -1) return;
+    if (index == -1) {
+      debugPrint('⚠️ [MarketplaceViewModel] Post not found in list: $postId');
+      return;
+    }
     
     final post = _posts[index];
     
     switch (type) {
       case 'POST_STATS_UPDATE':
-        // Update comment count
-        final commentCount = data['commentCount'] as int?;
+        // Update comment count, like count, and view count
+        final commentCount = (data['commentCount'] as num?)?.toInt();
+        final likeCount = (data['likeCount'] as num?)?.toInt();
+        final viewCount = (data['viewCount'] as num?)?.toInt();
         
-        if (commentCount != null) {
+        debugPrint('📊 [MarketplaceViewModel] POST_STATS_UPDATE: commentCount=$commentCount, likeCount=$likeCount, viewCount=$viewCount');
+        debugPrint('📊 [MarketplaceViewModel] Current post commentCount: ${post.commentCount}');
+        
+        if (commentCount != null || likeCount != null || viewCount != null) {
           _posts[index] = MarketplacePost(
             id: post.id,
             residentId: post.residentId,
@@ -96,14 +109,17 @@ class MarketplaceViewModel extends ChangeNotifier {
             status: post.status,
             contactInfo: post.contactInfo,
             location: post.location,
-            viewCount: post.viewCount,
-            commentCount: commentCount,
+            viewCount: viewCount ?? post.viewCount,
+            commentCount: commentCount ?? post.commentCount,
             images: post.images,
             author: post.author,
             createdAt: post.createdAt,
             updatedAt: post.updatedAt,
           );
+          debugPrint('✅ [MarketplaceViewModel] Updated post commentCount to: ${_posts[index].commentCount}');
           notifyListeners();
+        } else {
+          debugPrint('⚠️ [MarketplaceViewModel] All counts are null, not updating');
         }
       case 'NEW_COMMENT':
         // Increment comment count and emit event for PostDetailScreen
@@ -286,12 +302,14 @@ class MarketplaceViewModel extends ChangeNotifier {
     }
   }
 
-  Future<MarketplaceComment?> addComment(String postId, String content, {String? parentCommentId}) async {
+  Future<MarketplaceComment?> addComment(String postId, String content, {String? parentCommentId, String? imageUrl, String? videoUrl}) async {
     try {
       final newComment = await _service.addComment(
         postId: postId,
         content: content,
         parentCommentId: parentCommentId,
+        imageUrl: imageUrl,
+        videoUrl: videoUrl,
       );
       
       // Optimistic update - increment comment count immediately

@@ -3,8 +3,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter_linkify/flutter_linkify.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../chat/linkable_text_widget.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import 'package:shimmer/shimmer.dart';
 import '../models/marketplace_post.dart';
 import '../models/marketplace_comment.dart';
@@ -44,6 +45,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   final MarketplaceService _marketplaceService = MarketplaceService();
   bool _commentsLoaded = false; // Track if comments have been loaded
   List<MarketplaceComment> _comments = [];
+  MarketplacePost? _currentPost; // Cache current post for comment count
   bool _isLoadingComments = false;
   bool _isLoadingMoreComments = false;
   bool _isPostingComment = false;
@@ -56,6 +58,141 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   Map<String, bool> _expandedComments = {}; // Track expanded state for read more
   Set<String> _blockedUserIds = {}; // Cache blocked user IDs
   final Map<String, String> _residentIdToUserIdCache = {}; // Cache residentId -> userId mapping
+  final ImagePicker _imagePicker = ImagePicker();
+  XFile? _selectedImage; // Selected image for comment
+  XFile? _selectedVideo; // Selected video for comment
+
+  /// Count nested replies recursively
+  int _countNestedReplies(MarketplaceComment comment) {
+    int count = 0;
+    if (comment.replies.isNotEmpty) {
+      for (var reply in comment.replies) {
+        count++; // Count this reply
+        count += _countNestedReplies(reply); // Count nested replies recursively
+      }
+    }
+    return count;
+  }
+
+  /// Check if current user can delete a comment
+  /// Returns true if:
+  /// - Current user is the post owner, OR
+  /// - Current user is the comment owner
+  bool _canDeleteComment(MarketplaceComment comment) {
+    if (_currentResidentId == null) return false;
+    
+    // Post owner can delete any comment
+    if (widget.post.residentId == _currentResidentId) {
+      return true;
+    }
+    
+    // Comment owner can delete their own comment
+    if (comment.residentId == _currentResidentId) {
+      return true;
+    }
+    
+    return false;
+  }
+
+  /// Show delete comment confirmation dialog
+  Future<void> _showDeleteCommentDialog(BuildContext context, MarketplaceComment comment) async {
+    final isRootComment = comment.parentCommentId == null;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xóa bình luận'),
+        content: Text(
+          isRootComment
+              ? 'Bạn có chắc chắn muốn xóa bình luận này? Tất cả các bình luận con (mọi cấp) sẽ bị xóa.'
+              : 'Bạn có chắc chắn muốn xóa bình luận này? Các bình luận con sẽ được giữ lại.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await _deleteComment(comment);
+    }
+  }
+
+
+
+
+  /// Delete a comment
+  Future<void> _deleteComment(MarketplaceComment comment) async {
+    try {
+      await _marketplaceService.deleteComment(widget.post.id, comment.id);
+      
+      if (mounted) {
+        final isRootComment = comment.parentCommentId == null;
+        
+        // Reload comments to get correct state from backend
+        // This ensures that when deleting a child comment, its replies are preserved
+        // Backend will keep the replies (orphaned), and we need to reload to see them
+        await _loadComments();
+        
+        // Reload post to get updated comment count from backend
+        int? updatedCommentCount;
+        try {
+          final updatedPost = await _marketplaceService.getPostById(widget.post.id);
+          setState(() {
+            _currentPost = updatedPost;
+          });
+          updatedCommentCount = updatedPost.commentCount;
+        } catch (e) {
+          // Failed to reload post, estimate count by decrementing
+          print('⚠️ Failed to reload post after delete: $e');
+          final currentPost = _currentPost ?? widget.post;
+          // Estimate: decrement by 1 for the deleted comment
+          // TH1: If root comment, add entire sub-tree count (all levels recursively)
+          // TH2: If child comment, only decrement by 1 (no replies deleted)
+          int deletedCount = 1;
+          if (isRootComment) {
+            // Count entire sub-tree recursively
+            deletedCount += _countNestedReplies(comment);
+          }
+          // TH2: Child comment deletion - only 1 comment deleted, no need to add replies
+          updatedCommentCount = (currentPost.commentCount - deletedCount).clamp(0, double.infinity).toInt();
+        }
+        
+        // Emit event to update marketplace screen (realtime update)
+        // This ensures marketplace screen updates even if WebSocket event is delayed
+        AppEventBus().emit('marketplace_update', {
+          'type': 'POST_STATS_UPDATE',
+          'postId': widget.post.id,
+          'commentCount': updatedCommentCount,
+          'viewCount': (_currentPost ?? widget.post).viewCount,
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Đã xóa bình luận'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi xóa bình luận: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -74,6 +211,22 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     if (!_commentsLoaded) {
       _commentsLoaded = true;
       _loadComments();
+      // Reload post to get latest comment count
+      _reloadPost();
+    }
+  }
+
+  /// Reload post to get latest comment count
+  Future<void> _reloadPost() async {
+    try {
+      final updatedPost = await _marketplaceService.getPostById(widget.post.id);
+      if (mounted) {
+        setState(() {
+          _currentPost = updatedPost;
+        });
+      }
+    } catch (e) {
+      print('⚠️ Failed to reload post: $e');
     }
   }
 
@@ -224,6 +377,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         if (postId == widget.post.id && mounted) {
           // Reload comments when new comment is added
           _loadComments();
+          // Also reload post to get updated comment count
+          _reloadPost();
         }
       }
     });
@@ -234,11 +389,36 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         final type = data['type'] as String?;
         final postId = data['postId'] as String?;
         if (postId == widget.post.id && type == 'POST_STATS_UPDATE' && mounted) {
-          // Update comment count from stats update
-          setState(() {
-            // The post will be updated via Consumer, but we can also reload comments
-            // to ensure we have the latest count
-          });
+          // Update comment count from event data immediately
+          final commentCount = (data['commentCount'] as num?)?.toInt();
+          if (commentCount != null) {
+            setState(() {
+              // Update _currentPost with new comment count
+              if (_currentPost != null) {
+                _currentPost = MarketplacePost(
+                  id: _currentPost!.id,
+                  residentId: _currentPost!.residentId,
+                  buildingId: _currentPost!.buildingId,
+                  title: _currentPost!.title,
+                  description: _currentPost!.description,
+                  price: _currentPost!.price,
+                  category: _currentPost!.category,
+                  categoryName: _currentPost!.categoryName,
+                  status: _currentPost!.status,
+                  contactInfo: _currentPost!.contactInfo,
+                  location: _currentPost!.location,
+                  viewCount: _currentPost!.viewCount,
+                  commentCount: commentCount,
+                  images: _currentPost!.images,
+                  author: _currentPost!.author,
+                  createdAt: _currentPost!.createdAt,
+                  updatedAt: _currentPost!.updatedAt,
+                );
+              }
+            });
+          }
+          // Also reload post to get latest data from backend
+          _reloadPost();
         }
       }
     });
@@ -279,10 +459,13 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       
       if (mounted) {
         setState(() {
+          // Filter out deleted comments (backend should already filter, but defensive check)
+          final filteredComments = pagedResponse.content.where((comment) => !comment.isDeleted).toList();
+          
           if (loadMore) {
-            _comments.addAll(pagedResponse.content);
+            _comments.addAll(filteredComments);
           } else {
-            _comments = pagedResponse.content;
+            _comments = filteredComments;
           }
           _currentPage = pagedResponse.currentPage + 1;
           _hasMoreComments = pagedResponse.hasNext;
@@ -314,10 +497,61 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   Future<void> _postComment() async {
     final content = _commentController.text.trim();
-    if (content.isEmpty) return;
+    if (content.isEmpty && _selectedImage == null && _selectedVideo == null) return;
 
     setState(() => _isPostingComment = true);
     try {
+      String? imageUrl;
+      String? videoUrl;
+      
+      // Upload image if selected
+      if (_selectedImage != null) {
+        try {
+          final formData = FormData.fromMap({
+            'file': await MultipartFile.fromFile(
+              _selectedImage!.path,
+              filename: _selectedImage!.name,
+            ),
+          });
+          final response = await _apiClient.dio.post(
+            '/uploads/marketplace/comment/image',
+            data: formData,
+          );
+          imageUrl = response.data['imageUrl']?.toString();
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Lỗi khi upload ảnh: ${e.toString()}')),
+            );
+          }
+          return;
+        }
+      }
+      
+      // Upload video if selected
+      if (_selectedVideo != null) {
+        try {
+          final formData = FormData.fromMap({
+            'file': await MultipartFile.fromFile(
+              _selectedVideo!.path,
+              filename: _selectedVideo!.name,
+            ),
+          });
+          final response = await _apiClient.dio.post(
+            '/uploads/marketplace/comment/video',
+            data: formData,
+          );
+          videoUrl = response.data['videoUrl']?.toString();
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Lỗi khi upload video: ${e.toString()}')),
+            );
+          }
+          return;
+        }
+      }
+      
       MarketplaceComment? newComment;
       
       // Try to use MarketplaceViewModel if available, otherwise use MarketplaceService directly
@@ -325,15 +559,19 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
         newComment = await viewModel.addComment(
           widget.post.id, 
-          content,
+          content.isEmpty ? ' ' : content, // Allow empty content if image/video is provided
           parentCommentId: _replyingToCommentId,
+          imageUrl: imageUrl,
+          videoUrl: videoUrl,
         );
       } catch (e) {
         // No provider available, use service directly
         newComment = await _marketplaceService.addComment(
           postId: widget.post.id,
-          content: content,
+          content: content.isEmpty ? ' ' : content,
           parentCommentId: _replyingToCommentId,
+          imageUrl: imageUrl,
+          videoUrl: videoUrl,
         );
       }
       
@@ -341,6 +579,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         _commentController.clear();
         _replyingToCommentId = null;
         _replyingToComment = null;
+        _selectedImage = null;
+        _selectedVideo = null;
         // Reload comments to get updated list
         await _loadComments();
         // Scroll to bottom to show new comment
@@ -512,11 +752,31 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                             color: theme.colorScheme.primary,
                           ),
                           const SizedBox(width: 8),
-                          Text(
-                            'Bình luận (${updatedPost.commentCount})',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                          Builder(
+                            builder: (context) {
+                              // Try to get updated post from viewModel (realtime updates)
+                              MarketplacePost postToUse = _currentPost ?? updatedPost;
+                              try {
+                                final viewModel = Provider.of<MarketplaceViewModel>(context, listen: true);
+                                final vmPost = viewModel.posts.firstWhere(
+                                  (p) => p.id == widget.post.id,
+                                  orElse: () => postToUse,
+                                );
+                                // Use viewModel post if it has newer comment count
+                                if (vmPost.commentCount != postToUse.commentCount) {
+                                  postToUse = vmPost;
+                                }
+                              } catch (e) {
+                                // ViewModel not available, use _currentPost or updatedPost
+                              }
+                              
+                              return Text(
+                                'Bình luận (${postToUse.commentCount})',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              );
+                            },
                           ),
                         ],
                       ),
@@ -645,41 +905,125 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                       bottom: MediaQuery.of(context).padding.bottom + 8,
                     ),
                     child: SafeArea(
-                      child: Row(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _commentController,
-                              decoration: InputDecoration(
-                                hintText: _replyingToComment != null
-                                    ? 'Viết câu trả lời...'
-                                    : 'Viết bình luận...',
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(24),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 12,
+                          // Preview selected image/video
+                          if (_selectedImage != null || _selectedVideo != null)
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              height: 100,
+                              child: Row(
+                                children: [
+                                  if (_selectedImage != null)
+                                    Stack(
+                                      children: [
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Image.file(
+                                            File(_selectedImage!.path),
+                                            width: 100,
+                                            height: 100,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        ),
+                                        Positioned(
+                                          top: 4,
+                                          right: 4,
+                                          child: IconButton(
+                                            icon: const Icon(CupertinoIcons.xmark_circle_fill, color: Colors.red),
+                                            onPressed: () {
+                                              setState(() {
+                                                _selectedImage = null;
+                                              });
+                                            },
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  if (_selectedVideo != null)
+                                    Stack(
+                                      children: [
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Container(
+                                            width: 100,
+                                            height: 100,
+                                            color: Colors.black,
+                                            child: Icon(
+                                              CupertinoIcons.play_circle_fill,
+                                              color: Colors.white,
+                                              size: 40,
+                                            ),
+                                          ),
+                                        ),
+                                        Positioned(
+                                          top: 4,
+                                          right: 4,
+                                          child: IconButton(
+                                            icon: const Icon(CupertinoIcons.xmark_circle_fill, color: Colors.red),
+                                            onPressed: () {
+                                              setState(() {
+                                                _selectedVideo = null;
+                                              });
+                                            },
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                ],
+                              ),
+                            ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _commentController,
+                                  decoration: InputDecoration(
+                                    hintText: _replyingToComment != null
+                                        ? 'Viết câu trả lời...'
+                                        : 'Viết bình luận...',
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(24),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 12,
+                                    ),
+                                  ),
+                                  maxLines: null,
+                                  textInputAction: TextInputAction.send,
+                                  onSubmitted: (_) => _postComment(),
                                 ),
                               ),
-                              maxLines: null,
-                              textInputAction: TextInputAction.send,
-                              onSubmitted: (_) => _postComment(),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            onPressed: _isPostingComment ? null : _postComment,
-                            icon: _isPostingComment
-                                ? const SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : Icon(
-                                    CupertinoIcons.paperplane_fill,
-                                    color: theme.colorScheme.primary,
-                                  ),
+                              // Image/Video picker button
+                              IconButton(
+                                onPressed: _isPostingComment ? null : _showMediaPicker,
+                                icon: Icon(
+                                  CupertinoIcons.photo_camera,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              // Send button
+                              IconButton(
+                                onPressed: _isPostingComment ? null : _postComment,
+                                icon: _isPostingComment
+                                    ? const SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : Icon(
+                                        CupertinoIcons.paperplane_fill,
+                                        color: theme.colorScheme.primary,
+                                      ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -692,6 +1036,77 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _showMediaPicker() async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(CupertinoIcons.photo),
+              title: const Text('Chọn ảnh'),
+              onTap: () => Navigator.pop(context, 'image'),
+            ),
+            ListTile(
+              leading: const Icon(CupertinoIcons.videocam),
+              title: const Text('Chọn video'),
+              onTap: () => Navigator.pop(context, 'video'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (result == 'image') {
+      await _pickImage();
+    } else if (result == 'video') {
+      await _pickVideo();
+    }
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+      if (image != null) {
+        setState(() {
+          _selectedImage = image;
+          _selectedVideo = null; // Clear video if image is selected
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi khi chọn ảnh: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickVideo() async {
+    try {
+      final video = await _imagePicker.pickVideo(
+        source: ImageSource.gallery,
+      );
+      if (video != null) {
+        setState(() {
+          _selectedVideo = video;
+          _selectedImage = null; // Clear image if video is selected
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi khi chọn video: ${e.toString()}')),
+        );
+      }
+    }
   }
 
   Widget _buildPostCard(
@@ -1143,6 +1558,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     int depth = 0, // Độ sâu của reply (0 = top-level comment)
   }) {
     final isReply = depth > 0;
+    // Filter out deleted replies
+    final activeReplies = comment.replies.where((reply) => !reply.isDeleted).toList();
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1211,27 +1628,57 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                         const SizedBox(height: 4),
                         _buildCommentContent(context, theme, comment),
                         const SizedBox(height: 8),
-                    // Reply button
-                    InkWell(
-                      onTap: () => _startReply(comment),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            CupertinoIcons.arrow_turn_down_right,
-                            size: 16,
-                            color: theme.colorScheme.primary,
+                    // Action buttons (Reply and Delete)
+                    Row(
+                      children: [
+                        // Reply button
+                        InkWell(
+                          onTap: () => _startReply(comment),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                CupertinoIcons.arrow_turn_down_right,
+                                size: 16,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Trả lời',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Trả lời',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.primary,
-                              fontWeight: FontWeight.w500,
+                        ),
+                        // Delete button (only show if user is post owner or comment owner)
+                        if (_canDeleteComment(comment)) ...[
+                          const SizedBox(width: 16),
+                          InkWell(
+                            onTap: () => _showDeleteCommentDialog(context, comment),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  CupertinoIcons.delete,
+                                  size: 16,
+                                  color: Colors.red,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Xóa',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: Colors.red,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
-                      ),
+                      ],
                     ),
                   ],
                 ),
@@ -1239,10 +1686,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             ],
           ),
         ),
-        // Hiển thị replies nếu có
-        if (comment.replies.isNotEmpty) ...[
+        // Hiển thị replies nếu có (filter out deleted replies)
+        if (activeReplies.isNotEmpty) ...[
           const SizedBox(height: 8),
-          ...comment.replies.map((reply) => _buildCommentCard(
+          ...activeReplies.map((reply) => _buildCommentCard(
             context,
             theme,
             reply,
@@ -1599,10 +2046,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         } else {
           return;
         }
-      }
-      
-      if (selectedGroup == null) {
-        return;
       }
       
       // Invite to group
@@ -2048,10 +2491,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         }
       }
       
-      if (selectedGroup == null) {
-        return;
-      }
-      
       // Invite to group
       await _chatService.inviteMembersByPhone(
         groupId: selectedGroup.id,
@@ -2235,27 +2674,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Linkify(
-          onOpen: (link) async {
-            final uri = Uri.parse(link.url);
-            if (await canLaunchUrl(uri)) {
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
-            }
-          },
-          text: comment.content,
-          style: textStyle,
-          linkStyle: textStyle?.copyWith(
-            color: theme.colorScheme.primary,
-            decoration: TextDecoration.underline,
+        if (comment.content.isNotEmpty)
+          LinkableText(
+            text: comment.content,
+            style: textStyle,
+            linkColor: theme.colorScheme.primary,
+            textAlign: TextAlign.start,
           ),
-          options: const LinkifyOptions(
-            humanize: false,
-            removeWww: false,
-          ),
-          maxLines: isExpanded ? null : maxLines,
-          overflow: isExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
-        ),
-        if (needsReadMore)
+        if (needsReadMore && comment.content.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: InkWell(
@@ -2269,6 +2695,90 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               ),
             ),
           ),
+        // Display image if available
+        if (comment.imageUrl != null && comment.imageUrl!.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ImageViewerScreen(
+                    images: [
+                      MarketplacePostImage(
+                        id: comment.id,
+                        postId: comment.postId,
+                        imageUrl: comment.imageUrl!,
+                        sortOrder: 0,
+                      ),
+                    ],
+                    initialIndex: 0,
+                  ),
+                ),
+              );
+            },
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: CachedNetworkImage(
+                imageUrl: comment.imageUrl!,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => Container(
+                  height: 200,
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
+                errorWidget: (context, url, error) => Container(
+                  height: 200,
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  child: Icon(
+                    CupertinoIcons.photo,
+                    size: 48,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+        // Display video if available
+        if (comment.videoUrl != null && comment.videoUrl!.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Container(
+            height: 200,
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(
+                  CupertinoIcons.play_circle_fill,
+                  size: 64,
+                  color: Colors.white.withValues(alpha: 0.8),
+                ),
+                Positioned(
+                  bottom: 8,
+                  left: 8,
+                  right: 8,
+                  child: Text(
+                    'Video',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.white,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }

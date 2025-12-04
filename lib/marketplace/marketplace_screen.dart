@@ -27,7 +27,7 @@ class MarketplaceScreen extends StatefulWidget {
   State<MarketplaceScreen> createState() => _MarketplaceScreenState();
 }
 
-class _MarketplaceScreenState extends State<MarketplaceScreen> {
+class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindingObserver {
   late final MarketplaceViewModel _viewModel;
   final ScrollController _scrollController = ScrollController();
   final TokenStorage _tokenStorage = TokenStorage();
@@ -35,10 +35,12 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
   String? _currentResidentId;
   Set<String> _blockedUserIds = {}; // Cache blocked user IDs
   final Map<String, String> _residentIdToUserIdCache = {}; // Cache residentId -> userId mapping
+  bool _hasInitialized = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final service = MarketplaceService();
     final storage = TokenStorage();
     _viewModel = MarketplaceViewModel(service, storage);
@@ -47,6 +49,27 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
     _loadCurrentUser();
     _loadBlockedUsers();
     _setupBlockedUsersListener();
+  }
+
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Reload posts when app resumes to get latest comment counts
+    if (state == AppLifecycleState.resumed && _hasInitialized) {
+      _viewModel.refresh();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Mark as initialized on first call
+    if (!_hasInitialized) {
+      _hasInitialized = true;
+    }
+    // Note: We don't refresh here to avoid unnecessary API calls
+    // Comment count will be updated via POST_STATS_UPDATE events
   }
 
   Future<void> _loadCurrentUser() async {
@@ -538,6 +561,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     _viewModel.dispose();
     AppEventBus().off('blocked_users_updated');

@@ -12,6 +12,8 @@ class MarketplaceComment {
   final DateTime createdAt;
   final DateTime? updatedAt;
   final bool isDeleted;
+  final String? imageUrl; // URL of image attached to comment
+  final String? videoUrl; // URL of video attached to comment
 
   MarketplaceComment({
     required this.id,
@@ -23,8 +25,10 @@ class MarketplaceComment {
     required this.replies,
     required this.replyCount,
     required this.createdAt,
-    this.updatedAt,
-    required this.isDeleted,
+      this.updatedAt,
+      required this.isDeleted,
+      this.imageUrl,
+      this.videoUrl,
   });
 
   factory MarketplaceComment.fromJson(Map<String, dynamic> json) {
@@ -48,6 +52,8 @@ class MarketplaceComment {
           ? DateTime.parse(json['updatedAt']) 
           : null,
       isDeleted: json['isDeleted'] ?? json['deletedAt'] != null,
+      imageUrl: json['imageUrl']?.toString(),
+      videoUrl: json['videoUrl']?.toString(),
     );
   }
 

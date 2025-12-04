@@ -314,6 +314,8 @@ class MarketplaceService {
     required String postId,
     required String content,
     String? parentCommentId, // Cho reply
+    String? imageUrl, // URL of image attached to comment
+    String? videoUrl, // URL of video attached to comment
   }) async {
     try {
       final response = await _apiClient.dio.post(
@@ -321,6 +323,8 @@ class MarketplaceService {
         data: {
           'content': content,
           if (parentCommentId != null) 'parentCommentId': parentCommentId,
+          if (imageUrl != null) 'imageUrl': imageUrl,
+          if (videoUrl != null) 'videoUrl': videoUrl,
         },
       );
       return MarketplaceComment.fromJson(response.data);
