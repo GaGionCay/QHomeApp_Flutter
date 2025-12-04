@@ -24,6 +24,7 @@ class MarketplaceService {
     double? minPrice,
     double? maxPrice,
     String? sortBy, // 'newest', 'oldest', 'price_asc', 'price_desc', 'popular'
+    String? filterScope, // 'BUILDING' or 'ALL'
   }) async {
     try {
       final queryParams = <String, dynamic>{
@@ -53,6 +54,9 @@ class MarketplaceService {
       }
       if (sortBy != null && sortBy.isNotEmpty) {
         queryParams['sortBy'] = sortBy;
+      }
+      if (filterScope != null && filterScope.isNotEmpty) {
+        queryParams['filterScope'] = filterScope;
       }
 
       final response = await _apiClient.dio.get(
@@ -104,6 +108,7 @@ class MarketplaceService {
     String? location,
     MarketplaceContactInfo? contactInfo,
     required List<XFile> images,
+    String? scope,
   }) async {
     try {
       // Tạo JSON data cho CreatePostRequest
@@ -115,6 +120,7 @@ class MarketplaceService {
         'category': category,
         if (location != null) 'location': location,
         if (contactInfo != null) 'contactInfo': contactInfo.toJson(),
+        if (scope != null) 'scope': scope,
       };
       
       // Debug logging
@@ -146,17 +152,19 @@ class MarketplaceService {
         ),
       );
 
-      // Thêm images
-      for (int i = 0; i < images.length; i++) {
-        formData.files.add(
-          MapEntry(
-            'images',
-            await MultipartFile.fromFile(
-              images[i].path,
-              filename: 'image_$i.jpg',
+      // Thêm images (nếu có)
+      if (images.isNotEmpty) {
+        for (int i = 0; i < images.length; i++) {
+          formData.files.add(
+            MapEntry(
+              'images',
+              await MultipartFile.fromFile(
+                images[i].path,
+                filename: 'image_$i.jpg',
+              ),
             ),
-          ),
-        );
+          );
+        }
       }
 
       print('📤 [MarketplaceService] Sending POST request to /posts');

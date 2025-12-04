@@ -58,6 +58,7 @@ class InvoiceLineResponseDto {
   bool get isPaid => status.toUpperCase() == 'PAID';
   bool get isDraft => status.toUpperCase() == 'DRAFT';
   bool get isPublished => status.toUpperCase() == 'PUBLISHED';
+  bool get isUnpaid => status.toUpperCase() == 'UNPAID';
 
   String get serviceCodeDisplay {
     switch (serviceCode.toUpperCase()) {

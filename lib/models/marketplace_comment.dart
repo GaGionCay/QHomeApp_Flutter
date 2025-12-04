@@ -1,4 +1,5 @@
 import 'marketplace_post.dart';
+import '../auth/api_client.dart';
 
 class MarketplaceComment {
   final String id;
@@ -52,9 +53,38 @@ class MarketplaceComment {
           ? DateTime.parse(json['updatedAt']) 
           : null,
       isDeleted: json['isDeleted'] ?? json['deletedAt'] != null,
-      imageUrl: json['imageUrl']?.toString(),
-      videoUrl: json['videoUrl']?.toString(),
+      imageUrl: json['imageUrl'] != null ? _buildImageUrl(json['imageUrl']!.toString()) : null,
+      videoUrl: json['videoUrl'] != null ? _buildImageUrl(json['videoUrl']!.toString()) : null,
     );
+  }
+
+  // Helper to build absolute image/video URL
+  static String _buildImageUrl(String relativePath) {
+    try {
+      // Use ApiClient.activeFileBaseUrl if ApiClient is initialized
+      // activeFileBaseUrl is http://host:port (without /api)
+      // relativePath is like /api/marketplace/uploads/...
+      // So we just concatenate them
+      if (ApiClient.isInitialized) {
+        final baseUrl = ApiClient.activeFileBaseUrl;
+        // Ensure relativePath starts with /
+        final path = relativePath.startsWith('/') ? relativePath : '/$relativePath';
+        final fullUrl = '$baseUrl$path';
+        print('🔗 [MarketplaceComment] Building URL: baseUrl=$baseUrl, path=$path, fullUrl=$fullUrl');
+        return fullUrl;
+      } else {
+        // Fallback: construct from known pattern
+        const host = 'localhost';
+        const port = 8989;
+        final path = relativePath.startsWith('/') ? relativePath : '/$relativePath';
+        return 'http://$host:$port$path';
+      }
+    } catch (e) {
+      print('⚠️ [MarketplaceComment] Error in _buildImageUrl: $e');
+      // Fallback: assume localhost:8989
+      final path = relativePath.startsWith('/') ? relativePath : '/$relativePath';
+      return 'http://localhost:8989$path';
+    }
   }
 
   Map<String, dynamic> toJson() {

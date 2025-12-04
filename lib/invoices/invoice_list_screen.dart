@@ -705,6 +705,8 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
         return Colors.orange;
       case 'PUBLISHED':
         return Colors.blue;
+      case 'UNPAID':
+        return Colors.red; // Màu đỏ cho trạng thái chưa thanh toán
       default:
         return Colors.grey;
     }
@@ -1112,7 +1114,9 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              invoice.status.toUpperCase(),
+                              invoice.isUnpaid 
+                                  ? 'CHƯA THANH TOÁN' 
+                                  : invoice.status.toUpperCase(),
                               style: theme.textTheme.labelSmall?.copyWith(
                                 fontWeight: FontWeight.w700,
                                 color: statusColor,
@@ -1132,6 +1136,39 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      if (invoice.isUnpaid) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.red.withValues(alpha: 0.3),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.warning_amber_rounded,
+                                color: Colors.red,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Hóa đơn này chưa được thanh toán sau nhiều lần nhắc nhở. Vui lòng thanh toán ngay để tránh gián đoạn dịch vụ.',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: Colors.red.shade700,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 10),
                       Wrap(
                         spacing: 16,

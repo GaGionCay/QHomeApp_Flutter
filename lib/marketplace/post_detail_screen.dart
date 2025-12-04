@@ -7,6 +7,8 @@ import '../chat/linkable_text_widget.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:shimmer/shimmer.dart';
+import 'package:video_player/video_player.dart';
+import 'dart:async';
 import '../models/marketplace_post.dart';
 import '../models/marketplace_comment.dart';
 import '../models/comment_paged_response.dart';
@@ -14,6 +16,7 @@ import '../auth/token_storage.dart';
 import '../auth/api_client.dart';
 import 'marketplace_view_model.dart';
 import 'marketplace_service.dart';
+import 'marketplace_api_client.dart';
 import '../core/event_bus.dart';
 import 'image_viewer_screen.dart';
 import 'edit_post_screen.dart';
@@ -42,6 +45,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   final TokenStorage _tokenStorage = TokenStorage();
   final ChatService _chatService = ChatService();
   final ApiClient _apiClient = ApiClient();
+  final MarketplaceApiClient _marketplaceApiClient = MarketplaceApiClient();
   final MarketplaceService _marketplaceService = MarketplaceService();
   bool _commentsLoaded = false; // Track if comments have been loaded
   List<MarketplaceComment> _comments = [];
@@ -138,6 +142,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       await _deleteComment(comment);
     }
   }
+
+
+
 
   /// Insert reply into comment tree
   bool _insertReplyIntoTree(MarketplaceComment comment, String parentId, MarketplaceComment newReply) {
@@ -793,9 +800,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               filename: _selectedImage!.name,
             ),
           });
-          final response = await _apiClient.dio.post(
+          final response = await _marketplaceApiClient.dio.post(
             '/uploads/marketplace/comment/image',
             data: formData,
+            queryParameters: {'postId': widget.post.id},
           );
           imageUrl = response.data['imageUrl']?.toString();
         } catch (e) {
@@ -817,9 +825,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               filename: _selectedVideo!.name,
             ),
           });
-          final response = await _apiClient.dio.post(
+          final response = await _marketplaceApiClient.dio.post(
             '/uploads/marketplace/comment/video',
             data: formData,
+            queryParameters: {'postId': widget.post.id},
           );
           videoUrl = response.data['videoUrl']?.toString();
         } catch (e) {
@@ -839,7 +848,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
         newComment = await viewModel.addComment(
           widget.post.id, 
-          content.isEmpty ? ' ' : content, // Allow empty content if image/video is provided
+          content.trim(), // Send trimmed content (can be empty if image/video is provided)
           parentCommentId: _replyingToCommentId,
           imageUrl: imageUrl,
           videoUrl: videoUrl,
@@ -848,7 +857,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         // No provider available, use service directly
         newComment = await _marketplaceService.addComment(
           postId: widget.post.id,
-          content: content.isEmpty ? ' ' : content,
+          content: content.trim(), // Send trimmed content (can be empty if image/video is provided)
           parentCommentId: _replyingToCommentId,
           imageUrl: imageUrl,
           videoUrl: videoUrl,
@@ -3233,33 +3242,36 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         // Display video if available
         if (comment.videoUrl != null && comment.videoUrl!.isNotEmpty) ...[
           const SizedBox(height: 8),
-          Container(
-            height: 200,
-            decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Icon(
-                  CupertinoIcons.play_circle_fill,
-                  size: 64,
-                  color: Colors.white.withValues(alpha: 0.8),
-                ),
-                Positioned(
-                  bottom: 8,
-                  left: 8,
-                  right: 8,
-                  child: Text(
-                    'Video',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: Colors.white,
-                    ),
-                    textAlign: TextAlign.center,
+          GestureDetector(
+            onTap: () => _openCommentVideo(context, comment.videoUrl!),
+            child: Container(
+              height: 200,
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(
+                    CupertinoIcons.play_circle_fill,
+                    size: 64,
+                    color: Colors.white.withValues(alpha: 0.8),
                   ),
-                ),
-              ],
+                  Positioned(
+                    bottom: 8,
+                    left: 8,
+                    right: 8,
+                    child: Text(
+                      'Video',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.white,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -3289,5 +3301,259 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
+  Future<void> _openCommentVideo(BuildContext context, String videoUrl) async {
+    try {
+      if (!context.mounted) return;
+      
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+      
+      VideoPlayerController controller;
+      
+      try {
+        // Use network URL directly (videoUrl is already absolute URL from model)
+        final fullUrl = videoUrl.startsWith('http://') || videoUrl.startsWith('https://')
+            ? videoUrl
+            : ApiClient.fileUrl(videoUrl);
+        controller = VideoPlayerController.networkUrl(Uri.parse(fullUrl));
+        
+        // Initialize video player
+        await controller.initialize();
+        
+        if (!context.mounted) {
+          controller.dispose();
+          return;
+        }
+        
+        // Close loading dialog
+        Navigator.of(context).pop();
+        
+        // Show video player dialog
+        await showDialog(
+          context: context,
+          barrierColor: Colors.black87,
+          builder: (context) => _CommentVideoPlayerDialog(
+            controller: controller,
+            videoUrl: videoUrl,
+          ),
+        );
+        
+        // Dispose controller when dialog is closed
+        controller.dispose();
+      } catch (e) {
+        if (context.mounted) {
+          Navigator.of(context).pop(); // Close loading dialog
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Không thể tải video: $e'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.of(context).pop(); // Close loading dialog if still open
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể mở video: $e'),
+          ),
+        );
+      }
+    }
+  }
+}
+
+class _CommentVideoPlayerDialog extends StatefulWidget {
+  final VideoPlayerController controller;
+  final String videoUrl;
+
+  const _CommentVideoPlayerDialog({
+    required this.controller,
+    required this.videoUrl,
+  });
+
+  @override
+  State<_CommentVideoPlayerDialog> createState() => _CommentVideoPlayerDialogState();
+}
+
+class _CommentVideoPlayerDialogState extends State<_CommentVideoPlayerDialog> {
+  bool _isPlaying = false;
+  bool _showControls = true;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
+  Timer? _hideControlsTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _isPlaying = widget.controller.value.isPlaying;
+    _duration = widget.controller.value.duration;
+    _position = widget.controller.value.position;
+    widget.controller.addListener(_videoListener);
+    _startHideControlsTimer();
+  }
+
+  void _videoListener() {
+    if (mounted) {
+      setState(() {
+        _isPlaying = widget.controller.value.isPlaying;
+        _duration = widget.controller.value.duration;
+        _position = widget.controller.value.position;
+      });
+    }
+  }
+
+  void _startHideControlsTimer() {
+    _hideControlsTimer?.cancel();
+    _hideControlsTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && _isPlaying) {
+        setState(() {
+          _showControls = false;
+        });
+      }
+    });
+  }
+
+  void _togglePlayPause() {
+    setState(() {
+      if (_isPlaying) {
+        widget.controller.pause();
+      } else {
+        widget.controller.play();
+      }
+      _isPlaying = !_isPlaying;
+      _showControls = true;
+      _startHideControlsTimer();
+    });
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final hours = duration.inHours;
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    if (hours > 0) {
+      return '${twoDigits(hours)}:$minutes:$seconds';
+    }
+    return '$minutes:$seconds';
+  }
+
+  @override
+  void dispose() {
+    _hideControlsTimer?.cancel();
+    widget.controller.removeListener(_videoListener);
+    widget.controller.pause(); // Pause video when dialog closes
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    return Dialog(
+      backgroundColor: Colors.black,
+      insetPadding: EdgeInsets.zero,
+      child: Stack(
+        children: [
+          // Video player
+          Center(
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _showControls = !_showControls;
+                });
+                if (_showControls) {
+                  _startHideControlsTimer();
+                }
+              },
+              child: AspectRatio(
+                aspectRatio: widget.controller.value.aspectRatio,
+                child: VideoPlayer(widget.controller),
+              ),
+            ),
+          ),
+          
+          // Controls overlay
+          if (_showControls)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black26,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Top bar with close button
+                    SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.close, color: Colors.white),
+                              onPressed: () => Navigator.of(context).pop(),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    
+                    // Bottom controls
+                    SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          children: [
+                            // Progress bar
+                            VideoProgressIndicator(
+                              widget.controller,
+                              allowScrubbing: true,
+                              colors: VideoProgressColors(
+                                playedColor: theme.colorScheme.primary,
+                                bufferedColor: Colors.white30,
+                                backgroundColor: Colors.white12,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            
+                            // Play/pause and time
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  _formatDuration(_position),
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                                IconButton(
+                                  icon: Icon(
+                                    _isPlaying ? Icons.pause : Icons.play_arrow,
+                                    color: Colors.white,
+                                    size: 32,
+                                  ),
+                                  onPressed: _togglePlayPause,
+                                ),
+                                Text(
+                                  _formatDuration(_duration),
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 

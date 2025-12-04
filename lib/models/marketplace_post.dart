@@ -10,6 +10,7 @@ class MarketplacePost {
   final String category;
   final String categoryName; // Tên category để hiển thị
   final String status; // ACTIVE, SOLD, DELETED
+  final String? scope; // BUILDING, ALL, or BOTH
   final MarketplaceContactInfo? contactInfo;
   final String? location; // Tòa nhà, tầng, căn hộ
   final int viewCount;
@@ -29,6 +30,7 @@ class MarketplacePost {
     required this.category,
     required this.categoryName,
     required this.status,
+    this.scope,
     this.contactInfo,
     this.location,
     required this.viewCount,
@@ -67,6 +69,7 @@ class MarketplacePost {
       category: json['category'] ?? '',
       categoryName: json['categoryName'] ?? json['category'] ?? '',
       status: json['status'] ?? 'ACTIVE',
+      scope: json['scope'],
       contactInfo: () {
         final contactInfoJson = json['contactInfo'];
         print('📞 [MarketplacePost] ContactInfo data: $contactInfoJson');

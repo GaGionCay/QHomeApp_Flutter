@@ -292,10 +292,23 @@ class ApiClient {
         if (err.response == null) {
           print('⚠️ DIO CONNECTION ERROR: ${err.error}');
           
+          // FormData cannot be reused after being finalized
+          // Skip retry for FormData requests to avoid "FormData has already been finalized" error
+          if (options.data is FormData) {
+            print('⚠️ Skipping retry for FormData request - FormData cannot be reused');
+            return handler.next(err);
+          }
+          
           // Check if we've exceeded maximum time
           final elapsedSeconds = (DateTime.now().millisecondsSinceEpoch - startTime) ~/ 1000;
           if (elapsedSeconds >= maxTotalTimeSeconds) {
             print('❌ Max retry time (${maxTotalTimeSeconds}s) exceeded. Giving up.');
+            return handler.next(err);
+          }
+          
+          // Check if error message indicates FormData finalized (even if check above didn't catch it)
+          if (err.error != null && err.error.toString().contains('FormData has already been finalized')) {
+            print('⚠️ FormData finalized error detected. Skipping retry.');
             return handler.next(err);
           }
           
@@ -341,11 +354,22 @@ class ApiClient {
               
               // Retry the request with new base URL
               try {
+                // Check again if data is FormData before retry (might have been finalized in previous attempt)
+                if (options.data is FormData) {
+                  print('⚠️ Cannot retry - FormData has been finalized. Skipping retry.');
+                  return handler.next(err);
+                }
                 final clonedResponse = await dio.fetch(options);
                 print('✅ Retry successful after re-discovery (attempt ${retryCount + 1})');
                 return handler.resolve(clonedResponse);
               } catch (retryErr) {
                 print('⚠️ Retry ${retryCount + 1} after re-discovery failed: $retryErr');
+                // Check if error is due to FormData being finalized
+                if (retryErr.toString().contains('FormData has already been finalized') || 
+                    retryErr.toString().contains('FormData')) {
+                  print('⚠️ FormData finalized error detected. Stopping retry.');
+                  return handler.next(err);
+                }
                 // Continue retrying - recursively call handler.next to retry again
                 return handler.next(err);
               }
@@ -365,11 +389,15 @@ class ApiClient {
               }
               
               // If discovery fails, still retry (might be temporary issue)
-              if (retryCount + 1 < maxRetries) {
+              // But skip if FormData to avoid finalized error
+              if (retryCount + 1 < maxRetries && !(options.data is FormData)) {
                 options.extra['retryCount'] = retryCount + 1;
                 options.extra['retryStartTime'] = startTime;
                 final delaySeconds = (1 << retryCount).clamp(1, 10);
                 await Future.delayed(Duration(seconds: delaySeconds));
+                return handler.next(err);
+              } else if (options.data is FormData) {
+                print('⚠️ Skipping retry - FormData request cannot be retried');
                 return handler.next(err);
               }
             }
@@ -381,15 +409,18 @@ class ApiClient {
         // Check for ngrok offline error (ERR_NGROK_3200)
         // This happens when ngrok URL is cached but ngrok has stopped or URL changed
         if (err.response != null) {
-          final statusCode = err.response!.statusCode;
           final headers = err.response!.headers;
           final responseData = err.response!.data;
           
           // Check for ngrok offline error
-          final isNgrokOffline = headers.value('ngrok-error-code') == 'ERR_NGROK_3200' ||
-                                (responseData is String && responseData.contains('is offline')) ||
-                                (statusCode == 404 && 
-                                 (_activeHostIp.contains('ngrok') || _activeHostIp.contains('ngrok-free.app')));
+          // Only consider as ngrok offline if:
+          // 1. There's explicit ngrok error code, OR
+          // 2. Response contains "is offline" message
+          // Don't treat 404 as ngrok offline - 404 usually means endpoint doesn't exist, not ngrok issue
+          final hasNgrokErrorCode = headers.value('ngrok-error-code') == 'ERR_NGROK_3200';
+          final hasOfflineMessage = responseData is String && responseData.contains('is offline');
+          
+          final isNgrokOffline = hasNgrokErrorCode || hasOfflineMessage;
           
           if (isNgrokOffline && !kIsWeb && _isInitialized) {
             print('⚠️ Detected ngrok offline error (ERR_NGROK_3200)');
@@ -411,6 +442,12 @@ class ApiClient {
               // Update base URL for this request
               options.baseUrl = _activeBaseUrl;
               
+              // Skip retry if FormData (cannot be reused after finalized)
+              if (options.data is FormData) {
+                print('⚠️ Skipping retry for FormData request after clearing ngrok URL - FormData cannot be reused');
+                return handler.next(err);
+              }
+              
               // Retry the request with new base URL
               try {
                 final clonedResponse = await dio.fetch(options);
@@ -418,6 +455,12 @@ class ApiClient {
                 return handler.resolve(clonedResponse);
               } catch (retryErr) {
                 print('⚠️ Retry after clearing ngrok URL failed: $retryErr');
+                // Check if error is due to FormData being finalized
+                if (retryErr.toString().contains('FormData has already been finalized') || 
+                    retryErr.toString().contains('FormData')) {
+                  print('⚠️ FormData finalized error detected. Stopping retry.');
+                  return handler.next(err);
+                }
                 // Continue to next error handler (401, etc.)
               }
             } catch (clearErr) {

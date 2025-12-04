@@ -272,8 +272,10 @@ class MarketplaceViewModel extends ChangeNotifier {
 
     try {
       final targetPage = page ?? (refresh ? 0 : _currentPage + 1);
-      // If showAllBuildings is true, don't send buildingId (null = all buildings)
-      // If showAllBuildings is false, send buildingId to filter by user's building
+      // Determine filterScope based on showAllBuildings:
+      // - If showAllBuildings = false (Building của tôi) → filterScope = "BUILDING"
+      // - If showAllBuildings = true (Tất cả) → filterScope = "ALL"
+      final filterScope = _showAllBuildings ? 'ALL' : 'BUILDING';
       final response = await _service.getPosts(
         buildingId: _showAllBuildings ? null : _buildingId,
         page: targetPage,
@@ -282,6 +284,7 @@ class MarketplaceViewModel extends ChangeNotifier {
         category: _selectedCategory,
         status: _statusFilter,
         sortBy: _sortBy,
+        filterScope: filterScope,
       );
 
       _pageSize = response.pageSize;

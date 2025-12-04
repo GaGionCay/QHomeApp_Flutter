@@ -227,6 +227,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     ),
                     onChanged: viewModel.setLocation,
                   ),
+                  const SizedBox(height: 16),
+
+                  // Scope Selection
+                  _buildScopeSection(context, viewModel),
                   const SizedBox(height: 24),
 
                   // Images Section
@@ -250,14 +254,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Hình ảnh *',
+          'Hình ảnh',
           style: theme.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 8),
         Text(
-          'Thêm ít nhất 1 ảnh (tối đa 10 ảnh)',
+          'Thêm ảnh (tùy chọn, tối đa 10 ảnh)',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
           ),
@@ -350,6 +354,52 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               );
             }),
           ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildScopeSection(BuildContext context, CreatePostViewModel viewModel) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Phạm vi hiển thị *',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Chọn nơi hiển thị bài viết của bạn',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment<String>(
+              value: 'BUILDING',
+              label: Text('Building của tôi'),
+              icon: Icon(Icons.apartment),
+            ),
+            ButtonSegment<String>(
+              value: 'ALL',
+              label: Text('Tất cả'),
+              icon: Icon(Icons.public),
+            ),
+            ButtonSegment<String>(
+              value: 'BOTH',
+              label: Text('Cả 2'),
+              icon: Icon(Icons.layers),
+            ),
+          ],
+          selected: {viewModel.selectedScope ?? 'BUILDING'},
+          onSelectionChanged: (Set<String> selected) {
+            viewModel.setScope(selected.first);
+          },
         ),
       ],
     );

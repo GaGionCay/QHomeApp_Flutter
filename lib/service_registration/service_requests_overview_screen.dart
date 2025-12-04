@@ -9,9 +9,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:open_file/open_file.dart';
-import 'package:dio/dio.dart';
 import 'package:android_intent_plus/android_intent.dart';
+import 'package:video_player/video_player.dart';
 
 import '../auth/api_client.dart';
 import '../core/event_bus.dart';
@@ -39,11 +38,11 @@ class _ServiceRequestsOverviewScreenState
 
   // Cleaning request removed - no longer used
   // List<CleaningRequestSummary> _cleaningRequests = const [];
-  List<dynamic> _cleaningRequests = const [];
+  // List<dynamic> _cleaningRequests = const [];
   List<MaintenanceRequestSummary> _maintenanceRequests = const [];
   bool _loading = true;
   String? _error;
-  int? _cleaningTotal;
+  // int? _cleaningTotal;
   int? _maintenanceTotal;
   bool _loadingMoreCleaning = false;
   bool _loadingMoreMaintenance = false;
@@ -51,7 +50,8 @@ class _ServiceRequestsOverviewScreenState
   final _dateFormatter = DateFormat('dd/MM/yyyy');
   final _timeFormatter = DateFormat('HH:mm');
   final Set<String> _cancellingRequestIds = {};
-  final Set<String> _resendingRequestIds = {};
+  // Cleaning request removed - no longer used
+  // final Set<String> _resendingRequestIds = {};
   final Set<String> _resendingMaintenanceRequestIds = {};
   final Set<String> _approvingResponseIds = {};
   final Set<String> _rejectingResponseIds = {};
@@ -106,11 +106,12 @@ class _ServiceRequestsOverviewScreenState
     setState(() {
       _loading = true;
       _error = null;
-      _cleaningRequests = [];
+      // Cleaning request removed - no longer used
+      // _cleaningRequests = [];
       _maintenanceRequests = [];
-      _cleaningTotal = null;
+      // _cleaningTotal = null;
       _maintenanceTotal = null;
-      _loadingMoreCleaning = false;
+      // _loadingMoreCleaning = false;
       _loadingMoreMaintenance = false;
     });
 
@@ -128,9 +129,10 @@ class _ServiceRequestsOverviewScreenState
       final maintenancePage = await maintenanceFuture;
       if (!mounted) return;
       setState(() {
-        _cleaningRequests = []; // Empty list since cleaning request is removed
+        // Cleaning request removed - no longer used
+        // _cleaningRequests = [];
         _maintenanceRequests = maintenancePage.requests;
-        _cleaningTotal = 0; // Set to 0 since cleaning request is removed
+        // _cleaningTotal = 0;
         _maintenanceTotal = maintenancePage.total;
         _loading = false;
       });
@@ -243,9 +245,9 @@ class _ServiceRequestsOverviewScreenState
   }
 
   // Cleaning request removed - no longer used
-  bool _shouldShowResendButton(dynamic request) {
-    return false;
-  }
+  // bool _shouldShowResendButton(dynamic request) {
+  //   return false;
+  // }
 
   bool _shouldShowResendButtonMaintenance(MaintenanceRequestSummary request) {
     final normalizedStatus = request.status.toUpperCase();
@@ -263,10 +265,9 @@ class _ServiceRequestsOverviewScreenState
   }
 
   // Cleaning request removed - no longer used
-  Future<void> _resendCleaningRequest(String requestId) async {
-    // Implementation removed
-    return;
-  }
+  // Future<void> _resendCleaningRequest(String requestId) async {
+  //   // Implementation removed
+  // }
 
   Future<void> _resendMaintenanceRequest(String requestId) async {
     if (_resendingMaintenanceRequestIds.contains(requestId)) return;
@@ -524,8 +525,9 @@ class _ServiceRequestsOverviewScreenState
     super.dispose();
   }
 
-  bool get _hasMoreCleaningRequests =>
-      _cleaningTotal != null && _cleaningRequests.length < _cleaningTotal!;
+  // Cleaning request removed - no longer used
+  // bool get _hasMoreCleaningRequests =>
+  //     _cleaningTotal != null && _cleaningRequests.length < _cleaningTotal!;
 
   bool get _hasMoreMaintenanceRequests =>
       _maintenanceTotal != null &&
@@ -533,81 +535,23 @@ class _ServiceRequestsOverviewScreenState
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Yêu cầu dịch vụ'),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Dọn dẹp'),
-              Tab(text: 'Sửa chữa'),
-            ],
-          ),
-        ),
-        body: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-                ? _ErrorState(
-                    message: _error!,
-                    onRetry: _loadData,
-                  )
-                : TabBarView(
-                    children: [
-                      _buildCleaningTab(),
-                      _buildMaintenanceTab(),
-                    ],
-                  ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Yêu cầu dịch vụ'),
       ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? _ErrorState(
+                  message: _error!,
+                  onRetry: _loadData,
+                )
+              : _buildMaintenanceTab(),
     );
   }
 
-  Widget _buildCleaningTab() {
-    return RefreshIndicator(
-      onRefresh: _loadData,
-      child: _cleaningRequests.isEmpty
-          ? const _EmptyState(
-              icon: Icons.cleaning_services_outlined,
-              message: 'Bạn chưa có yêu cầu dọn dẹp nào.',
-            )
-          : ListView.separated(
-              padding: const EdgeInsets.all(16),
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemCount:
-                  _cleaningRequests.length + (_hasMoreCleaningRequests ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index < _cleaningRequests.length) {
-                final request = _cleaningRequests[index];
-                final scheduleText = request.scheduledAt != null
-                    ? '${_dateFormatter.format(request.scheduledAt!)} • ${_timeFormatter.format(request.scheduledAt!)}'
-                    : 'Chưa xác định thời gian';
-                final extra = request.extraServices.isEmpty
-                    ? null
-                    : 'Bao gồm: ${request.extraServices.join(', ')}';
-                final canResend = _shouldShowResendButton(request);
-                return _RequestCard(
-                  icon: Icons.cleaning_services_outlined,
-                  accent: AppColors.primaryAqua,
-                  title: request.cleaningType,
-                  subtitle: '$scheduleText • ${request.location}',
-                  note: extra ?? request.note,
-                  status: request.status,
-                  createdAt: request.createdAt,
-                    lastResentAt: request.lastResentAt,
-                    // Hide cancel button on card - only show in detail screen
-                    onCancel: null,
-                  isCanceling: _cancellingRequestIds.contains(request.id),
-                    onResend: canResend
-                        ? () => _resendCleaningRequest(request.id)
-                        : null,
-                    isResending: _resendingRequestIds.contains(request.id),
-                );
-                }
-                return _buildLoadMoreTile(isCleaning: true);
-              },
-            ),
-    );
-  }
+  // Cleaning request removed - no longer used
+  // Widget _buildCleaningTab() has been removed
 
   Widget _buildMaintenanceTab() {
     return RefreshIndicator(
@@ -1358,59 +1302,80 @@ class _MaintenanceRequestDetailSheet extends StatelessWidget {
 
   Future<void> _openVideo(BuildContext context, String videoData) async {
     try {
-      String filePath;
-      
-      if (_isDataUri(videoData)) {
-        // Save base64 video to temporary file
-        final videoBytes = _decodeBase64DataUri(videoData);
-        final tempDir = await getTemporaryDirectory();
-        final fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
-        filePath = '${tempDir.path}/$fileName';
-        
-        final file = File(filePath);
-        await file.writeAsBytes(videoBytes);
-      } else {
-        // Download video from URL to temporary file
-        final fullUrl = _buildFullUrl(videoData);
-        final tempDir = await getTemporaryDirectory();
-        final uri = Uri.parse(fullUrl);
-        final fileName = uri.pathSegments.last.isNotEmpty
-            ? uri.pathSegments.last
-            : 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
-        filePath = '${tempDir.path}/$fileName';
-        
-        // Download using Dio
-        final apiClient = await ApiClient.create();
-        final dio = apiClient.dio;
-        await dio.download(
-          fullUrl,
-          filePath,
-          options: Options(
-            headers: {
-              'Content-Type': 'application/json',
-            },
-          ),
-        );
-      }
-      
-      // Open file with system dialog
       if (!context.mounted) return;
-      final result = await OpenFile.open(filePath);
-      if (result.type != ResultType.done) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Không thể mở video: ${result.message}'),
-          ),
-        );
-      }
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Không thể mở video: $e'),
+      
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
         ),
       );
+      
+      VideoPlayerController controller;
+      
+      try {
+        if (_isDataUri(videoData)) {
+          // Save base64 video to temporary file
+          final videoBytes = _decodeBase64DataUri(videoData);
+          final tempDir = await getTemporaryDirectory();
+          final fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+          final filePath = '${tempDir.path}/$fileName';
+          
+          final file = File(filePath);
+          await file.writeAsBytes(videoBytes);
+          
+          // Create video player controller from file
+          controller = VideoPlayerController.file(file);
+        } else {
+          // Use network URL directly
+          final fullUrl = _buildFullUrl(videoData);
+          controller = VideoPlayerController.networkUrl(Uri.parse(fullUrl));
+        }
+        
+        // Initialize video player
+        await controller.initialize();
+        
+        if (!context.mounted) {
+          controller.dispose();
+          return;
+        }
+        
+        // Close loading dialog
+        Navigator.of(context).pop();
+        
+        // Show video player dialog
+        await showDialog(
+          context: context,
+          barrierColor: Colors.black87,
+          builder: (context) => _VideoPlayerDialog(
+            controller: controller,
+            videoUrl: videoData,
+          ),
+        );
+        
+        // Dispose controller when dialog is closed
+        controller.dispose();
+      } catch (e) {
+        if (context.mounted) {
+          Navigator.of(context).pop(); // Close loading dialog
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Không thể tải video: $e'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.of(context).pop(); // Close loading dialog if still open
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể mở video: $e'),
+          ),
+        );
+      }
     }
   }
 
@@ -1933,6 +1898,207 @@ class _AttachmentFullScreenViewerState
               );
             },
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Dialog để xem video trong Flutter
+class _VideoPlayerDialog extends StatefulWidget {
+  final VideoPlayerController controller;
+  final String videoUrl;
+
+  const _VideoPlayerDialog({
+    required this.controller,
+    required this.videoUrl,
+  });
+
+  @override
+  State<_VideoPlayerDialog> createState() => _VideoPlayerDialogState();
+}
+
+class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
+  bool _isPlaying = false;
+  bool _showControls = true;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
+  Timer? _hideControlsTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _isPlaying = widget.controller.value.isPlaying;
+    _duration = widget.controller.value.duration;
+    _position = widget.controller.value.position;
+    widget.controller.addListener(_videoListener);
+    _startHideControlsTimer();
+  }
+
+  void _videoListener() {
+    if (mounted) {
+      setState(() {
+        _isPlaying = widget.controller.value.isPlaying;
+        _duration = widget.controller.value.duration;
+        _position = widget.controller.value.position;
+      });
+    }
+  }
+
+  void _startHideControlsTimer() {
+    _hideControlsTimer?.cancel();
+    _hideControlsTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && _isPlaying) {
+        setState(() {
+          _showControls = false;
+        });
+      }
+    });
+  }
+
+  void _togglePlayPause() {
+    setState(() {
+      if (_isPlaying) {
+        widget.controller.pause();
+      } else {
+        widget.controller.play();
+      }
+      _isPlaying = !_isPlaying;
+      _showControls = true;
+      _startHideControlsTimer();
+    });
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final hours = duration.inHours;
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    if (hours > 0) {
+      return '${twoDigits(hours)}:$minutes:$seconds';
+    }
+    return '$minutes:$seconds';
+  }
+
+  @override
+  void dispose() {
+    _hideControlsTimer?.cancel();
+    widget.controller.removeListener(_videoListener);
+    widget.controller.pause(); // Pause video when dialog closes
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    return Dialog(
+      backgroundColor: Colors.black,
+      insetPadding: EdgeInsets.zero,
+      child: Stack(
+        children: [
+          // Video player
+          Center(
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _showControls = !_showControls;
+                });
+                if (_showControls) {
+                  _startHideControlsTimer();
+                }
+              },
+              child: AspectRatio(
+                aspectRatio: widget.controller.value.aspectRatio,
+                child: VideoPlayer(widget.controller),
+              ),
+            ),
+          ),
+          
+          // Controls overlay
+          if (_showControls)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black26,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Top bar with close button
+                    SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.close, color: Colors.white),
+                              onPressed: () {
+                                Navigator.of(context).pop();
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    
+                    // Center play/pause button
+                    Expanded(
+                      child: Center(
+                        child: IconButton(
+                          icon: Icon(
+                            _isPlaying ? Icons.pause : Icons.play_arrow,
+                            color: Colors.white,
+                            size: 64,
+                          ),
+                          onPressed: _togglePlayPause,
+                        ),
+                      ),
+                    ),
+                    
+                    // Bottom controls
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Progress bar
+                          VideoProgressIndicator(
+                            widget.controller,
+                            allowScrubbing: true,
+                            colors: VideoProgressColors(
+                              playedColor: theme.colorScheme.primary,
+                              bufferedColor: Colors.white30,
+                              backgroundColor: Colors.white12,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          // Time indicators
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                _formatDuration(_position),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              Text(
+                                _formatDuration(_duration),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );

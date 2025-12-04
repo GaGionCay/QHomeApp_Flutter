@@ -22,6 +22,7 @@ class CreatePostViewModel extends ChangeNotifier {
   String? _email;
   bool _showPhone = true;
   bool _showEmail = false;
+  String? _selectedScope; // BUILDING, ALL, or BOTH
   List<XFile> _selectedImages = [];
   bool _isSubmitting = false;
   String? _error;
@@ -41,6 +42,7 @@ class CreatePostViewModel extends ChangeNotifier {
   String? get email => _email;
   bool get showPhone => _showPhone;
   bool get showEmail => _showEmail;
+  String? get selectedScope => _selectedScope;
   List<XFile> get selectedImages => _selectedImages;
   bool get isSubmitting => _isSubmitting;
   String? get error => _error;
@@ -118,6 +120,11 @@ class CreatePostViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setScope(String? scope) {
+    _selectedScope = scope;
+    notifyListeners();
+  }
+
   Future<void> pickImages() async {
     try {
       final picker = ImagePicker();
@@ -167,12 +174,6 @@ class CreatePostViewModel extends ChangeNotifier {
       return null;
     }
 
-    if (_selectedImages.isEmpty) {
-      _error = 'Vui lòng thêm ít nhất 1 ảnh';
-      notifyListeners();
-      return null;
-    }
-
     _isSubmitting = true;
     _error = null;
     notifyListeners();
@@ -211,6 +212,7 @@ class CreatePostViewModel extends ChangeNotifier {
         location: _location,
         contactInfo: contactInfo,
         images: _selectedImages,
+        scope: _selectedScope ?? 'BUILDING',
       );
 
       _isSubmitting = false;
