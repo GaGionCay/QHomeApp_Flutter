@@ -227,6 +227,10 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showInviteByPhoneDialog(context),
+        child: const Icon(CupertinoIcons.person_add),
+      ),
       body: RefreshIndicator(
         onRefresh: () async {
           await _loadConversations();
@@ -528,6 +532,99 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
         }
       }
     }
+  }
+
+  Future<void> _showInviteByPhoneDialog(BuildContext context) async {
+    final phoneController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool isLoading = false;
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Mời chat bằng số điện thoại'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: phoneController,
+                  decoration: const InputDecoration(
+                    labelText: 'Số điện thoại',
+                    hintText: '0123456789',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.phone,
+                  enabled: !isLoading,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Vui lòng nhập số điện thoại';
+                    }
+                    final phone = value.trim().replaceAll(RegExp(r'[^0-9]'), '');
+                    if (phone.length != 10) {
+                      return 'Số điện thoại phải có 10 chữ số';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isLoading ? null : () => Navigator.pop(context),
+              child: const Text('Hủy'),
+            ),
+            FilledButton(
+              onPressed: isLoading ? null : () async {
+                if (!formKey.currentState!.validate()) return;
+                
+                setDialogState(() => isLoading = true);
+                
+                try {
+                  final phone = phoneController.text.trim().replaceAll(RegExp(r'[^0-9]'), '');
+                  await _service.createDirectInvitation(
+                    phoneNumber: phone,
+                    initialMessage: null,
+                  );
+                  
+                  if (mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('✅ Đã gửi lời mời chat'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                    _loadConversations();
+                    _loadInvitationsCount();
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    setDialogState(() => isLoading = false);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Lỗi: ${e.toString()}'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              },
+              child: isLoading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Gửi lời mời'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

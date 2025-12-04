@@ -693,16 +693,22 @@ class ChatService {
   // Direct Chat Invitations
   /// Create direct invitation
   Future<DirectInvitation> createDirectInvitation({
-    required String inviteeId,
+    String? inviteeId,
+    String? phoneNumber,
     String? initialMessage,
   }) async {
     try {
+      if (inviteeId == null && phoneNumber == null) {
+        throw Exception('Either inviteeId or phoneNumber must be provided');
+      }
+      
       // Use ApiClient.activeBaseUrl directly since /api/direct-invitations is not under /api/chat
       final apiClient = ApiClient();
       final url = '/direct-invitations';
       final requestData = {
-        'inviteeId': inviteeId,
-        'initialMessage': initialMessage,
+        if (inviteeId != null) 'inviteeId': inviteeId,
+        if (phoneNumber != null) 'phoneNumber': phoneNumber,
+        if (initialMessage != null) 'initialMessage': initialMessage,
       };
       
       print('📤 [ChatService] Creating direct invitation:');
