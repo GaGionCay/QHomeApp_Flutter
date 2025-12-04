@@ -51,7 +51,12 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
     
     // Also listen for direct chat activity updates
     AppEventBus().on('direct_chat_activity_updated', (_) {
-      if (!mounted) return;
+      print('📢 [DirectChatListScreen] Received direct_chat_activity_updated event');
+      if (!mounted) {
+        print('⚠️ [DirectChatListScreen] Widget not mounted, skipping refresh');
+        return;
+      }
+      print('🔄 [DirectChatListScreen] Refreshing conversations list...');
       _loadConversations();
     });
   }
@@ -64,20 +69,32 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
   }
 
   Future<void> _loadConversations() async {
+    print('📥 [DirectChatListScreen] _loadConversations called');
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
     try {
+      print('📤 [DirectChatListScreen] Calling getConversations API');
       final conversations = await _service.getConversations();
+      print('✅ [DirectChatListScreen] getConversations response received - count: ${conversations.length}');
+      
+      // Log unread counts for each conversation
+      for (var conv in conversations) {
+        print('   - Conversation ${conv.id}: unreadCount = ${conv.unreadCount ?? 0}');
+      }
+      
       if (mounted) {
         setState(() {
           _conversations = conversations;
           _isLoading = false;
         });
+        print('✅ [DirectChatListScreen] State updated with ${conversations.length} conversations');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ [DirectChatListScreen] Error loading conversations: $e');
+      print('❌ [DirectChatListScreen] Stack trace: $stackTrace');
       if (mounted) {
         setState(() {
           _error = 'Lỗi khi tải danh sách: ${e.toString()}';

@@ -532,9 +532,24 @@ class ChatService {
       print('   Status: ${response.statusCode}');
       print('   Count: ${(response.data as List).length}');
       
-      return (response.data as List<dynamic>)
+      // Log unread counts for debugging
+      if (response.data is List) {
+        final conversations = response.data as List;
+        print('📊 [ChatService] Unread counts per conversation:');
+        for (var i = 0; i < conversations.length; i++) {
+          final conv = conversations[i];
+          final unreadCount = conv['unreadCount'] ?? 0;
+          final convId = conv['id']?.toString() ?? 'unknown';
+          print('   [$i] Conversation id=$convId, unreadCount=$unreadCount');
+        }
+      }
+      
+      final result = (response.data as List<dynamic>)
           .map((json) => Conversation.fromJson(json))
           .toList();
+      
+      print('✅ [ChatService] Parsed ${result.length} conversations');
+      return result;
     } on DioException catch (e) {
       print('❌ [ChatService] Error getting conversations:');
       print('   Status code: ${e.response?.statusCode}');
@@ -566,17 +581,27 @@ class ChatService {
     int size = 25,
   }) async {
     try {
+      print('📡 [ChatService] getDirectMessages - conversationId: $conversationId, page: $page, size: $size');
       // Use ApiClient directly since /api/direct-chat is not under /api/chat
       final apiClient = ApiClient();
+      final url = '/direct-chat/conversations/$conversationId/messages';
+      print('🌐 [ChatService] Calling API: $url');
       final response = await apiClient.dio.get(
-        '/direct-chat/conversations/$conversationId/messages',
+        url,
         queryParameters: {
           'page': page,
           'size': size,
         },
       );
-      return DirectMessagePagedResponse.fromJson(response.data);
-    } catch (e) {
+      print('✅ [ChatService] API response received - status: ${response.statusCode}');
+      print('📦 [ChatService] Response data keys: ${response.data.keys}');
+      final result = DirectMessagePagedResponse.fromJson(response.data);
+      print('✅ [ChatService] Parsed response - content length: ${result.content.length}, hasNext: ${result.hasNext}');
+      print('📝 [ChatService] Note: Backend should have marked messages as read (lastReadAt updated)');
+      return result;
+    } catch (e, stackTrace) {
+      print('❌ [ChatService] Error in getDirectMessages: $e');
+      print('❌ [ChatService] Stack trace: $stackTrace');
       throw Exception('Lỗi khi lấy tin nhắn: ${e.toString()}');
     }
   }

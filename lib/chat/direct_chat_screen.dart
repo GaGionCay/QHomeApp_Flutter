@@ -114,6 +114,13 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
     _audioPlayer.dispose();
     _messageController.dispose();
     _scrollController.dispose();
+    
+    // Emit event to refresh conversation list when leaving the screen
+    // This ensures unread count is updated after messages are marked as read
+    print('📢 [DirectChatScreen] dispose() called - emitting direct_chat_activity_updated event');
+    AppEventBus().emit('direct_chat_activity_updated');
+    print('✅ [DirectChatScreen] Event emitted in dispose()');
+    
     super.dispose();
   }
 

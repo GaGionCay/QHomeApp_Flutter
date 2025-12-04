@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../models/chat/direct_message.dart';
 import '../models/chat/conversation.dart';
 import 'chat_service.dart';
+import '../core/event_bus.dart';
 
 class DirectChatViewModel extends ChangeNotifier {
   final ChatService _service;
@@ -39,6 +40,7 @@ class DirectChatViewModel extends ChangeNotifier {
       
       // Load conversation
       try {
+        print('📥 [DirectChatViewModel] Loading conversation details...');
         _conversation = await _service.getConversation(conversationId);
         
         print('✅ [DirectChatViewModel] Conversation loaded:');
@@ -46,13 +48,20 @@ class DirectChatViewModel extends ChangeNotifier {
         print('   Status: ${_conversation?.status}');
         print('   Participant1: ${_conversation?.participant1Id}');
         print('   Participant2: ${_conversation?.participant2Id}');
+        print('   UnreadCount BEFORE loading messages: ${_conversation?.unreadCount ?? 0}');
         
         if (_conversation != null && _conversation!.status != 'ACTIVE') {
           print('⚠️ [DirectChatViewModel] Conversation status is not ACTIVE: ${_conversation!.status}');
         }
         
-        // Load initial messages
+        // Load initial messages (this will mark messages as read on backend)
+        print('📥 [DirectChatViewModel] Loading initial messages (will mark as read)...');
         await loadMessages(conversationId, refresh: true);
+        
+        // Reload conversation to check unread count after marking as read
+        print('🔄 [DirectChatViewModel] Reloading conversation to check updated unread count...');
+        _conversation = await _service.getConversation(conversationId);
+        print('📊 [DirectChatViewModel] UnreadCount AFTER loading messages: ${_conversation?.unreadCount ?? 0}');
       } catch (e) {
         // Check if conversation is hidden
         if (e.toString().contains('hidden') || e.toString().contains('Hidden')) {
@@ -72,32 +81,48 @@ class DirectChatViewModel extends ChangeNotifier {
   }
 
   Future<void> loadMessages(String conversationId, {bool refresh = false}) async {
+    print('📥 [DirectChatViewModel] loadMessages called - conversationId: $conversationId, refresh: $refresh');
+    
     if (refresh) {
       _currentPage = 0;
       _hasMore = true;
+      print('🔄 [DirectChatViewModel] Refreshing messages, reset page to 0');
     }
 
-    if (!_hasMore && !refresh) return;
+    if (!_hasMore && !refresh) {
+      print('⏭️ [DirectChatViewModel] No more messages to load, skipping');
+      return;
+    }
 
     if (refresh) {
       _isLoading = true;
+      print('⏳ [DirectChatViewModel] Setting isLoading = true');
     } else {
       _isLoadingMore = true;
+      print('⏳ [DirectChatViewModel] Setting isLoadingMore = true');
     }
     _error = null;
     notifyListeners();
 
     try {
+      print('📤 [DirectChatViewModel] Calling getDirectMessages - page: $_currentPage, size: $_pageSize');
       final response = await _service.getDirectMessages(
         conversationId: conversationId,
         page: _currentPage,
         size: _pageSize,
       );
+      
+      print('✅ [DirectChatViewModel] getDirectMessages response received');
+      print('   - Total messages: ${response.content.length}');
+      print('   - Has next: ${response.hasNext}');
+      print('   - Current page: ${response.currentPage}');
 
       if (refresh) {
         _messages = response.content.reversed.toList(); // Reverse to show oldest first
+        print('📋 [DirectChatViewModel] Refreshed messages list, total: ${_messages.length}');
       } else {
         _messages.insertAll(0, response.content.reversed.toList());
+        print('📋 [DirectChatViewModel] Added more messages, total: ${_messages.length}');
       }
 
       _currentPage++;
@@ -107,11 +132,19 @@ class DirectChatViewModel extends ChangeNotifier {
       _isLoadingMore = false;
       _error = null;
       notifyListeners();
-    } catch (e) {
+      
+      // Emit event to refresh conversation list (mark as read happened on backend)
+      if (refresh) {
+        print('📢 [DirectChatViewModel] Emitting direct_chat_activity_updated event (messages marked as read on backend)');
+        AppEventBus().emit('direct_chat_activity_updated');
+        print('✅ [DirectChatViewModel] Event emitted successfully');
+      }
+    } catch (e, stackTrace) {
       _isLoading = false;
       _isLoadingMore = false;
       _error = 'Lỗi khi tải tin nhắn: ${e.toString()}';
       print('❌ [DirectChatViewModel] Error loading messages: $e');
+      print('❌ [DirectChatViewModel] Stack trace: $stackTrace');
       notifyListeners();
     }
   }
