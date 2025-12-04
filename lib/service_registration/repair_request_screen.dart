@@ -639,7 +639,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
               labelText: 'Loại yêu cầu',
               border: OutlineInputBorder(),
             ),
-            initialValue: _selectedCategory,
+            value: _selectedCategory,
             items: _categories
                 .map((category) => DropdownMenuItem(value: category, child: Text(category)))
                 .toList(),

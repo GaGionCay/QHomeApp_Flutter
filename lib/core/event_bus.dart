@@ -11,15 +11,36 @@ class AppEventBus {
 
   void emit(String event, [dynamic data]) {
     if (!_controller.isClosed) {
+      final listenerCount = _listeners[event]?.length ?? 0;
+      print('📢 [AppEventBus] Emitting event: $event, data: $data');
+      print('📢 [AppEventBus] Active listeners for $event: $listenerCount');
+      if (listenerCount == 0) {
+        print('⚠️ [AppEventBus] WARNING: No listeners registered for event: $event');
+        print('⚠️ [AppEventBus] All registered events: ${_listeners.keys.toList()}');
+      }
       _controller.add({'event': event, 'data': data});
+    } else {
+      print('⚠️ [AppEventBus] Cannot emit event: $event - controller is closed');
     }
   }
 
-  void on(String event, void Function(dynamic data) callback) {
+  StreamSubscription on(String event, void Function(dynamic data) callback) {
+    print('🔧 [AppEventBus] Registering listener for event: $event');
     final sub = _controller.stream
-        .where((e) => e['event'] == event)
-        .listen((e) => callback(e['data']));
+        .where((e) {
+          final matches = e['event'] == event;
+          if (matches) {
+            print('📡 [AppEventBus] Event matched: $event, data: ${e['data']}');
+          }
+          return matches;
+        })
+        .listen((e) {
+          print('📡 [AppEventBus] Calling callback for event: $event');
+          callback(e['data']);
+        });
     _listeners.putIfAbsent(event, () => []).add(sub);
+    print('✅ [AppEventBus] Listener registered. Total listeners for $event: ${_listeners[event]?.length ?? 0}');
+    return sub;
   }
 
   void off(String event) {

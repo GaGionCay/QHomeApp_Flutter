@@ -50,21 +50,62 @@ class MarketplaceViewModel extends ChangeNotifier {
 
   String? _buildingId;
   final Set<String> _subscribedPostIds = {}; // Track subscribed posts
+  StreamSubscription? _marketplaceUpdateSubscription; // Track listener subscription
+  bool _listenerSetup = false; // Track if listener has been setup
 
   Future<void> initialize() async {
     _buildingId = await _tokenStorage.readBuildingId();
+    // Setup realtime updates FIRST before loading posts
+    // This ensures listener is ready to receive events
+    _setupRealtimeUpdates();
     await loadCategories();
     await loadPosts(refresh: true);
-    _setupRealtimeUpdates();
   }
 
+  /// Public method to setup or re-setup realtime updates listener
+  /// This can be called when app resumes or when listener needs to be refreshed
+  void setupRealtimeUpdates() {
+    _setupRealtimeUpdates();
+  }
+  
   void _setupRealtimeUpdates() {
     // Listen for marketplace updates from WebSocket
-    AppEventBus().on('marketplace_update', (data) {
-      if (data is Map<String, dynamic>) {
-        _handleRealtimeUpdate(data);
-      }
-    });
+    // Cancel existing subscription if any to avoid duplicates
+    if (_marketplaceUpdateSubscription != null) {
+      debugPrint('🔄 [MarketplaceViewModel] Canceling existing subscription before setting up new one');
+      _marketplaceUpdateSubscription?.cancel();
+      _marketplaceUpdateSubscription = null;
+    }
+    
+    debugPrint('🔧 [MarketplaceViewModel] Setting up listener for marketplace_update events...');
+    debugPrint('🔧 [MarketplaceViewModel] Instance hashCode: ${hashCode}');
+    debugPrint('🔧 [MarketplaceViewModel] Previous listener setup: $_listenerSetup');
+    debugPrint('🔧 [MarketplaceViewModel] Current _posts.length: ${_posts.length}');
+    
+    try {
+      _marketplaceUpdateSubscription = AppEventBus().on('marketplace_update', (data) {
+        debugPrint('📡 [MarketplaceViewModel] ⭐ EVENT RECEIVED ⭐');
+        debugPrint('📡 [MarketplaceViewModel] Event received in listener: $data');
+        debugPrint('📡 [MarketplaceViewModel] Event data type: ${data.runtimeType}');
+        debugPrint('📡 [MarketplaceViewModel] Instance hashCode: ${hashCode}');
+        debugPrint('📡 [MarketplaceViewModel] Current _posts.length: ${_posts.length}');
+        if (data is Map<String, dynamic>) {
+          debugPrint('📡 [MarketplaceViewModel] Calling _handleRealtimeUpdate...');
+          _handleRealtimeUpdate(data);
+        } else {
+          debugPrint('⚠️ [MarketplaceViewModel] Event data is not Map: ${data.runtimeType}');
+        }
+      });
+      
+      _listenerSetup = true;
+      debugPrint('✅ [MarketplaceViewModel] Listener setup complete for marketplace_update events');
+      debugPrint('✅ [MarketplaceViewModel] Subscription: ${_marketplaceUpdateSubscription != null ? "active" : "null"}');
+      debugPrint('✅ [MarketplaceViewModel] Subscription isPaused: ${_marketplaceUpdateSubscription?.isPaused ?? "null"}');
+      debugPrint('✅ [MarketplaceViewModel] Subscription hashCode: ${_marketplaceUpdateSubscription.hashCode}');
+    } catch (e) {
+      debugPrint('❌ [MarketplaceViewModel] Error setting up listener: $e');
+      _listenerSetup = false;
+    }
   }
 
   void _handleRealtimeUpdate(Map<String, dynamic> data) {
@@ -72,6 +113,8 @@ class MarketplaceViewModel extends ChangeNotifier {
     final postId = data['postId'] as String?;
     
     debugPrint('📊 [MarketplaceViewModel] Received realtime update: type=$type, postId=$postId');
+    debugPrint('📊 [MarketplaceViewModel] Full data: $data');
+    debugPrint('📊 [MarketplaceViewModel] Current _posts.length: ${_posts.length}');
     
     if (postId == null) {
       debugPrint('⚠️ [MarketplaceViewModel] postId is null, ignoring update');
@@ -81,6 +124,9 @@ class MarketplaceViewModel extends ChangeNotifier {
     final index = _posts.indexWhere((p) => p.id == postId);
     if (index == -1) {
       debugPrint('⚠️ [MarketplaceViewModel] Post not found in list: $postId');
+      debugPrint('⚠️ [MarketplaceViewModel] Available post IDs: ${_posts.map((p) => p.id).toList()}');
+      debugPrint('⚠️ [MarketplaceViewModel] This might happen if post was removed from list or not yet loaded');
+      debugPrint('⚠️ [MarketplaceViewModel] Will try to update post when it appears in list after refresh');
       return;
     }
     
@@ -94,10 +140,19 @@ class MarketplaceViewModel extends ChangeNotifier {
         final viewCount = (data['viewCount'] as num?)?.toInt();
         
         debugPrint('📊 [MarketplaceViewModel] POST_STATS_UPDATE: commentCount=$commentCount, likeCount=$likeCount, viewCount=$viewCount');
-        debugPrint('📊 [MarketplaceViewModel] Current post commentCount: ${post.commentCount}');
+        debugPrint('📊 [MarketplaceViewModel] Current post at index $index: commentCount=${post.commentCount}, viewCount=${post.viewCount}');
+        
+        // Check if update is actually needed
+        final needsUpdate = (commentCount != null && commentCount != post.commentCount) ||
+                           (viewCount != null && viewCount != post.viewCount);
         
         if (commentCount != null || likeCount != null || viewCount != null) {
-          _posts[index] = MarketplacePost(
+          if (!needsUpdate) {
+            debugPrint('ℹ️ [MarketplaceViewModel] Values match current state, skipping update');
+            return;
+          }
+          
+          final updatedPost = MarketplacePost(
             id: post.id,
             residentId: post.residentId,
             buildingId: post.buildingId,
@@ -116,8 +171,26 @@ class MarketplaceViewModel extends ChangeNotifier {
             createdAt: post.createdAt,
             updatedAt: post.updatedAt,
           );
-          debugPrint('✅ [MarketplaceViewModel] Updated post commentCount to: ${_posts[index].commentCount}');
+          
+          // Always update if we have new data that differs from current state
+          // This ensures UI reflects the latest state from backend
+          // IMPORTANT: Create a new list to ensure Selector detects the change
+          // Selector compares list references, so we need to create a new list instance
+          _posts = List.from(_posts); // Create new list instance
+          _posts[index] = updatedPost; // Update the post
+          
+          debugPrint('✅ [MarketplaceViewModel] Updated post at index $index');
+          debugPrint('✅ [MarketplaceViewModel] commentCount: ${post.commentCount} -> ${updatedPost.commentCount}');
+          debugPrint('✅ [MarketplaceViewModel] viewCount: ${post.viewCount} -> ${updatedPost.viewCount}');
+          debugPrint('✅ [MarketplaceViewModel] Created new list instance to trigger Selector rebuild');
+          debugPrint('✅ [MarketplaceViewModel] Calling notifyListeners() to update UI...');
+          debugPrint('✅ [MarketplaceViewModel] _posts.length before notifyListeners: ${_posts.length}');
+          debugPrint('✅ [MarketplaceViewModel] Post at index $index after update: commentCount=${_posts[index].commentCount}');
+          
+          // Force immediate update by calling notifyListeners synchronously
           notifyListeners();
+          debugPrint('✅ [MarketplaceViewModel] notifyListeners() called successfully');
+          debugPrint('✅ [MarketplaceViewModel] Post at index $index after notifyListeners: commentCount=${_posts[index].commentCount}');
         } else {
           debugPrint('⚠️ [MarketplaceViewModel] All counts are null, not updating');
         }
@@ -159,7 +232,10 @@ class MarketplaceViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
-    AppEventBus().off('marketplace_update');
+    // Cancel only this instance's subscription, not all listeners
+    _marketplaceUpdateSubscription?.cancel();
+    _marketplaceUpdateSubscription = null;
+    debugPrint('🗑️ [MarketplaceViewModel] Disposed listener for instance: ${hashCode}');
     super.dispose();
   }
 
@@ -173,7 +249,11 @@ class MarketplaceViewModel extends ChangeNotifier {
   }
 
   Future<void> loadPosts({bool refresh = false, int? page}) async {
+    // IMPORTANT: Save existing posts BEFORE clearing for refresh
+    // This allows us to preserve realtime updates when merging with API data
+    List<MarketplacePost>? existingPostsForMerge;
     if (refresh) {
+      existingPostsForMerge = List.from(_posts); // Copy existing posts before clearing
       _currentPage = 0;
       _posts = [];
       _hasMore = true;
@@ -207,7 +287,69 @@ class MarketplaceViewModel extends ChangeNotifier {
       _pageSize = response.pageSize;
 
       if (refresh) {
-        _posts = response.content;
+        // When refreshing, merge with existing posts to preserve realtime updates
+        // API list endpoint may return stale values (e.g., commentCount may be outdated)
+        // So we preserve values that were updated via realtime events (from PostDetailScreen)
+        debugPrint('🔄 [MarketplaceViewModel] Refresh: Starting merge logic to preserve realtime updates');
+        final existingPostsMap = <String, MarketplacePost>{};
+        debugPrint('🔄 [MarketplaceViewModel] Refresh: existingPostsForMerge.length=${existingPostsForMerge?.length ?? 0}');
+        if (existingPostsForMerge != null) {
+          for (var post in existingPostsForMerge) {
+            existingPostsMap[post.id] = post;
+            debugPrint('📦 [MarketplaceViewModel] Existing post ${post.id}: commentCount=${post.commentCount}, viewCount=${post.viewCount}');
+          }
+        }
+        
+        debugPrint('🔄 [MarketplaceViewModel] Refresh: Received ${response.content.length} posts from API');
+        debugPrint('🔄 [MarketplaceViewModel] Refresh: existingPostsMap has ${existingPostsMap.length} posts');
+        _posts = response.content.map((apiPost) {
+          debugPrint('🔄 [MarketplaceViewModel] Refresh: Processing post ${apiPost.id} - API commentCount=${apiPost.commentCount}, API viewCount=${apiPost.viewCount}');
+          
+          final existingPost = existingPostsMap[apiPost.id];
+          if (existingPost != null) {
+            debugPrint('🔍 [MarketplaceViewModel] Found existing post ${apiPost.id}: existing commentCount=${existingPost.commentCount}, existing viewCount=${existingPost.viewCount}');
+            
+            // If existing post has different counts, it was likely updated via realtime events
+            // Preserve those values as they may be more accurate than API list endpoint
+            // API list endpoint may have stale cache, while realtime events come from PostDetailScreen
+            // which fetches directly from backend get by ID endpoint
+            if (existingPost.commentCount != apiPost.commentCount || 
+                existingPost.viewCount != apiPost.viewCount) {
+              debugPrint('✅ [MarketplaceViewModel] Preserving realtime update for post ${apiPost.id}: commentCount=${existingPost.commentCount} (API: ${apiPost.commentCount}), viewCount=${existingPost.viewCount} (API: ${apiPost.viewCount})');
+              return MarketplacePost(
+                id: apiPost.id,
+                residentId: apiPost.residentId,
+                buildingId: apiPost.buildingId,
+                title: apiPost.title,
+                description: apiPost.description,
+                price: apiPost.price,
+                category: apiPost.category,
+                categoryName: apiPost.categoryName,
+                status: apiPost.status,
+                contactInfo: apiPost.contactInfo,
+                location: apiPost.location,
+                viewCount: existingPost.viewCount, // Use realtime updated value
+                commentCount: existingPost.commentCount, // Use realtime updated value
+                images: apiPost.images,
+                author: apiPost.author,
+                createdAt: apiPost.createdAt,
+                updatedAt: apiPost.updatedAt,
+              );
+            } else {
+              debugPrint('ℹ️ [MarketplaceViewModel] Values match for post ${apiPost.id}, using API values');
+              return apiPost;
+            }
+          } else {
+            debugPrint('ℹ️ [MarketplaceViewModel] No existing post found for ${apiPost.id}, using API values');
+            return apiPost;
+          }
+        }).toList();
+        
+        debugPrint('🔄 [MarketplaceViewModel] Refresh: Final _posts.length=${_posts.length}');
+        if (_posts.isNotEmpty) {
+          final firstPost = _posts.first;
+          debugPrint('🔄 [MarketplaceViewModel] Refresh: First post ${firstPost.id} - Final commentCount=${firstPost.commentCount}, Final viewCount=${firstPost.viewCount}');
+        }
       } else {
         // Append new posts
         _posts.addAll(response.content);

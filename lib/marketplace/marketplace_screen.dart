@@ -49,6 +49,10 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
     _loadCurrentUser();
     _loadBlockedUsers();
     _setupBlockedUsersListener();
+    
+    // Ensure listener is setup for realtime updates
+    // This is already done in initialize(), but we ensure it's set up here too
+    print('✅ [MarketplaceScreen] MarketplaceViewModel initialized with listener setup');
   }
 
 
@@ -57,6 +61,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
     super.didChangeAppLifecycleState(state);
     // Reload posts when app resumes to get latest comment counts
     if (state == AppLifecycleState.resumed && _hasInitialized) {
+      // Ensure listener is still active when app resumes
+      _viewModel.setupRealtimeUpdates();
       _viewModel.refresh();
     }
   }
@@ -581,6 +587,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Use ChangeNotifierProvider.value - it should work with notifyListeners()
+    // But ensure Consumer rebuilds by using listen: true explicitly
     return ChangeNotifierProvider.value(
       value: _viewModel,
       child: Scaffold(
@@ -712,13 +720,79 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
             ),
           ),
         ),
-        body: Consumer<MarketplaceViewModel>(
-          builder: (context, viewModel, child) {
-            if (viewModel.isLoading && viewModel.posts.isEmpty) {
+        body: Selector<MarketplaceViewModel, List<MarketplacePost>>(
+          selector: (context, viewModel) => viewModel.posts,
+          shouldRebuild: (previous, next) {
+            // Always rebuild when posts list changes
+            // This ensures UI updates when commentCount changes
+            debugPrint('🔄 [MarketplaceScreen] Selector shouldRebuild check');
+            debugPrint('🔄 [MarketplaceScreen] Previous length: ${previous.length}, Next length: ${next.length}');
+            
+            if (previous.length != next.length) {
+              debugPrint('🔄 [MarketplaceScreen] List length changed, rebuilding');
+              return true;
+            }
+            
+            // Check if any post's commentCount or viewCount changed
+            // Since we create a new list instance in MarketplaceViewModel, 
+            // Selector should detect the change, but we also check content
+            for (int i = 0; i < previous.length && i < next.length; i++) {
+              if (previous[i].id == next[i].id) {
+                if (previous[i].commentCount != next[i].commentCount ||
+                    previous[i].viewCount != next[i].viewCount) {
+                  debugPrint('🔄 [MarketplaceScreen] Post ${previous[i].id} changed: commentCount ${previous[i].commentCount} -> ${next[i].commentCount}, viewCount ${previous[i].viewCount} -> ${next[i].viewCount}');
+                  return true;
+                }
+              } else {
+                // Post order changed or post was replaced
+                debugPrint('🔄 [MarketplaceScreen] Post order changed at index $i: ${previous[i].id} -> ${next[i].id}');
+                return true;
+              }
+            }
+            
+            // If list reference changed (new instance), rebuild
+            // This handles the case where we create a new list in MarketplaceViewModel
+            if (previous != next) {
+              debugPrint('🔄 [MarketplaceScreen] List reference changed, rebuilding');
+              return true;
+            }
+            
+            debugPrint('🔄 [MarketplaceScreen] No changes detected, skipping rebuild');
+            return false;
+          },
+          builder: (context, posts, child) {
+            final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+            
+            // Ensure listener is setup when Consumer rebuilds
+            // This is critical to ensure listener is active when returning to screen
+            // Use postFrameCallback to avoid setup during build phase
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                debugPrint('🔄 [MarketplaceScreen] PostFrameCallback - ensuring listener is setup');
+                // setupRealtimeUpdates() will cancel existing subscription if any before creating new one
+                // This ensures we always have exactly one active listener
+                viewModel.setupRealtimeUpdates();
+              }
+            });
+            
+            // Debug log to verify Consumer rebuild
+            debugPrint('🔄 [MarketplaceScreen] ⭐ SELECTOR REBUILD ⭐');
+            debugPrint('🔄 [MarketplaceScreen] Selector rebuild - posts count: ${posts.length}');
+            debugPrint('🔄 [MarketplaceScreen] viewModel hashCode: ${viewModel.hashCode}');
+            if (posts.isNotEmpty) {
+              final firstPost = posts.firstWhere(
+                (p) => p.id == '97a52669-0d90-4c70-b669-e4ec41079425',
+                orElse: () => posts.first,
+              );
+              debugPrint('🔄 [MarketplaceScreen] First post commentCount: ${firstPost.commentCount}');
+              debugPrint('🔄 [MarketplaceScreen] First post viewCount: ${firstPost.viewCount}');
+            }
+            
+            if (viewModel.isLoading && posts.isEmpty) {
               return const Center(child: CircularProgressIndicator());
             }
 
-            if (viewModel.error != null && viewModel.posts.isEmpty) {
+            if (viewModel.error != null && posts.isEmpty) {
               return Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -744,7 +818,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
               );
             }
 
-            if (viewModel.posts.isEmpty) {
+            if (posts.isEmpty) {
               return Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -774,12 +848,12 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                 // Use key to preserve scroll position when items are added
                 key: const PageStorageKey<String>('marketplace_posts_list'),
                 cacheExtent: 500, // Cache items outside viewport for smoother scrolling
-                itemCount: viewModel.posts.length + 
+                itemCount: posts.length + 
                           (viewModel.isLoadingMore ? 1 : 0) + 
-                          (!viewModel.hasMore && viewModel.posts.isNotEmpty ? 1 : 0),
+                          (!viewModel.hasMore && posts.isNotEmpty ? 1 : 0),
                 itemBuilder: (context, index) {
                   // Show loading indicator at the end when loading more
-                  if (index == viewModel.posts.length && viewModel.isLoadingMore) {
+                  if (index == posts.length && viewModel.isLoadingMore) {
                     return const Center(
                       child: Padding(
                         padding: EdgeInsets.all(16.0),
@@ -789,7 +863,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                   }
                   
                   // Show "No more posts" indicator
-                  if (index == viewModel.posts.length && !viewModel.hasMore) {
+                  if (index == posts.length && !viewModel.hasMore) {
                     return Padding(
                       padding: const EdgeInsets.all(24.0),
                       child: Center(
@@ -803,7 +877,10 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                     );
                   }
 
-                  final post = viewModel.posts[index];
+                  final post = posts[index];
+                  
+                  // Debug log to verify post is updated
+                  debugPrint('📋 [MarketplaceScreen] Building post card for post ${post.id}, commentCount: ${post.commentCount}');
                   
                   // Filter out posts from blocked users
                   String? authorUserId = post.author?.userId;
@@ -824,9 +901,9 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                     return const SizedBox.shrink();
                   }
                   
-                  // Use stable key to preserve scroll position
+                  // Use key that includes commentCount to ensure rebuild when count changes
                   return _PostCard(
-                    key: ValueKey(post.id),
+                    key: ValueKey('${post.id}_${post.commentCount}'),
                     post: post,
                     currentResidentId: _currentResidentId,
                     categories: viewModel.categories,
@@ -1497,6 +1574,7 @@ class _PostCard extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(
                       '${post.commentCount}',
+                      key: ValueKey('comment_count_${post.id}_${post.commentCount}'),
                       style: theme.textTheme.bodySmall,
                     ),
                   ],

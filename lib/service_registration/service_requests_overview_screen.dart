@@ -17,7 +17,8 @@ import '../auth/api_client.dart';
 import '../core/event_bus.dart';
 import '../models/service_requests.dart';
 import '../theme/app_colors.dart';
-import 'cleaning_request_service.dart';
+// Cleaning request removed - no longer used
+// import 'cleaning_request_service.dart';
 import 'maintenance_request_service.dart';
 
 class ServiceRequestsOverviewScreen extends StatefulWidget {
@@ -31,11 +32,14 @@ class ServiceRequestsOverviewScreen extends StatefulWidget {
 class _ServiceRequestsOverviewScreenState
     extends State<ServiceRequestsOverviewScreen> {
   late final ApiClient _apiClient;
-  late final CleaningRequestService _cleaningService;
+  // Cleaning request removed - no longer used
+  // late final CleaningRequestService _cleaningService;
   late final MaintenanceRequestService _maintenanceService;
   late final AppEventBus _eventBus;
 
-  List<CleaningRequestSummary> _cleaningRequests = const [];
+  // Cleaning request removed - no longer used
+  // List<CleaningRequestSummary> _cleaningRequests = const [];
+  List<dynamic> _cleaningRequests = const [];
   List<MaintenanceRequestSummary> _maintenanceRequests = const [];
   bool _loading = true;
   String? _error;
@@ -58,7 +62,8 @@ class _ServiceRequestsOverviewScreenState
   void initState() {
     super.initState();
     _apiClient = ApiClient();
-    _cleaningService = CleaningRequestService(_apiClient);
+    // Cleaning request removed - no longer used
+    // _cleaningService = CleaningRequestService(_apiClient);
     _maintenanceService = MaintenanceRequestService(_apiClient);
     _eventBus = AppEventBus();
     _loadData();
@@ -110,21 +115,22 @@ class _ServiceRequestsOverviewScreenState
     });
 
     try {
-      final cleaningFuture = _cleaningService.getMyRequests(
-        limit: _pageSize,
-        offset: 0,
-      );
+      // Cleaning request removed - no longer used
+      // final cleaningFuture = _cleaningService.getMyRequests(
+      //   limit: _pageSize,
+      //   offset: 0,
+      // );
       final maintenanceFuture = _maintenanceService.getMyRequests(
         limit: _pageSize,
         offset: 0,
       );
-      final cleaningPage = await cleaningFuture;
+      // final cleaningPage = await cleaningFuture;
       final maintenancePage = await maintenanceFuture;
       if (!mounted) return;
       setState(() {
-        _cleaningRequests = cleaningPage.requests;
+        _cleaningRequests = []; // Empty list since cleaning request is removed
         _maintenanceRequests = maintenancePage.requests;
-        _cleaningTotal = cleaningPage.total;
+        _cleaningTotal = 0; // Set to 0 since cleaning request is removed
         _maintenanceTotal = maintenancePage.total;
         _loading = false;
       });
@@ -137,32 +143,10 @@ class _ServiceRequestsOverviewScreenState
     }
   }
 
+  // Cleaning request removed - no longer used
   Future<void> _loadMoreCleaningRequests() async {
-    if (_loadingMoreCleaning || !_hasMoreCleaningRequests) return;
-    setState(() => _loadingMoreCleaning = true);
-    try {
-      final nextOffset = _cleaningRequests.length;
-      final page = await _cleaningService.getMyRequests(
-        limit: _pageSize,
-        offset: nextOffset,
-      );
-      if (!mounted) return;
-      setState(() {
-        _cleaningRequests = [..._cleaningRequests, ...page.requests];
-        _cleaningTotal = page.total;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Không thể tải thêm yêu cầu dọn dẹp: $e'),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _loadingMoreCleaning = false);
-      }
-    }
+    // Implementation removed
+    return;
   }
 
   Future<void> _loadMoreMaintenanceRequests() async {
@@ -258,11 +242,9 @@ class _ServiceRequestsOverviewScreenState
     }
   }
 
-  bool _shouldShowResendButton(CleaningRequestSummary request) {
-    final normalizedStatus = request.status.toUpperCase();
-    if (!normalizedStatus.contains('PENDING')) return false;
-    if (request.resendAlertSent != true) return false;
-    return true;
+  // Cleaning request removed - no longer used
+  bool _shouldShowResendButton(dynamic request) {
+    return false;
   }
 
   bool _shouldShowResendButtonMaintenance(MaintenanceRequestSummary request) {
@@ -280,31 +262,10 @@ class _ServiceRequestsOverviewScreenState
     return true;
   }
 
+  // Cleaning request removed - no longer used
   Future<void> _resendCleaningRequest(String requestId) async {
-    if (_resendingRequestIds.contains(requestId)) return;
-    setState(() => _resendingRequestIds.add(requestId));
-    try {
-      await _cleaningService.resendRequest(requestId);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Yêu cầu dọn dẹp đã được gửi lại.'),
-          backgroundColor: AppColors.success,
-        ),
-      );
-      await _loadData();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Không thể gửi lại yêu cầu dọn dẹp: $e'),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _resendingRequestIds.remove(requestId));
-      }
-    }
+    // Implementation removed
+    return;
   }
 
   Future<void> _resendMaintenanceRequest(String requestId) async {

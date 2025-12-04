@@ -52,6 +52,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   String? _currentResidentId;
   String? _replyingToCommentId; // ID của comment đang được reply
   MarketplaceComment? _replyingToComment; // Comment đang được reply (để hiển thị tên)
+  Set<String> _deletingCommentIds = {}; // Track comments being deleted for animation
+  Set<String> _newCommentIds = {}; // Track new comments for animation
+  Set<String> _movedCommentIds = {}; // Track comments that were moved (to prevent slide animation)
   int _currentPage = 0;
   int _pageSize = 10;
   bool _hasMoreComments = true;
@@ -72,6 +75,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       }
     }
     return count;
+  }
+  
+  /// Calculate total comment count from loaded comments
+  /// This is more accurate than trusting API count which might be stale
+  int _calculateCommentCount() {
+    int total = 0;
+    for (var comment in _comments) {
+      total++; // Count root comment
+      total += _countNestedReplies(comment); // Count all nested replies
+    }
+    return total;
   }
 
   /// Check if current user can delete a comment
@@ -125,54 +139,143 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
-
-
+  /// Insert reply into comment tree
+  bool _insertReplyIntoTree(MarketplaceComment comment, String parentId, MarketplaceComment newReply) {
+    if (comment.id == parentId) {
+      // Found parent, add reply
+      comment.replies.add(newReply);
+      return true;
+    }
+    // Search in replies
+    for (var reply in comment.replies) {
+      if (_insertReplyIntoTree(reply, parentId, newReply)) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   /// Delete a comment
   Future<void> _deleteComment(MarketplaceComment comment) async {
     try {
+      // Save scroll position
+      final scrollPosition = _scrollController.hasClients 
+          ? _scrollController.position.pixels 
+          : 0.0;
+      
+      final isRootComment = comment.parentCommentId == null;
+      
+      // Start deletion animation
+      setState(() {
+        _deletingCommentIds.add(comment.id);
+      });
+      
+      // Wait for animation to start
+      await Future.delayed(const Duration(milliseconds: 300));
+      
+      // Call API to delete
       await _marketplaceService.deleteComment(widget.post.id, comment.id);
       
+      // Calculate deleted count before removing
+      final deletedCount = isRootComment 
+          ? (1 + _countNestedReplies(comment))
+          : 1;
+      
+      // Get current post state before updating
+      final currentPost = _currentPost ?? widget.post;
+      
       if (mounted) {
-        final isRootComment = comment.parentCommentId == null;
-        
-        // Reload comments to get correct state from backend
-        // This ensures that when deleting a child comment, its replies are preserved
-        // Backend will keep the replies (orphaned), and we need to reload to see them
-        await _loadComments();
-        
-        // Reload post to get updated comment count from backend
-        int? updatedCommentCount;
-        try {
-          final updatedPost = await _marketplaceService.getPostById(widget.post.id);
-          setState(() {
-            _currentPost = updatedPost;
-          });
-          updatedCommentCount = updatedPost.commentCount;
-        } catch (e) {
-          // Failed to reload post, estimate count by decrementing
-          print('⚠️ Failed to reload post after delete: $e');
-          final currentPost = _currentPost ?? widget.post;
-          // Estimate: decrement by 1 for the deleted comment
-          // TH1: If root comment, add entire sub-tree count (all levels recursively)
-          // TH2: If child comment, only decrement by 1 (no replies deleted)
-          int deletedCount = 1;
+        // Remove comment from local list first
+        setState(() {
           if (isRootComment) {
-            // Count entire sub-tree recursively
-            deletedCount += _countNestedReplies(comment);
+            // Remove root comment (entire sub-tree)
+            _comments.removeWhere((c) => c.id == comment.id);
+          } else {
+            // Remove child comment from tree and move its replies to parent
+            _comments = _comments.map((rootComment) {
+              return _removeCommentFromTreeAndMoveReplies(rootComment, comment.id);
+            }).toList();
           }
-          // TH2: Child comment deletion - only 1 comment deleted, no need to add replies
-          updatedCommentCount = (currentPost.commentCount - deletedCount).clamp(0, double.infinity).toInt();
+          
+          // Calculate count from loaded comments after deletion (more accurate)
+          // This ensures count is accurate even if comments were loaded from backend
+          final calculatedCount = _comments.isNotEmpty ? _calculateCommentCount() : 0;
+          final newCommentCount = calculatedCount;
+          
+          print('🗑️ [PostDetailScreen] Deleting comment: ${comment.id}, deletedCount: $deletedCount');
+          print('🗑️ [PostDetailScreen] Old commentCount: ${currentPost.commentCount}');
+          print('🗑️ [PostDetailScreen] Calculated count from loaded comments after deletion: $calculatedCount');
+          print('🗑️ [PostDetailScreen] New commentCount: $newCommentCount');
+          
+          // Update comment count immediately
+          _currentPost = MarketplacePost(
+            id: currentPost.id,
+            residentId: currentPost.residentId,
+            buildingId: currentPost.buildingId,
+            title: currentPost.title,
+            description: currentPost.description,
+            price: currentPost.price,
+            category: currentPost.category,
+            categoryName: currentPost.categoryName,
+            status: currentPost.status,
+            contactInfo: currentPost.contactInfo,
+            location: currentPost.location,
+            viewCount: currentPost.viewCount,
+            commentCount: newCommentCount,
+            images: currentPost.images,
+            author: currentPost.author,
+            createdAt: currentPost.createdAt,
+            updatedAt: currentPost.updatedAt,
+          );
+          
+          print('🗑️ [PostDetailScreen] _currentPost after update: ${_currentPost?.commentCount}');
+          
+          _deletingCommentIds.remove(comment.id);
+        });
+        
+        // Emit event IMMEDIATELY after removing comment from list and calculating count
+        // This ensures marketplace screen gets updated even if widget unmounts
+        // Use calculated count from loaded comments (more accurate)
+        final updatedCommentCount = _currentPost?.commentCount;
+        if (updatedCommentCount != null) {
+          print('📡 [PostDetailScreen] Emitting immediate event after deletion: commentCount=$updatedCommentCount, postId=${widget.post.id}');
+          AppEventBus().emit('marketplace_update', {
+            'type': 'POST_STATS_UPDATE',
+            'postId': widget.post.id,
+            'commentCount': updatedCommentCount,
+            'viewCount': currentPost.viewCount,
+          });
+          print('✅ [PostDetailScreen] Immediate event emitted successfully');
+        } else {
+          print('⚠️ [PostDetailScreen] updatedCommentCount is null, cannot emit event');
         }
         
-        // Emit event to update marketplace screen (realtime update)
-        // This ensures marketplace screen updates even if WebSocket event is delayed
-        AppEventBus().emit('marketplace_update', {
-          'type': 'POST_STATS_UPDATE',
-          'postId': widget.post.id,
-          'commentCount': updatedCommentCount,
-          'viewCount': (_currentPost ?? widget.post).viewCount,
+        // Remove moved flags after animation completes
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            setState(() {
+              _movedCommentIds.clear();
+            });
+          }
         });
+        
+        // Reload from backend to verify accuracy and emit again if different
+        // This ensures we have the correct count from backend
+        print('⏳ [PostDetailScreen] Scheduling backend reload to verify count...');
+        Future.delayed(const Duration(milliseconds: 800), () {
+          // Don't check mounted here - _reloadPostAfterDeletion handles it
+          print('⏳ [PostDetailScreen] Calling _reloadPostAfterDeletion() to verify count...');
+          _reloadPostAfterDeletion();
+        });
+        
+        // Restore scroll position
+        if (_scrollController.hasClients) {
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (_scrollController.hasClients && mounted) {
+              _scrollController.jumpTo(scrollPosition);
+            }
+          });
+        }
         
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -210,23 +313,140 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     // Load comments after context is available
     if (!_commentsLoaded) {
       _commentsLoaded = true;
-      _loadComments();
-      // Reload post to get latest comment count
-      _reloadPost();
+      // Load comments first, then reload post with calculated count
+      // This ensures _reloadPost() uses calculated count from loaded comments
+      _loadComments().then((_) {
+        // After comments are loaded, reload post to update with calculated count
+        // This ensures comment count is accurate
+        _reloadPost();
+      });
     }
   }
 
   /// Reload post to get latest comment count
-  Future<void> _reloadPost() async {
+  /// Reload post to get latest comment count
+  /// Only updates if the new count is different to avoid unnecessary rebuilds
+  /// Optionally emits event to update marketplace screen
+  Future<void> _reloadPost({bool emitEvent = false}) async {
     try {
       final updatedPost = await _marketplaceService.getPostById(widget.post.id);
       if (mounted) {
         setState(() {
-          _currentPost = updatedPost;
+          final currentPost = _currentPost ?? widget.post;
+          
+          // Calculate comment count from loaded comments if available
+          // This is more accurate than trusting API count which might be stale
+          final calculatedCount = _comments.isNotEmpty ? _calculateCommentCount() : null;
+          final commentCountToUse = calculatedCount ?? updatedPost.commentCount;
+          
+          print('🔄 [PostDetailScreen] Reloading post');
+          print('🔄 [PostDetailScreen] API count: ${updatedPost.commentCount}, Calculated count: $calculatedCount, Using: $commentCountToUse');
+          print('🔄 [PostDetailScreen] Current count: ${currentPost.commentCount}, ViewCount: ${updatedPost.viewCount}');
+          
+          // Only update if comment count or view count changed
+          // Use calculated count if available, otherwise use API count
+          final shouldUpdate = commentCountToUse != currentPost.commentCount ||
+                              updatedPost.viewCount != currentPost.viewCount;
+          
+          if (shouldUpdate) {
+            // Create updated post with calculated count if available
+            final postToUse = calculatedCount != null
+                ? MarketplacePost(
+                    id: updatedPost.id,
+                    residentId: updatedPost.residentId,
+                    buildingId: updatedPost.buildingId,
+                    title: updatedPost.title,
+                    description: updatedPost.description,
+                    price: updatedPost.price,
+                    category: updatedPost.category,
+                    categoryName: updatedPost.categoryName,
+                    status: updatedPost.status,
+                    contactInfo: updatedPost.contactInfo,
+                    location: updatedPost.location,
+                    viewCount: updatedPost.viewCount,
+                    commentCount: calculatedCount, // Use calculated count
+                    images: updatedPost.images,
+                    author: updatedPost.author,
+                    createdAt: updatedPost.createdAt,
+                    updatedAt: updatedPost.updatedAt,
+                  )
+                : updatedPost; // Use API post if no comments loaded yet
+            
+            _currentPost = postToUse;
+            print('🔄 [PostDetailScreen] Updated post - commentCount: ${currentPost.commentCount} -> ${postToUse.commentCount}');
+            
+            // Always emit event when comment count changes, even if not explicitly requested
+            // This ensures marketplace screen gets updated when post is reloaded from backend
+            final commentCountChanged = commentCountToUse != currentPost.commentCount;
+            if (emitEvent || commentCountChanged) {
+              // Use a small delay to ensure setState completes before emitting
+              Future.delayed(const Duration(milliseconds: 50), () {
+                AppEventBus().emit('marketplace_update', {
+                  'type': 'POST_STATS_UPDATE',
+                  'postId': widget.post.id,
+                  'commentCount': commentCountToUse, // Use calculated count
+                  'viewCount': updatedPost.viewCount,
+                });
+                print('📡 [PostDetailScreen] Emitted POST_STATS_UPDATE after reload: commentCount=$commentCountToUse, postId=${widget.post.id}, emitEvent=$emitEvent, commentCountChanged=$commentCountChanged');
+              });
+            }
+          } else {
+            print('⏭️ [PostDetailScreen] Skipping reload - counts match (${currentPost.commentCount})');
+          }
         });
       }
     } catch (e) {
       print('⚠️ Failed to reload post: $e');
+    }
+  }
+  
+  /// Reload post after deletion - always updates comment count from backend
+  /// This ensures comment count is accurate after deletion
+  /// Emits event with accurate count to update marketplace screen (only if different from current)
+  /// Event is emitted even if widget is unmounted to ensure marketplace screen gets updated
+  Future<void> _reloadPostAfterDeletion() async {
+    try {
+      print('🔄 [PostDetailScreen] Starting _reloadPostAfterDeletion() for post ${widget.post.id}');
+      final updatedPost = await _marketplaceService.getPostById(widget.post.id);
+      final currentCount = _currentPost?.commentCount ?? widget.post.commentCount;
+      final updatedCount = updatedPost.commentCount;
+      
+      print('🔄 [PostDetailScreen] Reloaded post after deletion - Current count: $currentCount, Backend count: $updatedCount');
+      
+      // Only update and emit if backend count differs from current count
+      // This prevents unnecessary updates if the immediate event was already correct
+      if (updatedCount != currentCount) {
+        print('🔄 [PostDetailScreen] Count differs, updating local state and emitting event');
+        if (mounted) {
+          setState(() {
+            _currentPost = updatedPost;
+          });
+        }
+        
+        // Emit event with accurate comment count from backend
+        // This ensures marketplace screen gets the correct count if our calculation was wrong
+        // Emit even if widget unmounted to ensure marketplace screen gets updated
+        print('📡 [PostDetailScreen] Emitting POST_STATS_UPDATE after deletion reload: commentCount=$updatedCount, postId=${widget.post.id}');
+        AppEventBus().emit('marketplace_update', {
+          'type': 'POST_STATS_UPDATE',
+          'postId': widget.post.id,
+          'commentCount': updatedCount,
+          'viewCount': updatedPost.viewCount,
+        });
+        print('✅ [PostDetailScreen] Event emitted successfully');
+      } else {
+        print('ℹ️ [PostDetailScreen] Count matches ($currentCount), no update needed');
+        // Still update local state to ensure consistency, but don't emit event
+        if (mounted) {
+          setState(() {
+            _currentPost = updatedPost;
+          });
+        }
+      }
+    } catch (e) {
+      print('⚠️ Failed to reload post after deletion: $e');
+      // Don't emit fallback event - we already emitted immediate event
+      // If reload fails, the immediate event should be sufficient
     }
   }
 
@@ -375,10 +595,13 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       if (data is Map<String, dynamic>) {
         final postId = data['postId'] as String?;
         if (postId == widget.post.id && mounted) {
-          // Reload comments when new comment is added
+          // Reload comments when new comment is added (from other users)
+          // Note: If comment was added by current user, it's already in local state
           _loadComments();
-          // Also reload post to get updated comment count
-          _reloadPost();
+          // Reload post to get updated comment count from backend
+          // This ensures we have the correct count if multiple users are commenting
+          // Emit event to update marketplace screen
+          _reloadPost(emitEvent: true);
         }
       }
     });
@@ -391,34 +614,41 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         if (postId == widget.post.id && type == 'POST_STATS_UPDATE' && mounted) {
           // Update comment count from event data immediately
           final commentCount = (data['commentCount'] as num?)?.toInt();
-          if (commentCount != null) {
+          final viewCount = (data['viewCount'] as num?)?.toInt();
+          
+          if (commentCount != null || viewCount != null) {
             setState(() {
-              // Update _currentPost with new comment count
-              if (_currentPost != null) {
-                _currentPost = MarketplacePost(
-                  id: _currentPost!.id,
-                  residentId: _currentPost!.residentId,
-                  buildingId: _currentPost!.buildingId,
-                  title: _currentPost!.title,
-                  description: _currentPost!.description,
-                  price: _currentPost!.price,
-                  category: _currentPost!.category,
-                  categoryName: _currentPost!.categoryName,
-                  status: _currentPost!.status,
-                  contactInfo: _currentPost!.contactInfo,
-                  location: _currentPost!.location,
-                  viewCount: _currentPost!.viewCount,
-                  commentCount: commentCount,
-                  images: _currentPost!.images,
-                  author: _currentPost!.author,
-                  createdAt: _currentPost!.createdAt,
-                  updatedAt: _currentPost!.updatedAt,
-                );
-              }
+              // Always update _currentPost, even if it's null (use widget.post as base)
+              final currentPost = _currentPost ?? widget.post;
+              
+              _currentPost = MarketplacePost(
+                id: currentPost.id,
+                residentId: currentPost.residentId,
+                buildingId: currentPost.buildingId,
+                title: currentPost.title,
+                description: currentPost.description,
+                price: currentPost.price,
+                category: currentPost.category,
+                categoryName: currentPost.categoryName,
+                status: currentPost.status,
+                contactInfo: currentPost.contactInfo,
+                location: currentPost.location,
+                viewCount: viewCount ?? currentPost.viewCount,
+                commentCount: commentCount ?? currentPost.commentCount,
+                images: currentPost.images,
+                author: currentPost.author,
+                createdAt: currentPost.createdAt,
+                updatedAt: currentPost.updatedAt,
+              );
             });
           }
-          // Also reload post to get latest data from backend
-          _reloadPost();
+          
+          // Don't reload post immediately - use event data instead
+          // Only reload if event data is missing
+          if (commentCount == null || viewCount == null) {
+            // Emit event after reload to ensure marketplace screen gets updated
+            _reloadPost(emitEvent: true);
+          }
         }
       }
     });
@@ -471,6 +701,56 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           _hasMoreComments = pagedResponse.hasNext;
           _isLoadingComments = false;
           _isLoadingMoreComments = false;
+          
+          // Update comment count from loaded comments IMMEDIATELY
+          // This ensures count is accurate even if API count is stale
+          // Emit event immediately to update marketplace screen before any refresh happens
+          if (_comments.isNotEmpty) {
+            final calculatedCount = _calculateCommentCount();
+            final currentPost = _currentPost ?? widget.post;
+            
+            print('🔄 [PostDetailScreen] Comments loaded - calculated count: $calculatedCount, current count: ${currentPost.commentCount}');
+            
+            // Always update and emit event if calculated count differs from current
+            // This ensures marketplace screen gets accurate count immediately
+            if (calculatedCount != currentPost.commentCount) {
+              print('🔄 [PostDetailScreen] Updating comment count from loaded comments: ${currentPost.commentCount} -> $calculatedCount');
+              _currentPost = MarketplacePost(
+                id: currentPost.id,
+                residentId: currentPost.residentId,
+                buildingId: currentPost.buildingId,
+                title: currentPost.title,
+                description: currentPost.description,
+                price: currentPost.price,
+                category: currentPost.category,
+                categoryName: currentPost.categoryName,
+                status: currentPost.status,
+                contactInfo: currentPost.contactInfo,
+                location: currentPost.location,
+                viewCount: currentPost.viewCount,
+                commentCount: calculatedCount,
+                images: currentPost.images,
+                author: currentPost.author,
+                createdAt: currentPost.createdAt,
+                updatedAt: currentPost.updatedAt,
+              );
+              
+              // Emit event IMMEDIATELY to update marketplace screen
+              // Don't delay - we want marketplace screen to get accurate count ASAP
+              print('📡 [PostDetailScreen] Emitting POST_STATS_UPDATE immediately after loading comments: commentCount=$calculatedCount');
+              AppEventBus().emit('marketplace_update', {
+                'type': 'POST_STATS_UPDATE',
+                'postId': widget.post.id,
+                'commentCount': calculatedCount,
+                'viewCount': currentPost.viewCount,
+              });
+              print('✅ [PostDetailScreen] Event emitted successfully');
+            } else {
+              print('ℹ️ [PostDetailScreen] Calculated count matches current count ($calculatedCount), no update needed');
+            }
+          } else {
+            print('ℹ️ [PostDetailScreen] No comments loaded yet, skipping count calculation');
+          }
         });
       }
     } catch (e) {
@@ -577,20 +857,114 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       
       if (newComment != null && mounted) {
         _commentController.clear();
+        final wasReplying = _replyingToCommentId != null;
         _replyingToCommentId = null;
         _replyingToComment = null;
         _selectedImage = null;
         _selectedVideo = null;
-        // Reload comments to get updated list
-        await _loadComments();
-        // Scroll to bottom to show new comment
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
+        
+        // Save scroll position
+        final scrollPosition = _scrollController.hasClients 
+            ? _scrollController.position.pixels 
+            : 0.0;
+        
+        // Insert comment into local list with animation
+        setState(() {
+          if (newComment != null) {
+            _newCommentIds.add(newComment.id);
+            
+            if (wasReplying && newComment.parentCommentId != null) {
+              // Insert as reply to parent comment
+              for (var rootComment in _comments) {
+                if (_insertReplyIntoTree(rootComment, newComment.parentCommentId!, newComment)) {
+                  break;
+                }
+              }
+            } else {
+              // Insert as root comment (at the end)
+              _comments.add(newComment);
+            }
+          }
+        });
+        
+        // Update comment count from loaded comments (more accurate than +1)
+        // This ensures count is accurate even if comments were loaded from backend
+        setState(() {
+          final currentPost = _currentPost ?? widget.post;
+          // Calculate count from loaded comments if available, otherwise use +1
+          final calculatedCount = _comments.isNotEmpty ? _calculateCommentCount() : null;
+          final newCommentCount = calculatedCount ?? (currentPost.commentCount + 1);
+          
+          print('💬 [PostDetailScreen] Adding comment');
+          print('💬 [PostDetailScreen] Old commentCount: ${currentPost.commentCount}');
+          print('💬 [PostDetailScreen] Calculated count from loaded comments: $calculatedCount');
+          print('💬 [PostDetailScreen] New commentCount: $newCommentCount');
+          
+          _currentPost = MarketplacePost(
+            id: currentPost.id,
+            residentId: currentPost.residentId,
+            buildingId: currentPost.buildingId,
+            title: currentPost.title,
+            description: currentPost.description,
+            price: currentPost.price,
+            category: currentPost.category,
+            categoryName: currentPost.categoryName,
+            status: currentPost.status,
+            contactInfo: currentPost.contactInfo,
+            location: currentPost.location,
+            viewCount: currentPost.viewCount,
+            commentCount: newCommentCount,
+            images: currentPost.images,
+            author: currentPost.author,
+            createdAt: currentPost.createdAt,
+            updatedAt: currentPost.updatedAt,
           );
+        });
+        
+        // Emit event IMMEDIATELY to update marketplace screen (realtime update)
+        // Use calculated count if available, otherwise use updated _currentPost count
+        final updatedCommentCount = _currentPost?.commentCount;
+        if (updatedCommentCount != null) {
+          print('📡 [PostDetailScreen] Emitting POST_STATS_UPDATE immediately after adding comment: commentCount=$updatedCommentCount');
+          AppEventBus().emit('marketplace_update', {
+            'type': 'POST_STATS_UPDATE',
+            'postId': widget.post.id,
+            'commentCount': updatedCommentCount,
+            'viewCount': (_currentPost ?? widget.post).viewCount,
+          });
+          print('✅ [PostDetailScreen] Event emitted successfully');
+        } else {
+          print('⚠️ [PostDetailScreen] updatedCommentCount is null, cannot emit event');
         }
+        
+        // Restore scroll position after a brief delay to allow animation
+        if (_scrollController.hasClients) {
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (_scrollController.hasClients && mounted) {
+              _scrollController.jumpTo(scrollPosition);
+              // Smooth scroll to new comment if it's visible
+              Future.delayed(const Duration(milliseconds: 300), () {
+                if (_scrollController.hasClients && mounted) {
+                  _scrollController.animateTo(
+                    _scrollController.position.maxScrollExtent,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                  );
+                }
+              });
+            }
+          });
+        }
+        
+        // Remove animation flag after animation completes
+        final commentId = newComment.id;
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            setState(() {
+              _newCommentIds.remove(commentId);
+            });
+          }
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -655,7 +1029,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-
+    
+    // Read _currentPost here to ensure rebuild when it changes
+    final currentPostForBuild = _currentPost;
+    
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
@@ -703,18 +1080,30 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         ],
       ),
       body: Builder(
+        // Use key based on _currentPost to force rebuild when it changes
+        // Read _currentPost directly in build method to ensure rebuild
+        key: ValueKey('post_detail_body_${currentPostForBuild?.commentCount ?? widget.post.commentCount}'),
         builder: (context) {
           // Try to get updated post from viewModel if available
-          MarketplacePost updatedPost = widget.post;
+          // But prioritize _currentPost which is updated immediately on comment add/delete
+          // IMPORTANT: Read _currentPost directly here (not from outer scope) to ensure rebuild
+          final currentPost = _currentPost;
+          MarketplacePost updatedPost = currentPost ?? widget.post;
+          
+          print('🔄 [PostDetailScreen] Body Builder rebuild - _currentPost: ${currentPost?.commentCount}, updatedPost: ${updatedPost.commentCount}');
+          
           try {
             final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
-            updatedPost = viewModel.posts.firstWhere(
+            final vmPost = viewModel.posts.firstWhere(
               (p) => p.id == widget.post.id,
-              orElse: () => widget.post,
+              orElse: () => updatedPost,
             );
+            // Use viewModel post if _currentPost is null
+            if (currentPost == null) {
+              updatedPost = vmPost;
+            }
           } catch (e) {
-            // No provider available, use widget.post
-            updatedPost = widget.post;
+            // No provider available, use _currentPost or widget.post
           }
 
           return Column(
@@ -752,24 +1141,47 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                             color: theme.colorScheme.primary,
                           ),
                           const SizedBox(width: 8),
+                          // Display comment count - will rebuild when _currentPost changes via setState
+                          // Use key to force rebuild when comment count changes
+                          // IMPORTANT: Read _currentPost directly here, not from outer Builder's updatedPost
                           Builder(
+                            key: ValueKey('comment_count_${_currentPost?.commentCount ?? updatedPost.commentCount}'),
                             builder: (context) {
-                              // Try to get updated post from viewModel (realtime updates)
-                              MarketplacePost postToUse = _currentPost ?? updatedPost;
+                              // Always read _currentPost directly from state, not from outer Builder's updatedPost
+                              // This ensures the count updates immediately when _currentPost changes
+                              final currentPostFromState = _currentPost;
+                              
+                              // Priority: _currentPost > updatedPost > viewModel post
+                              // _currentPost is always the most up-to-date because it's updated realtime in this screen
+                              MarketplacePost postToUse = currentPostFromState ?? updatedPost;
+                              
+                              print('📊 [PostDetailScreen] Builder rebuild - _currentPost: ${currentPostFromState?.commentCount}, updatedPost: ${updatedPost.commentCount}');
+                              
+                              // Check viewModel for realtime updates from other screens
+                              // But only use it if _currentPost is null (fallback)
                               try {
                                 final viewModel = Provider.of<MarketplaceViewModel>(context, listen: true);
                                 final vmPost = viewModel.posts.firstWhere(
                                   (p) => p.id == widget.post.id,
                                   orElse: () => postToUse,
                                 );
-                                // Use viewModel post if it has newer comment count
-                                if (vmPost.commentCount != postToUse.commentCount) {
-                                  postToUse = vmPost;
+                                
+                                // Only use viewModel post if _currentPost is null
+                                // Otherwise, _currentPost is the source of truth for this screen
+                                if (currentPostFromState == null && vmPost.commentCount != postToUse.commentCount) {
+                                  print('📊 [PostDetailScreen] Using viewModel post (fallback) - commentCount: ${vmPost.commentCount}');
+                                  return Text(
+                                    'Bình luận (${vmPost.commentCount})',
+                                    style: theme.textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  );
                                 }
                               } catch (e) {
                                 // ViewModel not available, use _currentPost or updatedPost
                               }
                               
+                              print('📊 [PostDetailScreen] Using postToUse - commentCount: ${postToUse.commentCount}');
                               return Text(
                                 'Bình luận (${postToUse.commentCount})',
                                 style: theme.textTheme.titleMedium?.copyWith(
@@ -1528,23 +1940,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               },
             ),
             
-            const SizedBox(height: 12),
-            
-            // Actions
-            Row(
-              children: [
-                Icon(
-                  CupertinoIcons.chat_bubble,
-                  size: 20,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  '${post.commentCount}',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
-            ),
+            // Removed Actions section (comment icon) since we have a dedicated Comments Section below
+            // The comment count is displayed in the Comments Section header instead
           ],
         ),
       ),
@@ -1561,10 +1958,34 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     // Filter out deleted replies
     final activeReplies = comment.replies.where((reply) => !reply.isDeleted).toList();
     
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
+    final isDeleting = _deletingCommentIds.contains(comment.id);
+    final isNew = _newCommentIds.contains(comment.id);
+    final isMoved = _movedCommentIds.contains(comment.id);
+    
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 300),
+        opacity: isDeleting ? 0.0 : 1.0,
+        child: TweenAnimationBuilder<double>(
+          duration: const Duration(milliseconds: 400),
+          tween: Tween(begin: (isNew && !isMoved) ? 0.0 : 1.0, end: 1.0),
+          curve: Curves.easeOut,
+          builder: (context, value, child) {
+            // Don't slide if comment was moved (to prevent push-up animation)
+            return Transform.translate(
+              offset: Offset((isNew && !isMoved) ? (1 - value) * 20 : 0, 0),
+              child: Opacity(
+                opacity: (isNew && !isMoved) ? value : 1.0,
+                child: child,
+              ),
+            );
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
           margin: EdgeInsets.only(
             bottom: 12,
             left: isReply ? 32.0 : 0, // Indent cho replies
@@ -1686,17 +2107,80 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             ],
           ),
         ),
-        // Hiển thị replies nếu có (filter out deleted replies)
-        if (activeReplies.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          ...activeReplies.map((reply) => _buildCommentCard(
-            context,
-            theme,
-            reply,
-            depth: depth + 1,
-          )),
-        ],
-      ],
+              // Hiển thị replies nếu có (filter out deleted replies)
+              if (activeReplies.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                ...activeReplies.map((reply) => _buildCommentCard(
+                  context,
+                  theme,
+                  reply,
+                  depth: depth + 1,
+                )),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Remove comment from tree recursively and move its replies to parent
+  /// Returns a new comment tree with the comment removed and replies moved
+  MarketplaceComment _removeCommentFromTreeAndMoveReplies(MarketplaceComment comment, String commentIdToDelete) {
+    // Check if any reply matches
+    final updatedReplies = <MarketplaceComment>[];
+    
+    for (var reply in comment.replies) {
+      if (reply.id == commentIdToDelete) {
+        // Found the comment to delete - skip it but keep its replies
+        // Move replies to parent comment (current comment)
+        if (reply.replies.isNotEmpty) {
+          // Create new comment objects with updated parentCommentId
+          final movedReplies = reply.replies.map((childReply) {
+            // Mark as moved to prevent slide animation
+            _movedCommentIds.add(childReply.id);
+            return MarketplaceComment(
+              id: childReply.id,
+              postId: childReply.postId,
+              residentId: childReply.residentId,
+              parentCommentId: comment.id, // Update to point to parent
+              content: childReply.content,
+              author: childReply.author,
+              replies: childReply.replies, // Keep nested replies as is
+              replyCount: childReply.replyCount,
+              createdAt: childReply.createdAt,
+              updatedAt: childReply.updatedAt,
+              isDeleted: childReply.isDeleted,
+              imageUrl: childReply.imageUrl,
+              videoUrl: childReply.videoUrl,
+            );
+          }).toList();
+          
+          // Add moved replies to current comment's replies
+          updatedReplies.addAll(movedReplies);
+        }
+      } else {
+        // Recursively process this reply
+        final updatedReply = _removeCommentFromTreeAndMoveReplies(reply, commentIdToDelete);
+        updatedReplies.add(updatedReply);
+      }
+    }
+    
+    // Return updated comment with new replies list
+    return MarketplaceComment(
+      id: comment.id,
+      postId: comment.postId,
+      residentId: comment.residentId,
+      parentCommentId: comment.parentCommentId,
+      content: comment.content,
+      author: comment.author,
+      replies: updatedReplies,
+      replyCount: comment.replyCount,
+      createdAt: comment.createdAt,
+      updatedAt: comment.updatedAt,
+      isDeleted: comment.isDeleted,
+      imageUrl: comment.imageUrl,
+      videoUrl: comment.videoUrl,
     );
   }
 

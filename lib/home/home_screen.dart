@@ -30,7 +30,8 @@ import '../residents/household_member_registration_screen.dart';
 import '../residents/account_request_status_screen.dart';
 import '../auth/asset_maintenance_api_client.dart';
 import '../service_registration/service_booking_service.dart';
-import '../service_registration/cleaning_request_service.dart';
+// Cleaning request removed - no longer used
+// import '../service_registration/cleaning_request_service.dart';
 import '../service_registration/unpaid_service_bookings_screen.dart';
 import '../feedback/feedback_screen.dart';
 import '../theme/app_colors.dart';
@@ -43,7 +44,8 @@ import '../register/register_elevator_card_screen.dart';
 import '../register/register_resident_card_screen.dart';
 import '../qr/qr_scanner_screen.dart';
 import '../service_registration/service_requests_overview_screen.dart';
-import '../models/service_requests.dart';
+// Cleaning request removed - no longer used
+// import '../models/service_requests.dart';
 import '../chat/group_list_screen.dart';
 import '../chat/chat_service.dart';
 
@@ -64,7 +66,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final _eventBus = AppEventBus();
   late AppLinks _appLinks;
   StreamSubscription? _paymentSub;
-  late final CleaningRequestService _cleaningRequestService;
+  // Cleaning request removed - no longer used
+  // late final CleaningRequestService _cleaningRequestService;
 
   Map<String, dynamic>? _profile;
   // Removed: List<NewsItem> _notifications = []; - now using ResidentNews from admin API
@@ -92,17 +95,19 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _selectedUnitPrefsKey = 'selected_unit_id';
 
   bool _loading = true;
-  CleaningRequestSummary? _pendingCleaningRequest;
-  Timer? _resendVisibilityTimer;
-  Timer? _cleaningRequestRefreshTimer;
-  bool _isResendInProgress = false;
-  Duration? _resendCancelWindow;
-  Duration? _noResendCancelWindow;
+  // Cleaning request removed - no longer used
+  // CleaningRequestSummary? _pendingCleaningRequest;
+  // Timer? _resendVisibilityTimer;
+  // Timer? _cleaningRequestRefreshTimer;
+  // bool _isResendInProgress = false;
+  // Duration? _resendCancelWindow;
+  // Duration? _noResendCancelWindow;
 
-  static const Duration _resendButtonThreshold = Duration.zero;
-  static const Duration _defaultResendCancelWindow = Duration(hours: 5); // Fallback
-  static const Duration _defaultNoResendCancelWindow = Duration(hours: 6); // Fallback
-  static const int _serviceRequestPageSize = 8;
+  // Cleaning request removed - no longer used
+  // static const Duration _resendButtonThreshold = Duration.zero;
+  // static const Duration _defaultResendCancelWindow = Duration(hours: 5); // Fallback
+  // static const Duration _defaultNoResendCancelWindow = Duration(hours: 6); // Fallback
+  // static const int _serviceRequestPageSize = 8;
 
   @override
   void initState() {
@@ -111,7 +116,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _contractService = ContractService(_apiClient);
     _assetMaintenanceClient = AssetMaintenanceApiClient();
     _serviceBookingService = ServiceBookingService(_assetMaintenanceClient);
-    _cleaningRequestService = CleaningRequestService(_apiClient);
+    // Cleaning request removed - no longer used
+    // _cleaningRequestService = CleaningRequestService(_apiClient);
     _appLinks = AppLinks();
     _initialize();
     _listenForPaymentResult();
@@ -126,7 +132,8 @@ class _HomeScreenState extends State<HomeScreen> {
           '🔔 HomeScreen nhận event notifications_update -> cập nhật quick alerts...');
       await _loadUnreadNotifications();
       // Also refresh cleaning request state to update resend button visibility
-      await _loadCleaningRequestState();
+      // Cleaning request removed - no longer used
+    // await _loadCleaningRequestState();
     });
     // Listen for new incoming notifications via WebSocket - update count immediately without API call
     _eventBus.on('notifications_incoming', (data) async {
@@ -170,8 +177,8 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         });
       }
-      // Also refresh cleaning request state when new notification arrives
-      unawaited(_loadCleaningRequestState());
+      // Cleaning request removed - no longer used
+      // unawaited(_loadCleaningRequestState());
     });
     _eventBus.on('unit_context_changed', (data) {
       if (!mounted) return;
@@ -290,120 +297,47 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _loading = false);
     }
 
-    await _loadCleaningRequestState();
+    // Cleaning request removed - no longer used
+    // await _loadCleaningRequestState();
   }
 
-  Future<void> _loadCleaningRequestState() async {
-    try {
-      // Load config first if not loaded
-      if (_resendCancelWindow == null || _noResendCancelWindow == null) {
-        try {
-          final config = await _cleaningRequestService.getConfig();
-          if (mounted) {
-            setState(() {
-              _resendCancelWindow = config.resendCancelThreshold;
-              _noResendCancelWindow = config.noResendCancelThreshold;
-            });
-          }
-        } catch (e) {
-          // Use defaults if config load fails
-          if (mounted) {
-            setState(() {
-              _resendCancelWindow = _defaultResendCancelWindow;
-              _noResendCancelWindow = _defaultNoResendCancelWindow;
-            });
-          }
-        }
-      }
+  // Cleaning request removed - no longer used
+  // Future<void> _loadCleaningRequestState() async {
+  //   // Implementation removed
+  // }
 
-      final page = await _cleaningRequestService.getMyRequests(
-        limit: _serviceRequestPageSize,
-        offset: 0,
-      );
-      _updatePendingCleaningRequest(page.requests);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _pendingCleaningRequest = null;
-      });
-      _scheduleResendButton(null);
-    }
-  }
-
-  void _updatePendingCleaningRequest(List<CleaningRequestSummary> requests) {
-    final pending = requests.where(_isPendingCleaningRequest).toList()
-      ..sort((a, b) =>
-          _resendReferenceTimestamp(b).compareTo(_resendReferenceTimestamp(a)));
-    final candidate = pending.isNotEmpty ? pending.first : null;
-    if (!mounted) return;
-    setState(() {
-      _pendingCleaningRequest = candidate;
-    });
-    _scheduleResendButton(candidate);
-    _scheduleCleaningRequestRefresh(candidate);
-  }
+  // Cleaning request removed - no longer used
+  // void _updatePendingCleaningRequest(List<CleaningRequestSummary> requests) {
+  //   // Implementation removed
+  // }
 
   Future<void> _refreshAll() async {
     await _loadAllData();
   }
 
-  bool _isPendingCleaningRequest(CleaningRequestSummary request) {
-    final normalized = request.status.toUpperCase();
-    const finalKeywords = ['APPROVED', 'COMPLETED', 'DONE', 'CANCEL', 'REJECT'];
-    if (finalKeywords.any((keyword) => normalized.contains(keyword))) {
-      return false;
-    }
-    return normalized.contains('PENDING') ||
-        normalized.contains('NEW') ||
-        normalized.isNotEmpty;
-  }
+  // Cleaning request removed - no longer used
+  // bool _isPendingCleaningRequest(CleaningRequestSummary request) {
+  //   // Implementation removed
+  // }
 
-  DateTime _resendReferenceTimestamp(CleaningRequestSummary request) =>
-      request.lastResentAt ?? request.updatedAt ?? request.createdAt;
+  // DateTime _resendReferenceTimestamp(CleaningRequestSummary request) =>
+  //     request.lastResentAt ?? request.updatedAt ?? request.createdAt;
 
-  void _scheduleResendButton(CleaningRequestSummary? request) {
-    _resendVisibilityTimer?.cancel();
-    if (request == null || !_isPendingCleaningRequest(request)) return;
-    final target =
-        _resendReferenceTimestamp(request).add(_resendButtonThreshold);
-    final now = DateTime.now();
-    if (!target.isAfter(now)) {
-      if (mounted) {
-        setState(() {});
-      }
-      return;
-    }
-    _resendVisibilityTimer = Timer(target.difference(now), () {
-      if (!mounted) return;
-      setState(() {});
-    });
-  }
+  // void _scheduleResendButton(CleaningRequestSummary? request) {
+  //   // Implementation removed
+  // }
 
-  void _clearResendTimer() {
-    _resendVisibilityTimer?.cancel();
-    _resendVisibilityTimer = null;
-  }
+  // void _clearResendTimer() {
+  //   // Implementation removed
+  // }
 
-  void _scheduleCleaningRequestRefresh(CleaningRequestSummary? request) {
-    _cleaningRequestRefreshTimer?.cancel();
-    if (request == null || !_isPendingCleaningRequest(request)) {
-      return;
-    }
-    // Refresh every 1 minute to check for resendAlertSent updates
-    _cleaningRequestRefreshTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      debugPrint('🔄 Periodic refresh: Checking cleaning request state...');
-      unawaited(_loadCleaningRequestState());
-    });
-  }
+  // void _scheduleCleaningRequestRefresh(CleaningRequestSummary? request) {
+  //   // Implementation removed
+  // }
 
-  void _clearCleaningRequestRefreshTimer() {
-    _cleaningRequestRefreshTimer?.cancel();
-    _cleaningRequestRefreshTimer = null;
-  }
+  // void _clearCleaningRequestRefreshTimer() {
+  //   // Implementation removed
+  // }
 
   Future<void> _loadUnpaidServices() async {
     try {
@@ -1010,8 +944,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    _clearResendTimer();
-    _clearCleaningRequestRefreshTimer();
+    // Cleaning request removed - no longer used
+    // _clearResendTimer();
+    // _clearCleaningRequestRefreshTimer();
     _paymentSub?.cancel();
     super.dispose();
   }
@@ -1914,144 +1849,39 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
             ],
           ),
-          if (_shouldShowResendCleaningPrompt) ...[
-            const SizedBox(height: 14),
-            _buildCleaningResendPrompt(),
-          ],
+          // Cleaning request removed - no longer used
+          // if (_shouldShowResendCleaningPrompt) ...[
+          //   const SizedBox(height: 14),
+          //   _buildCleaningResendPrompt(),
+          // ],
         ],
       ),
     );
   }
 
-  bool get _shouldShowResendCleaningPrompt {
-    final request = _pendingCleaningRequest;
-    if (request == null || !_isPendingCleaningRequest(request)) return false;
-    if (!request.resendAlertSent) return false;
-    // Show button immediately after reminder is sent
-    return true;
-  }
+  // Cleaning request removed - no longer used
+  // bool get _shouldShowResendCleaningPrompt {
+  //   return false;
+  // }
 
-  Duration _timeSinceReference(CleaningRequestSummary request) =>
-      DateTime.now().difference(_resendReferenceTimestamp(request));
+  // Duration _timeSinceReference(CleaningRequestSummary request) =>
+  //     DateTime.now().difference(_resendReferenceTimestamp(request));
 
-  Duration _timeUntilAutoCancel(CleaningRequestSummary request) {
-    final now = DateTime.now();
-    final resendWindow = _resendCancelWindow ?? _defaultResendCancelWindow;
-    final noResendWindow = _noResendCancelWindow ?? _defaultNoResendCancelWindow;
-    
-    if (request.lastResentAt != null) {
-      // If already resent: cancel after resendCancelThreshold from lastResentAt
-      final elapsedSinceResend = now.difference(request.lastResentAt!);
-      final remaining = resendWindow - elapsedSinceResend;
-      return remaining.isNegative ? Duration.zero : remaining;
-    } else {
-      // If not resent: cancel after noResendCancelThreshold from createdAt
-      final elapsedSinceCreation = now.difference(request.createdAt);
-      final remaining = noResendWindow - elapsedSinceCreation;
-      return remaining.isNegative ? Duration.zero : remaining;
-    }
-  }
+  // Duration _timeUntilAutoCancel(CleaningRequestSummary request) {
+  //   // Implementation removed
+  // }
 
-  String _formatDurationLabel(Duration duration) {
-    final hours = duration.inHours;
-    final minutes = duration.inMinutes % 60;
-    final parts = <String>[];
-    if (hours > 0) parts.add('$hours giờ');
-    if (minutes > 0) parts.add('$minutes phút');
-    if (parts.isEmpty) return '${duration.inSeconds} giây';
-    return parts.join(' ');
-  }
+  // String _formatDurationLabel(Duration duration) {
+  //   // Implementation removed
+  // }
 
-  Widget _buildCleaningResendPrompt() {
-    final request = _pendingCleaningRequest!;
-    final elapsed = _timeSinceReference(request);
-    final remaining = _timeUntilAutoCancel(request);
-    final autoCancelLabel = remaining > Duration.zero
-        ? 'Nếu không gửi lại, yêu cầu tự hủy sau ${_formatDurationLabel(remaining)}.'
-        : 'Yêu cầu đang sắp tự hủy.';
+  // Widget _buildCleaningResendPrompt() {
+  //   // Implementation removed
+  // }
 
-    return _HomeGlassCard(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.cleaning_services_outlined,
-                  color: AppColors.primaryAqua),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Admin chưa phản hồi yêu cầu dọn dẹp của bạn sau ${_formatDurationLabel(elapsed)}.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            request.lastResentAt != null
-                ? 'Nhấn "Gửi lại yêu cầu" để tiếp tục chờ hồi đáp từ admin.'
-                : 'Nhấn "Gửi lại yêu cầu" để kích hoạt lại chu kỳ và tiếp tục chờ hồi đáp.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            autoCancelLabel,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-          const SizedBox(height: 14),
-          FilledButton.icon(
-            onPressed: _isResendInProgress ? null : _onSendCleaningRequestAgain,
-            icon: _isResendInProgress
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh),
-            label: Text(_isResendInProgress
-                ? 'Đang gửi lại...'
-                : 'Gửi lại yêu cầu dọn dẹp'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _onSendCleaningRequestAgain() async {
-    final request = _pendingCleaningRequest;
-    if (request == null) return;
-    setState(() => _isResendInProgress = true);
-    try {
-      await _cleaningRequestService.resendRequest(request.id);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Yêu cầu dọn dẹp đã được gửi lại.'),
-          backgroundColor: AppColors.primaryEmerald,
-        ),
-      );
-      await _loadCleaningRequestState();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Không thể gửi lại yêu cầu: $e'),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isResendInProgress = false);
-      }
-    }
-  }
+  // Future<void> _onSendCleaningRequestAgain() async {
+  //   // Implementation removed
+  // }
 
   Widget _buildElectricityChartSection(Size size) {
     final theme = Theme.of(context);

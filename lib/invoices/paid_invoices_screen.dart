@@ -9,7 +9,8 @@ import '../common/layout_insets.dart';
 import '../models/invoice_category.dart';
 import '../models/unit_info.dart';
 import '../service_registration/service_booking_service.dart';
-import '../service_registration/cleaning_request_service.dart';
+// Cleaning request removed - no longer used
+// import '../service_registration/cleaning_request_service.dart';
 import '../service_registration/maintenance_request_service.dart';
 import '../theme/app_colors.dart';
 import 'invoice_service.dart';
@@ -107,7 +108,8 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
   late final InvoiceService _invoiceService;
   late final AssetMaintenanceApiClient _assetMaintenanceApiClient;
   late final ServiceBookingService _bookingService;
-  late final CleaningRequestService _cleaningRequestService;
+  // Cleaning request removed - no longer used
+  // late final CleaningRequestService _cleaningRequestService;
   late final MaintenanceRequestService _maintenanceRequestService;
   late Future<List<PaidItem>> _futureData;
   late TabController _tabController;
@@ -127,7 +129,8 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
     _invoiceService = InvoiceService(_apiClient);
     _assetMaintenanceApiClient = AssetMaintenanceApiClient();
     _bookingService = ServiceBookingService(_assetMaintenanceApiClient);
-    _cleaningRequestService = CleaningRequestService(_apiClient);
+    // Cleaning request removed - no longer used
+    // _cleaningRequestService = CleaningRequestService(_apiClient);
     _maintenanceRequestService = MaintenanceRequestService(_apiClient);
     _units = widget.initialUnits != null
         ? List<UnitInfo>.from(widget.initialUnits!)
@@ -186,12 +189,15 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
           ? _invoiceService.getPaidInvoicesByCategory(unitId: unitIdForRequest)
           : Future.value(<InvoiceCategory>[]);
       final bookingsFuture = _bookingService.getPaidBookings();
-      final cleaningRequestsFuture = _cleaningRequestService.getPaidRequests();
+      // Cleaning request removed - no longer used
+      // final cleaningRequestsFuture = _cleaningRequestService.getPaidRequests();
+      final cleaningRequestsFuture = Future.value(<dynamic>[]);
       final maintenanceRequestsFuture = _maintenanceRequestService.getPaidRequests();
 
       final categories = await categoriesFuture;
       final bookings = await bookingsFuture;
-      final cleaningRequests = await cleaningRequestsFuture;
+      // Cleaning request removed - no longer used
+      await cleaningRequestsFuture; // Just await to avoid unused variable warning
       final maintenanceRequests = await maintenanceRequestsFuture;
 
       final List<PaidItem> items = [];
@@ -244,23 +250,24 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
         }
       }
 
+      // Cleaning request removed - no longer used
       // Process cleaning requests
-      for (final request in cleaningRequests) {
-        if (request.status.toUpperCase() != 'DONE') continue;
-        // Use createdAt as payment date if paymentDate is not available
-        final paymentDate = request.createdAt;
-          items.add(PaidItem(
-            id: request.id,
-            type: PaidItemType.cleaning,
-            name: 'Dọn dẹp',
-            amount: 0.0, // Cleaning requests may not have payment amount
-            paymentDate: paymentDate,
-            description: request.cleaningType,
-            icon: Icons.cleaning_services,
-            iconColor: const Color(0xFF24D1C4),
-            unitId: unitIdForRequest.isNotEmpty ? unitIdForRequest : null,
-          ));
-      }
+      // for (final request in cleaningRequests) {
+      //   if (request.status.toUpperCase() != 'DONE') continue;
+      //   // Use createdAt as payment date if paymentDate is not available
+      //   final paymentDate = request.createdAt;
+      //     items.add(PaidItem(
+      //       id: request.id,
+      //       type: PaidItemType.cleaning,
+      //       name: 'Dọn dẹp',
+      //       amount: 0.0, // Cleaning requests may not have payment amount
+      //       paymentDate: paymentDate,
+      //       description: request.cleaningType,
+      //       icon: Icons.cleaning_services,
+      //       iconColor: const Color(0xFF24D1C4),
+      //       unitId: unitIdForRequest.isNotEmpty ? unitIdForRequest : null,
+      //     ));
+      // }
 
       // Process maintenance requests
       for (final request in maintenanceRequests) {
@@ -908,7 +915,8 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
                     item: item,
                     invoiceService: _invoiceService,
                     bookingService: _bookingService,
-                    cleaningRequestService: _cleaningRequestService,
+                    // Cleaning request removed - no longer used
+                    // cleaningRequestService: _cleaningRequestService,
                     maintenanceRequestService: _maintenanceRequestService,
                   ),
                 ),
@@ -1015,14 +1023,16 @@ class _PaidItemDetailSheet extends StatefulWidget {
     required this.item,
     required this.invoiceService,
     required this.bookingService,
-    required this.cleaningRequestService,
+    // Cleaning request removed - no longer used
+    // required this.cleaningRequestService,
     required this.maintenanceRequestService,
   });
 
   final PaidItem item;
   final InvoiceService invoiceService;
   final ServiceBookingService bookingService;
-  final CleaningRequestService cleaningRequestService;
+  // Cleaning request removed - no longer used
+  // final CleaningRequestService cleaningRequestService;
   final MaintenanceRequestService maintenanceRequestService;
 
   @override
@@ -1126,24 +1136,26 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
             }
           }
         case PaidItemType.cleaning:
+          // Cleaning request removed - no longer used
           // Load cleaning request detail
           try {
-            final requests = await widget.cleaningRequestService.getPaidRequests();
-            final request = requests.firstWhere(
-              (r) => r.id == widget.item.id,
-              orElse: () => throw Exception('Not found'),
-            );
-            setState(() {
-              _detailData = {
-                'type': 'cleaning',
-                'id': request.id,
-                'cleaningType': request.cleaningType,
-                'note': request.note,
-                'location': request.location,
-                'createdAt': request.createdAt,
-                'status': request.status,
-              };
-            });
+            // final requests = await widget.cleaningRequestService.getPaidRequests();
+            // final request = requests.firstWhere(
+            //   (r) => r.id == widget.item.id,
+            //   orElse: () => throw Exception('Not found'),
+            // );
+            throw Exception('Cleaning request feature has been removed');
+            // setState(() {
+            //   _detailData = {
+            //     'type': 'cleaning',
+            //     'id': request.id,
+            //     'cleaningType': request.cleaningType,
+            //     'note': request.note,
+            //     'location': request.location,
+            //     'createdAt': request.createdAt,
+            //     'status': request.status,
+            //   };
+            // });
           } catch (e) {
             debugPrint('Error loading cleaning detail: $e');
           }

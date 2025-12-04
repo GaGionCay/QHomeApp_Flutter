@@ -10,7 +10,6 @@ import '../register/register_resident_card_screen.dart';
 import '../register/register_vehicle_screen.dart';
 import '../theme/app_colors.dart';
 import 'layout_insets.dart';
-import '../service_registration/cleaning_request_screen.dart';
 import '../service_registration/repair_request_screen.dart';
 import '../service_registration/service_booking_service.dart';
 import '../service_registration/service_list_screen.dart';
@@ -59,17 +58,9 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
 
   late final List<_QuickAction> _maintenanceServices = [
     _QuickAction(
-      title: 'Yêu cầu dọn dẹp',
-      description:
-          'Đặt lịch dọn dẹp căn hộ, bổ sung dịch vụ tiện ích và theo dõi xử lý.',
-      icon: Icons.cleaning_services_outlined,
-      color: const Color(0xFF7CB342),
-      builder: (_) => const CleaningRequestScreen(),
-    ),
-    _QuickAction(
       title: 'Yêu cầu sửa chữa',
       description:
-          'Gửi phản ánh bảo trì, đính kèm hình ảnh/video minh chứng cho ban quản lý.',
+          'Gửi yêu cầu sửa chữa hoặc bảo trì, đính kèm hình ảnh/video minh chứng cho ban quản lý.',
       icon: Icons.build_circle_outlined,
       color: const Color(0xFF0097A7),
       builder: (_) => const RepairRequestScreen(),
