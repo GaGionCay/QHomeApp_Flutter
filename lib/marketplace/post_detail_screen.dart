@@ -18,6 +18,8 @@ import 'image_viewer_screen.dart';
 import 'edit_post_screen.dart';
 import '../chat/chat_service.dart';
 import '../models/chat/group.dart';
+import '../models/chat/friend.dart';
+import '../chat/direct_chat_screen.dart';
 import 'select_group_dialog.dart';
 import 'create_group_dialog.dart';
 
@@ -743,52 +745,15 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: GestureDetector(
-                              onTap: () => _showPostAuthorOptions(context, post),
-                              child: Text(
-                                post.author?.name ?? 'Người dùng',
-                                style: theme.textTheme.titleLarge?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  color: (_currentResidentId != null && 
-                                          post.residentId == _currentResidentId)
-                                      ? theme.colorScheme.primary
-                                      : theme.colorScheme.onSurface,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
+                      GestureDetector(
+                        onTap: () => _showPostAuthorOptions(context, post),
+                        child: Text(
+                          post.author?.name ?? 'Người dùng',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
                           ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: (_currentResidentId != null && 
-                                      post.residentId == _currentResidentId)
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.primaryContainer,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              (_currentResidentId != null && 
-                               post.residentId == _currentResidentId)
-                                  ? 'Bạn'
-                                  : 'Người đăng',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: (_currentResidentId != null && 
-                                        post.residentId == _currentResidentId)
-                                    ? theme.colorScheme.onPrimary
-                                    : theme.colorScheme.onPrimaryContainer,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       const SizedBox(height: 6),
                       if (post.author?.unitNumber != null || post.author?.buildingName != null)
@@ -1229,36 +1194,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                               comment.author?.name ?? 'Người dùng',
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 fontWeight: FontWeight.w600,
-                                color: (_currentResidentId != null && 
-                                        comment.residentId == _currentResidentId)
-                                    ? theme.colorScheme.primary
-                                    : theme.colorScheme.onSurface,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ),
-                        if (_currentResidentId != null && 
-                            comment.residentId == _currentResidentId) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primary,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              'Bạn',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.onPrimary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
                         const SizedBox(width: 8),
                         Text(
                           _formatDate(comment.createdAt),
@@ -1267,7 +1207,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                           ),
                         ),
                       ],
-                        ),
+                    ),
                         const SizedBox(height: 4),
                         _buildCommentContent(context, theme, comment),
                         const SizedBox(height: 8),
@@ -1352,6 +1292,28 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       return;
     }
 
+    // Check if user has active conversation/friendship
+    Friend? friend;
+    try {
+      final friends = await _chatService.getFriends();
+      friend = friends.firstWhere(
+        (f) => f.friendId == post.residentId,
+        orElse: () => Friend(
+          friendId: '',
+          friendName: '',
+          friendPhone: '',
+          hasActiveConversation: false,
+        ),
+      );
+    } catch (e) {
+      print('⚠️ [PostDetailScreen] Error getting friends: $e');
+    }
+
+    final hasActiveConversation = friend != null && 
+                                   friend.friendId == post.residentId && 
+                                   friend.hasActiveConversation && 
+                                   friend.conversationId != null;
+
     // Show options menu
     final result = await showModalBottomSheet<String>(
       context: context,
@@ -1364,8 +1326,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           children: [
             ListTile(
               leading: const Icon(CupertinoIcons.chat_bubble),
-              title: const Text('Gửi tin nhắn'),
-              onTap: () => Navigator.pop(context, 'message'),
+              title: Text(hasActiveConversation ? 'Mở chat' : 'Gửi tin nhắn'),
+              onTap: () => Navigator.pop(context, hasActiveConversation ? 'open_chat' : 'message'),
             ),
             ListTile(
               leading: const Icon(CupertinoIcons.group),
@@ -1383,7 +1345,18 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       ),
     );
 
-    if (result == 'message' && context.mounted && authorUserId != null) {
+    if (result == 'open_chat' && context.mounted && friend != null && friend.conversationId != null) {
+      // Navigate directly to direct chat
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DirectChatScreen(
+            conversationId: friend!.conversationId!,
+            otherParticipantName: friend.friendName.isNotEmpty ? friend.friendName : (post.author?.name ?? 'Người dùng'),
+          ),
+        ),
+      );
+    } else if (result == 'message' && context.mounted && authorUserId != null) {
       await _showDirectChatFromPost(context, post, authorUserId);
     } else if (result == 'invite_group' && context.mounted) {
       await _inviteToGroupFromPost(context, post);
@@ -1484,6 +1457,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       final groups = groupsResponse.content;
       
       ChatGroup? selectedGroup;
+      bool createNewGroup = false;
       
       if (groups.isEmpty) {
         // No groups, create a new one
@@ -1497,6 +1471,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         if (groupData == null || !context.mounted) {
           return;
         }
+        
+        createNewGroup = true;
         
         // Show loading
         if (context.mounted) {
@@ -1532,21 +1508,101 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         }
       } else {
         // Show group selection dialog
-        selectedGroup = await showDialog<ChatGroup>(
+        final result = await showDialog<dynamic>(
           context: context,
-          builder: (context) => SelectGroupDialog(groups: groups),
+          builder: (context) => SelectGroupDialog(
+            groups: groups,
+            targetResidentId: post.residentId,
+            currentResidentId: _currentResidentId,
+          ),
         );
         
-        if (selectedGroup == null || !context.mounted) {
+        if (result == null || !context.mounted) {
           return;
         }
         
-        // Show loading
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Đang gửi lời mời...')),
+        if (result == 'create_new') {
+          // User wants to create a new group
+          final groupData = await showDialog<Map<String, String?>>(
+            context: context,
+            builder: (context) => CreateGroupDialog(
+              defaultName: 'Nhóm với ${post.author?.name ?? 'người dùng'}',
+            ),
           );
+          
+          if (groupData == null || !context.mounted) {
+            return;
+          }
+          
+          createNewGroup = true;
+          
+          // Show loading
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Đang tạo nhóm...')),
+            );
+          }
+          
+          // Create new group
+          try {
+            selectedGroup = await _chatService.createGroup(
+              name: groupData['name']!,
+              description: groupData['description'],
+            );
+            
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Đang gửi lời mời...')),
+              );
+            }
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Lỗi khi tạo nhóm: ${e.toString()}'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+            return;
+          }
+        } else if (result is ChatGroup) {
+          selectedGroup = result;
+          
+          // Check if user is already in the group
+          if (selectedGroup.members != null) {
+            final isAlreadyMember = selectedGroup.members!.any(
+              (member) => member.residentId == post.residentId,
+            );
+            
+            if (isAlreadyMember) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('${post.author?.name ?? 'Người dùng'} đã ở trong nhóm "${selectedGroup.name}"'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              }
+              return;
+            }
+          }
+          
+          // Show loading
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Đang gửi lời mời...')),
+            );
+          }
+        } else {
+          return;
         }
+      }
+      
+      if (selectedGroup == null) {
+        return;
       }
       
       // Invite to group
@@ -1559,7 +1615,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Đã gửi lời mời vào nhóm "${selectedGroup.name}"'),
+            content: Text(createNewGroup 
+                ? 'Đã tạo nhóm "${selectedGroup.name}" và gửi lời mời'
+                : 'Đã gửi lời mời vào nhóm "${selectedGroup.name}"'),
             backgroundColor: Colors.green,
           ),
         );
@@ -1681,6 +1739,28 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       return;
     }
 
+    // Check if user has active conversation/friendship
+    Friend? friend;
+    try {
+      final friends = await _chatService.getFriends();
+      friend = friends.firstWhere(
+        (f) => f.friendId == comment.residentId,
+        orElse: () => Friend(
+          friendId: '',
+          friendName: '',
+          friendPhone: '',
+          hasActiveConversation: false,
+        ),
+      );
+    } catch (e) {
+      print('⚠️ [PostDetailScreen] Error getting friends: $e');
+    }
+
+    final hasActiveConversation = friend != null && 
+                                   friend.friendId == comment.residentId && 
+                                   friend.hasActiveConversation && 
+                                   friend.conversationId != null;
+
     // Show options menu
     final result = await showModalBottomSheet<String>(
       context: context,
@@ -1693,8 +1773,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           children: [
             ListTile(
               leading: const Icon(CupertinoIcons.chat_bubble),
-              title: const Text('Gửi tin nhắn'),
-              onTap: () => Navigator.pop(context, 'message'),
+              title: Text(hasActiveConversation ? 'Mở chat' : 'Gửi tin nhắn'),
+              onTap: () => Navigator.pop(context, hasActiveConversation ? 'open_chat' : 'message'),
             ),
             ListTile(
               leading: const Icon(CupertinoIcons.group),
@@ -1712,7 +1792,18 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       ),
     );
 
-    if (result == 'message' && context.mounted && authorUserId != null) {
+    if (result == 'open_chat' && context.mounted && friend != null && friend.conversationId != null) {
+      // Navigate directly to direct chat
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DirectChatScreen(
+            conversationId: friend!.conversationId!,
+            otherParticipantName: friend.friendName.isNotEmpty ? friend.friendName : (comment.author?.name ?? 'Người dùng'),
+          ),
+        ),
+      );
+    } else if (result == 'message' && context.mounted && authorUserId != null) {
       await _showDirectChatFromComment(context, comment, authorUserId);
     } else if (result == 'invite_group' && context.mounted) {
       await _inviteToGroupFromComment(context, comment);
@@ -1778,33 +1869,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   Future<void> _inviteToGroupFromComment(BuildContext context, MarketplaceComment comment) async {
     try {
-      // Get user's groups
-      final groupsResponse = await _chatService.getMyGroups(page: 0, size: 100);
-      final groups = groupsResponse.content;
-      
-      if (groups.isEmpty) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Bạn chưa có nhóm nào. Vui lòng tạo nhóm trước.'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-        return;
-      }
-      
-      // Show group selection dialog
-      final selectedGroup = await showDialog<ChatGroup>(
-        context: context,
-        builder: (context) => SelectGroupDialog(groups: groups),
-      );
-      
-      if (selectedGroup == null || !context.mounted) {
-        return;
-      }
-      
-      // Get phone number from residentId
+      // Get phone number from residentId first
       String? phoneNumber;
       try {
         final response = await _apiClient.dio.get('/residents/${comment.residentId}');
@@ -1834,11 +1899,157 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         return;
       }
       
-      // Show loading
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đang gửi lời mời...')),
+      // Get user's groups
+      final groupsResponse = await _chatService.getMyGroups(page: 0, size: 100);
+      final groups = groupsResponse.content;
+      
+      ChatGroup? selectedGroup;
+      bool createNewGroup = false;
+      
+      if (groups.isEmpty) {
+        // No groups, create a new one
+        final groupData = await showDialog<Map<String, String?>>(
+          context: context,
+          builder: (context) => CreateGroupDialog(
+            defaultName: 'Nhóm với ${comment.author?.name ?? 'người dùng'}',
+          ),
         );
+        
+        if (groupData == null || !context.mounted) {
+          return;
+        }
+        
+        createNewGroup = true;
+        
+        // Show loading
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Đang tạo nhóm...')),
+          );
+        }
+        
+        // Create new group
+        try {
+          selectedGroup = await _chatService.createGroup(
+            name: groupData['name']!,
+            description: groupData['description'],
+          );
+          
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Đang gửi lời mời...')),
+            );
+          }
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Lỗi khi tạo nhóm: ${e.toString()}'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+      } else {
+        // Show group selection dialog
+        final result = await showDialog<dynamic>(
+          context: context,
+          builder: (context) => SelectGroupDialog(
+            groups: groups,
+            targetResidentId: comment.residentId,
+            currentResidentId: _currentResidentId,
+          ),
+        );
+        
+        if (result == null || !context.mounted) {
+          return;
+        }
+        
+        if (result == 'create_new') {
+          // User wants to create a new group
+          final groupData = await showDialog<Map<String, String?>>(
+            context: context,
+            builder: (context) => CreateGroupDialog(
+              defaultName: 'Nhóm với ${comment.author?.name ?? 'người dùng'}',
+            ),
+          );
+          
+          if (groupData == null || !context.mounted) {
+            return;
+          }
+          
+          createNewGroup = true;
+          
+          // Show loading
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Đang tạo nhóm...')),
+            );
+          }
+          
+          // Create new group
+          try {
+            selectedGroup = await _chatService.createGroup(
+              name: groupData['name']!,
+              description: groupData['description'],
+            );
+            
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Đang gửi lời mời...')),
+              );
+            }
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Lỗi khi tạo nhóm: ${e.toString()}'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+            return;
+          }
+        } else if (result is ChatGroup) {
+          selectedGroup = result;
+          
+          // Check if user is already in the group
+          if (selectedGroup.members != null) {
+            final isAlreadyMember = selectedGroup.members!.any(
+              (member) => member.residentId == comment.residentId,
+            );
+            
+            if (isAlreadyMember) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('${comment.author?.name ?? 'Người dùng'} đã ở trong nhóm "${selectedGroup.name}"'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              }
+              return;
+            }
+          }
+          
+          // Show loading
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Đang gửi lời mời...')),
+            );
+          }
+        } else {
+          return;
+        }
+      }
+      
+      if (selectedGroup == null) {
+        return;
       }
       
       // Invite to group
@@ -1851,7 +2062,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Đã gửi lời mời vào nhóm "${selectedGroup.name}"'),
+            content: Text(createNewGroup 
+                ? 'Đã tạo nhóm "${selectedGroup.name}" và gửi lời mời'
+                : 'Đã gửi lời mời vào nhóm "${selectedGroup.name}"'),
             backgroundColor: Colors.green,
           ),
         );
