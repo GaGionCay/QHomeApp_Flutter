@@ -1468,13 +1468,23 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           children: [
             ListTile(
               leading: const Icon(CupertinoIcons.photo),
-              title: const Text('Chọn ảnh'),
-              onTap: () => Navigator.pop(context, 'image'),
+              title: const Text('Chọn ảnh từ thư viện'),
+              onTap: () => Navigator.pop(context, 'image_gallery'),
+            ),
+            ListTile(
+              leading: const Icon(CupertinoIcons.camera_fill),
+              title: const Text('Chụp ảnh'),
+              onTap: () => Navigator.pop(context, 'image_camera'),
             ),
             ListTile(
               leading: const Icon(CupertinoIcons.videocam),
-              title: const Text('Chọn video'),
-              onTap: () => Navigator.pop(context, 'video'),
+              title: const Text('Chọn video từ thư viện'),
+              onTap: () => Navigator.pop(context, 'video_gallery'),
+            ),
+            ListTile(
+              leading: const Icon(CupertinoIcons.videocam_fill),
+              title: const Text('Quay video'),
+              onTap: () => Navigator.pop(context, 'video_camera'),
             ),
             const SizedBox(height: 8),
           ],
@@ -1482,17 +1492,21 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       ),
     );
 
-    if (result == 'image') {
-      await _pickImage();
-    } else if (result == 'video') {
-      await _pickVideo();
+    if (result == 'image_gallery') {
+      await _pickImage(source: ImageSource.gallery);
+    } else if (result == 'image_camera') {
+      await _pickImage(source: ImageSource.camera);
+    } else if (result == 'video_gallery') {
+      await _pickVideo(source: ImageSource.gallery);
+    } else if (result == 'video_camera') {
+      await _pickVideo(source: ImageSource.camera);
     }
   }
 
-  Future<void> _pickImage() async {
+  Future<void> _pickImage({ImageSource source = ImageSource.gallery}) async {
     try {
       final image = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
+        source: source,
         imageQuality: 85,
       );
       if (image != null) {
@@ -1510,10 +1524,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
-  Future<void> _pickVideo() async {
+  Future<void> _pickVideo({ImageSource source = ImageSource.gallery}) async {
     try {
       final video = await _imagePicker.pickVideo(
-        source: ImageSource.gallery,
+        source: source,
       );
       if (video != null) {
         setState(() {

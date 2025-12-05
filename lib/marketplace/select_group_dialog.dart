@@ -65,16 +65,12 @@ class _SelectGroupDialogState extends State<SelectGroupDialog> {
                   final group = widget.groups[groupIndex];
                   final isSelected = !_createNewGroup && _selectedGroup?.id == group.id;
                   
-                  // Check if both current user and target user are already in this group
-                  bool bothInGroup = false;
-                  if (widget.targetResidentId != null && widget.currentResidentId != null && group.members != null) {
-                    final currentUserInGroup = group.members!.any(
-                      (member) => member.residentId == widget.currentResidentId,
-                    );
-                    final targetUserInGroup = group.members!.any(
+                  // Check if target user is already in this group
+                  bool targetUserInGroup = false;
+                  if (widget.targetResidentId != null && group.members != null) {
+                    targetUserInGroup = group.members!.any(
                       (member) => member.residentId == widget.targetResidentId,
                     );
-                    bothInGroup = currentUserInGroup && targetUserInGroup;
                   }
                   
                   return RadioListTile<ChatGroup>(
@@ -88,11 +84,11 @@ class _SelectGroupDialogState extends State<SelectGroupDialog> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                        if (bothInGroup)
+                        if (targetUserInGroup)
                           Padding(
                             padding: const EdgeInsets.only(top: 4.0),
                             child: Text(
-                              'Cả 2 đã ở nhóm này',
+                              'Người dùng đã ở trong nhóm này',
                               style: TextStyle(
                                 color: Theme.of(context).colorScheme.error,
                                 fontSize: 12,
@@ -104,7 +100,7 @@ class _SelectGroupDialogState extends State<SelectGroupDialog> {
                     ),
                     value: group,
                     groupValue: _createNewGroup ? null : _selectedGroup,
-                    onChanged: bothInGroup ? null : (value) {
+                    onChanged: targetUserInGroup ? null : (value) {
                       setState(() {
                         _selectedGroup = value;
                         _createNewGroup = false;

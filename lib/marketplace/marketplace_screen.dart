@@ -13,7 +13,9 @@ import 'image_viewer_screen.dart';
 import '../chat/chat_service.dart';
 import '../chat/group_list_screen.dart';
 import '../chat/direct_chat_list_screen.dart';
+import '../chat/direct_chat_screen.dart';
 import '../models/chat/group.dart';
+import '../models/chat/friend.dart';
 import '../auth/api_client.dart';
 import '../core/event_bus.dart';
 import 'select_group_dialog.dart';
@@ -151,6 +153,28 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
       return;
     }
 
+    // Check if already friends
+    Friend? friend;
+    try {
+      final friends = await _chatService.getFriends();
+      friend = friends.firstWhere(
+        (f) => f.friendId == post.residentId,
+        orElse: () => Friend(
+          friendId: '',
+          friendName: '',
+          friendPhone: '',
+          hasActiveConversation: false,
+        ),
+      );
+    } catch (e) {
+      print('⚠️ [MarketplaceScreen] Error getting friends: $e');
+    }
+
+    final hasActiveConversation = friend != null && 
+                                   friend.friendId == post.residentId && 
+                                   friend.hasActiveConversation && 
+                                   friend.conversationId != null;
+
     // Show options menu
     final result = await showModalBottomSheet<String>(
       context: context,
@@ -163,8 +187,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
           children: [
             ListTile(
               leading: const Icon(CupertinoIcons.chat_bubble),
-              title: const Text('Gửi tin nhắn'),
-              onTap: () => Navigator.pop(context, 'message'),
+              title: Text(hasActiveConversation ? 'Mở chat' : 'Gửi tin nhắn'),
+              onTap: () => Navigator.pop(context, hasActiveConversation ? 'open_chat' : 'message'),
             ),
             ListTile(
               leading: const Icon(CupertinoIcons.group),
@@ -182,7 +206,18 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
       ),
     );
 
-    if (result == 'message' && context.mounted) {
+    if (result == 'open_chat' && context.mounted && friend != null && friend.conversationId != null) {
+      // Navigate directly to direct chat if already friends
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DirectChatScreen(
+            conversationId: friend!.conversationId!,
+            otherParticipantName: friend.friendName.isNotEmpty ? friend.friendName : (post.author?.name ?? 'Người dùng'),
+          ),
+        ),
+      );
+    } else if (result == 'message' && context.mounted) {
       await _showDirectChatPopup(context, post);
     } else if (result == 'invite_group' && context.mounted) {
       await _inviteToGroup(context, post);
@@ -283,7 +318,21 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
       
       // Get user's groups
       final groupsResponse = await _chatService.getMyGroups(page: 0, size: 100);
-      final groups = groupsResponse.content;
+      List<ChatGroup> groups = groupsResponse.content;
+      
+      // Load full group data with members for each group to check membership
+      final groupsWithMembers = <ChatGroup>[];
+      for (var group in groups) {
+        try {
+          final fullGroup = await _chatService.getGroupById(group.id);
+          groupsWithMembers.add(fullGroup);
+        } catch (e) {
+          print('⚠️ [MarketplaceScreen] Error loading group ${group.id}: $e');
+          // Add original group if loading fails
+          groupsWithMembers.add(group);
+        }
+      }
+      groups = groupsWithMembers;
       
       ChatGroup? selectedGroup;
       
@@ -333,10 +382,14 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
           return;
         }
       } else {
-        // Show group selection dialog
+        // Show group selection dialog with target and current resident IDs
         selectedGroup = await showDialog<ChatGroup>(
           context: context,
-          builder: (context) => SelectGroupDialog(groups: groups),
+          builder: (context) => SelectGroupDialog(
+            groups: groups,
+            targetResidentId: post.residentId,
+            currentResidentId: _currentResidentId,
+          ),
         );
         
         if (selectedGroup == null || !context.mounted) {
@@ -349,6 +402,32 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
             const SnackBar(content: Text('Đang gửi lời mời...')),
           );
         }
+      }
+      
+      // Check if target user is already in the group
+      // Refresh group data to get full members list
+      try {
+        final fullGroupData = await _chatService.getGroupById(selectedGroup.id);
+        final targetUserInGroup = fullGroupData.members != null &&
+            fullGroupData.members!.any(
+              (member) => member.residentId == post.residentId,
+            );
+        
+        if (targetUserInGroup) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Người dùng đã ở trong nhóm "${selectedGroup.name}"'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return;
+        }
+      } catch (e) {
+        print('⚠️ [MarketplaceScreen] Error checking group members: $e');
+        // Continue with invite if check fails
       }
       
       // Invite to group
