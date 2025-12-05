@@ -18,6 +18,7 @@ import '../contracts/contract_service.dart';
 import '../core/app_router.dart';
 import '../models/unit_info.dart';
 import '../services/card_pricing_service.dart';
+import '../services/imagekit_service.dart';
 import 'register_guide_screen.dart';
 import '../theme/app_colors.dart';
 import 'widgets/register_glass_inputs.dart';
@@ -41,6 +42,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   double _registrationFee = 30000.0; // Default fallback
   bool _loadingPrice = false;
   late final CardPricingService _cardPricingService;
+  late final ImageKitService _imageKitService;
 
   final TextEditingController _licenseCtrl = TextEditingController();
   final TextEditingController _brandCtrl = TextEditingController();
@@ -73,6 +75,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
     WidgetsBinding.instance.addObserver(this);
     _contractService = ContractService(api);
     _cardPricingService = CardPricingService(api.dio);
+    _imageKitService = ImageKitService(api);
     _loadSavedData();
     _loadUnitContext();
     _listenForPaymentResult();
@@ -616,7 +619,11 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   Future<void> _uploadImages(List<XFile> files) async {
     if (files.isEmpty || !mounted) return;
     
-    setState(() => _submitting = true);
+    setState(() {
+      _submitting = true;
+      _uploadProgress = 0.0;
+    });
+    
     try {
       // Validate file sizes (max 10MB per file)
       const maxFileSize = 10 * 1024 * 1024; // 10MB
@@ -631,124 +638,14 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
         }
       }
       
-      // Create a Dio instance with longer timeouts for image upload
-      // Uploading images can take longer, especially with slow networks or large files
-      final uploadClient = Dio(BaseOptions(
-        baseUrl: ApiClient.buildServiceBase(port: 8083, path: '/api'),
-        connectTimeout: const Duration(seconds: 120), // 120 seconds to connect (increased from 60)
-        receiveTimeout: const Duration(seconds: 180), // 180 seconds to receive response (increased from 120)
-        sendTimeout: const Duration(seconds: 180), // 180 seconds to send request (increased from 120)
-      ));
-      
-      // Add log interceptor for debugging
-      uploadClient.interceptors.add(LogInterceptor(
-        request: true,
-        requestHeader: true,
-        requestBody: false, // Disable to avoid logging large image data
-        responseHeader: true,
-        responseBody: true,
-        error: true,
-        logPrint: (obj) => debugPrint('📤 UPLOAD LOG: $obj'),
-      ));
-      
-      // Add auth token
-      final token = await api.storage.readAccessToken();
-      if (token != null) {
-        uploadClient.options.headers['Authorization'] = 'Bearer $token';
-      }
-      
-      // Reset progress
-      setState(() => _uploadProgress = 0.0);
-      
-      // Retry logic with exponential backoff
-      // IMPORTANT: Create new FormData for each retry attempt (FormData can only be used once)
-      int maxRetries = 2;
-      int retryCount = 0;
-      Response? res;
-      
-      while (retryCount <= maxRetries) {
-        try {
-          // Create fresh FormData for each attempt
-          final formData = FormData.fromMap({
-            'files': await Future.wait(
-              files.map(
-                  (f) async => MultipartFile.fromFile(f.path, filename: f.name)),
-            ),
-          });
-          
-          res = await uploadClient.post(
-            '/register-service/upload-images',
-            data: formData,
-            onSendProgress: (sent, total) {
-              if (mounted && total > 0) {
-                setState(() {
-                  _uploadProgress = sent / total;
-                });
-              }
-            },
-          );
-          // Success, break out of retry loop
-          break;
-        } on DioException catch (e) {
-          if (e.type == DioExceptionType.connectionTimeout ||
-              e.type == DioExceptionType.receiveTimeout ||
-              e.type == DioExceptionType.connectionError) {
-            retryCount++;
-            if (retryCount <= maxRetries) {
-              // Exponential backoff: 2s, 4s
-              final delaySeconds = 2 * retryCount;
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                        '⚠️ Upload timeout. Đang thử lại lần $retryCount/$maxRetries sau $delaySeconds giây...'),
-                    backgroundColor: Colors.orange,
-                    duration: Duration(seconds: delaySeconds),
-                  ),
-                );
-              }
-              await Future.delayed(Duration(seconds: delaySeconds));
-              // Reset progress for retry
-              if (mounted) {
-                setState(() => _uploadProgress = 0.0);
-              }
-              continue;
-            }
-          }
-          // Re-throw if not a retryable error or max retries reached
-          rethrow;
-        } catch (e) {
-          // Handle other exceptions (like "FormData has already been finalized")
-          if (e.toString().contains('FormData has already been finalized')) {
-            // This shouldn't happen now, but if it does, just retry
-            retryCount++;
-            if (retryCount <= maxRetries) {
-              final delaySeconds = 2 * retryCount;
-              if (mounted) {
-                setState(() => _uploadProgress = 0.0);
-              }
-              await Future.delayed(Duration(seconds: delaySeconds));
-              continue;
-            }
-          }
-          rethrow;
-        }
-      }
-      
-      if (res == null) {
-        throw Exception('Không thể upload ảnh sau $maxRetries lần thử');
-      }
-      
-      if (res.statusCode != 200 && res.statusCode != 201) {
-        throw Exception('Server trả về mã lỗi: ${res.statusCode}');
-      }
-      
-      final urls =
-          (res.data['imageUrls'] as List?)?.map((e) => e.toString()).toList() ??
-              [];
+      // Upload to ImageKit with folder "vehicle-registration"
+      final urls = await _imageKitService.uploadImages(
+        files: files,
+        folder: 'vehicle-registration',
+      );
 
       if (urls.isEmpty) {
-        throw Exception('Không nhận được URL ảnh từ server');
+        throw Exception('Không nhận được URL ảnh từ ImageKit');
       }
 
       setState(() {
@@ -762,53 +659,6 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
             content: Text(
                 '✅ Đã tải lên ${urls.length} ảnh thành công! (${_uploadedImageUrls.length}/$maxImages)'),
             backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } on DioException catch (e) {
-      if (mounted) {
-        setState(() => _uploadProgress = null); // Reset progress on error
-        
-        String errorMessage = 'Lỗi khi tải ảnh lên server';
-        if (e.type == DioExceptionType.connectionTimeout) {
-          errorMessage = 'Kết nối timeout sau 120 giây. Vui lòng:\n'
-              '1. Kiểm tra kết nối mạng\n'
-              '2. Đảm bảo server đang chạy tại ${ApiClient.buildServiceBase(port: 8083)}\n'
-              '3. Thử lại sau';
-        } else if (e.type == DioExceptionType.receiveTimeout) {
-          errorMessage = 'Server không phản hồi sau 180 giây. Vui lòng kiểm tra server và thử lại';
-        } else if (e.type == DioExceptionType.connectionError || 
-                   e.message?.contains('SocketException') == true ||
-                   e.message?.contains('Connection timed out') == true) {
-          errorMessage = 'Không thể kết nối tới server tại ${ApiClient.buildServiceBase(port: 8083)}.\n'
-              'Vui lòng kiểm tra:\n'
-              '1. Server có đang chạy không\n'
-              '2. Kết nối mạng có ổn định không\n'
-              '3. Firewall có chặn kết nối không';
-        } else if (e.response != null) {
-          final statusCode = e.response!.statusCode;
-          if (statusCode == 413) {
-            errorMessage = 'File ảnh quá lớn. Vui lòng chọn ảnh nhỏ hơn';
-          } else if (statusCode == 400) {
-            errorMessage = 'Định dạng ảnh không hợp lệ. Vui lòng chọn ảnh JPG/PNG';
-          } else if (statusCode == 500) {
-            errorMessage = 'Lỗi server. Vui lòng thử lại sau';
-          } else {
-            final errorData = e.response?.data;
-            if (errorData is Map<String, dynamic> && errorData['message'] != null) {
-              errorMessage = errorData['message'].toString();
-            } else {
-              errorMessage = 'Lỗi khi tải ảnh (Mã: $statusCode)';
-            }
-          }
-        } else {
-          errorMessage = e.message ?? 'Lỗi không xác định khi tải ảnh';
-        }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
           ),
         );
       }

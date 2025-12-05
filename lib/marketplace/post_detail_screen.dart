@@ -14,6 +14,7 @@ import '../models/marketplace_comment.dart';
 import '../models/comment_paged_response.dart';
 import '../auth/token_storage.dart';
 import '../auth/api_client.dart';
+import '../services/imagekit_service.dart';
 import 'marketplace_view_model.dart';
 import 'marketplace_service.dart';
 import 'marketplace_api_client.dart';
@@ -48,6 +49,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   final ApiClient _apiClient = ApiClient();
   final MarketplaceApiClient _marketplaceApiClient = MarketplaceApiClient();
   final MarketplaceService _marketplaceService = MarketplaceService();
+  final ImageKitService _imageKitService = ImageKitService(ApiClient());
   bool _commentsLoaded = false; // Track if comments have been loaded
   List<MarketplaceComment> _comments = [];
   MarketplacePost? _currentPost; // Cache current post for comment count
@@ -761,21 +763,13 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       String? imageUrl;
       String? videoUrl;
       
-      // Upload image if selected
+      // Upload image if selected to ImageKit
       if (_selectedImage != null) {
         try {
-          final formData = FormData.fromMap({
-            'file': await MultipartFile.fromFile(
-              _selectedImage!.path,
-              filename: _selectedImage!.name,
-            ),
-          });
-          final response = await _marketplaceApiClient.dio.post(
-            '/uploads/marketplace/comment/image',
-            data: formData,
-            queryParameters: {'postId': widget.post.id},
+          imageUrl = await _imageKitService.uploadImage(
+            file: _selectedImage!,
+            folder: 'marketplace/comments/${widget.post.id}',
           );
-          imageUrl = response.data['imageUrl']?.toString();
         } catch (e) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -786,21 +780,13 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         }
       }
       
-      // Upload video if selected
+      // Upload video if selected to ImageKit
       if (_selectedVideo != null) {
         try {
-          final formData = FormData.fromMap({
-            'file': await MultipartFile.fromFile(
-              _selectedVideo!.path,
-              filename: _selectedVideo!.name,
-            ),
-          });
-          final response = await _marketplaceApiClient.dio.post(
-            '/uploads/marketplace/comment/video',
-            data: formData,
-            queryParameters: {'postId': widget.post.id},
+          videoUrl = await _imageKitService.uploadImage(
+            file: _selectedVideo!,
+            folder: 'marketplace/comments/${widget.post.id}',
           );
-          videoUrl = response.data['videoUrl']?.toString();
         } catch (e) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(

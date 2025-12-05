@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -7,11 +6,13 @@ import 'package:intl/intl.dart';
 
 import 'dart:async';
 
+import 'dart:io';
 import '../auth/api_client.dart';
 import '../auth/email_verification_service.dart';
 import '../models/household.dart';
 import '../models/unit_info.dart';
 import '../services/cccd_ocr_service.dart';
+import '../services/imagekit_service.dart';
 import 'household_member_request_service.dart';
 
 class HouseholdMemberRequestScreen extends StatefulWidget {
@@ -77,6 +78,7 @@ class _HouseholdMemberRequestScreenState
 
   final _picker = ImagePicker();
   late final CccdOcrService _cccdOcrService;
+  late final ImageKitService _imageKitService;
 
   static const List<String> _relationSuggestions = [
     'Vợ/Chồng',
@@ -95,6 +97,7 @@ class _HouseholdMemberRequestScreenState
     _service = HouseholdMemberRequestService(apiClient);
     _emailVerificationService = EmailVerificationService();
     _cccdOcrService = CccdOcrService();
+    _imageKitService = ImageKitService(apiClient);
     _loadHousehold(widget.unit.id);
     
     // Reset email verified state when email changes and trigger rebuild for OTP button
@@ -526,10 +529,33 @@ class _HouseholdMemberRequestScreenState
     });
 
     try {
-      // Backend hiện nhận một ảnh: gửi ảnh đầu tiên nếu có
-      final proofImageDataUri = _proofImages.isNotEmpty
-          ? 'data:${_proofImageMimeTypes.first};base64,${base64Encode(_proofImages.first)}'
-          : null;
+      // Upload proof image to ImageKit if available
+      String? proofImageUrl;
+      if (_proofImages.isNotEmpty) {
+        try {
+          // Convert Uint8List to temporary file for upload
+          final tempDir = Directory.systemTemp;
+          final tempFile = File('${tempDir.path}/proof_${DateTime.now().millisecondsSinceEpoch}.jpg');
+          await tempFile.writeAsBytes(_proofImages.first);
+          
+          proofImageUrl = await _imageKitService.uploadImage(
+            file: tempFile,
+            folder: 'household/proof',
+          );
+          
+          // Clean up temp file
+          await tempFile.delete();
+        } catch (e) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi khi upload ảnh minh chứng: ${e.toString()}'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+          return;
+        }
+      }
 
       await _service.createRequest(
         householdId: _currentHousehold!.id,
@@ -546,7 +572,7 @@ class _HouseholdMemberRequestScreenState
             ? null
             : _relationCtrl.text.trim(),
         note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
-        proofOfRelationImageUrl: proofImageDataUri,
+        proofOfRelationImageUrl: proofImageUrl,
       );
 
       if (!mounted) {return;}

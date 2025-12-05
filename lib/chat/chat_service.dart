@@ -13,12 +13,16 @@ import '../models/chat/direct_chat_file.dart';
 import '../models/chat/friend.dart';
 import '../models/marketplace_post.dart';
 import '../auth/api_client.dart';
+import '../services/imagekit_service.dart';
 import 'chat_api_client.dart';
 
 class ChatService {
   final ChatApiClient _apiClient;
+  final ImageKitService _imageKitService;
 
-  ChatService() : _apiClient = ChatApiClient();
+  ChatService() 
+      : _apiClient = ChatApiClient(),
+        _imageKitService = ImageKitService(ApiClient());
 
   /// Get my groups
   Future<GroupPagedResponse> getMyGroups({
@@ -343,92 +347,36 @@ class ChatService {
     }
   }
 
-  /// Upload image
+  /// Upload image to ImageKit
   Future<String> uploadImage({
     required String groupId,
     required XFile image,
   }) async {
     try {
-      print('📤 [ChatService] Bắt đầu upload ảnh cho groupId: $groupId');
-      print('📤 [ChatService] Image path: ${image.path}');
-      print('📤 [ChatService] Image name: ${image.name}');
-      
-      final fileSize = await image.length();
-      print('📤 [ChatService] Image size: $fileSize bytes');
-      
-      final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(image.path, filename: image.name),
-      });
-
-      print('📤 [ChatService] Gửi request POST /uploads/chat/$groupId/image');
-      final response = await _apiClient.dio.post(
-        '/uploads/chat/$groupId/image',
-        data: formData,
+      // Upload to ImageKit with folder "chat/group/{groupId}"
+      final imageUrl = await _imageKitService.uploadImage(
+        file: image,
+        folder: 'chat/group/$groupId',
       );
-
-      print('📥 [ChatService] Response status: ${response.statusCode}');
-      print('📥 [ChatService] Response data: ${response.data}');
-      
-      final imageUrl = response.data['imageUrl'] as String?;
-      if (imageUrl == null) {
-        print('❌ [ChatService] Response không có imageUrl! Response: ${response.data}');
-        throw Exception('Response không có imageUrl: ${response.data}');
-      }
-      
-      print('✅ [ChatService] Upload thành công! imageUrl: $imageUrl');
       return imageUrl;
-    } catch (e, stackTrace) {
-      print('❌ [ChatService] Lỗi khi upload ảnh: $e');
-      print('📋 [ChatService] Stack trace: $stackTrace');
-      if (e is DioException) {
-        print('📋 [ChatService] DioException response: ${e.response?.data}');
-        print('📋 [ChatService] DioException statusCode: ${e.response?.statusCode}');
-      }
+    } catch (e) {
       throw Exception('Lỗi khi upload ảnh: ${e.toString()}');
     }
   }
 
-  /// Upload multiple images
+  /// Upload multiple images to ImageKit
   Future<List<String>> uploadImages({
     required String groupId,
     required List<XFile> images,
   }) async {
     try {
-      print('📤 [ChatService] Bắt đầu upload ${images.length} ảnh cho groupId: $groupId');
-      
-      final formData = FormData();
-      for (var image in images) {
-        formData.files.add(
-          MapEntry(
-            'files',
-            await MultipartFile.fromFile(image.path, filename: image.name),
-          ),
-        );
-      }
-
-      print('📤 [ChatService] Gửi request POST /uploads/chat/$groupId/images');
-      final response = await _apiClient.dio.post(
-        '/uploads/chat/$groupId/images',
-        data: formData,
+      // Upload to ImageKit with folder "chat/group/{groupId}"
+      final imageUrls = await _imageKitService.uploadImages(
+        files: images,
+        folder: 'chat/group/$groupId',
       );
-
-      print('📥 [ChatService] Response status: ${response.statusCode}');
-      print('📥 [ChatService] Response data: ${response.data}');
-      
-      final imageUrls = (response.data['imageUrls'] as List<dynamic>?)
-          ?.map((e) => e.toString())
-          .toList();
-      
-      if (imageUrls == null || imageUrls.isEmpty) {
-        print('❌ [ChatService] Response không có imageUrls! Response: ${response.data}');
-        throw Exception('Response không có imageUrls: ${response.data}');
-      }
-      
-      print('✅ [ChatService] Upload ${imageUrls.length} ảnh thành công!');
       return imageUrls;
-    } catch (e, stackTrace) {
-      print('❌ [ChatService] Lỗi khi upload nhiều ảnh: $e');
-      print('📋 [ChatService] Stack trace: $stackTrace');
+    } catch (e) {
       throw Exception('Lỗi khi upload nhiều ảnh: ${e.toString()}');
     }
   }
@@ -844,22 +792,18 @@ class ChatService {
   }
 
   // Direct Chat File Uploads
-  /// Upload image for direct chat
+  /// Upload image for direct chat to ImageKit
   Future<String> uploadDirectImage({
     required String conversationId,
     required XFile image,
   }) async {
     try {
-      final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(image.path, filename: image.name),
-      });
-
-      final response = await _apiClient.dio.post(
-        '/uploads/chat/direct/$conversationId/image',
-        data: formData,
+      // Upload to ImageKit with folder "chat/direct/{conversationId}"
+      final imageUrl = await _imageKitService.uploadImage(
+        file: image,
+        folder: 'chat/direct/$conversationId',
       );
-
-      return response.data['imageUrl'] as String;
+      return imageUrl;
     } catch (e) {
       throw Exception('Lỗi khi upload ảnh: ${e.toString()}');
     }

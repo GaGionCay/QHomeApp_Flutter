@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -10,6 +9,7 @@ import '../auth/api_client.dart';
 import '../contracts/contract_service.dart';
 import '../models/unit_info.dart';
 import '../profile/profile_service.dart';
+import '../services/imagekit_service.dart';
 import 'maintenance_request_service.dart';
 import 'video_recorder_screen.dart';
 import 'video_compression_service.dart';
@@ -58,6 +58,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
   late final MaintenanceRequestService _service;
   late final ProfileService _profileService;
   late final ContractService _contractService;
+  late final ImageKitService _imageKitService;
 
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -103,6 +104,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
     _service = MaintenanceRequestService(_apiClient);
     _profileService = ProfileService(_apiClient.dio);
     _contractService = ContractService(_apiClient);
+    _imageKitService = ImageKitService(_apiClient);
     _loadUnitContext();
     _loadProfile();
   }
@@ -398,12 +400,44 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
     }
 
     if (_submitting) return;
-    final attachments = _attachments
-        .map((file) => 'data:${file.mimeType};base64,${base64Encode(file.bytes)}')
-        .toList();
-
+    
     setState(() => _submitting = true);
     try {
+      // Upload attachments to ImageKit
+      final List<String> attachmentUrls = [];
+      for (final attachment in _attachments) {
+        try {
+          File? tempFile;
+          if (attachment.videoPath != null && File(attachment.videoPath!).existsSync()) {
+            // Use existing video file path if available
+            tempFile = File(attachment.videoPath!);
+          } else {
+            // Create temporary file for upload
+            final tempDir = Directory.systemTemp;
+            final extension = attachment.isVideo 
+                ? (attachment.fileName.contains('.') ? attachment.fileName.split('.').last : 'mp4')
+                : (attachment.fileName.contains('.') ? attachment.fileName.split('.').last : 'jpg');
+            tempFile = File('${tempDir.path}/attachment_${DateTime.now().millisecondsSinceEpoch}_${attachmentUrls.length}.$extension');
+            await tempFile.writeAsBytes(attachment.bytes);
+          }
+          
+          final url = await _imageKitService.uploadImage(
+            file: tempFile,
+            folder: 'repair-requests/attachments',
+          );
+          attachmentUrls.add(url);
+          
+          // Clean up temp file if we created it
+          if (attachment.videoPath == null && await tempFile.exists()) {
+            await tempFile.delete();
+          }
+        } catch (e) {
+          if (!mounted) return;
+          _showMessage('Lỗi khi upload file "${attachment.fileName}": ${e.toString()}', color: Colors.red);
+          return;
+        }
+      }
+
       await _service.createRequest(
         unitId: _selectedUnit!.id,
         category: _selectedCategory!,
@@ -419,7 +453,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
           _preferredTime!.hour,
           _preferredTime!.minute,
         ),
-        attachments: attachments,
+        attachments: attachmentUrls,
         note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
       );
       if (!mounted) return;

@@ -1,10 +1,13 @@
+import 'dart:io';
 import 'package:dio/dio.dart';
 import '../auth/api_client.dart';
+import '../services/imagekit_service.dart';
 
 class ProfileService {
   final Dio dio;
+  final ImageKitService _imageKitService;
 
-  ProfileService(this.dio);
+  ProfileService(this.dio) : _imageKitService = ImageKitService(ApiClient());
 
   Future<Map<String, dynamic>> getProfile() async {
     final res = await dio.get('/users/me');
@@ -37,29 +40,20 @@ class ProfileService {
 
   Future<String> uploadAvatar(String filePath) async {
     try {
-      final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(filePath, filename: 'avatar.jpg'),
-      });
-
-      print('Uploading avatar: $filePath'); // log đường dẫn file
-
-      final res = await dio.post(
-        '/users/me/avatar',
-        data: formData,
-        options: Options(
-          headers: {
-            'Content-Type': 'multipart/form-data', // đảm bảo đúng header
-          },
-        ),
+      // Upload to ImageKit first
+      final file = File(filePath);
+      final imageUrl = await _imageKitService.uploadImage(
+        file: file,
+        folder: 'profile/avatars',
       );
 
-      print('Response status: ${res.statusCode}');
-      print('Response data: ${res.data}');
+      // Then update profile with ImageKit URL
+      final res = await dio.put(
+        '/users/me',
+        data: {'avatarUrl': imageUrl},
+      );
 
-      String avatarUrl = res.data['avatarUrl'];
-      if (!avatarUrl.startsWith('http')) {
-        avatarUrl = ApiClient.activeFileBaseUrl + avatarUrl;
-      }
+      String avatarUrl = res.data['avatarUrl'] ?? imageUrl;
       return avatarUrl;
     } on DioException catch (e) {
       print('DioError: ${e.response?.statusCode}');
