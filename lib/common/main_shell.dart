@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:ui';
+import 'dart:io' show Platform;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
 
 import '../core/event_bus.dart';
@@ -26,6 +28,7 @@ import '../marketplace/marketplace_screen.dart';
 import '../chat/chat_screen.dart';
 import '../chat/direct_chat_screen.dart';
 import '../chat/chat_service.dart';
+import '../widgets/animations/smooth_animations.dart';
 
 class MainShell extends StatefulWidget {
   final int initialIndex;
@@ -602,7 +605,8 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
+    
+    final scaffold = Scaffold(
       extendBody: true,
       backgroundColor: theme.colorScheme.surface,
       body: IndexedStack(
@@ -668,6 +672,142 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
           ),
         ),
       ),
+    );
+    
+    // Only wrap with PopScope on Android to handle back button
+    if (Platform.isAndroid) {
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (bool didPop, dynamic result) async {
+          if (didPop) {
+            return;
+          }
+          
+          // Check if there are any screens in the navigation stack
+          final navigator = Navigator.of(context, rootNavigator: false);
+          if (navigator.canPop()) {
+            // There are screens to pop, allow normal back navigation
+            navigator.pop();
+            return;
+          }
+          
+          // No screens to pop (at root - HomeScreen), show exit confirmation
+          final shouldExit = await _showExitConfirmationDialog(context);
+          if (shouldExit == true && mounted) {
+            SystemNavigator.pop();
+          }
+        },
+        child: scaffold,
+      );
+    }
+    
+    return scaffold;
+  }
+
+  /// Hiển thị dialog xác nhận thoát app với animation mượt
+  Future<bool?> _showExitConfirmationDialog(BuildContext context) async {
+    final theme = Theme.of(context);
+    return showSmoothDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      barrierLabel: 'Đóng dialog xác nhận thoát',
+      builder: (BuildContext context) {
+        return PopScope(
+          canPop: true,
+          child: Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Icon
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.errorContainer,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.exit_to_app_rounded,
+                      size: 32,
+                      color: theme.colorScheme.onErrorContainer,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // Title
+                  Text(
+                    'Thoát ứng dụng',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  // Content
+                  Text(
+                    'Bạn có chắc muốn thoát ứng dụng không?',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  // Actions
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(context).pop(false); // Ở lại
+                        },
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                        ),
+                        child: Text(
+                          'Hủy',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      FilledButton(
+                        onPressed: () {
+                          Navigator.of(context).pop(true); // Thoát
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: theme.colorScheme.error,
+                          foregroundColor: theme.colorScheme.onError,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                        ),
+                        child: const Text(
+                          'Thoát',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

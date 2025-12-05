@@ -235,7 +235,8 @@ Future<T?> showSmoothDialog<T>({
     },
     barrierDismissible: barrierDismissible,
     barrierColor: barrierColor ?? Colors.black54,
-    barrierLabel: barrierLabel,
+    // Provide default barrierLabel if barrierDismissible is true
+    barrierLabel: barrierLabel ?? (barrierDismissible ? 'Đóng dialog' : null),
     transitionDuration: const Duration(milliseconds: 200),
     transitionBuilder: (context, animation, secondaryAnimation, child) {
       final scaleAnimation = CurvedAnimation(
