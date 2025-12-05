@@ -28,10 +28,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   );
   await FirebaseMessaging.instance.setAutoInitEnabled(true);
   
-  debugPrint('🔔 Background message received: ${message.messageId}');
-  debugPrint('   Title: ${message.notification?.title}');
-  debugPrint('   Body: ${message.notification?.body}');
-  debugPrint('   Data: ${message.data}');
+  // Background message received - handled silently in production
 
   final FlutterLocalNotificationsPlugin localNotifications =
       FlutterLocalNotificationsPlugin();
@@ -67,10 +64,10 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         // Emit event to update chat unreadCount (if AppEventBus is available)
         // Note: Background handler runs in isolate, so we can't use AppEventBus directly
         // The event will be handled when app comes to foreground
-        debugPrint('🔔 [FCM Background] Chat notification: type=$type, chatId=$chatId, unreadCount=$unreadCount');
+        // Chat notification handled
       }
     } catch (e) {
-      debugPrint('⚠️ [FCM Background] Error handling chat notification: $e');
+      // Error handled silently
     }
   }
 
@@ -96,7 +93,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       payload: payload,
     );
     
-    debugPrint('✅ Background notification displayed');
+    // Notification displayed
   } else if (message.data.isNotEmpty) {
     final title = message.data['title']?.toString() ?? 'Thông báo mới';
     final body = message.data['body']?.toString() ?? 
@@ -122,7 +119,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       payload: payload,
     );
     
-    debugPrint('✅ Background notification displayed (data payload)');
+    // Notification displayed (data payload)
   }
 }
 
@@ -158,7 +155,7 @@ void main() async {
 }
 
 void _handleNotificationTap(RemoteMessage message) {
-  debugPrint('🔔 Notification tapped: ${message.data}');
+  // Notification tapped - handled by router
 }
 
 Future<void> _configurePreferredRefreshRate() async {
@@ -170,7 +167,7 @@ Future<void> _configurePreferredRefreshRate() async {
     // Lấy danh sách các refresh rate có sẵn
     final modes = await FlutterDisplayMode.supported;
     if (modes.isEmpty) {
-      debugPrint('⚠️ Không có refresh rate nào được hỗ trợ');
+      // No refresh rate supported
       return;
     }
 
@@ -197,23 +194,13 @@ Future<void> _configurePreferredRefreshRate() async {
     
     // Set refresh rate đã chọn
     await FlutterDisplayMode.setPreferredMode(preferredMode);
-    debugPrint('✅ Đã đặt refresh rate: ${preferredMode.refreshRate}Hz (${preferredMode.width}x${preferredMode.height})');
-    
-    // Log tất cả các mode có sẵn để debug
-    debugPrint('📱 Các refresh rate có sẵn:');
-    for (final mode in modes) {
-      debugPrint('   - ${mode.refreshRate}Hz (${mode.width}x${mode.height})');
-    }
+    // Refresh rate set successfully
   } catch (e, stack) {
-    debugPrint('⚠️ Không thể đặt refresh rate: $e');
-    debugPrint('$stack');
-    
-    // Fallback: thử set high refresh rate
+    // Error setting refresh rate - trying fallback
     try {
       await FlutterDisplayMode.setHighRefreshRate();
-      debugPrint('✅ Đã đặt high refresh rate (fallback)');
     } catch (fallbackError) {
-      debugPrint('⚠️ Không thể đặt high refresh rate (fallback): $fallbackError');
+      // Fallback failed - handled silently
     }
   }
 }
@@ -275,8 +262,6 @@ class ExitConfirmationWrapper extends StatefulWidget {
 }
 
 class _ExitConfirmationWrapperState extends State<ExitConfirmationWrapper> {
-  DateTime? _lastBackPressed;
-
   @override
   Widget build(BuildContext context) {
     // Chỉ áp dụng cho Android
@@ -300,18 +285,11 @@ class _ExitConfirmationWrapperState extends State<ExitConfirmationWrapper> {
           return;
         }
 
-        // Không thể pop (đang ở màn hình đầu tiên), hiển thị dialog xác nhận
-        final now = DateTime.now();
-        final shouldShowDialog = _lastBackPressed == null ||
-            now.difference(_lastBackPressed!) > const Duration(seconds: 2);
-
-        if (shouldShowDialog) {
-          _lastBackPressed = now;
-          final shouldExit = await _showExitConfirmationDialog(context);
-          if (shouldExit == true && mounted) {
-            // Thoát app
-            SystemNavigator.pop();
-          }
+        // Không thể pop (đang ở màn hình root), hiển thị dialog xác nhận ngay lập tức
+        final shouldExit = await _showExitConfirmationDialog(context);
+        if (shouldExit == true && mounted) {
+          // Thoát app
+          SystemNavigator.pop();
         }
       },
       child: widget.child,
@@ -320,54 +298,105 @@ class _ExitConfirmationWrapperState extends State<ExitConfirmationWrapper> {
 
   /// Hiển thị dialog xác nhận thoát app
   Future<bool?> _showExitConfirmationDialog(BuildContext context) async {
+    final theme = Theme.of(context);
     return showDialog<bool>(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text(
-            'Thoát ứng dụng',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
+        return PopScope(
+          canPop: true,
+          child: Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
             ),
-          ),
-          content: const Text(
-            'Bạn có chắc chắn muốn thoát ứng dụng?',
-            style: TextStyle(fontSize: 16),
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(false); // Không thoát
-              },
-              child: const Text(
-                'Không',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Icon
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.errorContainer,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.exit_to_app_rounded,
+                      size: 32,
+                      color: theme.colorScheme.onErrorContainer,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // Title
+                  Text(
+                    'Thoát ứng dụng',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  // Content
+                  Text(
+                    'Bạn có chắc chắn muốn thoát ứng dụng?',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  // Actions
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(context).pop(false); // Không thoát
+                        },
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                        ),
+                        child: Text(
+                          'Hủy',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      FilledButton(
+                        onPressed: () {
+                          Navigator.of(context).pop(true); // Thoát
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: theme.colorScheme.error,
+                          foregroundColor: theme.colorScheme.onError,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                        ),
+                        child: const Text(
+                          'Thoát',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(true); // Thoát
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.error,
-              ),
-              child: const Text(
-                'Có',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
+          ),
         );
       },
     );

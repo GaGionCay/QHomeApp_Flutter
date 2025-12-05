@@ -121,15 +121,45 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   void _navigateToServicesHome({String? snackMessage}) {
     if (!mounted || _isNavigatingToMain) return;
     _isNavigatingToMain = true;
+    
+    // Simply pop back to previous screen (MainShell) instead of using context.go
+    // This prevents creating a new MainShell instance and losing authentication state
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.go(
-        AppRoute.main.path,
-        extra: MainShellArgs(
-          initialIndex: 1,
-          snackMessage: snackMessage,
-        ),
-      );
+      
+      // Pop back to MainShell if possible
+      if (Navigator.of(context, rootNavigator: false).canPop()) {
+        Navigator.of(context, rootNavigator: false).popUntil((route) {
+          // Stop at MainShell or first route
+          return route.settings.name == AppRoute.main.name || 
+                 route.settings.name == AppRoute.main.path ||
+                 route.isFirst;
+        });
+        
+        // Show snackbar after navigation
+        if (snackMessage != null && snackMessage.isNotEmpty) {
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(snackMessage),
+                  backgroundColor: Colors.green,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            }
+          });
+        }
+      } else {
+        // If can't pop, navigate to MainShell (fallback)
+        context.go(
+          AppRoute.main.path,
+          extra: MainShellArgs(
+            initialIndex: 1,
+            snackMessage: snackMessage,
+          ),
+        );
+      }
     });
   }
 

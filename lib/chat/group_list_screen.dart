@@ -63,7 +63,7 @@ class _GroupListScreenState extends State<GroupListScreen> {
           _loadDirectConversations();
         }
       } catch (e) {
-        print('⚠️ Error handling chat notification: $e');
+        // Error handled silently
       }
     });
   }
@@ -92,22 +92,18 @@ class _GroupListScreenState extends State<GroupListScreen> {
 
   Future<void> _loadDirectInvitationsCount() async {
     try {
-      print('📤 [GroupListScreen] Loading pending direct invitations count...');
       final count = await _chatService.countPendingDirectInvitations();
-      print('✅ [GroupListScreen] Pending direct invitations count: $count');
       if (mounted) {
-        final oldCount = _pendingDirectInvitationsCount;
         setState(() {
           _pendingDirectInvitationsCount = count;
         });
-        print('🔍 [GroupListScreen] Updated _pendingDirectInvitationsCount from $oldCount to: $_pendingDirectInvitationsCount');
         // Force rebuild to ensure UI updates
         if (mounted) {
           setState(() {});
         }
       }
     } catch (e) {
-      print('❌ [GroupListScreen] Error loading direct invitations count: $e');
+      // Error handled silently
       if (mounted) {
         setState(() {
           _pendingDirectInvitationsCount = 0;
@@ -221,6 +217,48 @@ class _GroupListScreenState extends State<GroupListScreen> {
                 }
               },
             ),
+            PopupMenuButton<String>(
+              icon: const Icon(CupertinoIcons.ellipsis),
+              onSelected: (value) async {
+                if (value == 'friends') {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const FriendsScreen(),
+                    ),
+                  );
+                } else if (value == 'blocked') {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const BlockedUsersScreen(),
+                    ),
+                  );
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem<String>(
+                  value: 'friends',
+                  child: Row(
+                    children: [
+                      Icon(CupertinoIcons.person_2, size: 20),
+                      SizedBox(width: 12),
+                      Text('Bạn bè'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'blocked',
+                  child: Row(
+                    children: [
+                      Icon(CupertinoIcons.person_crop_circle_badge_xmark, size: 20),
+                      SizedBox(width: 12),
+                      Text('Người dùng đã chặn'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
         body: Builder(
@@ -310,7 +348,6 @@ class _GroupListScreenState extends State<GroupListScreen> {
                             _directConversations.length +
                             (viewModel.groups.isNotEmpty ? 1 : 0) + // Group chat section header
                             viewModel.groups.length + 
-                            2 + // Blocked users section + Friends section
                             (viewModel.hasMore ? 1 : 0);
             
             return RefreshIndicator(
@@ -437,9 +474,6 @@ class _GroupListScreenState extends State<GroupListScreen> {
                       margin: const EdgeInsets.only(bottom: 12),
                       child: GestureDetector(
                         onLongPress: () {
-                          print('🔍 [GroupListScreen] GestureDetector onLongPress triggered on direct conversation!');
-                          print('   - Conversation ID: ${conversation.id}');
-                          print('   - Calling _showDirectConversationOptions...');
                           _showDirectConversationOptions(context, conversation);
                         },
                         child: ListTile(
@@ -628,40 +662,6 @@ class _GroupListScreenState extends State<GroupListScreen> {
                     currentIndex -= viewModel.groups.length;
                   }
                   
-                  // Friends section
-                  if (currentIndex == 0) {
-                    return _FriendsSection(
-                      onTap: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const FriendsScreen(),
-                          ),
-                        );
-                      },
-                    );
-                  }
-                  
-                  // Adjust index after friends section
-                  currentIndex--;
-                  
-                  // Blocked users section
-                  if (currentIndex == 0) {
-                    return _BlockedUsersSection(
-                      onTap: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const BlockedUsersScreen(),
-                          ),
-                        );
-                      },
-                    );
-                  }
-                  
-                  // Adjust index after blocked users section
-                  currentIndex--;
-                  
                   // Load more indicator
                   if (viewModel.hasMore && currentIndex == 0) {
                     return const Center(
@@ -698,20 +698,8 @@ class _GroupListScreenState extends State<GroupListScreen> {
   }
 
   Future<void> _showDirectConversationOptions(BuildContext context, Conversation conversation) async {
-    print('🔍 [GroupListScreen] Long press detected on direct conversation:');
-    print('   - Conversation ID: ${conversation.id}');
-    print('   - Participant 1: ${conversation.participant1Id} (${conversation.participant1Name})');
-    print('   - Participant 2: ${conversation.participant2Id} (${conversation.participant2Name})');
-    print('   - Current Resident ID: $_currentResidentId');
-    print('   - Status: ${conversation.status}');
-    print('   - Is Muted: ${conversation.isMuted}');
-    print('   - Mute Until: ${conversation.muteUntil}');
-    
     final isMuted = conversation.isMuted || 
         (conversation.muteUntil != null && conversation.muteUntil!.isAfter(DateTime.now()));
-    
-    print('   - Will show muted options: $isMuted');
-    print('   - Showing direct conversation options bottom sheet...');
     
     final result = await showModalBottomSheet<String>(
       context: context,
@@ -767,12 +755,9 @@ class _GroupListScreenState extends State<GroupListScreen> {
       ),
     );
 
-    print('🔍 [GroupListScreen] User selected option: $result');
-
     if (result != null && mounted) {
       try {
         if (result == 'unmute') {
-          print('🔍 [GroupListScreen] Processing: Unmute conversation');
           await _chatService.unmuteDirectConversation(conversation.id);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('✅ Đã bật lại thông báo')),
@@ -797,7 +782,6 @@ class _GroupListScreenState extends State<GroupListScreen> {
             SnackBar(content: Text('✅ Đã tắt thông báo${durationHours != null ? ' trong $durationHours giờ' : ''}')),
           );
         } else if (result == 'block') {
-          print('🔍 [GroupListScreen] Processing: Block user');
           final confirmed = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
@@ -865,7 +849,6 @@ class _GroupListScreenState extends State<GroupListScreen> {
             }
           }
         } else if (result == 'hide') {
-          print('🔍 [GroupListScreen] Processing: Hide conversation');
           final confirmed = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
@@ -1180,136 +1163,6 @@ class _GroupListItem extends StatelessWidget {
   }
 }
 
-class _FriendsSection extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _FriendsSection({
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                height: 48,
-                width: 48,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  CupertinoIcons.person_2,
-                  color: theme.colorScheme.onPrimaryContainer,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Bạn bè',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Xem danh sách bạn bè và liên lạc lại',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                CupertinoIcons.chevron_right,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BlockedUsersSection extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _BlockedUsersSection({
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                height: 48,
-                width: 48,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.secondaryContainer,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  CupertinoIcons.person_crop_circle_badge_xmark,
-                  color: theme.colorScheme.onSecondaryContainer,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Người dùng đã chặn',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Xem và quản lý danh sách người dùng đã chặn',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                CupertinoIcons.chevron_right,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _DirectInvitationsSection extends StatelessWidget {
   final int count;
   final VoidCallback onTap;
@@ -1330,7 +1183,6 @@ class _DirectInvitationsSection extends StatelessWidget {
         elevation: 2,
         child: InkWell(
           onTap: () {
-            print('🔍 [_DirectInvitationsSection] Tapped!');
             onTap();
           },
           borderRadius: BorderRadius.circular(12),

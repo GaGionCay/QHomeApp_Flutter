@@ -21,6 +21,7 @@ import '../core/event_bus.dart';
 import 'select_group_dialog.dart';
 import 'create_group_dialog.dart';
 import 'package:flutter/services.dart';
+import '../widgets/animations/smooth_animations.dart';
 
 class MarketplaceScreen extends StatefulWidget {
   const MarketplaceScreen({super.key});
@@ -176,7 +177,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                                    friend.conversationId != null;
 
     // Show options menu
-    final result = await showModalBottomSheet<String>(
+    final result = await showSmoothBottomSheet<String>(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -210,8 +211,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
       // Navigate directly to direct chat if already friends
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (context) => DirectChatScreen(
+        SmoothPageRoute(
+          page: DirectChatScreen(
             conversationId: friend!.conversationId!,
             otherParticipantName: friend.friendName.isNotEmpty ? friend.friendName : (post.author?.name ?? 'Người dùng'),
           ),
@@ -527,7 +528,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
     final theme = Theme.of(context);
     final deepLink = 'app://marketplace/post/${post.id}';
     
-    showModalBottomSheet(
+    showSmoothBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
@@ -585,7 +586,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
   Future<void> _navigateToChatSelection(BuildContext context, MarketplacePost post) async {
     final theme = Theme.of(context);
     
-    showModalBottomSheet(
+    showSmoothBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
@@ -616,8 +617,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => GroupListScreen(sharePost: post),
+                  SmoothPageRoute(
+                    page: GroupListScreen(sharePost: post),
                   ),
                 );
               },
@@ -632,8 +633,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                 Navigator.pop(context);
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => DirectChatListScreen(sharePost: post),
+                  SmoothPageRoute(
+                    page: DirectChatListScreen(sharePost: post),
                   ),
                 );
               },
@@ -686,8 +687,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
               onPressed: () async {
                 final result = await Navigator.push<MarketplacePost>(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => const CreatePostScreen(),
+                  SmoothPageRoute(
+                    page: const CreatePostScreen(),
                   ),
                 );
                 
@@ -804,11 +805,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
           shouldRebuild: (previous, next) {
             // Always rebuild when posts list changes
             // This ensures UI updates when commentCount changes
-            debugPrint('🔄 [MarketplaceScreen] Selector shouldRebuild check');
-            debugPrint('🔄 [MarketplaceScreen] Previous length: ${previous.length}, Next length: ${next.length}');
-            
             if (previous.length != next.length) {
-              debugPrint('🔄 [MarketplaceScreen] List length changed, rebuilding');
               return true;
             }
             
@@ -819,12 +816,10 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
               if (previous[i].id == next[i].id) {
                 if (previous[i].commentCount != next[i].commentCount ||
                     previous[i].viewCount != next[i].viewCount) {
-                  debugPrint('🔄 [MarketplaceScreen] Post ${previous[i].id} changed: commentCount ${previous[i].commentCount} -> ${next[i].commentCount}, viewCount ${previous[i].viewCount} -> ${next[i].viewCount}');
                   return true;
                 }
               } else {
                 // Post order changed or post was replaced
-                debugPrint('🔄 [MarketplaceScreen] Post order changed at index $i: ${previous[i].id} -> ${next[i].id}');
                 return true;
               }
             }
@@ -832,11 +827,9 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
             // If list reference changed (new instance), rebuild
             // This handles the case where we create a new list in MarketplaceViewModel
             if (previous != next) {
-              debugPrint('🔄 [MarketplaceScreen] List reference changed, rebuilding');
               return true;
             }
             
-            debugPrint('🔄 [MarketplaceScreen] No changes detected, skipping rebuild');
             return false;
           },
           builder: (context, posts, child) {
@@ -847,25 +840,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
             // Use postFrameCallback to avoid setup during build phase
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
-                debugPrint('🔄 [MarketplaceScreen] PostFrameCallback - ensuring listener is setup');
                 // setupRealtimeUpdates() will cancel existing subscription if any before creating new one
                 // This ensures we always have exactly one active listener
                 viewModel.setupRealtimeUpdates();
               }
             });
-            
-            // Debug log to verify Consumer rebuild
-            debugPrint('🔄 [MarketplaceScreen] ⭐ SELECTOR REBUILD ⭐');
-            debugPrint('🔄 [MarketplaceScreen] Selector rebuild - posts count: ${posts.length}');
-            debugPrint('🔄 [MarketplaceScreen] viewModel hashCode: ${viewModel.hashCode}');
-            if (posts.isNotEmpty) {
-              final firstPost = posts.firstWhere(
-                (p) => p.id == '97a52669-0d90-4c70-b669-e4ec41079425',
-                orElse: () => posts.first,
-              );
-              debugPrint('🔄 [MarketplaceScreen] First post commentCount: ${firstPost.commentCount}');
-              debugPrint('🔄 [MarketplaceScreen] First post viewCount: ${firstPost.viewCount}');
-            }
             
             if (viewModel.isLoading && posts.isEmpty) {
               return const Center(child: CircularProgressIndicator());
@@ -981,24 +960,27 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                   }
                   
                   // Use key that includes commentCount to ensure rebuild when count changes
-                  return _PostCard(
-                    key: ValueKey('${post.id}_${post.commentCount}'),
-                    post: post,
-                    currentResidentId: _currentResidentId,
-                    categories: viewModel.categories,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ChangeNotifierProvider.value(
-                            value: viewModel,
-                            child: PostDetailScreen(post: post),
+                  return SmoothAnimations.staggeredItem(
+                    index: index,
+                    child: _PostCard(
+                      key: ValueKey('${post.id}_${post.commentCount}'),
+                      post: post,
+                      currentResidentId: _currentResidentId,
+                      categories: viewModel.categories,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          SmoothPageRoute(
+                            page: ChangeNotifierProvider.value(
+                              value: viewModel,
+                              child: PostDetailScreen(post: post),
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                    onAuthorTap: () => _showUserOptions(context, post),
-                    onShareTap: () => _showShareBottomSheet(context, post),
+                        );
+                      },
+                      onAuthorTap: () => _showUserOptions(context, post),
+                      onShareTap: () => _showShareBottomSheet(context, post),
+                    ),
                   );
                 },
               ),
@@ -1014,7 +996,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
     String? selectedCategory = viewModel.selectedCategory;
     String? selectedSortBy = viewModel.sortBy;
 
-    showModalBottomSheet(
+    showSmoothBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -1538,8 +1520,8 @@ class _PostCard extends StatelessWidget {
                             // Open image viewer
                             Navigator.push(
                               context,
-                              MaterialPageRoute(
-                                builder: (context) => ImageViewerScreen(
+                              SmoothPageRoute(
+                                page: ImageViewerScreen(
                                   images: post.images,
                                   initialIndex: index,
                                 ),

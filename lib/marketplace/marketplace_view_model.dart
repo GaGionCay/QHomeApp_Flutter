@@ -84,6 +84,12 @@ class MarketplaceViewModel extends ChangeNotifier {
     
     try {
       _marketplaceUpdateSubscription = AppEventBus().on('marketplace_update', (data) {
+        // Check if ViewModel is disposed before processing event
+        if (_isDisposed) {
+          debugPrint('⚠️ [MarketplaceViewModel] Event received but ViewModel is disposed, ignoring');
+          return;
+        }
+        
         debugPrint('📡 [MarketplaceViewModel] ⭐ EVENT RECEIVED ⭐');
         debugPrint('📡 [MarketplaceViewModel] Event received in listener: $data');
         debugPrint('📡 [MarketplaceViewModel] Event data type: ${data.runtimeType}');
@@ -109,6 +115,12 @@ class MarketplaceViewModel extends ChangeNotifier {
   }
 
   void _handleRealtimeUpdate(Map<String, dynamic> data) {
+    // Check if ViewModel is disposed before processing
+    if (_isDisposed) {
+      debugPrint('⚠️ [MarketplaceViewModel] ViewModel is disposed, ignoring realtime update');
+      return;
+    }
+    
     final type = data['type'] as String?;
     final postId = data['postId'] as String?;
     
@@ -188,7 +200,7 @@ class MarketplaceViewModel extends ChangeNotifier {
           debugPrint('✅ [MarketplaceViewModel] Post at index $index after update: commentCount=${_posts[index].commentCount}');
           
           // Force immediate update by calling notifyListeners synchronously
-          notifyListeners();
+          _safeNotifyListeners();
           debugPrint('✅ [MarketplaceViewModel] notifyListeners() called successfully');
           debugPrint('✅ [MarketplaceViewModel] Post at index $index after notifyListeners: commentCount=${_posts[index].commentCount}');
         } else {
@@ -215,7 +227,7 @@ class MarketplaceViewModel extends ChangeNotifier {
           createdAt: post.createdAt,
           updatedAt: post.updatedAt,
         );
-        notifyListeners();
+        _safeNotifyListeners();
         // Emit event for PostDetailScreen to reload comments
         AppEventBus().emit('new_comment', {'postId': postId, 'data': data});
       case 'NEW_POST':
@@ -231,7 +243,10 @@ class MarketplaceViewModel extends ChangeNotifier {
   }
 
   @override
+  @override
   void dispose() {
+    // Mark as disposed first to prevent any further operations
+    _isDisposed = true;
     // Cancel only this instance's subscription, not all listeners
     _marketplaceUpdateSubscription?.cancel();
     _marketplaceUpdateSubscription = null;
@@ -239,16 +254,33 @@ class MarketplaceViewModel extends ChangeNotifier {
     super.dispose();
   }
 
+  bool _isDisposed = false;
+
+  /// Safe notifyListeners that checks if ViewModel is disposed
+  void _safeNotifyListeners() {
+    if (!_isDisposed) {
+      notifyListeners();
+    } else {
+      debugPrint('⚠️ [MarketplaceViewModel] Skipping notifyListeners - ViewModel is disposed');
+    }
+  }
+
   Future<void> loadCategories() async {
     try {
       _categories = await _service.getCategories();
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       debugPrint('Error loading categories: $e');
     }
   }
 
   Future<void> loadPosts({bool refresh = false, int? page}) async {
+    // Check if ViewModel is disposed before loading
+    if (_isDisposed) {
+      debugPrint('⚠️ [MarketplaceViewModel] Cannot loadPosts - ViewModel is disposed');
+      return;
+    }
+    
     // IMPORTANT: Save existing posts BEFORE clearing for refresh
     // This allows us to preserve realtime updates when merging with API data
     List<MarketplacePost>? existingPostsForMerge;
@@ -268,7 +300,7 @@ class MarketplaceViewModel extends ChangeNotifier {
       _isLoadingMore = true;
     }
     _error = null;
-    notifyListeners();
+    _safeNotifyListeners();
 
     try {
       final targetPage = page ?? (refresh ? 0 : _currentPage + 1);
@@ -370,12 +402,12 @@ class MarketplaceViewModel extends ChangeNotifier {
       _isLoading = false;
       _isLoadingMore = false;
       _error = null;
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       _isLoading = false;
       _isLoadingMore = false;
       _error = 'Lỗi khi tải danh sách bài đăng: ${e.toString()}';
-      notifyListeners();
+      _safeNotifyListeners();
     }
   }
 
@@ -385,6 +417,10 @@ class MarketplaceViewModel extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
+    if (_isDisposed) {
+      debugPrint('⚠️ [MarketplaceViewModel] Cannot refresh - ViewModel is disposed');
+      return;
+    }
     await loadPosts(refresh: true);
   }
 
@@ -424,7 +460,7 @@ class MarketplaceViewModel extends ChangeNotifier {
       return await _service.getPostById(postId);
     } catch (e) {
       _error = 'Lỗi khi tải chi tiết bài đăng: ${e.toString()}';
-      notifyListeners();
+      _safeNotifyListeners();
       return null;
     }
   }
@@ -480,13 +516,13 @@ class MarketplaceViewModel extends ChangeNotifier {
           createdAt: post.createdAt,
           updatedAt: post.updatedAt,
         );
-        notifyListeners();
+        _safeNotifyListeners();
       }
       
       return newComment;
     } catch (e) {
       _error = 'Lỗi khi thêm bình luận: ${e.toString()}';
-      notifyListeners();
+      _safeNotifyListeners();
       return null;
     }
   }
@@ -519,8 +555,8 @@ class MarketplaceViewModel extends ChangeNotifier {
       // Update in local list
       final index = _posts.indexWhere((p) => p.id == postId);
       if (index != -1) {
-        _posts[index] = updatedPost;
-        notifyListeners();
+      _posts[index] = updatedPost;
+      _safeNotifyListeners();
       }
 
       return updatedPost;
@@ -538,12 +574,12 @@ class MarketplaceViewModel extends ChangeNotifier {
       
       // Remove from local list
       _posts.removeWhere((p) => p.id == postId);
-      notifyListeners();
+      _safeNotifyListeners();
       
       return true;
     } catch (e) {
       _error = 'Lỗi khi xóa bài đăng: ${e.toString()}';
-      notifyListeners();
+      _safeNotifyListeners();
       return false;
     }
   }

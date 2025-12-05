@@ -8,12 +8,15 @@ import 'dart:io' show Platform;
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:app_links/app_links.dart';
+import 'package:go_router/go_router.dart';
 
 import '../auth/api_client.dart';
 import '../theme/app_colors.dart';
 import '../models/card_registration_summary.dart';
 import '../models/unit_info.dart';
 import '../services/card_registration_service.dart';
+import '../core/app_router.dart';
 
 enum _CardCategory { vehicle, resident, elevator }
 
@@ -76,6 +79,9 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
 
   late final ApiClient _apiClient;
   late final CardRegistrationService _service;
+  final AppLinks _appLinks = AppLinks();
+  StreamSubscription<Uri>? _paymentSub;
+  bool _isNavigatingToMain = false;
 
   List<CardRegistrationSummary> _cards = const [];
   bool _isLoading = true;
@@ -97,6 +103,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
     _cards = widget.initialCards;
     _isLoading = _cards.isEmpty;
     _loadStatusFilterPreference();
+    _listenForPaymentResult();
     WidgetsBinding.instance.addPostFrameCallback((_) => _fetchData());
   }
 
@@ -122,6 +129,144 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  void _listenForPaymentResult() {
+    _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
+      if (uri == null) return;
+      debugPrint('🔗 [CardRegistrations] Nhận deep link: $uri');
+
+      // Handle VNPay callbacks for card reissue payments
+      if (uri.scheme == 'qhomeapp') {
+        final host = uri.host;
+        final responseCode = uri.queryParameters['responseCode'];
+        final successParam = uri.queryParameters['success'];
+        final message = uri.queryParameters['message'];
+
+        debugPrint('🔗 [CardRegistrations] host: $host, responseCode: $responseCode, success: $successParam');
+
+        // Check for resident card, elevator card, or vehicle card payment results
+        if ((host == 'vnpay-resident-card-result' ||
+             host == 'vnpay-elevator-card-result' ||
+             host == 'vnpay-registration-result') &&
+            (responseCode == '00' || (successParam ?? '').toLowerCase() == 'true')) {
+          
+          // Ensure we're still mounted and in the right context
+          if (!mounted) {
+            debugPrint('⚠️ [CardRegistrations] Screen not mounted, skipping navigation');
+            return;
+          }
+
+          // Check if we're still in the navigation stack
+          final navigator = Navigator.of(context, rootNavigator: false);
+          if (!navigator.canPop() && !mounted) {
+            debugPrint('⚠️ [CardRegistrations] Cannot pop and not mounted, navigating to MainShell');
+            // If we can't pop and screen is not mounted, navigate to MainShell
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                context.go(
+                  AppRoute.main.path,
+                  extra: MainShellArgs(
+                    initialIndex: 1,
+                    snackMessage: 'Thanh toán cấp lại thẻ thành công!',
+                  ),
+                );
+              }
+            });
+            return;
+          }
+          
+          // Refresh card list
+          await _fetchData();
+
+          debugPrint('✅ [CardRegistrations] Thanh toán thành công, đang navigate về màn hình chính');
+          _navigateToServicesHome(
+            snackMessage: 'Thanh toán cấp lại thẻ thành công!',
+          );
+        } else if (host.contains('vnpay') && 
+                   responseCode != '00' && 
+                   (successParam ?? '').toLowerCase() != 'true') {
+          // Payment failed
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(message ?? '❌ Thanh toán thất bại. Vui lòng thử lại.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }, onError: (err) {
+      debugPrint('❌ [CardRegistrations] Lỗi khi nhận deep link: $err');
+    });
+  }
+
+  void _navigateToServicesHome({String? snackMessage}) {
+    if (!mounted || _isNavigatingToMain) return;
+    _isNavigatingToMain = true;
+    
+    // Use a small delay to ensure app is fully resumed from background
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (!mounted) return;
+      
+      // Check current route to see if we're still in the navigation stack
+      final router = GoRouter.of(context);
+      final currentLocation = router.routerDelegate.currentConfiguration.uri.path;
+      
+      debugPrint('🔍 [CardRegistrations] Current location: $currentLocation');
+      
+      // If we're at splash or login, navigate to MainShell instead of popping
+      if (currentLocation == AppRoute.splash.path || 
+          currentLocation == AppRoute.login.path) {
+        debugPrint('⚠️ [CardRegistrations] App was reset, navigating to MainShell');
+        router.go(
+          AppRoute.main.path,
+          extra: MainShellArgs(
+            initialIndex: 1,
+            snackMessage: snackMessage,
+          ),
+        );
+        return;
+      }
+      
+      // Simply pop back to previous screen instead of using context.go
+      // This prevents creating a new MainShell instance and losing authentication state
+      final navigator = Navigator.of(context, rootNavigator: false);
+      if (navigator.canPop()) {
+        navigator.pop();
+        
+        // Show snackbar after navigation
+        if (snackMessage != null && snackMessage.isNotEmpty) {
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(snackMessage),
+                  backgroundColor: Colors.green,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            }
+          });
+        }
+      } else {
+        // If can't pop, navigate to MainShell (fallback)
+        debugPrint('⚠️ [CardRegistrations] Cannot pop, navigating to MainShell');
+        router.go(
+          AppRoute.main.path,
+          extra: MainShellArgs(
+            initialIndex: 1,
+            snackMessage: snackMessage,
+          ),
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _paymentSub?.cancel();
+    super.dispose();
   }
 
   @override

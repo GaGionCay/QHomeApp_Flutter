@@ -26,6 +26,7 @@ import '../models/chat/friend.dart';
 import '../chat/direct_chat_screen.dart';
 import 'select_group_dialog.dart';
 import 'create_group_dialog.dart';
+import '../widgets/animations/smooth_animations.dart';
 
 class PostDetailScreen extends StatefulWidget {
   final MarketplacePost post;
@@ -115,7 +116,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   /// Show delete comment confirmation dialog
   Future<void> _showDeleteCommentDialog(BuildContext context, MarketplaceComment comment) async {
     final isRootComment = comment.parentCommentId == null;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSmoothDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Xóa bình luận'),
@@ -183,11 +184,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       // Call API to delete
       await _marketplaceService.deleteComment(widget.post.id, comment.id);
       
-      // Calculate deleted count before removing
-      final deletedCount = isRootComment 
-          ? (1 + _countNestedReplies(comment))
-          : 1;
-      
       // Get current post state before updating
       final currentPost = _currentPost ?? widget.post;
       
@@ -209,10 +205,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           final calculatedCount = _comments.isNotEmpty ? _calculateCommentCount() : 0;
           final newCommentCount = calculatedCount;
           
-          print('🗑️ [PostDetailScreen] Deleting comment: ${comment.id}, deletedCount: $deletedCount');
-          print('🗑️ [PostDetailScreen] Old commentCount: ${currentPost.commentCount}');
-          print('🗑️ [PostDetailScreen] Calculated count from loaded comments after deletion: $calculatedCount');
-          print('🗑️ [PostDetailScreen] New commentCount: $newCommentCount');
           
           // Update comment count immediately
           _currentPost = MarketplacePost(
@@ -235,7 +227,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             updatedAt: currentPost.updatedAt,
           );
           
-          print('🗑️ [PostDetailScreen] _currentPost after update: ${_currentPost?.commentCount}');
           
           _deletingCommentIds.remove(comment.id);
         });
@@ -252,9 +243,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             'commentCount': updatedCommentCount,
             'viewCount': currentPost.viewCount,
           });
-          print('✅ [PostDetailScreen] Immediate event emitted successfully');
-        } else {
-          print('⚠️ [PostDetailScreen] updatedCommentCount is null, cannot emit event');
         }
         
         // Remove moved flags after animation completes
@@ -268,10 +256,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         
         // Reload from backend to verify accuracy and emit again if different
         // This ensures we have the correct count from backend
-        print('⏳ [PostDetailScreen] Scheduling backend reload to verify count...');
         Future.delayed(const Duration(milliseconds: 800), () {
           // Don't check mounted here - _reloadPostAfterDeletion handles it
-          print('⏳ [PostDetailScreen] Calling _reloadPostAfterDeletion() to verify count...');
           _reloadPostAfterDeletion();
         });
         
@@ -346,9 +332,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           final calculatedCount = _comments.isNotEmpty ? _calculateCommentCount() : null;
           final commentCountToUse = calculatedCount ?? updatedPost.commentCount;
           
-          print('🔄 [PostDetailScreen] Reloading post');
-          print('🔄 [PostDetailScreen] API count: ${updatedPost.commentCount}, Calculated count: $calculatedCount, Using: $commentCountToUse');
-          print('🔄 [PostDetailScreen] Current count: ${currentPost.commentCount}, ViewCount: ${updatedPost.viewCount}');
           
           // Only update if comment count or view count changed
           // Use calculated count if available, otherwise use API count
@@ -394,16 +377,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                   'commentCount': commentCountToUse, // Use calculated count
                   'viewCount': updatedPost.viewCount,
                 });
-                print('📡 [PostDetailScreen] Emitted POST_STATS_UPDATE after reload: commentCount=$commentCountToUse, postId=${widget.post.id}, emitEvent=$emitEvent, commentCountChanged=$commentCountChanged');
               });
             }
           } else {
-            print('⏭️ [PostDetailScreen] Skipping reload - counts match (${currentPost.commentCount})');
           }
         });
       }
     } catch (e) {
-      print('⚠️ Failed to reload post: $e');
+      // Error handled silently in production
     }
   }
   
@@ -413,17 +394,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   /// Event is emitted even if widget is unmounted to ensure marketplace screen gets updated
   Future<void> _reloadPostAfterDeletion() async {
     try {
-      print('🔄 [PostDetailScreen] Starting _reloadPostAfterDeletion() for post ${widget.post.id}');
       final updatedPost = await _marketplaceService.getPostById(widget.post.id);
       final currentCount = _currentPost?.commentCount ?? widget.post.commentCount;
       final updatedCount = updatedPost.commentCount;
       
-      print('🔄 [PostDetailScreen] Reloaded post after deletion - Current count: $currentCount, Backend count: $updatedCount');
       
       // Only update and emit if backend count differs from current count
       // This prevents unnecessary updates if the immediate event was already correct
       if (updatedCount != currentCount) {
-        print('🔄 [PostDetailScreen] Count differs, updating local state and emitting event');
         if (mounted) {
           setState(() {
             _currentPost = updatedPost;
@@ -433,16 +411,13 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         // Emit event with accurate comment count from backend
         // This ensures marketplace screen gets the correct count if our calculation was wrong
         // Emit even if widget unmounted to ensure marketplace screen gets updated
-        print('📡 [PostDetailScreen] Emitting POST_STATS_UPDATE after deletion reload: commentCount=$updatedCount, postId=${widget.post.id}');
         AppEventBus().emit('marketplace_update', {
           'type': 'POST_STATS_UPDATE',
           'postId': widget.post.id,
           'commentCount': updatedCount,
           'viewCount': updatedPost.viewCount,
         });
-        print('✅ [PostDetailScreen] Event emitted successfully');
       } else {
-        print('ℹ️ [PostDetailScreen] Count matches ($currentCount), no update needed');
         // Still update local state to ensure consistency, but don't emit event
         if (mounted) {
           setState(() {
@@ -451,7 +426,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         }
       }
     } catch (e) {
-      print('⚠️ Failed to reload post after deletion: $e');
+      // Error handled silently in production
       // Don't emit fallback event - we already emitted immediate event
       // If reload fails, the immediate event should be sufficient
     }
@@ -466,19 +441,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         });
       }
     } catch (e) {
-      print('⚠️ [PostDetailScreen] Error loading blocked users: $e');
+      // Error handled silently in production
     }
   }
 
   void _setupBlockedUsersListener() {
     AppEventBus().on('blocked_users_updated', (_) async {
-      print('🔄 [PostDetailScreen] blocked_users_updated event received, reloading blocked users...');
       await _loadBlockedUsers();
       // Refresh comments to show/hide comments from unblocked users
       if (mounted) {
         setState(() {
           // Trigger rebuild to refresh filtered comments
-          print('✅ [PostDetailScreen] Blocked users reloaded, refreshing UI. Blocked count: ${_blockedUserIds.length}');
         });
       }
     });
@@ -511,8 +484,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     final navigator = Navigator.of(context);
     // Navigate to edit post screen
     final result = await navigator.push(
-      MaterialPageRoute(
-        builder: (context) => EditPostScreen(
+      SmoothPageRoute(
+        page: EditPostScreen(
           post: post,
           onPostUpdated: () async {
             // Refresh marketplace view model if available
@@ -550,7 +523,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     // Show confirmation dialog
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSmoothDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Xác nhận xóa'),
@@ -716,12 +689,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             final calculatedCount = _calculateCommentCount();
             final currentPost = _currentPost ?? widget.post;
             
-            print('🔄 [PostDetailScreen] Comments loaded - calculated count: $calculatedCount, current count: ${currentPost.commentCount}');
             
             // Always update and emit event if calculated count differs from current
             // This ensures marketplace screen gets accurate count immediately
             if (calculatedCount != currentPost.commentCount) {
-              print('🔄 [PostDetailScreen] Updating comment count from loaded comments: ${currentPost.commentCount} -> $calculatedCount');
               _currentPost = MarketplacePost(
                 id: currentPost.id,
                 residentId: currentPost.residentId,
@@ -744,7 +715,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               
               // Emit event IMMEDIATELY to update marketplace screen
               // Don't delay - we want marketplace screen to get accurate count ASAP
-              print('📡 [PostDetailScreen] Emitting POST_STATS_UPDATE immediately after loading comments: commentCount=$calculatedCount');
               AppEventBus().emit('marketplace_update', {
                 'type': 'POST_STATS_UPDATE',
                 'postId': widget.post.id,
@@ -904,10 +874,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           final calculatedCount = _comments.isNotEmpty ? _calculateCommentCount() : null;
           final newCommentCount = calculatedCount ?? (currentPost.commentCount + 1);
           
-          print('💬 [PostDetailScreen] Adding comment');
-          print('💬 [PostDetailScreen] Old commentCount: ${currentPost.commentCount}');
-          print('💬 [PostDetailScreen] Calculated count from loaded comments: $calculatedCount');
-          print('💬 [PostDetailScreen] New commentCount: $newCommentCount');
           
           _currentPost = MarketplacePost(
             id: currentPost.id,
@@ -934,16 +900,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         // Use calculated count if available, otherwise use updated _currentPost count
         final updatedCommentCount = _currentPost?.commentCount;
         if (updatedCommentCount != null) {
-          print('📡 [PostDetailScreen] Emitting POST_STATS_UPDATE immediately after adding comment: commentCount=$updatedCommentCount');
           AppEventBus().emit('marketplace_update', {
             'type': 'POST_STATS_UPDATE',
             'postId': widget.post.id,
             'commentCount': updatedCommentCount,
             'viewCount': (_currentPost ?? widget.post).viewCount,
           });
-          print('✅ [PostDetailScreen] Event emitted successfully');
-        } else {
-          print('⚠️ [PostDetailScreen] updatedCommentCount is null, cannot emit event');
         }
         
         // Restore scroll position after a brief delay to allow animation
@@ -1004,12 +966,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
-  void _cancelReply() {
-    setState(() {
-      _replyingToCommentId = null;
-      _replyingToComment = null;
-    });
-  }
 
   String _getCategoryDisplayName(MarketplacePost post) {
     // Backend có thể trả về categoryName = category code, nên luôn map từ danh sách categories
@@ -1099,8 +1055,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           final currentPost = _currentPost;
           MarketplacePost updatedPost = currentPost ?? widget.post;
           
-          print('🔄 [PostDetailScreen] Body Builder rebuild - _currentPost: ${currentPost?.commentCount}, updatedPost: ${updatedPost.commentCount}');
-          
           try {
             final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
             final vmPost = viewModel.posts.firstWhere(
@@ -1164,8 +1118,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                               // _currentPost is always the most up-to-date because it's updated realtime in this screen
                               MarketplacePost postToUse = currentPostFromState ?? updatedPost;
                               
-                              print('📊 [PostDetailScreen] Builder rebuild - _currentPost: ${currentPostFromState?.commentCount}, updatedPost: ${updatedPost.commentCount}');
-                              
                               // Check viewModel for realtime updates from other screens
                               // But only use it if _currentPost is null (fallback)
                               try {
@@ -1178,7 +1130,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                 // Only use viewModel post if _currentPost is null
                                 // Otherwise, _currentPost is the source of truth for this screen
                                 if (currentPostFromState == null && vmPost.commentCount != postToUse.commentCount) {
-                                  print('📊 [PostDetailScreen] Using viewModel post (fallback) - commentCount: ${vmPost.commentCount}');
                                   return Text(
                                     'Bình luận (${vmPost.commentCount})',
                                     style: theme.textTheme.titleMedium?.copyWith(
@@ -1190,7 +1141,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                 // ViewModel not available, use _currentPost or updatedPost
                               }
                               
-                              print('📊 [PostDetailScreen] Using postToUse - commentCount: ${postToUse.commentCount}');
                               return Text(
                                 'Bình luận (${postToUse.commentCount})',
                                 style: theme.textTheme.titleMedium?.copyWith(
@@ -1229,23 +1179,36 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                           ),
                         )
                       else ...[
-                        ..._comments.map((comment) => _buildCommentCard(
+                        // Comments với staggered animation
+                        ..._comments.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final comment = entry.value;
+                          return SmoothAnimations.staggeredItem(
+                            index: index,
+                            child: _buildCommentCard(
                               context,
                               theme,
                               comment,
                               depth: 0,
-                            )),
-                        // Load more button
+                            ),
+                          );
+                        }).toList(),
+                        // Load more button với smooth animation
                         if (_hasMoreComments)
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 16.0),
                             child: Center(
                               child: _isLoadingMoreComments
                                   ? const CircularProgressIndicator()
-                                  : TextButton.icon(
-                                      onPressed: () => _loadComments(loadMore: true),
-                                      icon: const Icon(CupertinoIcons.arrow_down),
-                                      label: const Text('Xem thêm bình luận'),
+                                  : SmoothAnimations.fadeIn(
+                                      child: FilledButton.icon(
+                                        onPressed: () => _loadComments(loadMore: true),
+                                        icon: const Icon(CupertinoIcons.arrow_down, size: 16),
+                                        label: const Text('Hiển thị thêm'),
+                                        style: FilledButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                        ),
+                                      ),
                                     ),
                             ),
                           ),
@@ -1261,53 +1224,57 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Reply banner
+                  // Reply banner với smooth slide animation
                   if (_replyingToComment != null)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
-                        border: Border(
-                          bottom: BorderSide(
-                            color: theme.colorScheme.outline.withValues(alpha: 0.12),
-                          ),
+                    SmoothAnimations.slideIn(
+                      slideOffset: const Offset(0, -20),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
                         ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            CupertinoIcons.arrow_turn_down_right,
-                            size: 16,
-                            color: theme.colorScheme.onPrimaryContainer,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Đang trả lời cho ${_replyingToComment!.author?.name ?? 'Người dùng'}',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onPrimaryContainer,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          IconButton(
-                            icon: Icon(
-                              CupertinoIcons.xmark_circle_fill,
-                              size: 20,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Icon(
+                              CupertinoIcons.reply,
+                              size: 16,
                               color: theme.colorScheme.onPrimaryContainer,
                             ),
-                            onPressed: _cancelReply,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                          ),
-                        ],
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Đang trả lời ${_replyingToComment!.author?.name ?? 'Người dùng'}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onPrimaryContainer,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _replyingToComment = null;
+                                  _replyingToCommentId = null;
+                                });
+                              },
+                              child: Icon(
+                                CupertinoIcons.xmark_circle_fill,
+                                size: 20,
+                                color: theme.colorScheme.onPrimaryContainer,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
+                  // Comment input container
                   Container(
                     decoration: BoxDecoration(
                       color: isDark
@@ -1460,7 +1427,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Future<void> _showMediaPicker() async {
-    final result = await showModalBottomSheet<String>(
+    final result = await showSmoothBottomSheet<String>(
       context: context,
       builder: (context) => SafeArea(
         child: Column(
@@ -1686,13 +1653,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                   itemBuilder: (context, index) {
                     final image = post.images[index];
                     // Debug: Log image URLs
-                    print('🖼️ [PostDetailScreen] Displaying image $index: imageUrl=${image.imageUrl}');
                     return GestureDetector(
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(
-                            builder: (context) => ImageViewerScreen(
+                          SmoothPageRoute(
+                            page: ImageViewerScreen(
                               images: post.images,
                               initialIndex: index,
                             ),
@@ -1725,7 +1691,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                     'ngrok-skip-browser-warning': 'true', // Skip ngrok browser warning
                                   },
                                   placeholder: (context, url) {
-                                    print('🖼️ [PostDetailScreen] Loading image: $url');
                                     return Container(
                                       color: theme.colorScheme.surfaceContainerHighest,
                                       child: Center(
@@ -1737,11 +1702,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                     );
                                   },
                                   errorWidget: (context, url, error) {
-                                    print('❌ [PostDetailScreen] Error loading image: url=$url, error=$error');
-                                    print('❌ [PostDetailScreen] Error type: ${error.runtimeType}');
-                                    if (error is DioException) {
-                                      print('❌ [PostDetailScreen] DioException: statusCode=${error.response?.statusCode}, message=${error.message}');
-                                    }
+                                    // Error loading image - handled silently
                                     return Container(
                                       color: theme.colorScheme.surfaceContainerHighest,
                                       child: Icon(
@@ -1871,14 +1832,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             Builder(
               builder: (context) {
                 // Debug logging
-                print('📞 [PostDetailScreen] Checking contactInfo:');
-                print('   - contactInfo is null: ${post.contactInfo == null}');
-                if (post.contactInfo != null) {
-                  print('   - phone: ${post.contactInfo!.phone}');
-                  print('   - email: ${post.contactInfo!.email}');
-                  print('   - showPhone: ${post.contactInfo!.showPhone}');
-                  print('   - showEmail: ${post.contactInfo!.showEmail}');
-                }
                 
                 if (post.contactInfo != null && 
                     ((post.contactInfo!.phone != null && post.contactInfo!.phone!.isNotEmpty) ||
@@ -2269,7 +2222,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                    friend.conversationId != null;
 
     // Show options menu
-    final result = await showModalBottomSheet<String>(
+    final result = await showSmoothBottomSheet<String>(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -2301,12 +2254,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
     if (result == 'open_chat' && context.mounted && friend != null && friend.conversationId != null) {
       // Navigate directly to direct chat
+      final friendData = friend;
+      final conversationId = friendData.conversationId!;
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (context) => DirectChatScreen(
-            conversationId: friend!.conversationId!,
-            otherParticipantName: friend.friendName.isNotEmpty ? friend.friendName : (post.author?.name ?? 'Người dùng'),
+        SmoothPageRoute(
+          page: DirectChatScreen(
+            conversationId: conversationId,
+            otherParticipantName: friendData.friendName.isNotEmpty ? friendData.friendName : (post.author?.name ?? 'Người dùng'),
           ),
         ),
       );
@@ -2320,7 +2275,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Future<void> _showDirectChatFromPost(BuildContext context, MarketplacePost post, String userId) async {
-    final result = await showDialog<bool>(
+    final result = await showSmoothDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Trò chuyện'),
@@ -2415,7 +2370,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       
       if (groups.isEmpty) {
         // No groups, create a new one
-        final groupData = await showDialog<Map<String, String?>>(
+        final groupData = await showSmoothDialog<Map<String, String?>>(
           context: context,
           builder: (context) => CreateGroupDialog(
             defaultName: 'Nhóm với ${post.author?.name ?? 'người dùng'}',
@@ -2462,7 +2417,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         }
       } else {
         // Show group selection dialog
-        final result = await showDialog<dynamic>(
+        final result = await showSmoothDialog<dynamic>(
           context: context,
           builder: (context) => SelectGroupDialog(
             groups: groups,
@@ -2477,7 +2432,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         
         if (result == 'create_new') {
           // User wants to create a new group
-          final groupData = await showDialog<Map<String, String?>>(
+          final groupData = await showSmoothDialog<Map<String, String?>>(
             context: context,
             builder: (context) => CreateGroupDialog(
               defaultName: 'Nhóm với ${post.author?.name ?? 'người dùng'}',
@@ -2587,7 +2542,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   Future<void> _blockUserFromPost(BuildContext context, String userId, String userName) async {
     // Show confirmation dialog
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSmoothDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Chặn người dùng'),
@@ -2712,7 +2667,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                    friend.conversationId != null;
 
     // Show options menu
-    final result = await showModalBottomSheet<String>(
+    final result = await showSmoothBottomSheet<String>(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -2744,12 +2699,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
     if (result == 'open_chat' && context.mounted && friend != null && friend.conversationId != null) {
       // Navigate directly to direct chat
+      final friendData = friend;
+      final conversationId = friendData.conversationId!;
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (context) => DirectChatScreen(
-            conversationId: friend!.conversationId!,
-            otherParticipantName: friend.friendName.isNotEmpty ? friend.friendName : (comment.author?.name ?? 'Người dùng'),
+        SmoothPageRoute(
+          page: DirectChatScreen(
+            conversationId: conversationId,
+            otherParticipantName: friendData.friendName.isNotEmpty ? friendData.friendName : (comment.author?.name ?? 'Người dùng'),
           ),
         ),
       );
@@ -2858,7 +2815,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       
       if (groups.isEmpty) {
         // No groups, create a new one
-        final groupData = await showDialog<Map<String, String?>>(
+        final groupData = await showSmoothDialog<Map<String, String?>>(
           context: context,
           builder: (context) => CreateGroupDialog(
             defaultName: 'Nhóm với ${comment.author?.name ?? 'người dùng'}',
@@ -2905,7 +2862,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         }
       } else {
         // Show group selection dialog
-        final result = await showDialog<dynamic>(
+        final result = await showSmoothDialog<dynamic>(
           context: context,
           builder: (context) => SelectGroupDialog(
             groups: groups,
@@ -2920,7 +2877,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         
         if (result == 'create_new') {
           // User wants to create a new group
-          final groupData = await showDialog<Map<String, String?>>(
+          final groupData = await showSmoothDialog<Map<String, String?>>(
             context: context,
             builder: (context) => CreateGroupDialog(
               defaultName: 'Nhóm với ${comment.author?.name ?? 'người dùng'}',
@@ -3030,7 +2987,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   Future<void> _blockUserFromComment(BuildContext context, String userId, String userName) async {
     // Show confirmation dialog
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSmoothDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Chặn người dùng'),
@@ -3320,7 +3277,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       if (!context.mounted) return;
       
       // Show loading dialog
-      showDialog(
+      showSmoothDialog(
         context: context,
         barrierDismissible: false,
         builder: (context) => const Center(
@@ -3349,7 +3306,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         Navigator.of(context).pop();
         
         // Show video player dialog
-        await showDialog(
+        await showSmoothDialog(
           context: context,
           barrierColor: Colors.black87,
           builder: (context) => _CommentVideoPlayerDialog(

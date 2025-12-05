@@ -16,8 +16,6 @@ import '../contracts/contract_service.dart';
 import '../invoices/invoice_list_screen.dart';
 import '../invoices/paid_invoices_screen.dart';
 import '../invoices/invoice_service.dart';
-import '../charts/electricity_chart.dart';
-import '../models/electricity_monthly.dart';
 import '../models/unit_info.dart';
 import '../news/resident_service.dart';
 import '../notifications/notification_screen.dart';
@@ -71,7 +69,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Map<String, dynamic>? _profile;
   // Removed: List<NewsItem> _notifications = []; - now using ResidentNews from admin API
-  List<ElectricityMonthly> _electricityMonthlyData = [];
   List<UnitInfo> _units = [];
   String? _selectedUnitId;
   int _unpaidBookingCount = 0;
@@ -84,7 +81,6 @@ class _HomeScreenState extends State<HomeScreen> {
   final ChatService _chatService = ChatService();
 
   // Error states
-  String? _electricityError;
   String? _unpaidServicesError;
   String? _unpaidInvoicesError;
   String? _notificationsError;
@@ -263,27 +259,6 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       debugPrint('⚠️ Load profile error: $e');
       // Continue even if profile fails
-    }
-
-    // Load electricity data (optional)
-    try {
-      final electricityData = await invoiceService.getElectricityMonthlyData(
-        unitId: _selectedUnitId,
-      );
-      if (mounted) {
-        setState(() {
-          _electricityMonthlyData = electricityData;
-          _electricityError = null;
-        });
-      }
-    } catch (e) {
-      debugPrint('⚠️ Không thể tải dữ liệu tiền điện: $e');
-      if (mounted) {
-        setState(() {
-          _electricityMonthlyData = [];
-          _electricityError = e.toString();
-        });
-      }
     }
 
     await Future.wait([
@@ -1052,9 +1027,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                   _buildUnpaidSummaryCard(context),
                                 if (_unpaidBookingCount > 0)
                                   const SizedBox(height: 24),
-                                // Always show electricity chart section (handles error/empty states internally)
-                                _buildElectricityChartSection(media.size),
-                                const SizedBox(height: 24),
                                 if (_ownerUnits.isNotEmpty)
                                   _buildHouseholdManagementCard(media.size),
                                 if (_ownerUnits.isNotEmpty)
@@ -1882,139 +1854,6 @@ class _HomeScreenState extends State<HomeScreen> {
   // Future<void> _onSendCleaningRequestAgain() async {
   //   // Implementation removed
   // }
-
-  Widget _buildElectricityChartSection(Size size) {
-    final theme = Theme.of(context);
-
-    return _HomeGlassCard(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Theo dõi điện năng',
-                style: theme.textTheme.titleMedium,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const Spacer(),
-              IconButton(
-                onPressed: () => widget.onNavigateToTab?.call(1),
-                icon: const Icon(Icons.auto_graph_rounded),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (_electricityError != null)
-            _buildErrorState(
-              context: context,
-              error: _electricityError!,
-              onRetry: () async {
-                final invoiceService = InvoiceService(_apiClient);
-                try {
-                  final electricityData =
-                      await invoiceService.getElectricityMonthlyData(
-                    unitId: _selectedUnitId,
-                  );
-                  if (mounted) {
-                    setState(() {
-                      _electricityMonthlyData = electricityData;
-                      _electricityError = null;
-                    });
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    setState(() {
-                      _electricityError = e.toString();
-                    });
-                  }
-                }
-              },
-            )
-          else if (_electricityMonthlyData.isEmpty)
-            _buildEmptyState(
-              context: context,
-              message: 'Chưa có dữ liệu tiêu thụ điện',
-            )
-          else
-            ElectricityChart(
-              monthlyData: _electricityMonthlyData,
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildErrorState({
-    required BuildContext context,
-    required String error,
-    required VoidCallback onRetry,
-  }) {
-    final theme = Theme.of(context);
-    return Column(
-      children: [
-        Icon(
-          Icons.error_outline,
-          color: AppColors.danger,
-          size: 48,
-        ),
-        const SizedBox(height: 12),
-        Text(
-          'Không thể tải dữ liệu',
-          style: theme.textTheme.titleSmall?.copyWith(
-            color: AppColors.danger,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          error.length > 100 ? '${error.substring(0, 100)}...' : error,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-          ),
-          textAlign: TextAlign.center,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        const SizedBox(height: 16),
-        OutlinedButton.icon(
-          onPressed: onRetry,
-          icon: const Icon(Icons.refresh, size: 18),
-          label: const Text('Thử lại'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.danger,
-            side: BorderSide(color: AppColors.danger),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildEmptyState({
-    required BuildContext context,
-    required String message,
-  }) {
-    final theme = Theme.of(context);
-    return Column(
-      children: [
-        Icon(
-          Icons.insert_chart_outlined,
-          color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
-          size: 48,
-        ),
-        const SizedBox(height: 12),
-        Text(
-          message,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
 
   Widget _buildHouseholdManagementCard(Size size) {
     final ownerUnits = _ownerUnits;
