@@ -350,9 +350,17 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
         _messageController.text = content;
       }
       if (mounted) {
+        final errorMessage = e.toString();
+        // Check if error is about blocked user
+        final isBlockedError = errorMessage.contains('Người dùng hiện không tìm thấy') ||
+                               errorMessage.contains('người dùng hiện không tìm thấy') ||
+                               errorMessage.contains('không tìm thấy người dùng');
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lỗi khi gửi tin nhắn: ${e.toString()}'),
+            content: Text(isBlockedError 
+                ? 'Người dùng hiện không tìm thấy'
+                : 'Lỗi khi gửi tin nhắn: ${e.toString()}'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
           ),
@@ -923,8 +931,14 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
   Future<void> _showImageOptionsBottomSheet(BuildContext context, DirectMessage message) async {
     if (message.imageUrl == null) return;
 
+    // Only allow delete for messages sent by current user
+    final isMyMessage = _currentResidentId != null && message.senderId == _currentResidentId;
+
     final result = await showModalBottomSheet<String>(
       context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -934,11 +948,22 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
               title: const Text('Tải ảnh về máy'),
               onTap: () => Navigator.pop(context, 'download'),
             ),
-            ListTile(
-              leading: const Icon(CupertinoIcons.xmark_circle),
-              title: const Text('Hủy'),
-              onTap: () => Navigator.pop(context),
-            ),
+            if (isMyMessage) ...[
+              const Divider(),
+              ListTile(
+                leading: const Icon(CupertinoIcons.delete, color: Colors.red),
+                title: const Text('Xóa ở phía tôi', style: TextStyle(color: Colors.red)),
+                subtitle: const Text('Chỉ bạn không thấy tin nhắn này'),
+                onTap: () => Navigator.pop(context, 'delete_for_me'),
+              ),
+              ListTile(
+                leading: const Icon(CupertinoIcons.delete_simple, color: Colors.red),
+                title: const Text('Xóa ở phía mọi người', style: TextStyle(color: Colors.red)),
+                subtitle: const Text('Mọi người đều không thấy tin nhắn này'),
+                onTap: () => Navigator.pop(context, 'delete_for_everyone'),
+              ),
+            ],
+            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -946,7 +971,60 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
 
     if (result == 'download' && context.mounted) {
       await _downloadImageToGallery(context, message);
+    } else if (result == 'delete_for_me' && context.mounted) {
+      await _deleteMessage(context, message, 'FOR_ME');
+    } else if (result == 'delete_for_everyone' && context.mounted) {
+      await _deleteMessage(context, message, 'FOR_EVERYONE');
     }
+  }
+
+  Future<void> _showVideoOptionsBottomSheet(BuildContext context, DirectMessage message) async {
+    if (message.fileUrl == null) return;
+
+    // Only allow delete for messages sent by current user
+    final isMyMessage = _currentResidentId != null && message.senderId == _currentResidentId;
+
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(CupertinoIcons.arrow_down_circle),
+              title: const Text('Tải video về máy'),
+              onTap: () => Navigator.pop(context, 'download'),
+            ),
+            if (isMyMessage) ...[
+              const Divider(),
+              ListTile(
+                leading: const Icon(CupertinoIcons.delete, color: Colors.red),
+                title: const Text('Xóa ở phía tôi', style: TextStyle(color: Colors.red)),
+                subtitle: const Text('Chỉ bạn không thấy tin nhắn này'),
+                onTap: () => Navigator.pop(context, 'delete_for_me'),
+              ),
+              ListTile(
+                leading: const Icon(CupertinoIcons.delete_simple, color: Colors.red),
+                title: const Text('Xóa ở phía mọi người', style: TextStyle(color: Colors.red)),
+                subtitle: const Text('Mọi người đều không thấy tin nhắn này'),
+                onTap: () => Navigator.pop(context, 'delete_for_everyone'),
+              ),
+            ],
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (result == 'delete_for_me' && context.mounted) {
+      await _deleteMessage(context, message, 'FOR_ME');
+    } else if (result == 'delete_for_everyone' && context.mounted) {
+      await _deleteMessage(context, message, 'FOR_EVERYONE');
+    }
+    // Note: Download video is handled by the video widget itself
   }
 
   Future<void> _downloadImageToGallery(BuildContext context, DirectMessage message) async {
@@ -1017,6 +1095,115 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
             backgroundColor: Colors.red,
           ),
         );
+      }
+    }
+  }
+
+  Future<void> _showMessageOptionsBottomSheet(BuildContext context, DirectMessage message) async {
+    // Only allow delete for messages sent by current user
+    final isMyMessage = _currentResidentId != null && message.senderId == _currentResidentId;
+    
+    if (!isMyMessage) {
+      // Don't show options for messages from other users
+      return;
+    }
+
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(CupertinoIcons.delete, color: Colors.red),
+              title: const Text('Xóa ở phía tôi', style: TextStyle(color: Colors.red)),
+              subtitle: const Text('Chỉ bạn không thấy tin nhắn này'),
+              onTap: () => Navigator.pop(context, 'delete_for_me'),
+            ),
+            ListTile(
+              leading: const Icon(CupertinoIcons.delete_simple, color: Colors.red),
+              title: const Text('Xóa ở phía mọi người', style: TextStyle(color: Colors.red)),
+              subtitle: const Text('Mọi người đều không thấy tin nhắn này'),
+              onTap: () => Navigator.pop(context, 'delete_for_everyone'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (result == 'delete_for_me' && context.mounted) {
+      await _deleteMessage(context, message, 'FOR_ME');
+    } else if (result == 'delete_for_everyone' && context.mounted) {
+      await _deleteMessage(context, message, 'FOR_EVERYONE');
+    }
+  }
+
+  Future<void> _deleteMessage(BuildContext context, DirectMessage message, String deleteType) async {
+    final deleteTypeText = deleteType == 'FOR_ME' 
+        ? 'Xóa ở phía tôi (chỉ bạn không thấy tin nhắn này)'
+        : 'Xóa ở phía mọi người (mọi người đều không thấy tin nhắn này)';
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xóa tin nhắn'),
+        content: Text('Bạn có chắc chắn muốn $deleteTypeText?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        // Optimistic update: mark as deleted immediately
+        _viewModel.markMessageAsDeleted(message.id, deleteType);
+        
+        await _chatService.deleteDirectMessage(
+          conversationId: widget.conversationId,
+          messageId: message.id,
+          deleteType: deleteType,
+        );
+        
+        // Refresh messages to ensure consistency with backend
+        await _viewModel.loadMessages(widget.conversationId, refresh: true);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(deleteType == 'FOR_ME' 
+                  ? '✅ Đã xóa tin nhắn (chỉ bạn không thấy)'
+                  : '✅ Đã xóa tin nhắn (mọi người đều không thấy)'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        print('❌ [DirectChatScreen] Error deleting message: $e');
+        // Revert optimistic update on error
+        await _viewModel.loadMessages(widget.conversationId, refresh: true);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi khi xóa tin nhắn: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
@@ -1310,6 +1497,12 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                         },
                         onImageLongPress: (msg) {
                           _showImageOptionsBottomSheet(context, msg);
+                        },
+                        onVideoLongPress: (msg) {
+                          _showVideoOptionsBottomSheet(context, msg);
+                        },
+                        onMessageLongPress: () {
+                          _showMessageOptionsBottomSheet(context, message);
                         },
                       );
                     },
@@ -1767,7 +1960,9 @@ class _DirectMessageBubble extends StatelessWidget {
   final String? currentResidentId;
   final Function(DirectMessage)? onImageTap;
   final Function(DirectMessage)? onImageLongPress;
+  final Function(DirectMessage)? onVideoLongPress;
   final Function(String)? onDeepLinkTap;
+  final VoidCallback? onMessageLongPress;
 
   const _DirectMessageBubble({
     super.key,
@@ -1775,7 +1970,9 @@ class _DirectMessageBubble extends StatelessWidget {
     this.currentResidentId,
     this.onImageTap,
     this.onImageLongPress,
+    this.onVideoLongPress,
     this.onDeepLinkTap,
+    this.onMessageLongPress,
   });
 
   @override
@@ -1785,18 +1982,20 @@ class _DirectMessageBubble extends StatelessWidget {
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
-        ),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isMe
-              ? theme.colorScheme.primary
-              : theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(16),
-        ),
+      child: GestureDetector(
+        onLongPress: onMessageLongPress,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.75,
+          ),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isMe
+                ? theme.colorScheme.primary
+                : theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(16),
+          ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1810,7 +2009,21 @@ class _DirectMessageBubble extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-            if (message.messageType == 'IMAGE' && message.imageUrl != null)
+            if (message.isDeleted == true)
+              Text(
+                message.deleteType == 'FOR_ME' 
+                    ? 'Đã xóa ở phía tôi'
+                    : message.deleteType == 'FOR_EVERYONE'
+                        ? 'Đã xóa ở phía mọi người'
+                        : 'Đã xóa',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: isMe
+                      ? Colors.white.withValues(alpha: 0.6)
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                  fontStyle: FontStyle.italic,
+                ),
+              )
+            else if (message.messageType == 'IMAGE' && message.imageUrl != null)
               Builder(
                 builder: (context) {
                   final fullImageUrl = _buildFullUrl(message.imageUrl!);
@@ -1864,6 +2077,7 @@ class _DirectMessageBubble extends StatelessWidget {
                 currentResidentId: currentResidentId,
                 isMe: isMe,
                 theme: theme,
+                onLongPress: () => onVideoLongPress?.call(message),
               )
             else if (message.messageType == 'FILE' && message.fileUrl != null)
               _DirectFileMessageWidget(
@@ -1910,6 +2124,7 @@ class _DirectMessageBubble extends StatelessWidget {
               ),
             ),
           ],
+        ),
         ),
       ),
     );
@@ -2549,6 +2764,7 @@ class _DirectVideoMessageWidget extends StatefulWidget {
   final String? currentResidentId;
   final bool isMe;
   final ThemeData theme;
+  final VoidCallback? onLongPress;
 
   const _DirectVideoMessageWidget({
     required this.messageId,
@@ -2559,6 +2775,7 @@ class _DirectVideoMessageWidget extends StatefulWidget {
     this.currentResidentId,
     required this.isMe,
     required this.theme,
+    this.onLongPress,
   });
 
   @override
@@ -2809,7 +3026,9 @@ class _DirectVideoMessageWidgetState extends State<_DirectVideoMessageWidget> {
 
     return GestureDetector(
       onTap: _showFullScreenVideo,
-      onLongPress: () => _showVideoOptions(context),
+      onLongPress: widget.onLongPress != null 
+          ? widget.onLongPress 
+          : () => _showVideoOptions(context),
       child: Container(
         constraints: const BoxConstraints(
           maxHeight: 300,

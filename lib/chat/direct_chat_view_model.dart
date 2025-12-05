@@ -360,5 +360,44 @@ class DirectChatViewModel extends ChangeNotifier {
       rethrow;
     }
   }
+
+  /// Mark a message as deleted locally (optimistic update)
+  void markMessageAsDeleted(String messageId, String deleteType) {
+    final index = _messages.indexWhere((m) => m.id == messageId);
+    if (index != -1) {
+      // Create a copy with isDeleted = true and deleteType
+      final message = _messages[index];
+      final updatedMessage = DirectMessage(
+        id: message.id,
+        conversationId: message.conversationId,
+        senderId: message.senderId,
+        senderName: message.senderName,
+        content: message.content,
+        messageType: message.messageType,
+        imageUrl: message.imageUrl,
+        fileUrl: message.fileUrl,
+        fileName: message.fileName,
+        fileSize: message.fileSize,
+        mimeType: message.mimeType,
+        replyToMessageId: message.replyToMessageId,
+        replyToMessage: message.replyToMessage,
+        isEdited: message.isEdited,
+        isDeleted: true, // Mark as deleted
+        deleteType: deleteType, // Set delete type
+        createdAt: message.createdAt,
+        updatedAt: message.updatedAt,
+        postId: message.postId,
+        postTitle: message.postTitle,
+        postThumbnailUrl: message.postThumbnailUrl,
+        postPrice: message.postPrice,
+        deepLink: message.deepLink,
+      );
+      _messages[index] = updatedMessage;
+      notifyListeners();
+      print('✅ [DirectChatViewModel] Message $messageId marked as deleted locally with type $deleteType');
+    } else {
+      print('⚠️ [DirectChatViewModel] Message $messageId not found in list');
+    }
+  }
 }
 

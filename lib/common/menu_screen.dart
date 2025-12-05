@@ -97,18 +97,22 @@ class _MenuScreenState extends State<MenuScreen> {
     if (confirm == true && context.mounted) {
       try {
         final authProvider = context.read<AuthProvider>();
-        await authProvider.logout(context);
+        // Clear event bus before logout
         AppEventBus().clear();
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Đăng xuất thành công!')),
-          );
-        }
+        // Logout will navigate to login screen, so we don't need to show SnackBar here
+        await authProvider.logout(context);
+        // Note: After logout, context.go() is called which navigates to login screen
+        // Don't try to show SnackBar here as context may be invalid
       } catch (e) {
+        // Only show error if context is still mounted and valid
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Lỗi đăng xuất: $e')),
-          );
+          try {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Lỗi đăng xuất: $e')),
+            );
+          } catch (_) {
+            // Ignore if context is no longer valid
+          }
         }
       }
     }

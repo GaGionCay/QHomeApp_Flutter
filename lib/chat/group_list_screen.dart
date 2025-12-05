@@ -435,8 +435,15 @@ class _GroupListScreenState extends State<GroupListScreen> {
                     
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: GestureDetector(
+                        onLongPress: () {
+                          print('🔍 [GroupListScreen] GestureDetector onLongPress triggered on direct conversation!');
+                          print('   - Conversation ID: ${conversation.id}');
+                          print('   - Calling _showDirectConversationOptions...');
+                          _showDirectConversationOptions(context, conversation);
+                        },
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         leading: CircleAvatar(
                           radius: 28,
                           backgroundColor: theme.colorScheme.secondaryContainer,
@@ -496,7 +503,6 @@ class _GroupListScreenState extends State<GroupListScreen> {
                               ),
                           ],
                         ),
-                        onLongPress: () => _showDirectConversationOptions(context, conversation),
                         onTap: () async {
                           if (widget.sharePost != null) {
                             // Share post to direct chat
@@ -541,6 +547,7 @@ class _GroupListScreenState extends State<GroupListScreen> {
                             }
                           }
                         },
+                        ),
                       ),
                     );
                   }
@@ -691,8 +698,20 @@ class _GroupListScreenState extends State<GroupListScreen> {
   }
 
   Future<void> _showDirectConversationOptions(BuildContext context, Conversation conversation) async {
+    print('🔍 [GroupListScreen] Long press detected on direct conversation:');
+    print('   - Conversation ID: ${conversation.id}');
+    print('   - Participant 1: ${conversation.participant1Id} (${conversation.participant1Name})');
+    print('   - Participant 2: ${conversation.participant2Id} (${conversation.participant2Name})');
+    print('   - Current Resident ID: $_currentResidentId');
+    print('   - Status: ${conversation.status}');
+    print('   - Is Muted: ${conversation.isMuted}');
+    print('   - Mute Until: ${conversation.muteUntil}');
+    
     final isMuted = conversation.isMuted || 
         (conversation.muteUntil != null && conversation.muteUntil!.isAfter(DateTime.now()));
+    
+    print('   - Will show muted options: $isMuted');
+    print('   - Showing direct conversation options bottom sheet...');
     
     final result = await showModalBottomSheet<String>(
       context: context,
@@ -733,6 +752,11 @@ class _GroupListScreenState extends State<GroupListScreen> {
             ],
             const Divider(),
             ListTile(
+              leading: const Icon(CupertinoIcons.person_crop_circle_badge_xmark, color: Colors.red),
+              title: const Text('Chặn người dùng', style: TextStyle(color: Colors.red)),
+              onTap: () => Navigator.pop(context, 'block'),
+            ),
+            ListTile(
               leading: const Icon(CupertinoIcons.delete, color: Colors.red),
               title: const Text('Xóa đoạn chat', style: TextStyle(color: Colors.red)),
               onTap: () => Navigator.pop(context, 'hide'),
@@ -743,14 +767,18 @@ class _GroupListScreenState extends State<GroupListScreen> {
       ),
     );
 
+    print('🔍 [GroupListScreen] User selected option: $result');
+
     if (result != null && mounted) {
       try {
         if (result == 'unmute') {
+          print('🔍 [GroupListScreen] Processing: Unmute conversation');
           await _chatService.unmuteDirectConversation(conversation.id);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('✅ Đã bật lại thông báo')),
           );
         } else if (result.startsWith('mute_')) {
+          print('🔍 [GroupListScreen] Processing: Mute conversation - $result');
           int? durationHours;
           if (result == 'mute_1h') {
             durationHours = 1;
@@ -768,7 +796,76 @@ class _GroupListScreenState extends State<GroupListScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('✅ Đã tắt thông báo${durationHours != null ? ' trong $durationHours giờ' : ''}')),
           );
+        } else if (result == 'block') {
+          print('🔍 [GroupListScreen] Processing: Block user');
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Chặn người dùng'),
+              content: const Text(
+                'Bạn có chắc chắn muốn chặn người dùng này? Sau khi chặn, bạn sẽ không thể gửi hoặc nhận tin nhắn từ người này.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Hủy'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                  child: const Text('Chặn'),
+                ),
+              ],
+            ),
+          );
+          
+          if (confirmed == true && mounted) {
+            try {
+              if (_currentResidentId == null) {
+                await _loadCurrentResidentId();
+              }
+              
+              if (_currentResidentId == null) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Không thể xác định người dùng để chặn'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+                return;
+              }
+              
+              final otherParticipantId = conversation.getOtherParticipantId(_currentResidentId!);
+              await _chatService.blockUser(otherParticipantId);
+              
+              // Emit event to update badges and refresh blocked users list
+              AppEventBus().emit('direct_chat_activity_updated');
+              AppEventBus().emit('blocked_users_updated');
+              
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ Đã chặn người dùng'),
+                    backgroundColor: Colors.green,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Lỗi khi chặn người dùng: ${e.toString()}'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            }
+          }
         } else if (result == 'hide') {
+          print('🔍 [GroupListScreen] Processing: Hide conversation');
           final confirmed = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
@@ -865,6 +962,7 @@ class _GroupListScreenState extends State<GroupListScreen> {
             const SnackBar(content: Text('✅ Đã bật lại thông báo')),
           );
         } else if (result.startsWith('mute_')) {
+          print('🔍 [GroupListScreen] Processing: Mute conversation - $result');
           int? durationHours;
           if (result == 'mute_1h') {
             durationHours = 1;

@@ -1,4 +1,3 @@
-
 class DirectMessage {
   final String id;
   final String conversationId;
@@ -19,6 +18,7 @@ class DirectMessage {
   final DirectMessage? replyToMessage;
   final bool isEdited;
   final bool isDeleted;
+  final String? deleteType; // FOR_ME, FOR_EVERYONE, or null if not deleted
   final DateTime createdAt;
   final DateTime updatedAt;
   // Marketplace post fields (for MARKETPLACE_POST message type)
@@ -48,6 +48,7 @@ class DirectMessage {
     this.replyToMessage,
     required this.isEdited,
     required this.isDeleted,
+    this.deleteType,
     required this.createdAt,
     required this.updatedAt,
     // Marketplace post fields
@@ -85,6 +86,7 @@ class DirectMessage {
           : null,
       isEdited: json['isEdited'] ?? false,
       isDeleted: json['isDeleted'] ?? false,
+      deleteType: json['deleteType']?.toString(),
       // Marketplace post fields
       postId: json['postId']?.toString(),
       postTitle: json['postTitle']?.toString(),
@@ -123,6 +125,7 @@ class DirectMessage {
       'replyToMessage': replyToMessage?.toJson(),
       'isEdited': isEdited,
       'isDeleted': isDeleted,
+      'deleteType': deleteType,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       // Marketplace post fields

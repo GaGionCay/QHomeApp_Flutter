@@ -35,37 +35,38 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
       final blockedUserIds = await _chatService.getBlockedUsers();
       
       // Fetch user info for each blocked user
+      // Note: blockedUserIds are residentIds (not userIds)
       final List<Map<String, dynamic>> users = [];
-      for (final userId in blockedUserIds) {
+      for (final residentId in blockedUserIds) {
         try {
-          // Get resident info by userId
-          final response = await _apiClient.dio.get('/residents/by-user/$userId');
+          // Get resident info by residentId (not userId)
+          final response = await _apiClient.dio.get('/residents/$residentId');
           final residentInfo = response.data as Map<String, dynamic>?;
           
           if (residentInfo != null) {
             users.add({
-              'userId': userId,
+              'userId': residentInfo['userId']?.toString() ?? residentId, // Use userId from response if available
+              'residentId': residentId,
               'name': residentInfo['name'] ?? residentInfo['fullName'] ?? 'Người dùng',
               'avatar': residentInfo['avatar'],
-              'residentId': residentInfo['id']?.toString(),
             });
           } else {
             // Add with minimal info if profile fetch fails
             users.add({
-              'userId': userId,
+              'userId': residentId, // Fallback to residentId
+              'residentId': residentId,
               'name': 'Người dùng',
               'avatar': null,
-              'residentId': null,
             });
           }
         } catch (e) {
-          print('⚠️ [BlockedUsersScreen] Error loading user info for $userId: $e');
+          print('⚠️ [BlockedUsersScreen] Error loading user info for residentId $residentId: $e');
           // Add with minimal info if profile fetch fails
           users.add({
-            'userId': userId,
+            'userId': residentId, // Fallback to residentId
+            'residentId': residentId,
             'name': 'Người dùng',
             'avatar': null,
-            'residentId': null,
           });
         }
       }
@@ -87,7 +88,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
     }
   }
 
-  Future<void> _unblockUser(String userId, String userName) async {
+  Future<void> _unblockUser(String residentId, String userName) async {
     // Show confirmation dialog
     final confirmed = await showDialog<bool>(
       context: context,
@@ -117,7 +118,8 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
         );
       }
 
-      await _chatService.unblockUser(userId);
+      // Pass residentId to unblockUser (API accepts both userId and residentId)
+      await _chatService.unblockUser(residentId);
 
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -212,9 +214,14 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
                         itemCount: _blockedUsers.length,
                         itemBuilder: (context, index) {
                           final user = _blockedUsers[index];
-                          final userName = user['name'] as String;
-                          final userId = user['userId'] as String;
+                          final userName = user['name'] as String? ?? 'Người dùng';
+                          final residentId = user['residentId'] as String?;
                           final avatar = user['avatar'] as String?;
+                          
+                          // Skip if residentId is null (should not happen, but safety check)
+                          if (residentId == null) {
+                            return const SizedBox.shrink();
+                          }
 
                           return Card(
                             margin: const EdgeInsets.only(bottom: 12),
@@ -230,7 +237,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
                               title: Text(userName),
                               subtitle: const Text('Đã bị chặn'),
                               trailing: FilledButton(
-                                onPressed: () => _unblockUser(userId, userName),
+                                onPressed: () => _unblockUser(residentId, userName),
                                 child: const Text('Gỡ chặn'),
                               ),
                             ),

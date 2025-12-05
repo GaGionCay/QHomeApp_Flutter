@@ -289,8 +289,18 @@ class ApiClient {
         const maxTotalTimeSeconds = 60; // Maximum total time for all retries (60 seconds)
         final startTime = options.extra['retryStartTime'] as int? ?? DateTime.now().millisecondsSinceEpoch;
 
-        if (err.response == null) {
+        // Check for HandshakeException or other connection errors
+        final isHandshakeException = err.error != null && 
+            (err.error.toString().contains('HandshakeException') || 
+             err.error.toString().contains('Connection terminated during handshake'));
+        final isConnectionError = err.response == null || isHandshakeException;
+        
+        if (isConnectionError) {
           print('⚠️ DIO CONNECTION ERROR: ${err.error}');
+          if (isHandshakeException) {
+            print('   Detected HandshakeException - SSL/TLS handshake failed');
+            print('   This usually means ngrok URL is invalid or backend is unreachable');
+          }
           
           // FormData cannot be reused after being finalized
           // Skip retry for FormData requests to avoid "FormData has already been finalized" error
@@ -312,10 +322,21 @@ class ApiClient {
             return handler.next(err);
           }
           
-          // If connection error, try to re-discover backend and retry until success
+          // If connection error (including HandshakeException), try to re-discover backend and retry until success
           if (!kIsWeb && _isInitialized && retryCount < maxRetries) {
             try {
               print('🔄 Connection error detected, attempting to re-discover backend... (attempt ${retryCount + 1}, elapsed: ${elapsedSeconds}s)');
+              
+              // If HandshakeException, clear cached ngrok URL first
+              if (isHandshakeException && (_activeHostIp.contains('ngrok') || _activeHostIp.contains('ngrok-free.app'))) {
+                print('   HandshakeException detected with ngrok URL - clearing cached URL...');
+                try {
+                  await _discoveryService.clearManualBackendUrl();
+                  print('✅ Cleared cached ngrok URL');
+                } catch (clearErr) {
+                  print('⚠️ Failed to clear cached ngrok URL: $clearErr');
+                }
+              }
               
               // Always re-discover to get latest ngrok URL
               final backendInfo = await _discoveryService.discoverBackend();
@@ -327,11 +348,15 @@ class ApiClient {
               
               // Always update if:
               // 1. Base URL changed, OR
-              // 2. New backend is ngrok URL and current is not (prefer ngrok over IP)
-              if (newBaseUrl != _activeBaseUrl || (isNewNgrok && !isCurrentNgrok)) {
+              // 2. New backend is ngrok URL and current is not (prefer ngrok over IP), OR
+              // 3. HandshakeException occurred (force update to new backend)
+              if (newBaseUrl != _activeBaseUrl || (isNewNgrok && !isCurrentNgrok) || isHandshakeException) {
                 print('✅ Re-discovered backend: ${backendInfo.hostname}:${backendInfo.port} (${backendInfo.discoveryMethod})');
                 if (isNewNgrok && !isCurrentNgrok) {
                   print('   Switching to ngrok URL (preferred over IP address)');
+                }
+                if (isHandshakeException) {
+                  print('   Updating backend due to HandshakeException');
                 }
                 _setActiveHost(backendInfo.hostname, backendInfo.port, backendInfo.isHttps);
               }

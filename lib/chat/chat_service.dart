@@ -676,6 +676,28 @@ class ChatService {
     }
   }
 
+  /// Delete direct message
+  /// deleteType: 'FOR_ME' (only for current user) or 'FOR_EVERYONE' (for everyone)
+  Future<void> deleteDirectMessage({
+    required String conversationId,
+    required String messageId,
+    String deleteType = 'FOR_ME',
+  }) async {
+    try {
+      print('🗑️ [ChatService] Deleting direct message: conversationId=$conversationId, messageId=$messageId, deleteType=$deleteType');
+      // Use ApiClient directly since /api/direct-chat is not under /api/chat
+      final apiClient = ApiClient();
+      final response = await apiClient.dio.delete(
+        '/direct-chat/conversations/$conversationId/messages/$messageId',
+        queryParameters: {'deleteType': deleteType},
+      );
+      print('✅ [ChatService] Message deleted successfully: statusCode=${response.statusCode}');
+    } catch (e) {
+      print('❌ [ChatService] Error deleting message: $e');
+      throw Exception('Lỗi khi xóa tin nhắn: ${e.toString()}');
+    }
+  }
+
   /// Get unread count for a conversation
   Future<int> getDirectUnreadCount(String conversationId) async {
     try {

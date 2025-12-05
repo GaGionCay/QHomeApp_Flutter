@@ -6,6 +6,7 @@ import 'direct_chat_screen.dart';
 import 'direct_invitations_screen.dart';
 import '../core/event_bus.dart';
 import '../models/marketplace_post.dart';
+import '../auth/token_storage.dart';
 
 class DirectChatListScreen extends StatefulWidget {
   final MarketplacePost? sharePost;
@@ -18,17 +19,24 @@ class DirectChatListScreen extends StatefulWidget {
 
 class _DirectChatListScreenState extends State<DirectChatListScreen> {
   final ChatService _service = ChatService();
+  final TokenStorage _tokenStorage = TokenStorage();
   List<Conversation> _conversations = [];
   bool _isLoading = true;
   String? _error;
   int _pendingInvitationsCount = 0;
+  String? _currentResidentId;
 
   @override
   void initState() {
     super.initState();
+    _loadCurrentResidentId();
     _loadConversations();
     _loadInvitationsCount();
     _setupChatNotificationListener();
+  }
+
+  Future<void> _loadCurrentResidentId() async {
+    _currentResidentId = await _tokenStorage.readResidentId();
   }
 
   void _setupChatNotificationListener() {
@@ -293,79 +301,85 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
                               (conversation.muteUntil != null && 
                                conversation.muteUntil!.isAfter(DateTime.now()));
                           
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: theme.colorScheme.primaryContainer,
-                              child: Text(
-                                otherParticipantName.isNotEmpty
-                                    ? otherParticipantName[0].toUpperCase()
-                                    : '?',
-                                style: TextStyle(
-                                  color: theme.colorScheme.onPrimaryContainer,
-                                  fontWeight: FontWeight.bold,
+                          return GestureDetector(
+                            onLongPress: () {
+                              print('🔍 [DirectChatListScreen] GestureDetector onLongPress triggered!');
+                              print('   - Conversation ID: ${conversation.id}');
+                              print('   - Calling _showConversationOptions...');
+                              _showConversationOptions(context, conversation);
+                            },
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: theme.colorScheme.primaryContainer,
+                                child: Text(
+                                  otherParticipantName.isNotEmpty
+                                      ? otherParticipantName[0].toUpperCase()
+                                      : '?',
+                                  style: TextStyle(
+                                    color: theme.colorScheme.onPrimaryContainer,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
-                            ),
-                            title: Text(
-                              otherParticipantName,
-                              style: TextStyle(
-                                fontWeight: unreadCount > 0 ? FontWeight.bold : FontWeight.normal,
+                              title: Text(
+                                otherParticipantName,
+                                style: TextStyle(
+                                  fontWeight: unreadCount > 0 ? FontWeight.bold : FontWeight.normal,
+                                ),
                               ),
-                            ),
-                            subtitle: Text(
-                              _getLastMessagePreview(conversation),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: unreadCount > 0
-                                    ? theme.colorScheme.primary
-                                    : theme.colorScheme.onSurface.withOpacity(0.6),
+                              subtitle: Text(
+                                _getLastMessagePreview(conversation),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: unreadCount > 0
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.onSurface.withOpacity(0.6),
+                                ),
                               ),
-                            ),
-                            trailing: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (isMuted)
-                                      Icon(
-                                        CupertinoIcons.bell_slash,
-                                        size: 16,
-                                        color: theme.colorScheme.onSurface.withOpacity(0.5),
+                              trailing: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (isMuted)
+                                        Icon(
+                                          CupertinoIcons.bell_slash,
+                                          size: 16,
+                                          color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                        ),
+                                      if (isMuted) const SizedBox(width: 4),
+                                      Text(
+                                        _formatTime(conversation.lastMessage?.createdAt ?? conversation.updatedAt),
+                                        style: theme.textTheme.bodySmall?.copyWith(
+                                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                        ),
                                       ),
-                                    if (isMuted) const SizedBox(width: 4),
-                                    Text(
-                                      _formatTime(conversation.lastMessage?.createdAt ?? conversation.updatedAt),
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                    ],
+                                  ),
+                                  if (unreadCount > 0) ...[
+                                    const SizedBox(height: 4),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: theme.colorScheme.primary,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        unreadCount > 99 ? '99+' : '$unreadCount',
+                                        style: TextStyle(
+                                          color: theme.colorScheme.onPrimary,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
                                     ),
                                   ],
-                                ),
-                                if (unreadCount > 0) ...[
-                                  const SizedBox(height: 4),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: theme.colorScheme.primary,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      unreadCount > 99 ? '99+' : '$unreadCount',
-                                      style: TextStyle(
-                                        color: theme.colorScheme.onPrimary,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
                                 ],
-                              ],
-                            ),
-                            onLongPress: () => _showConversationOptions(context, conversation),
-                            onTap: () async {
+                              ),
+                              onTap: () async {
                               if (widget.sharePost != null) {
                                 // Share post to direct chat
                                 try {
@@ -408,6 +422,7 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
                                 }
                               }
                             },
+                            ),
                           );
                         },
                       ),
@@ -416,11 +431,24 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
   }
 
   Future<void> _showConversationOptions(BuildContext context, Conversation conversation) async {
+    print('🔍 [DirectChatListScreen] Long press detected on conversation:');
+    print('   - Conversation ID: ${conversation.id}');
+    print('   - Participant 1: ${conversation.participant1Id} (${conversation.participant1Name})');
+    print('   - Participant 2: ${conversation.participant2Id} (${conversation.participant2Name})');
+    print('   - Current Resident ID: $_currentResidentId');
+    print('   - Status: ${conversation.status}');
+    print('   - Is Muted: ${conversation.isMuted}');
+    print('   - Mute Until: ${conversation.muteUntil}');
+    
     final isMuted = conversation.isMuted || 
         (conversation.muteUntil != null && conversation.muteUntil!.isAfter(DateTime.now()));
     
+    print('   - Will show muted options: $isMuted');
+    print('   - Showing conversation options bottom sheet...');
+    
     final result = await showModalBottomSheet<String>(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -458,6 +486,11 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
             ],
             const Divider(),
             ListTile(
+              leading: const Icon(CupertinoIcons.person_crop_circle_badge_xmark, color: Colors.red),
+              title: const Text('Chặn người dùng', style: TextStyle(color: Colors.red)),
+              onTap: () => Navigator.pop(context, 'block'),
+            ),
+            ListTile(
               leading: const Icon(CupertinoIcons.delete, color: Colors.red),
               title: const Text('Xóa đoạn chat', style: TextStyle(color: Colors.red)),
               onTap: () => Navigator.pop(context, 'hide'),
@@ -468,14 +501,18 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
       ),
     );
 
+    print('🔍 [DirectChatListScreen] User selected option: $result');
+
     if (result != null && mounted) {
       try {
         if (result == 'unmute') {
+          print('🔍 [DirectChatListScreen] Processing: Unmute conversation');
           await _service.unmuteDirectConversation(conversation.id);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('✅ Đã bật lại thông báo')),
           );
         } else if (result.startsWith('mute_')) {
+          print('🔍 [DirectChatListScreen] Processing: Mute conversation - $result');
           int? durationHours;
           if (result == 'mute_1h') {
             durationHours = 1;
@@ -493,7 +530,76 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('✅ Đã tắt thông báo${durationHours != null ? ' trong $durationHours giờ' : ''}')),
           );
+        } else if (result == 'block') {
+          print('🔍 [DirectChatListScreen] Processing: Block user');
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Chặn người dùng'),
+              content: const Text(
+                'Bạn có chắc chắn muốn chặn người dùng này? Sau khi chặn, bạn sẽ không thể gửi hoặc nhận tin nhắn từ người này.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Hủy'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                  child: const Text('Chặn'),
+                ),
+              ],
+            ),
+          );
+          
+          if (confirmed == true && mounted) {
+            try {
+              if (_currentResidentId == null) {
+                await _loadCurrentResidentId();
+              }
+              
+              if (_currentResidentId == null) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Không thể xác định người dùng để chặn'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+                return;
+              }
+              
+              final otherParticipantId = conversation.getOtherParticipantId(_currentResidentId!);
+              await _service.blockUser(otherParticipantId);
+              
+              // Emit event to update badges and refresh blocked users list
+              AppEventBus().emit('direct_chat_activity_updated');
+              AppEventBus().emit('blocked_users_updated');
+              
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ Đã chặn người dùng'),
+                    backgroundColor: Colors.green,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Lỗi khi chặn người dùng: ${e.toString()}'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            }
+          }
         } else if (result == 'hide') {
+          print('🔍 [DirectChatListScreen] Processing: Hide conversation');
           final confirmed = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
