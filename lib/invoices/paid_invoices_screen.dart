@@ -13,6 +13,7 @@ import '../service_registration/service_booking_service.dart';
 // import '../service_registration/cleaning_request_service.dart';
 import '../service_registration/maintenance_request_service.dart';
 import '../theme/app_colors.dart';
+import '../core/logger.dart';
 import 'invoice_service.dart';
 
 // Unified model for all paid items
@@ -1051,6 +1052,8 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
   }
 
   Future<void> _loadDetail() async {
+    AppLogger.info('[PaidInvoicesDetail] Bắt đầu load chi tiết cho item: ${widget.item.type.name} (ID: ${widget.item.id})');
+    
     setState(() {
       _isLoading = true;
       _error = null;
@@ -1060,15 +1063,38 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
       switch (widget.item.type) {
         case PaidItemType.electricity:
         case PaidItemType.water:
+          AppLogger.debug('[PaidInvoicesDetail] Đang load invoice detail cho ${widget.item.type.name}...');
           // Load invoice detail for electricity/water
           if (widget.item.unitId != null && widget.item.unitId!.isNotEmpty) {
             try {
+              AppLogger.debug('[PaidInvoicesDetail] Gọi API getPaidInvoicesByCategory (unitId: ${widget.item.unitId})');
               final invoices = await widget.invoiceService.getPaidInvoicesByCategory(
                 unitId: widget.item.unitId!,
               );
+              AppLogger.debug('[PaidInvoicesDetail] Nhận được ${invoices.length} categories, đang tìm invoice với ID: ${widget.item.id}');
               for (final category in invoices) {
                 for (final invoice in category.invoices) {
                   if (invoice.invoiceId == widget.item.id) {
+                    // Get full invoice detail to get paidAt
+                    AppLogger.debug('[PaidInvoicesDetail] Đang lấy invoice detail đầy đủ để lấy paidAt...');
+                    final invoiceDetail = await widget.invoiceService.getInvoiceDetailById(invoice.invoiceId);
+                    final paidAt = invoiceDetail?['paidAt'];
+                    
+                    AppLogger.success('[PaidInvoicesDetail] ✅ Tìm thấy invoice detail cho ${widget.item.type.name}');
+                    AppLogger.info('[PaidInvoicesDetail] 📄 Invoice Info:');
+                    AppLogger.info('   - Invoice ID: ${invoice.invoiceId}');
+                    AppLogger.info('   - Service Code: ${invoice.serviceCode}');
+                    AppLogger.info('   - Description: ${invoice.description}');
+                    AppLogger.info('   - Amount: ${invoice.lineTotal.toStringAsFixed(0)} VND');
+                    AppLogger.info('   - Service Date: ${invoice.serviceDate}');
+                    AppLogger.info('   - Quantity: ${invoice.quantity} ${invoice.unit}');
+                    AppLogger.info('   - Unit Price: ${invoice.unitPrice.toStringAsFixed(0)} VND');
+                    if (paidAt != null) {
+                      final paidAtDate = DateTime.parse(paidAt.toString());
+                      AppLogger.info('   - Payment Date: ${paidAtDate.toString()}');
+                    } else {
+                      AppLogger.warning('   - Payment Date: ${widget.item.paymentDate.toString()} (từ serviceDate, có thể không chính xác về thời gian)');
+                    }
                     setState(() {
                       _detailData = {
                         'type': 'invoice',
@@ -1081,20 +1107,39 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
                         'unit': invoice.unit,
                         'unitPrice': invoice.unitPrice,
                         'taxAmount': invoice.taxAmount,
+                        'paidAt': paidAt,
                       };
                     });
                     return;
                   }
                 }
               }
+              AppLogger.warning('[PaidInvoicesDetail] ⚠️ Không tìm thấy invoice với ID: ${widget.item.id}');
             } catch (e) {
-              debugPrint('Error loading invoice detail: $e');
+              AppLogger.error('[PaidInvoicesDetail] ❌ Lỗi khi load invoice detail', e);
             }
+          } else {
+            AppLogger.warning('[PaidInvoicesDetail] ⚠️ unitId không có, không thể load invoice detail');
           }
         case PaidItemType.utility:
+          AppLogger.debug('[PaidInvoicesDetail] Đang load detail cho utility (booking/invoice)...');
           // Try booking first, then invoice
           try {
+            AppLogger.debug('[PaidInvoicesDetail] Thử load booking detail với ID: ${widget.item.id}');
             final booking = await widget.bookingService.getBookingById(widget.item.id);
+            AppLogger.success('[PaidInvoicesDetail] ✅ Tìm thấy booking detail');
+            AppLogger.info('[PaidInvoicesDetail] 📋 Booking Info:');
+            AppLogger.info('   - Booking ID: ${booking['id'] ?? booking['bookingId'] ?? widget.item.id}');
+            AppLogger.info('   - Service: ${booking['serviceName'] ?? booking['service'] ?? "N/A"}');
+            AppLogger.info('   - Status: ${booking['status'] ?? "N/A"}');
+            AppLogger.info('   - Amount: ${booking['totalAmount'] ?? booking['amount'] ?? widget.item.amount} VND');
+            AppLogger.info('   - Payment Date: ${widget.item.paymentDate.toString()}');
+            if (booking['bookingDate'] != null) {
+              AppLogger.info('   - Booking Date: ${booking['bookingDate']}');
+            }
+            if (booking['startTime'] != null && booking['endTime'] != null) {
+              AppLogger.info('   - Time: ${booking['startTime']} - ${booking['endTime']}');
+            }
             setState(() {
               _detailData = {
                 'type': 'booking',
@@ -1102,16 +1147,49 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
               };
             });
           } catch (e) {
-            debugPrint('Error loading booking detail, trying invoice: $e');
+            // Check if error is "Booking not found" - this is expected, silently fallback to invoice
+            final errorMessage = e.toString().toLowerCase();
+            final isNotFoundError = errorMessage.contains('booking not found') ||
+                errorMessage.contains('not found') ||
+                errorMessage.contains('không tìm thấy');
+            
+            if (isNotFoundError) {
+              AppLogger.info('[PaidInvoicesDetail] ℹ️ Booking không tồn tại (mong đợi), đang fallback sang invoice...');
+            } else {
+              AppLogger.error('[PaidInvoicesDetail] ❌ Lỗi khi load booking detail, đang thử invoice', e);
+            }
+            
             // Fallback to invoice if unitId is available
             if (widget.item.unitId != null && widget.item.unitId!.isNotEmpty) {
               try {
+                AppLogger.debug('[PaidInvoicesDetail] Gọi API getPaidInvoicesByCategory để tìm invoice (unitId: ${widget.item.unitId})');
                 final invoices = await widget.invoiceService.getPaidInvoicesByCategory(
                   unitId: widget.item.unitId!,
                 );
+                AppLogger.debug('[PaidInvoicesDetail] Nhận được ${invoices.length} categories, đang tìm invoice với ID: ${widget.item.id}');
                 for (final category in invoices) {
                   for (final invoice in category.invoices) {
                     if (invoice.invoiceId == widget.item.id) {
+                      // Get full invoice detail to get paidAt
+                      AppLogger.debug('[PaidInvoicesDetail] Đang lấy invoice detail đầy đủ để lấy paidAt (fallback)...');
+                      final invoiceDetail = await widget.invoiceService.getInvoiceDetailById(invoice.invoiceId);
+                      final paidAt = invoiceDetail?['paidAt'];
+                      
+                      AppLogger.success('[PaidInvoicesDetail] ✅ Tìm thấy invoice detail (fallback từ booking)');
+                      AppLogger.info('[PaidInvoicesDetail] 📄 Invoice Info (fallback):');
+                      AppLogger.info('   - Invoice ID: ${invoice.invoiceId}');
+                      AppLogger.info('   - Service Code: ${invoice.serviceCode}');
+                      AppLogger.info('   - Description: ${invoice.description}');
+                      AppLogger.info('   - Amount: ${invoice.lineTotal.toStringAsFixed(0)} VND');
+                      AppLogger.info('   - Service Date: ${invoice.serviceDate}');
+                      AppLogger.info('   - Quantity: ${invoice.quantity} ${invoice.unit}');
+                      AppLogger.info('   - Unit Price: ${invoice.unitPrice.toStringAsFixed(0)} VND');
+                      if (paidAt != null) {
+                        final paidAtDate = DateTime.parse(paidAt.toString());
+                        AppLogger.info('   - Payment Date: ${paidAtDate.toString()}');
+                      } else {
+                        AppLogger.warning('   - Payment Date: ${widget.item.paymentDate.toString()} (từ serviceDate, có thể không chính xác về thời gian)');
+                      }
                       setState(() {
                         _detailData = {
                           'type': 'invoice',
@@ -1124,18 +1202,23 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
                           'unit': invoice.unit,
                           'unitPrice': invoice.unitPrice,
                           'taxAmount': invoice.taxAmount,
+                          'paidAt': paidAt,
                         };
                       });
                       return;
                     }
                   }
                 }
+                AppLogger.warning('[PaidInvoicesDetail] ⚠️ Không tìm thấy invoice với ID: ${widget.item.id} sau khi fallback');
               } catch (e2) {
-                debugPrint('Error loading invoice detail: $e2');
+                AppLogger.error('[PaidInvoicesDetail] ❌ Lỗi khi load invoice detail (fallback)', e2);
               }
+            } else {
+              AppLogger.warning('[PaidInvoicesDetail] ⚠️ unitId không có, không thể fallback sang invoice');
             }
           }
         case PaidItemType.cleaning:
+          AppLogger.warning('[PaidInvoicesDetail] ⚠️ Cleaning request feature đã bị gỡ bỏ');
           // Cleaning request removed - no longer used
           // Load cleaning request detail
           try {
@@ -1157,16 +1240,33 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
             //   };
             // });
           } catch (e) {
-            debugPrint('Error loading cleaning detail: $e');
+            AppLogger.error('[PaidInvoicesDetail] ❌ Lỗi khi load cleaning detail', e);
           }
         case PaidItemType.repair:
+          AppLogger.debug('[PaidInvoicesDetail] Đang load maintenance request detail với ID: ${widget.item.id}');
           // Load maintenance request detail
           try {
+            AppLogger.debug('[PaidInvoicesDetail] Gọi API getPaidRequests()');
             final requests = await widget.maintenanceRequestService.getPaidRequests();
+            AppLogger.debug('[PaidInvoicesDetail] Nhận được ${requests.length} requests, đang tìm request với ID: ${widget.item.id}');
             final request = requests.firstWhere(
               (r) => r.id == widget.item.id,
               orElse: () => throw Exception('Not found'),
             );
+            AppLogger.success('[PaidInvoicesDetail] ✅ Tìm thấy maintenance request detail');
+            AppLogger.info('[PaidInvoicesDetail] 🔧 Maintenance Request Info:');
+            AppLogger.info('   - Request ID: ${request.id}');
+            AppLogger.info('   - Title: ${request.title}');
+            AppLogger.info('   - Location: ${request.location}');
+            AppLogger.info('   - Status: ${request.status}');
+            final paymentAmount = request.paymentAmount ?? widget.item.amount;
+            AppLogger.info('   - Payment Amount: ${paymentAmount.toStringAsFixed(0)} VND');
+            final paymentDate = request.paymentDate ?? widget.item.paymentDate;
+            AppLogger.info('   - Payment Date: ${paymentDate.toString()}');
+            AppLogger.info('   - Created At: ${request.createdAt}');
+            if (request.note != null && request.note!.isNotEmpty) {
+              AppLogger.info('   - Note: ${request.note}');
+            }
             setState(() {
               _detailData = {
                 'type': 'repair',
@@ -1181,14 +1281,16 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
               };
             });
           } catch (e) {
-            debugPrint('Error loading repair detail: $e');
+            AppLogger.error('[PaidInvoicesDetail] ❌ Lỗi khi load repair detail', e);
           }
       }
     } catch (e) {
+      AppLogger.error('[PaidInvoicesDetail] ❌ Lỗi tổng quát khi load detail', e);
       setState(() {
         _error = e.toString();
       });
     } finally {
+      AppLogger.info('[PaidInvoicesDetail] Hoàn thành load detail (isLoading: false)');
       setState(() {
         _isLoading = false;
       });
@@ -1320,6 +1422,22 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
     );
   }
 
+  /// Helper method to format payment date from detailData or fallback to widget.item.paymentDate
+  String _formatPaymentDate(Map<String, dynamic> data) {
+    // Try to get paidAt from detailData first (has accurate time)
+    if (data['paidAt'] != null) {
+      try {
+        final paidAtStr = data['paidAt'].toString();
+        final paidAtDate = DateTime.parse(paidAtStr);
+        return DateFormat('dd/MM/yyyy HH:mm').format(paidAtDate.toLocal());
+      } catch (e) {
+        // If parsing fails, fallback to widget.item.paymentDate
+      }
+    }
+    // Fallback to widget.item.paymentDate (may have 00:00 time)
+    return DateFormat('dd/MM/yyyy HH:mm').format(widget.item.paymentDate);
+  }
+
   Widget _buildDetailContent(ThemeData theme, ColorScheme colorScheme, bool isDark) {
     if (_detailData == null) {
       return _buildBasicInfo(theme, colorScheme, isDark);
@@ -1361,7 +1479,7 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
           isDark,
           Icons.calendar_today,
           'Ngày thanh toán',
-          DateFormat('dd/MM/yyyy HH:mm').format(widget.item.paymentDate),
+          _formatPaymentDate(_detailData!),
         ),
         if (widget.item.description != null) ...[
           const SizedBox(height: 16),
@@ -1453,7 +1571,7 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
           isDark,
           Icons.calendar_today,
           'Ngày thanh toán',
-          DateFormat('dd/MM/yyyy HH:mm').format(widget.item.paymentDate),
+          _formatPaymentDate(data),
         ),
         if (data['description'] != null && data['description'].toString().isNotEmpty) ...[
           const SizedBox(height: 16),
@@ -1503,7 +1621,7 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
           isDark,
           Icons.calendar_today,
           'Ngày thanh toán',
-          DateFormat('dd/MM/yyyy HH:mm').format(widget.item.paymentDate),
+          _formatPaymentDate(data),
         ),
         if (data['serviceName'] != null) ...[
           const SizedBox(height: 16),

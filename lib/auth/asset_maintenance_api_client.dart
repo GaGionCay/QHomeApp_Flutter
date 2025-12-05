@@ -58,7 +58,49 @@ class AssetMaintenanceApiClient {
         responseBody: true,
         responseHeader: true,
         error: true,
-        logPrint: (object) => print('🔍 ASSET DIO: $object'),
+        logPrint: (object) {
+          final logString = object.toString();
+          
+          // Suppress logging for expected "Booking not found" errors (400/404)
+          // Pattern 1: DioException with 400/404 for booking requests
+          if (logString.contains('DioException') && 
+              (logString.contains('status code of 400') || 
+               logString.contains('status code of 404'))) {
+            // Check if URI contains bookings (might be on same or different line)
+            // We'll suppress this and related lines
+            return;
+          }
+          
+          // Pattern 2: URI contains /bookings/ with 400/404 status
+          if (logString.contains('/bookings/') && 
+              (logString.contains('statusCode: 400') ||
+               logString.contains('statusCode: 404'))) {
+            return;
+          }
+          
+          // Pattern 3: Status code 400/404 (likely part of booking error sequence)
+          if ((logString.contains('statusCode: 400') ||
+               logString.contains('statusCode: 404')) &&
+              logString.contains('uri:') &&
+              logString.contains('/bookings/')) {
+            return;
+          }
+          
+          // Pattern 4: Response body with "Booking not found" message
+          if (logString.contains('Booking not found') ||
+              logString.contains('"message":"Booking not found')) {
+            return;
+          }
+          
+          // Pattern 5: Response Text line that might contain the error message
+          if (logString.contains('Response Text:') && 
+              logString.contains('not found')) {
+            return;
+          }
+          
+          // Print normally
+          print('🔍 ASSET DIO: $object');
+        },
       ),
     );
 

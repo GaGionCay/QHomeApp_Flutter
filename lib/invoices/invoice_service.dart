@@ -210,6 +210,30 @@ class InvoiceService {
     }
   }
 
+  /// Get invoice detail by ID (includes paidAt field)
+  Future<Map<String, dynamic>?> getInvoiceDetailById(String invoiceId) async {
+    try {
+      final client = await _prepareFinanceClient();
+      final res = await client.get('/invoices/$invoiceId');
+      
+      if (res.statusCode != 200) {
+        log('⚠️ [InvoiceService] API trả mã ${res.statusCode}: ${res.data}');
+        return null;
+      }
+
+      final data = res.data;
+      if (data == null) {
+        log('ℹ️ [InvoiceService] Không có invoice detail cho ID: $invoiceId');
+        return null;
+      }
+
+      return Map<String, dynamic>.from(data);
+    } catch (e, s) {
+      log('❌ [InvoiceService] Lỗi getInvoiceDetailById($invoiceId): $e\n$s');
+      return null;
+    }
+  }
+
   Future<String> createVnpayPaymentUrl(String invoiceId, {String? unitId}) async {
     try {
       log('💳 [InvoiceService] Tạo VNPAY URL cho invoice: $invoiceId');
