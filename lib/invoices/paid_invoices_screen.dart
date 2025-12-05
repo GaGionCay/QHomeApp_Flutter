@@ -35,6 +35,7 @@ class PaidItem {
   final IconData icon;
   final Color iconColor;
   final String? unitId; // Store unitId for loading invoice details
+  final DateTime? paidAt; // Accurate payment timestamp from API (optional)
 
   PaidItem({
     required this.id,
@@ -46,7 +47,12 @@ class PaidItem {
     required this.icon,
     required this.iconColor,
     this.unitId,
+    this.paidAt, // Optional: accurate payment timestamp
   });
+  
+  /// Get the most accurate payment date for sorting
+  /// Prefers paidAt (has accurate time) over paymentDate (may have 00:00 time)
+  DateTime get effectivePaymentDate => paidAt ?? paymentDate;
 }
 
 class PaidInvoicesScreen extends StatefulWidget {
@@ -202,6 +208,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
       final maintenanceRequests = await maintenanceRequestsFuture;
 
       final List<PaidItem> items = [];
+      final List<String> invoiceIds = []; // Collect invoice IDs for batch loading paidAt
 
       // Process invoice categories
       for (final category in categories) {
@@ -236,6 +243,8 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
               invoice.serviceCodeDisplay,
             );
             
+            invoiceIds.add(invoice.invoiceId);
+            
             items.add(PaidItem(
               id: invoice.invoiceId,
               type: type,
@@ -250,6 +259,58 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
           }
         }
       }
+      
+      // Batch load paidAt for all invoices to enable accurate sorting by date and time
+      final Map<String, DateTime> paidAtMap = {};
+      if (invoiceIds.isNotEmpty) {
+        AppLogger.debug('[PaidInvoices] Đang batch load paidAt cho ${invoiceIds.length} invoices...');
+        try {
+          // Load paidAt in parallel for better performance
+          final results = await Future.wait(
+            invoiceIds.map((invoiceId) async {
+              try {
+                final invoiceDetail = await _invoiceService.getInvoiceDetailById(invoiceId);
+                if (invoiceDetail?['paidAt'] != null) {
+                  return MapEntry(invoiceId, DateTime.parse(invoiceDetail!['paidAt'].toString()));
+                }
+              } catch (e) {
+                // Ignore errors for individual invoices
+              }
+              return null;
+            }),
+          );
+          
+          for (final result in results) {
+            if (result != null) {
+              paidAtMap[result.key] = result.value;
+            }
+          }
+          
+          AppLogger.debug('[PaidInvoices] Đã load paidAt cho ${paidAtMap.length}/${invoiceIds.length} invoices');
+        } catch (e) {
+          AppLogger.warning('[PaidInvoices] Lỗi khi batch load paidAt: $e');
+        }
+      }
+      
+      // Update items with paidAt for accurate sorting
+      final List<PaidItem> itemsWithPaidAt = items.map((item) {
+        final paidAt = paidAtMap[item.id];
+        if (paidAt != null) {
+          return PaidItem(
+            id: item.id,
+            type: item.type,
+            name: item.name,
+            amount: item.amount,
+            paymentDate: item.paymentDate,
+            description: item.description,
+            icon: item.icon,
+            iconColor: item.iconColor,
+            unitId: item.unitId,
+            paidAt: paidAt, // Accurate payment timestamp
+          );
+        }
+        return item;
+      }).toList();
 
       // Cleaning request removed - no longer used
       // Process cleaning requests
@@ -320,8 +381,12 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
         }
       }
 
-      _allItems = items;
-      return items;
+      // Sort by payment date/time (newest first) by default
+      // Use effectivePaymentDate which prefers paidAt (accurate time) over paymentDate
+      itemsWithPaidAt.sort((a, b) => b.effectivePaymentDate.compareTo(a.effectivePaymentDate));
+      
+      _allItems = itemsWithPaidAt;
+      return itemsWithPaidAt;
     } catch (e) {
       debugPrint('Error loading paid items: $e');
       return [];
@@ -389,11 +454,11 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
     }
     // Custom month filtering can be added later
 
-    // Sort
+    // Sort by payment date/time (using effectivePaymentDate which prefers paidAt)
     if (_sortOption == 'Newest - Oldest') {
-      items.sort((a, b) => b.paymentDate.compareTo(a.paymentDate));
+      items.sort((a, b) => b.effectivePaymentDate.compareTo(a.effectivePaymentDate));
     } else if (_sortOption == 'Oldest - Newest') {
-      items.sort((a, b) => a.paymentDate.compareTo(b.paymentDate));
+      items.sort((a, b) => a.effectivePaymentDate.compareTo(b.effectivePaymentDate));
     } else if (_sortOption == 'Amount high - low') {
       items.sort((a, b) => b.amount.compareTo(a.amount));
     } else if (_sortOption == 'Amount low - high') {
