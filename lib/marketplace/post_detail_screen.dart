@@ -1188,7 +1188,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                   ? const CircularProgressIndicator()
                                   : SmoothAnimations.fadeIn(
                                       child: FilledButton.icon(
-                                        onPressed: () => _loadComments(loadMore: true),
+                                      onPressed: () => _loadComments(loadMore: true),
                                         icon: const Icon(CupertinoIcons.arrow_down, size: 16),
                                         label: const Text('Hiển thị thêm'),
                                         style: FilledButton.styleFrom(
@@ -1215,34 +1215,34 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                     SmoothAnimations.slideIn(
                       slideOffset: const Offset(0, -20),
                       child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
                           vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
+                      ),
+                      decoration: BoxDecoration(
                           color: theme.colorScheme.primaryContainer,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         margin: const EdgeInsets.only(bottom: 8),
-                        child: Row(
-                          children: [
-                            Icon(
+                      child: Row(
+                        children: [
+                          Icon(
                               CupertinoIcons.reply,
-                              size: 16,
-                              color: theme.colorScheme.onPrimaryContainer,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
+                            size: 16,
+                            color: theme.colorScheme.onPrimaryContainer,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
                                 'Đang trả lời ${_replyingToComment!.author?.name ?? 'Người dùng'}',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onPrimaryContainer,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onPrimaryContainer,
+                                fontWeight: FontWeight.w500,
                               ),
+                              overflow: TextOverflow.ellipsis,
                             ),
+                          ),
                             GestureDetector(
                               onTap: () {
                                 setState(() {
@@ -1251,14 +1251,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                 });
                               },
                               child: Icon(
-                                CupertinoIcons.xmark_circle_fill,
-                                size: 20,
-                                color: theme.colorScheme.onPrimaryContainer,
-                              ),
+                              CupertinoIcons.xmark_circle_fill,
+                              size: 20,
+                              color: theme.colorScheme.onPrimaryContainer,
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
+                    ),
                     ),
                   // Comment input container
                   Container(

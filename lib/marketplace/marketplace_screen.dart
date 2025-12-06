@@ -963,23 +963,23 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                   return SmoothAnimations.staggeredItem(
                     index: index,
                     child: _PostCard(
-                      key: ValueKey('${post.id}_${post.commentCount}'),
-                      post: post,
-                      currentResidentId: _currentResidentId,
-                      categories: viewModel.categories,
-                      onTap: () {
-                        Navigator.push(
-                          context,
+                    key: ValueKey('${post.id}_${post.commentCount}'),
+                    post: post,
+                    currentResidentId: _currentResidentId,
+                    categories: viewModel.categories,
+                    onTap: () {
+                      Navigator.push(
+                        context,
                           SmoothPageRoute(
                             page: ChangeNotifierProvider.value(
-                              value: viewModel,
-                              child: PostDetailScreen(post: post),
-                            ),
+                            value: viewModel,
+                            child: PostDetailScreen(post: post),
                           ),
-                        );
-                      },
-                      onAuthorTap: () => _showUserOptions(context, post),
-                      onShareTap: () => _showShareBottomSheet(context, post),
+                        ),
+                      );
+                    },
+                    onAuthorTap: () => _showUserOptions(context, post),
+                    onShareTap: () => _showShareBottomSheet(context, post),
                     ),
                   );
                 },

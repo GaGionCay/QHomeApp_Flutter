@@ -59,16 +59,23 @@ class MarketplaceComment {
   }
 
   // Helper to build absolute image/video URL
-  static String _buildImageUrl(String relativePath) {
+  static String _buildImageUrl(String url) {
     try {
+      // If URL is already absolute (starts with http:// or https://), return as-is
+      // This handles ImageKit URLs and other external URLs
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        print('🔗 [MarketplaceComment] URL is already absolute: $url');
+        return url;
+      }
+      
       // Use ApiClient.activeFileBaseUrl if ApiClient is initialized
       // activeFileBaseUrl is http://host:port (without /api)
       // relativePath is like /api/marketplace/uploads/...
       // So we just concatenate them
       if (ApiClient.isInitialized) {
         final baseUrl = ApiClient.activeFileBaseUrl;
-        // Ensure relativePath starts with /
-        final path = relativePath.startsWith('/') ? relativePath : '/$relativePath';
+        // Ensure url starts with /
+        final path = url.startsWith('/') ? url : '/$url';
         final fullUrl = '$baseUrl$path';
         print('🔗 [MarketplaceComment] Building URL: baseUrl=$baseUrl, path=$path, fullUrl=$fullUrl');
         return fullUrl;
@@ -76,13 +83,17 @@ class MarketplaceComment {
         // Fallback: construct from known pattern
         const host = 'localhost';
         const port = 8989;
-        final path = relativePath.startsWith('/') ? relativePath : '/$relativePath';
+        final path = url.startsWith('/') ? url : '/$url';
         return 'http://$host:$port$path';
       }
     } catch (e) {
       print('⚠️ [MarketplaceComment] Error in _buildImageUrl: $e');
+      // If URL is already absolute, return as-is even on error
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        return url;
+      }
       // Fallback: assume localhost:8989
-      final path = relativePath.startsWith('/') ? relativePath : '/$relativePath';
+      final path = url.startsWith('/') ? url : '/$url';
       return 'http://localhost:8989$path';
     }
   }
