@@ -236,9 +236,26 @@ class _HomeScreenState extends State<HomeScreen> {
     } on DioException catch (e) {
       final statusCode = e.response?.statusCode;
       
-      // Handle 401 Unauthorized - user needs to login again
+      // Handle 401 Unauthorized - token expired, will be handled by ApiClient interceptor
+      // But if it reaches here, it means refresh failed or no refresh token
       if (statusCode == 401) {
-        debugPrint('⚠️ [HomeScreen] Load unit context: 401 Unauthorized - User needs to login again');
+        debugPrint('⚠️ [HomeScreen] Load unit context: 401 Unauthorized - Token expired');
+        debugPrint('⚠️ [HomeScreen] ApiClient interceptor should handle this, but if it reaches here, refresh failed');
+        if (mounted) {
+          setState(() {
+            _units = [];
+            _selectedUnitId = null;
+          });
+        }
+        // Don't show snackbar here - AuthProvider will handle logout and navigation
+        return;
+      }
+      
+      // Handle 403 Forbidden - could be token expired or permission issue
+      // If all APIs fail with 403, it's likely token expired
+      if (statusCode == 403) {
+        debugPrint('⚠️ [HomeScreen] Load unit context: 403 Forbidden');
+        debugPrint('⚠️ [HomeScreen] If all APIs return 403, token may be expired');
         if (mounted) {
           setState(() {
             _units = [];
@@ -249,27 +266,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SnackBar(
               content: Text('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'),
               backgroundColor: Colors.orange,
-              duration: Duration(seconds: 5),
-            ),
-          );
-        }
-        return;
-      }
-      
-      // Handle 403 Forbidden - user doesn't have permission
-      if (statusCode == 403) {
-        debugPrint('⚠️ [HomeScreen] Load unit context: 403 Forbidden - User does not have permission');
-        if (mounted) {
-          setState(() {
-            _units = [];
-            _selectedUnitId = null;
-          });
-          // Show user-friendly message
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Bạn không có quyền truy cập thông tin này. Vui lòng liên hệ quản trị viên.'),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 5),
+              duration: Duration(seconds: 3),
             ),
           );
         }

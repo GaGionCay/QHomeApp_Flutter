@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
+import '../core/event_bus.dart';
 import 'auth_service.dart';
 import 'backend_discovery_service.dart';
 import 'token_storage.dart';
@@ -504,6 +505,8 @@ class ApiClient {
               print('⚠️ No refresh token available. User will need to login again.');
               // Only delete session data, keep fingerprint credentials
               await _storage.deleteSessionData();
+              // Emit event to trigger logout and redirect to login
+              AppEventBus().emit('auth_token_expired', {'reason': 'no_refresh_token'});
             } else {
               print('⚠️ Token refresh already in progress. Retrying request...');
             }
@@ -521,14 +524,31 @@ class ApiClient {
               return handler.resolve(clonedResponse);
             }
           } on DioException catch (e) {
-            // Don't auto-logout immediately on refresh failure
-            // Token might be temporarily expired during payment callback
-            // User can continue using app, and will be logged out naturally on next critical request
-            print('⚠️ REFRESH FAILED: ${e.message}');
-            print('⚠️ User session may be expired. Will retry on next request.');
-            // Don't delete tokens immediately - allow user to continue
-            // Tokens will be cleared naturally if refresh continues to fail
+            // Check if refresh token itself is expired (401 or 403 from refresh endpoint)
+            final refreshStatusCode = e.response?.statusCode;
+            if (refreshStatusCode == 401 || refreshStatusCode == 403) {
+              print('⚠️ REFRESH TOKEN EXPIRED: ${e.message}');
+              print('⚠️ User session expired. Logging out...');
+              // Delete session data and emit event to trigger logout
+              await _storage.deleteSessionData();
+              AppEventBus().emit('auth_token_expired', {'reason': 'refresh_token_expired'});
+            } else {
+              // Other errors - might be temporary network issue
+              // But if refresh fails multiple times, it's likely expired
+              print('⚠️ REFRESH FAILED: ${e.message}');
+              print('⚠️ User session may be expired. Emitting auth_token_expired event...');
+              // Emit event to trigger logout - better to logout than keep trying
+              await _storage.deleteSessionData();
+              AppEventBus().emit('auth_token_expired', {'reason': 'refresh_failed'});
+            }
             return handler.next(e);
+          } catch (e) {
+            // Any other error during refresh - treat as expired
+            print('⚠️ REFRESH ERROR: ${e.toString()}');
+            print('⚠️ User session expired. Logging out...');
+            await _storage.deleteSessionData();
+            AppEventBus().emit('auth_token_expired', {'reason': 'refresh_error'});
+            return handler.next(err);
           } finally {
             isRefreshing = false;
           }

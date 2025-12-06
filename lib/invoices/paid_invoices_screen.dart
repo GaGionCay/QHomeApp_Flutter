@@ -23,6 +23,7 @@ enum PaidItemType {
   utility,
   cleaning,
   repair,
+  contractRenewal,
 }
 
 class PaidItem {
@@ -123,7 +124,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
 
   List<UnitInfo> _units = [];
   String? _selectedUnitId;
-  String _selectedMonth = 'This month';
+  String _selectedMonth = 'All time';
   String _sortOption = 'Newest - Oldest';
   List<PaidItem> _allItems = [];
   bool _isLoading = false;
@@ -143,7 +144,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
         ? List<UnitInfo>.from(widget.initialUnits!)
         : <UnitInfo>[];
     _selectedUnitId = widget.initialUnitId;
-    _tabController = TabController(length: 6, vsync: this);
+    _tabController = TabController(length: 7, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
         setState(() {
@@ -174,6 +175,8 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
         return PaidItemType.cleaning;
       case 5:
         return PaidItemType.repair;
+      case 6:
+        return PaidItemType.contractRenewal;
       default:
         return PaidItemType.electricity;
     }
@@ -207,35 +210,74 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
       await cleaningRequestsFuture; // Just await to avoid unused variable warning
       final maintenanceRequests = await maintenanceRequestsFuture;
 
+      debugPrint('🔍 [PaidInvoices] Loaded ${categories.length} categories');
+      for (final category in categories) {
+        debugPrint('   - Category: ${category.categoryCode} (${category.categoryName}) - ${category.invoices.length} invoices');
+      }
+
       final List<PaidItem> items = [];
       final List<String> invoiceIds = []; // Collect invoice IDs for batch loading paidAt
 
       // Process invoice categories
       for (final category in categories) {
         for (final invoice in category.invoices) {
-          if (!invoice.isPaid) continue;
+          if (!invoice.isPaid) {
+            debugPrint('⚠️ [PaidInvoices] Skipping unpaid invoice: ${invoice.invoiceId}');
+            continue;
+          }
+          
+          debugPrint('🔍 [PaidInvoices] Processing invoice: ${invoice.invoiceId}, serviceCode: ${invoice.serviceCode}');
 
           PaidItemType? type;
           IconData icon;
           Color iconColor;
 
-          switch (invoice.serviceCode.toUpperCase()) {
+          final serviceCodeUpper = invoice.serviceCode.toUpperCase();
+          debugPrint('   - ServiceCode (upper): $serviceCodeUpper');
+          
+          switch (serviceCodeUpper) {
             case 'ELECTRIC':
             case 'ELECTRICITY':
               type = PaidItemType.electricity;
               icon = Icons.bolt;
               iconColor = const Color(0xFFFFD700);
+              debugPrint('   - Mapped to: electricity');
             case 'WATER':
               type = PaidItemType.water;
               icon = Icons.water_drop;
               iconColor = const Color(0xFF4A90E2);
+              debugPrint('   - Mapped to: water');
+            case 'CONTRACT_RENEWAL':
+            case 'CONTRACT':
+              type = PaidItemType.contractRenewal;
+              icon = Icons.description;
+              iconColor = const Color(0xFF9B59B6);
+              debugPrint('   - Mapped to: contractRenewal');
+            case 'VEHICLE_CARD':
+            case 'ELEVATOR_CARD':
+            case 'RESIDENT_CARD':
+              // Card payments - map to utility category
+              type = PaidItemType.utility;
+              if (serviceCodeUpper.contains('VEHICLE')) {
+                icon = Icons.directions_car;
+              } else if (serviceCodeUpper.contains('ELEVATOR')) {
+                icon = Icons.elevator;
+              } else if (serviceCodeUpper.contains('RESIDENT')) {
+                icon = Icons.badge;
+              } else {
+                icon = Icons.credit_card;
+              }
+              iconColor = const Color(0xFF7EC8E3);
+              debugPrint('   - Mapped to: utility (card payment)');
             default:
               type = PaidItemType.utility;
               icon = Icons.home;
               iconColor = const Color(0xFF7EC8E3);
+              debugPrint('   - Mapped to: utility (default)');
           }
 
           final paymentDate = _parsePaymentDate(invoice.serviceDate);
+          debugPrint('   - serviceDate: ${invoice.serviceDate}, parsed paymentDate: $paymentDate');
           if (paymentDate != null) {
             // Map serviceCode to display name
             final displayName = _mapServiceCodeToDisplayName(
@@ -243,6 +285,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
               invoice.serviceCodeDisplay,
             );
             
+            debugPrint('   - Adding item: $displayName (${type.name}) - ${invoice.lineTotal} VND');
             invoiceIds.add(invoice.invoiceId);
             
             items.add(PaidItem(
@@ -256,6 +299,8 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
               iconColor: iconColor,
               unitId: unitIdForRequest.isNotEmpty ? unitIdForRequest : null,
             ));
+          } else {
+            debugPrint('⚠️ [PaidInvoices] Skipping invoice ${invoice.invoiceId} - paymentDate is null (serviceDate: ${invoice.serviceDate})');
           }
         }
       }
@@ -384,7 +429,12 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
       // Sort by payment date/time (newest first) by default
       // Use effectivePaymentDate which prefers paidAt (accurate time) over paymentDate
       itemsWithPaidAt.sort((a, b) => b.effectivePaymentDate.compareTo(a.effectivePaymentDate));
-      
+
+      debugPrint('✅ [PaidInvoices] Total items after processing: ${itemsWithPaidAt.length}');
+      for (final item in itemsWithPaidAt) {
+        debugPrint('   - Item: ${item.name} (${item.type.name}) - ${item.amount} VND');
+      }
+
       _allItems = itemsWithPaidAt;
       return itemsWithPaidAt;
     } catch (e) {
@@ -423,11 +473,16 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
 
   List<PaidItem> _getFilteredItems() {
     var items = List<PaidItem>.from(_allItems);
+    debugPrint('🔍 [PaidInvoices] _getFilteredItems: Starting with ${items.length} items');
+    debugPrint('   - Tab index: ${_tabController.index}');
+    debugPrint('   - Selected month: $_selectedMonth');
 
     // Filter by category (All = show all, index 0)
     if (_tabController.index != 0) {
       final category = _getCategoryFromIndex(_tabController.index);
+      debugPrint('   - Filtering by category: ${category.name}');
       items = items.where((item) => item.type == category).toList();
+      debugPrint('   - After category filter: ${items.length} items');
     }
 
     // Filter by month
@@ -436,21 +491,35 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
     final lastMonth = DateTime(now.year, now.month - 1);
 
     if (_selectedMonth == 'This month') {
+      debugPrint('   - Filtering by this month: ${thisMonth.year}-${thisMonth.month}');
       items = items.where((item) {
         final itemMonth = DateTime(
-          item.paymentDate.year,
-          item.paymentDate.month,
+          item.effectivePaymentDate.year,
+          item.effectivePaymentDate.month,
         );
-        return itemMonth.isAtSameMomentAs(thisMonth);
+        final matches = itemMonth.isAtSameMomentAs(thisMonth);
+        if (!matches) {
+          debugPrint('     - Item ${item.name} (${item.effectivePaymentDate}) does not match this month');
+        }
+        return matches;
       }).toList();
+      debugPrint('   - After month filter: ${items.length} items');
     } else if (_selectedMonth == 'Last month') {
+      debugPrint('   - Filtering by last month: ${lastMonth.year}-${lastMonth.month}');
       items = items.where((item) {
         final itemMonth = DateTime(
-          item.paymentDate.year,
-          item.paymentDate.month,
+          item.effectivePaymentDate.year,
+          item.effectivePaymentDate.month,
         );
-        return itemMonth.isAtSameMomentAs(lastMonth);
+        final matches = itemMonth.isAtSameMomentAs(lastMonth);
+        if (!matches) {
+          debugPrint('     - Item ${item.name} (${item.effectivePaymentDate}) does not match last month');
+        }
+        return matches;
       }).toList();
+      debugPrint('   - After month filter: ${items.length} items');
+    } else if (_selectedMonth == 'All time') {
+      debugPrint('   - Showing all items (no month filter)');
     }
     // Custom month filtering can be added later
 
@@ -465,6 +534,11 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
       items.sort((a, b) => a.amount.compareTo(b.amount));
     }
 
+    debugPrint('✅ [PaidInvoices] _getFilteredItems: Returning ${items.length} items');
+    for (final item in items) {
+      debugPrint('   - Item: ${item.name} (${item.type.name}) - ${item.amount} VND - ${item.paymentDate}');
+    }
+
     return items;
   }
 
@@ -473,9 +547,10 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
     final thisMonth = DateTime(now.year, now.month);
     return _allItems
         .where((item) {
+          // Use effectivePaymentDate (prefers paidAt over paymentDate)
           final itemMonth = DateTime(
-            item.paymentDate.year,
-            item.paymentDate.month,
+            item.effectivePaymentDate.year,
+            item.effectivePaymentDate.month,
           );
           return itemMonth.isAtSameMomentAs(thisMonth);
         })
@@ -488,9 +563,11 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
     final breakdown = <PaidItemType, double>{};
 
     for (final item in _allItems) {
+      // Use effectivePaymentDate (prefers paidAt over paymentDate)
+      // Include all types: electricity, water, contract renewal, cards, utility, etc.
       final itemMonth = DateTime(
-        item.paymentDate.year,
-        item.paymentDate.month,
+        item.effectivePaymentDate.year,
+        item.effectivePaymentDate.month,
       );
       if (itemMonth.isAtSameMomentAs(thisMonth)) {
         breakdown[item.type] = (breakdown[item.type] ?? 0.0) + item.amount;
@@ -730,6 +807,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
           Tab(text: 'Tiện ích'),
           Tab(text: 'Dọn dẹp'),
           Tab(text: 'Sửa chữa'),
+          Tab(text: 'Gia hạn hợp đồng'),
         ],
       ),
     );
@@ -755,6 +833,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
                   ),
                   style: theme.textTheme.bodyMedium,
                   items: const [
+                    DropdownMenuItem(value: 'All time', child: Text('Tất cả thời gian')),
                     DropdownMenuItem(value: 'This month', child: Text('Tháng này')),
                     DropdownMenuItem(value: 'Last month', child: Text('Tháng trước')),
                     DropdownMenuItem(value: 'Custom', child: Text('Tùy chọn')),
@@ -1038,6 +1117,8 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
         return 'Dọn dẹp';
       case PaidItemType.repair:
         return 'Sửa chữa';
+      case PaidItemType.contractRenewal:
+        return 'Gia hạn hợp đồng';
     }
   }
 
@@ -1053,6 +1134,8 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
         return const Color(0xFF24D1C4);
       case PaidItemType.repair:
         return const Color(0xFFFF6B6B);
+      case PaidItemType.contractRenewal:
+        return const Color(0xFF9B59B6);
     }
   }
 
@@ -1128,6 +1211,7 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
       switch (widget.item.type) {
         case PaidItemType.electricity:
         case PaidItemType.water:
+        case PaidItemType.contractRenewal:
           AppLogger.debug('[PaidInvoicesDetail] Đang load invoice detail cho ${widget.item.type.name}...');
           // Load invoice detail for electricity/water
           if (widget.item.unitId != null && widget.item.unitId!.isNotEmpty) {
@@ -1143,6 +1227,10 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
                     // Get full invoice detail to get paidAt
                     AppLogger.debug('[PaidInvoicesDetail] Đang lấy invoice detail đầy đủ để lấy paidAt...');
                     final invoiceDetail = await widget.invoiceService.getInvoiceDetailById(invoice.invoiceId);
+                    
+                    AppLogger.debug('[PaidInvoicesDetail] Invoice detail keys: ${invoiceDetail?.keys.toList()}');
+                    AppLogger.debug('[PaidInvoicesDetail] Invoice detail paidAt: ${invoiceDetail?['paidAt']}');
+                    
                     final paidAt = invoiceDetail?['paidAt'];
                     
                     AppLogger.success('[PaidInvoicesDetail] ✅ Tìm thấy invoice detail cho ${widget.item.type.name}');
@@ -1156,9 +1244,10 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
                     AppLogger.info('   - Unit Price: ${invoice.unitPrice.toStringAsFixed(0)} VND');
                     if (paidAt != null) {
                       final paidAtDate = DateTime.parse(paidAt.toString());
-                      AppLogger.info('   - Payment Date: ${paidAtDate.toString()}');
+                      AppLogger.info('   - Payment Date (paidAt): ${paidAtDate.toString()}');
                     } else {
-                      AppLogger.warning('   - Payment Date: ${widget.item.paymentDate.toString()} (từ serviceDate, có thể không chính xác về thời gian)');
+                      AppLogger.warning('   - Payment Date: ${widget.item.paymentDate.toString()} (từ serviceDate, paidAt không có trong response)');
+                      AppLogger.warning('   - Invoice Status: ${invoiceDetail?['status']}');
                     }
                     setState(() {
                       _detailData = {

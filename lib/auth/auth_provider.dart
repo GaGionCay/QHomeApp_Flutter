@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +6,7 @@ import 'package:jwt_decoder/jwt_decoder.dart';
 
 import '../contracts/contract_service.dart';
 import '../core/app_router.dart';
+import '../core/event_bus.dart';
 import '../core/push_notification_service.dart';
 import '../models/unit_info.dart';
 import '../profile/profile_service.dart';
@@ -17,6 +19,7 @@ class AuthProvider extends ChangeNotifier {
   late final ApiClient apiClient;
   late final AuthService authService;
   final TokenStorage storage = TokenStorage();
+  StreamSubscription? _tokenExpiredSubscription;
 
   bool _isAuthenticated = false;
   bool _isLoading = true;
@@ -25,6 +28,55 @@ class AuthProvider extends ChangeNotifier {
 
   AuthProvider() {
     _init();
+    _setupTokenExpiredListener();
+  }
+
+  /// Setup listener for token expired events
+  void _setupTokenExpiredListener() {
+    _tokenExpiredSubscription = AppEventBus().on('auth_token_expired', (data) async {
+      debugPrint('🔔 [AuthProvider] Received auth_token_expired event: $data');
+      await _handleTokenExpired();
+    });
+  }
+
+  /// Handle token expired - logout and redirect to login
+  Future<void> _handleTokenExpired() async {
+    if (!_isAuthenticated) {
+      debugPrint('⚠️ [AuthProvider] Already logged out, skipping...');
+      return;
+    }
+
+    debugPrint('🔐 [AuthProvider] Token expired, logging out...');
+    
+    try {
+      // Unregister push token
+      try {
+        await PushNotificationService.instance.unregisterToken();
+      } catch (e) {
+        debugPrint('⚠️ Unregister token error: $e');
+      }
+      
+      // Delete session data (keep biometric credentials)
+      await storage.deleteSessionData();
+      _isAuthenticated = false;
+      notifyListeners();
+      
+      // Navigate to login using GoRouter (no context needed)
+      try {
+        debugPrint('🔐 [AuthProvider] Navigating to login screen...');
+        AppRouter.router.go(AppRoute.login.path);
+      } catch (e) {
+        debugPrint('⚠️ [AuthProvider] Error navigating to login: $e');
+      }
+    } catch (e) {
+      debugPrint('❌ [AuthProvider] Error handling token expiration: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _tokenExpiredSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _init() async {
