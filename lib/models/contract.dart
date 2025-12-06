@@ -18,6 +18,12 @@ class ContractDto {
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final String? updatedBy;
+  final DateTime? renewalReminderSentAt;
+  final DateTime? renewalDeclinedAt;
+  final String? renewalStatus; // PENDING, REMINDED, DECLINED
+  final int? reminderCount; // 1, 2, or 3
+  final bool? isFinalReminder; // true if reminderCount == 3
+  final double? totalRent; // Calculated total rent
   final List<ContractFileDto> files;
 
   ContractDto({
@@ -38,6 +44,12 @@ class ContractDto {
     this.createdAt,
     this.updatedAt,
     this.updatedBy,
+    this.renewalReminderSentAt,
+    this.renewalDeclinedAt,
+    this.renewalStatus,
+    this.reminderCount,
+    this.isFinalReminder,
+    this.totalRent,
     this.files = const [],
   });
 
@@ -85,9 +97,20 @@ class ContractDto {
       createdAt: parseDate(json['createdAt']),
       updatedAt: parseDate(json['updatedAt']),
       updatedBy: json['updatedBy']?.toString(),
+      renewalReminderSentAt: parseDate(json['renewalReminderSentAt']),
+      renewalDeclinedAt: parseDate(json['renewalDeclinedAt']),
+      renewalStatus: json['renewalStatus']?.toString(),
+      reminderCount: json['reminderCount'] is int
+          ? json['reminderCount'] as int
+          : int.tryParse(json['reminderCount']?.toString() ?? ''),
+      isFinalReminder: json['isFinalReminder'] == true,
+      totalRent: parseDouble(json['totalRent']),
       files: parseFiles(json['files']),
     );
   }
+
+  bool get needsRenewalReminder => renewalStatus == 'REMINDED' && status == 'ACTIVE';
+  bool get isRental => contractType == 'RENTAL';
 
   String get formattedStartDate {
     final date = startDate;

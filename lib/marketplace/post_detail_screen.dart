@@ -95,6 +95,16 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     return total;
   }
 
+  /// Check if current user can edit a comment
+  /// Returns true if:
+  /// - Current user is the comment owner
+  bool _canEditComment(MarketplaceComment comment) {
+    final currentResidentId = _currentResidentId;
+    if (currentResidentId == null) return false;
+    // Comment owner can edit their own comment
+    return comment.residentId == currentResidentId && !comment.isDeleted;
+  }
+
   /// Check if current user can delete a comment
   /// Returns true if:
   /// - Current user is the post owner, OR
@@ -163,6 +173,67 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       }
     }
     return false;
+  }
+
+  /// Edit a comment
+  Future<void> _editComment(BuildContext context, MarketplaceComment comment) async {
+    final textController = TextEditingController(text: comment.content);
+    
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Chỉnh sửa bình luận'),
+        content: TextField(
+          controller: textController,
+          autofocus: true,
+          maxLines: 5,
+          decoration: const InputDecoration(
+            hintText: 'Nhập nội dung bình luận...',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () {
+              final newContent = textController.text.trim();
+              if (newContent.isNotEmpty) {
+                Navigator.pop(context, newContent);
+              }
+            },
+            child: const Text('Lưu'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty && context.mounted) {
+      try {
+        await _marketplaceService.updateComment(widget.post.id, comment.id, result);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Đã chỉnh sửa bình luận'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          // Refresh comments
+          await _loadComments();
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi khi chỉnh sửa bình luận: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
   }
 
   /// Delete a comment
@@ -2036,29 +2107,57 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                             ],
                           ),
                         ),
-                        // Delete button (only show if user is post owner or comment owner)
-                        if (_canDeleteComment(comment)) ...[
+                        // Menu 3 chấm (only show if user is post owner or comment owner)
+                        if (_canDeleteComment(comment) || _canEditComment(comment)) ...[
                           const SizedBox(width: 16),
-                          InkWell(
-                            onTap: () => _showDeleteCommentDialog(context, comment),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  CupertinoIcons.delete,
-                                  size: 16,
-                                  color: Colors.red,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Xóa',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: Colors.red,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
+                          PopupMenuButton<String>(
+                            icon: Icon(
+                              CupertinoIcons.ellipsis,
+                              size: 16,
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                             ),
+                            onSelected: (value) async {
+                              if (value == 'edit') {
+                                await _editComment(context, comment);
+                              } else if (value == 'delete') {
+                                await _showDeleteCommentDialog(context, comment);
+                              }
+                            },
+                            itemBuilder: (context) {
+                              final items = <PopupMenuEntry<String>>[];
+                              if (_canEditComment(comment)) {
+                                items.add(
+                                  const PopupMenuItem(
+                                    value: 'edit',
+                                    child: Row(
+                                      children: [
+                                        Icon(CupertinoIcons.pencil, size: 18, color: Colors.blue),
+                                        SizedBox(width: 8),
+                                        Text('Chỉnh sửa'),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }
+                              if (_canEditComment(comment) && _canDeleteComment(comment)) {
+                                items.add(const PopupMenuDivider());
+                              }
+                              if (_canDeleteComment(comment)) {
+                                items.add(
+                                  const PopupMenuItem(
+                                    value: 'delete',
+                                    child: Row(
+                                      children: [
+                                        Icon(CupertinoIcons.delete, size: 18, color: Colors.red),
+                                        SizedBox(width: 8),
+                                        Text('Xóa', style: TextStyle(color: Colors.red)),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }
+                              return items;
+                            },
                           ),
                         ],
                       ],

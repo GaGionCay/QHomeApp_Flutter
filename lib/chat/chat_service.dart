@@ -624,6 +624,24 @@ class ChatService {
     }
   }
 
+  /// Edit direct message
+  Future<DirectMessage> editDirectMessage({
+    required String conversationId,
+    required String messageId,
+    required String content,
+  }) async {
+    try {
+      final apiClient = ApiClient();
+      final response = await apiClient.dio.put(
+        '/direct-chat/conversations/$conversationId/messages/$messageId',
+        data: content,
+      );
+      return DirectMessage.fromJson(response.data);
+    } catch (e) {
+      throw Exception('Lỗi khi chỉnh sửa tin nhắn: ${e.toString()}');
+    }
+  }
+
   /// Delete direct message
   /// deleteType: 'FOR_ME' (only for current user) or 'FOR_EVERYONE' (for everyone)
   Future<void> deleteDirectMessage({

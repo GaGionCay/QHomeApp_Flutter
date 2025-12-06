@@ -8,11 +8,15 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:dio/dio.dart';
 import '../auth/api_client.dart';
 import '../core/event_bus.dart';
 import '../news/news_screen.dart';
 import '../profile/profile_service.dart';
 import '../contracts/contract_service.dart';
+import '../contracts/contract_reminder_popup.dart';
+import '../contracts/contract_list_screen.dart';
+import '../models/contract.dart';
 import '../invoices/invoice_list_screen.dart';
 import '../invoices/paid_invoices_screen.dart';
 import '../invoices/invoice_service.dart';
@@ -203,6 +207,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadUnitContext() async {
     try {
+      // Small delay to ensure token is ready (especially after hot reload)
+      await Future.delayed(const Duration(milliseconds: 100));
       final units = await _contractService.getMyUnits();
       final prefs = await SharedPreferences.getInstance();
       final savedUnitId = prefs.getString(_selectedUnitPrefsKey);
@@ -226,6 +232,56 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (nextSelected != null && nextSelected != savedUnitId) {
         await prefs.setString(_selectedUnitPrefsKey, nextSelected);
+      }
+    } on DioException catch (e) {
+      final statusCode = e.response?.statusCode;
+      
+      // Handle 401 Unauthorized - user needs to login again
+      if (statusCode == 401) {
+        debugPrint('⚠️ [HomeScreen] Load unit context: 401 Unauthorized - User needs to login again');
+        if (mounted) {
+          setState(() {
+            _units = [];
+            _selectedUnitId = null;
+          });
+          // Show user-friendly message
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+        return;
+      }
+      
+      // Handle 403 Forbidden - user doesn't have permission
+      if (statusCode == 403) {
+        debugPrint('⚠️ [HomeScreen] Load unit context: 403 Forbidden - User does not have permission');
+        if (mounted) {
+          setState(() {
+            _units = [];
+            _selectedUnitId = null;
+          });
+          // Show user-friendly message
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Bạn không có quyền truy cập thông tin này. Vui lòng liên hệ quản trị viên.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+        return;
+      }
+      
+      debugPrint('⚠️ Load unit context error: $e');
+      if (mounted) {
+        setState(() {
+          _units = [];
+          _selectedUnitId = null;
+        });
       }
     } catch (e) {
       debugPrint('⚠️ Load unit context error: $e');
@@ -272,8 +328,104 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _loading = false);
     }
 
+    // Check for contract renewal reminders after loading
+    await _checkContractReminders();
+
     // Cleaning request removed - no longer used
     // await _loadCleaningRequestState();
+  }
+
+  /// Check if popup has been shown for this contract reminder
+  Future<bool> _hasShownPopupForContract(ContractDto contract) async {
+    if (contract.renewalReminderSentAt == null) {
+      return false;
+    }
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'contract_reminder_shown_${contract.id}_${contract.renewalReminderSentAt!.millisecondsSinceEpoch}';
+      final shownTimestamp = prefs.getString(key);
+      
+      return shownTimestamp != null;
+    } catch (e) {
+      debugPrint('⚠️ [ContractReminder] Error checking popup status: $e');
+      return false; // If error, show popup to be safe
+    }
+  }
+
+  /// Mark popup as shown for this contract reminder
+  Future<void> _markPopupAsShown(ContractDto contract) async {
+    if (contract.renewalReminderSentAt == null) {
+      return;
+    }
+    
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'contract_reminder_shown_${contract.id}_${contract.renewalReminderSentAt!.millisecondsSinceEpoch}';
+    await prefs.setString(key, DateTime.now().toIso8601String());
+    debugPrint('✅ [ContractReminder] Marked popup as shown for contract: ${contract.contractNumber}');
+  }
+
+  Future<void> _checkContractReminders() async {
+    if (_selectedUnitId == null) {
+      debugPrint('⚠️ [ContractReminder] _selectedUnitId is null, skipping check');
+      return;
+    }
+
+    debugPrint('🔍 [ContractReminder] Checking reminders for unitId: $_selectedUnitId');
+
+    try {
+      final contractsNeedingPopup = await _contractService.getContractsNeedingPopup(_selectedUnitId!);
+      debugPrint('🔍 [ContractReminder] Found ${contractsNeedingPopup.length} contract(s) needing popup');
+      
+      if (contractsNeedingPopup.isNotEmpty) {
+        for (var contract in contractsNeedingPopup) {
+          debugPrint('📋 [ContractReminder] Contract: ${contract.contractNumber}, renewalStatus: ${contract.renewalStatus}, reminderSentAt: ${contract.renewalReminderSentAt}, isFinalReminder: ${contract.isFinalReminder}');
+        }
+      }
+      
+      // Filter contracts that haven't been shown yet
+      final contractsToShow = <ContractDto>[];
+      for (var contract in contractsNeedingPopup) {
+        final hasShown = await _hasShownPopupForContract(contract);
+        if (!hasShown) {
+          contractsToShow.add(contract);
+          debugPrint('✅ [ContractReminder] Contract ${contract.contractNumber} needs popup (not shown yet)');
+        } else {
+          debugPrint('⏭️ [ContractReminder] Contract ${contract.contractNumber} already shown, skipping');
+        }
+      }
+      
+      if (contractsToShow.isNotEmpty && mounted) {
+        // Show popup for first contract needing reminder
+        final contract = contractsToShow.first;
+        debugPrint('✅ [ContractReminder] Showing popup for contract: ${contract.contractNumber}');
+        
+        // Mark as shown immediately to prevent duplicate popups
+        await _markPopupAsShown(contract);
+        
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            showDialog(
+              context: context,
+              barrierDismissible: contract.isFinalReminder != true,
+              builder: (context) => ContractReminderPopup(
+                contract: contract,
+                contractService: _contractService,
+                onDismiss: () {
+                  // After dismissing, check if there are more contracts
+                  _checkContractReminders();
+                },
+              ),
+            );
+          }
+        });
+      } else {
+        debugPrint('⚠️ [ContractReminder] No contracts needing popup or widget not mounted');
+      }
+    } catch (e) {
+      debugPrint('❌ [ContractReminder] Error checking contract reminders: $e');
+      debugPrint('❌ [ContractReminder] Stack trace: ${StackTrace.current}');
+    }
   }
 
   // Cleaning request removed - no longer used
@@ -1021,12 +1173,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                 const SizedBox(height: 24),
                                 _buildFeatureGrid(media.size),
                                 const SizedBox(height: 24),
+                                _buildContractManagementCard(context),
+                                const SizedBox(height: 24),
                                 _buildServiceDeck(context),
                                 const SizedBox(height: 24),
                                 if (_unpaidBookingCount > 0)
                                   _buildUnpaidSummaryCard(context),
                                 if (_unpaidBookingCount > 0)
-                                  const SizedBox(height: 24),
+                                const SizedBox(height: 24),
                                 if (_ownerUnits.isNotEmpty)
                                   _buildHouseholdManagementCard(media.size),
                                 if (_ownerUnits.isNotEmpty)
@@ -1757,6 +1911,77 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 4),
                   Text(
                     'Trò chuyện với cư dân trong tòa nhà',
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Icon(
+              CupertinoIcons.right_chevron,
+              size: 18,
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContractManagementCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+
+    return _HomeGlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () async {
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const ContractListScreen(),
+            ),
+          );
+          // Refresh after returning
+          await _checkContractReminders();
+        },
+        child: Row(
+          children: [
+            Container(
+              height: 56,
+              width: 56,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppColors.primaryBlue,
+                    AppColors.primaryBlue.withValues(alpha: 0.8),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: AppColors.subtleShadow,
+              ),
+              child: const Icon(
+                CupertinoIcons.doc_text_fill,
+                color: Colors.white,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Quản lý hợp đồng',
+                    style: textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Xem và gia hạn hợp đồng thuê',
                     style: textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
                     ),

@@ -26,6 +26,7 @@ import 'group_files_screen.dart';
 import '../marketplace/post_detail_screen.dart';
 import '../marketplace/marketplace_service.dart';
 import 'linkable_text_widget.dart';
+import '../widgets/animations/smooth_animations.dart';
 
 class ChatScreen extends StatefulWidget {
   final String groupId;
@@ -965,8 +966,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   onPressed: () async {
                     await Navigator.push(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => GroupFilesScreen(
+                      SmoothPageRoute(
+                        page: GroupFilesScreen(
                           groupId: widget.groupId,
                           groupName: viewModel.groupName ?? 'Nhóm chat',
                         ),
@@ -996,8 +997,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     if (value == 'members') {
                       await Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => GroupMembersScreen(groupId: widget.groupId),
+                        SmoothPageRoute(
+                          page: GroupMembersScreen(groupId: widget.groupId),
                         ),
                       );
                     } else if (value == 'rename') {
@@ -1126,7 +1127,9 @@ class _ChatScreenState extends State<ChatScreen> {
                           message: message,
                         );
                       }
-                      return _MessageBubble(
+                      return SmoothAnimations.staggeredItem(
+                        index: index,
+                        child: _MessageBubble(
                         key: messageKey,
                         message: message,
                         currentResidentId: viewModel.currentResidentId,
@@ -1139,6 +1142,10 @@ class _ChatScreenState extends State<ChatScreen> {
                         onDeepLinkTap: (deepLink) {
                           _handleDeepLink(deepLink);
                         },
+                        onMessageLongPress: () {
+                          _showMessageOptionsBottomSheet(context, message, viewModel);
+                        },
+                        ),
                       );
                     },
                   );
@@ -1178,8 +1185,8 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (context) => PostDetailScreen(post: post),
+          SmoothPageRoute(
+            page: PostDetailScreen(post: post),
           ),
         );
       }
@@ -1199,8 +1206,8 @@ class _ChatScreenState extends State<ChatScreen> {
     if (message.imageUrl == null) return;
     
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => _FullScreenImageViewer(
+      SmoothPageRoute(
+        page: _FullScreenImageViewer(
           imageUrl: _buildFullUrl(message.imageUrl!),
           message: message,
           onLongPress: () {
@@ -1210,6 +1217,158 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _showMessageOptionsBottomSheet(BuildContext context, ChatMessage message, ChatMessageViewModel viewModel) async {
+    // Only allow edit/delete for messages sent by current user
+    final isMyMessage = viewModel.currentResidentId != null && message.senderId == viewModel.currentResidentId;
+    
+    if (!isMyMessage) {
+      // Don't show options for messages from other users
+      return;
+    }
+
+    // Only allow edit for TEXT messages
+    final canEdit = message.messageType == 'TEXT' && 
+                    message.content != null && 
+                    message.content!.isNotEmpty &&
+                    !message.isDeleted;
+
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (canEdit)
+              ListTile(
+                leading: const Icon(CupertinoIcons.pencil, color: Colors.blue),
+                title: const Text('Chỉnh sửa', style: TextStyle(color: Colors.blue)),
+                onTap: () => Navigator.pop(context, 'edit'),
+              ),
+            if (canEdit)
+              const Divider(),
+            ListTile(
+              leading: const Icon(CupertinoIcons.delete, color: Colors.red),
+              title: const Text('Xóa tin nhắn', style: TextStyle(color: Colors.red)),
+              onTap: () => Navigator.pop(context, 'delete'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (result == 'edit' && context.mounted) {
+      await _editMessage(context, message, viewModel);
+    } else if (result == 'delete' && context.mounted) {
+      await _deleteMessage(context, message, viewModel);
+    }
+  }
+
+  Future<void> _editMessage(BuildContext context, ChatMessage message, ChatMessageViewModel viewModel) async {
+    final textController = TextEditingController(text: message.content ?? '');
+    
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Chỉnh sửa tin nhắn'),
+        content: TextField(
+          controller: textController,
+          autofocus: true,
+          maxLines: 5,
+          decoration: const InputDecoration(
+            hintText: 'Nhập nội dung tin nhắn...',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () {
+              final newContent = textController.text.trim();
+              if (newContent.isNotEmpty) {
+                Navigator.pop(context, newContent);
+              }
+            },
+            child: const Text('Lưu'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty && context.mounted) {
+      try {
+        await viewModel.editMessage(message.id, result);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Đã chỉnh sửa tin nhắn'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi khi chỉnh sửa tin nhắn: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _deleteMessage(BuildContext context, ChatMessage message, ChatMessageViewModel viewModel) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xóa tin nhắn'),
+        content: const Text('Bạn có chắc chắn muốn xóa tin nhắn này?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      try {
+        await viewModel.deleteMessage(message.id);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Đã xóa tin nhắn'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi khi xóa tin nhắn: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
   }
 
   Future<void> _showImageOptionsBottomSheet(BuildContext context, ChatMessage message) async {
@@ -1337,6 +1496,7 @@ class _MessageBubble extends StatelessWidget {
   final Function(ChatMessage)? onImageTap;
   final Function(ChatMessage)? onImageLongPress;
   final Function(String)? onDeepLinkTap;
+  final VoidCallback? onMessageLongPress;
 
   const _MessageBubble({
     super.key,
@@ -1345,6 +1505,7 @@ class _MessageBubble extends StatelessWidget {
     this.onImageTap,
     this.onImageLongPress,
     this.onDeepLinkTap,
+    this.onMessageLongPress,
   });
 
   @override
@@ -1354,21 +1515,23 @@ class _MessageBubble extends StatelessWidget {
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
-        ),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isMe
-              ? theme.colorScheme.primary
-              : theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      child: GestureDetector(
+        onLongPress: isMe ? onMessageLongPress : null,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.75,
+          ),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isMe
+                ? theme.colorScheme.primary
+                : theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             if (!isMe)
               Text(
                 message.senderName ?? 'Người dùng',
@@ -1499,6 +1662,7 @@ class _MessageBubble extends StatelessWidget {
               ),
             ),
           ],
+        ),
         ),
       ),
     );
@@ -2712,7 +2876,7 @@ class _VideoMessageWidgetState extends State<_VideoMessageWidget> {
   }
 
   void _showVideoOptions(BuildContext context) {
-    showModalBottomSheet(
+    showSmoothBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
@@ -2756,8 +2920,8 @@ class _VideoMessageWidgetState extends State<_VideoMessageWidget> {
     final context = this.context;
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => _FullScreenVideoViewer(
+      SmoothPageRoute(
+        page: _FullScreenVideoViewer(
           controller: _controller!,
           videoUrl: widget.videoUrl,
           fileName: widget.fileName,
@@ -3066,7 +3230,7 @@ class _FullScreenVideoViewerState extends State<_FullScreenVideoViewer> {
   }
 
   void _showVideoOptions() {
-    showModalBottomSheet(
+    showSmoothBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(

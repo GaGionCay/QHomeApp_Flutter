@@ -358,5 +358,41 @@ class ChatMessageViewModel extends ChangeNotifier {
     if (!_hasMore || _isLoading) return;
     await loadMessages();
   }
+
+  Future<void> editMessage(String messageId, String newContent) async {
+    try {
+      final updatedMessage = await _service.editMessage(
+        groupId: _groupId!,
+        messageId: messageId,
+        content: newContent,
+      );
+      // Update message in list
+      final index = _messages.indexWhere((m) => m.id == messageId);
+      if (index != -1) {
+        _messages[index] = updatedMessage;
+        notifyListeners();
+      }
+    } catch (e) {
+      _error = 'Lỗi khi chỉnh sửa tin nhắn: ${e.toString()}';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> deleteMessage(String messageId) async {
+    try {
+      await _service.deleteMessage(
+        groupId: _groupId!,
+        messageId: messageId,
+      );
+      // Remove message from list
+      _messages.removeWhere((m) => m.id == messageId);
+      notifyListeners();
+    } catch (e) {
+      _error = 'Lỗi khi xóa tin nhắn: ${e.toString()}';
+      notifyListeners();
+      rethrow;
+    }
+  }
 }
 

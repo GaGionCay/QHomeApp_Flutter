@@ -25,6 +25,7 @@ import 'direct_files_screen.dart';
 import '../marketplace/post_detail_screen.dart';
 import '../marketplace/marketplace_service.dart';
 import 'linkable_text_widget.dart';
+import '../widgets/animations/smooth_animations.dart';
 // Reuse widgets from ChatScreen - import only what we need
 
 class DirectChatScreen extends StatefulWidget {
@@ -915,8 +916,9 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
     if (message.imageUrl == null) return;
     
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => _FullScreenImageViewer(
+      SmoothPageRoute(
+        page:
+ _FullScreenImageViewer(
           imageUrl: _buildFullUrl(message.imageUrl!),
           message: message,
           onLongPress: () {
@@ -1100,13 +1102,19 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
   }
 
   Future<void> _showMessageOptionsBottomSheet(BuildContext context, DirectMessage message) async {
-    // Only allow delete for messages sent by current user
+    // Only allow edit/delete for messages sent by current user
     final isMyMessage = _currentResidentId != null && message.senderId == _currentResidentId;
     
     if (!isMyMessage) {
       // Don't show options for messages from other users
       return;
     }
+
+    // Only allow edit for TEXT messages
+    final canEdit = message.messageType == 'TEXT' && 
+                    message.content != null && 
+                    message.content!.isNotEmpty &&
+                    !message.isDeleted;
 
     final result = await showModalBottomSheet<String>(
       context: context,
@@ -1117,6 +1125,14 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (canEdit)
+              ListTile(
+                leading: const Icon(CupertinoIcons.pencil, color: Colors.blue),
+                title: const Text('Chỉnh sửa', style: TextStyle(color: Colors.blue)),
+                onTap: () => Navigator.pop(context, 'edit'),
+              ),
+            if (canEdit)
+              const Divider(),
             ListTile(
               leading: const Icon(CupertinoIcons.delete, color: Colors.red),
               title: const Text('Xóa ở phía tôi', style: TextStyle(color: Colors.red)),
@@ -1135,10 +1151,70 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
       ),
     );
 
-    if (result == 'delete_for_me' && context.mounted) {
+    if (result == 'edit' && context.mounted) {
+      await _editMessage(context, message);
+    } else if (result == 'delete_for_me' && context.mounted) {
       await _deleteMessage(context, message, 'FOR_ME');
     } else if (result == 'delete_for_everyone' && context.mounted) {
       await _deleteMessage(context, message, 'FOR_EVERYONE');
+    }
+  }
+
+  Future<void> _editMessage(BuildContext context, DirectMessage message) async {
+    final textController = TextEditingController(text: message.content ?? '');
+    
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Chỉnh sửa tin nhắn'),
+        content: TextField(
+          controller: textController,
+          autofocus: true,
+          maxLines: 5,
+          decoration: const InputDecoration(
+            hintText: 'Nhập nội dung tin nhắn...',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () {
+              final newContent = textController.text.trim();
+              if (newContent.isNotEmpty) {
+                Navigator.pop(context, newContent);
+              }
+            },
+            child: const Text('Lưu'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty && context.mounted) {
+      try {
+        await _viewModel.editMessage(message.id, result);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Đã chỉnh sửa tin nhắn'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi khi chỉnh sửa tin nhắn: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -1372,8 +1448,9 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                       await _unblockUser(context);
                     } else if (value == 'files') {
                       Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => DirectFilesScreen(
+                        SmoothPageRoute(
+        page:
+ DirectFilesScreen(
                             conversationId: widget.conversationId,
                             otherParticipantName: widget.otherParticipantName,
                           ),
@@ -1485,7 +1562,9 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                         );
                       }
                       
-                      return _DirectMessageBubble(
+                      return SmoothAnimations.staggeredItem(
+                        index: index,
+                        child: _DirectMessageBubble(
                         key: messageKey,
                         message: message,
                         currentResidentId: _currentResidentId,
@@ -1504,6 +1583,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                         onMessageLongPress: () {
                           _showMessageOptionsBottomSheet(context, message);
                         },
+                        ),
                       );
                     },
                   );
@@ -1549,8 +1629,9 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
       if (mounted) {
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (context) => PostDetailScreen(post: post),
+          SmoothPageRoute(
+        page:
+ PostDetailScreen(post: post),
           ),
         );
       }
@@ -2916,7 +2997,7 @@ class _DirectVideoMessageWidgetState extends State<_DirectVideoMessageWidget> {
   }
 
   void _showVideoOptions(BuildContext context) {
-    showModalBottomSheet(
+    showSmoothBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
@@ -2960,8 +3041,9 @@ class _DirectVideoMessageWidgetState extends State<_DirectVideoMessageWidget> {
     final context = this.context;
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => _FullScreenVideoViewer(
+      SmoothPageRoute(
+        page:
+ _FullScreenVideoViewer(
           controller: _controller!,
           videoUrl: widget.videoUrl,
           fileName: widget.fileName,
@@ -3272,7 +3354,7 @@ class _FullScreenVideoViewerState extends State<_FullScreenVideoViewer> {
   }
 
   void _showVideoOptions() {
-    showModalBottomSheet(
+    showSmoothBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(

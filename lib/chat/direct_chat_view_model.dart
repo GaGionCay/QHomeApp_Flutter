@@ -362,6 +362,29 @@ class DirectChatViewModel extends ChangeNotifier {
   }
 
   /// Mark a message as deleted locally (optimistic update)
+  Future<void> editMessage(String messageId, String newContent) async {
+    try {
+      if (_conversation == null) {
+        throw Exception('Conversation not initialized');
+      }
+      final updatedMessage = await _service.editDirectMessage(
+        conversationId: _conversation!.id,
+        messageId: messageId,
+        content: newContent,
+      );
+      // Update message in list
+      final index = _messages.indexWhere((m) => m.id == messageId);
+      if (index != -1) {
+        _messages[index] = updatedMessage;
+        notifyListeners();
+      }
+    } catch (e) {
+      _error = 'Lỗi khi chỉnh sửa tin nhắn: ${e.toString()}';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
   void markMessageAsDeleted(String messageId, String deleteType) {
     final index = _messages.indexWhere((m) => m.id == messageId);
     if (index != -1) {

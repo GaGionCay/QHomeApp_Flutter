@@ -14,6 +14,7 @@ import '../models/unit_info.dart';
 import '../theme/app_colors.dart';
 import 'contract_detail_screen.dart';
 import 'contract_service.dart';
+import 'contract_renewal_screen.dart';
 
 class ContractListScreen extends StatefulWidget {
   const ContractListScreen({super.key});
@@ -560,11 +561,118 @@ class _ContractListScreenState extends State<ContractListScreen> {
                   children: contract.files.map(_buildFileChip).toList(),
                 ),
               ],
+              // Action buttons for RENTAL contracts that are ACTIVE and need renewal
+              if (contract.contractType == 'RENTAL' && 
+                  contract.status == 'ACTIVE' && 
+                  (contract.renewalStatus == 'REMINDED' || contract.renewalStatus == 'PENDING')) ...[
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _handleCancelContract(contract),
+                        icon: const Icon(CupertinoIcons.xmark_circle, size: 18),
+                        label: const Text('Hủy hợp đồng'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          side: const BorderSide(color: Colors.red),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton.icon(
+                        onPressed: () => _handleRenewContract(contract),
+                        icon: const Icon(CupertinoIcons.arrow_clockwise, size: 18),
+                        label: const Text('Gia hạn hợp đồng'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primaryBlue,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _handleRenewContract(ContractDto contract) async {
+    if (_contractService == null) return;
+    
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ContractRenewalScreen(
+          contract: contract,
+          contractService: _contractService!,
+        ),
+      ),
+    );
+    
+    // Refresh contracts after returning
+    if (_selectedUnitId != null) {
+      await _loadContracts(_selectedUnitId!);
+    }
+  }
+
+  Future<void> _handleCancelContract(ContractDto contract) async {
+    if (_contractService == null) return;
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xác nhận hủy hợp đồng'),
+        content: Text(
+          'Bạn có chắc chắn muốn hủy hợp đồng ${contract.contractNumber}?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Không'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('Có, hủy hợp đồng'),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed == true) {
+      try {
+        await _contractService!.cancelContract(contract.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Đã hủy hợp đồng thành công'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        // Refresh contracts
+        if (_selectedUnitId != null) {
+          await _loadContracts(_selectedUnitId!);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi khi hủy hợp đồng: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
   }
 
   Widget _buildInfoRow({

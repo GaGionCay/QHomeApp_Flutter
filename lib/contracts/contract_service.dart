@@ -19,9 +19,10 @@ class ContractService {
       return contractsDio!;
     }
     // All requests go through API Gateway (port 8989)
-    // Gateway routes /api/data-docs/** to data-docs-service (8082)
-    // Note: buildServiceBase() already includes /api in the base URL
-    final baseUrl = ApiClient.buildServiceBase();
+    // Gateway routes /api/contracts/** directly to data-docs-service (8082)
+    // Note: ApiClient.activeBaseUrl already includes /api
+    // So we use activeBaseUrl directly (no need for /data-docs prefix)
+    final baseUrl = ApiClient.activeBaseUrl;
     return Dio(BaseOptions(
       baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
@@ -29,8 +30,25 @@ class ContractService {
     ));
   }
 
-  Future<List<UnitInfo>> getMyUnits() async {
+  Future<List<UnitInfo>> getMyUnits({int retryCount = 0}) async {
     try {
+      // Add small delay on retry to allow token refresh to complete
+      if (retryCount > 0) {
+        await Future.delayed(Duration(milliseconds: 500 * retryCount));
+      }
+      
+      // Explicitly add Authorization header (same as other methods in this service)
+      final token = await apiClient.storage.readAccessToken();
+      if (token != null) {
+        apiClient.dio.options.headers['Authorization'] = 'Bearer $token';
+        print('✅ [ContractService] getMyUnits: Token found, length: ${token.length}');
+      } else {
+        print('⚠️ [ContractService] getMyUnits: No access token available');
+        // Don't proceed without token - will result in 401/403
+        throw Exception('No access token available. Please login again.');
+      }
+      
+      print('🔍 [ContractService] getMyUnits: Calling /residents/my-units');
       final response = await apiClient.dio.get('/residents/my-units');
       if (response.data is List) {
         return (response.data as List)
@@ -38,6 +56,41 @@ class ContractService {
                   Map<String, dynamic>.from(item as Map),
                 ))
             .toList();
+      }
+      return [];
+    } on DioException catch (e) {
+      final statusCode = e.response?.statusCode;
+      
+      // Handle 401 Unauthorized - token expired and no refresh token
+      if (statusCode == 401) {
+        print('⚠️ [ContractService] getMyUnits: 401 Unauthorized - Token expired');
+        print('⚠️ [ContractService] User needs to login again');
+        // Don't return empty list - rethrow to let caller handle
+        // This allows the app to show proper error or redirect to login
+        rethrow;
+      }
+      
+      // Handle 403 Forbidden - user doesn't have permission
+      // Sometimes 403 can occur if token is being refreshed - retry once
+      if (statusCode == 403) {
+        print('⚠️ [ContractService] getMyUnits: 403 Forbidden - User does not have permission');
+        print('⚠️ [ContractService] Response data: ${e.response?.data}');
+        
+        // Retry once if this is the first attempt (might be token refresh timing issue)
+        if (retryCount == 0) {
+          print('🔄 [ContractService] Retrying getMyUnits after 403...');
+          return getMyUnits(retryCount: 1);
+        }
+        
+        print('⚠️ [ContractService] User may not have access to this resource after retry');
+        // Rethrow to let caller handle - this is an authorization issue
+        rethrow;
+      }
+      
+      print('❌ [ContractService] DioException getMyUnits: ${e.message}');
+      if (e.response != null) {
+        print('❌ [ContractService] Response status: ${e.response?.statusCode}');
+        print('❌ [ContractService] Response data: ${e.response?.data}');
       }
       return [];
     } catch (e) {
@@ -275,6 +328,188 @@ class ContractService {
     final extension = fileName.toLowerCase().split('.').last;
     return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'heic', 'heif']
         .contains(extension);
+  }
+
+  /// Get contracts that need to show popup to resident (renewal reminders)
+  Future<List<ContractDto>> getContractsNeedingPopup(String unitId) async {
+    try {
+      print('🔍 [ContractService] getContractsNeedingPopup called with unitId: $unitId');
+      final client = _contractsClient();
+      final token = await apiClient.storage.readAccessToken();
+      if (token != null) {
+        client.options.headers['Authorization'] = 'Bearer $token';
+      }
+
+      final url = '/contracts/unit/$unitId/popup';
+      print('🔍 [ContractService] Calling API: ${client.options.baseUrl}$url');
+      
+      final response = await client.get(url);
+      print('✅ [ContractService] API response status: ${response.statusCode}');
+      print('✅ [ContractService] API response data: ${response.data}');
+      
+      if (response.statusCode != 200) {
+        print('⚠️ [ContractService] API trả mã ${response.statusCode}: ${response.data}');
+        return [];
+      }
+
+      if (response.data is List) {
+        final contracts = (response.data as List)
+            .map((item) => ContractDto.fromJson(
+                  Map<String, dynamic>.from(item as Map),
+                ))
+            .toList();
+        print('✅ [ContractService] Parsed ${contracts.length} contract(s) from response');
+        return contracts;
+      }
+
+      print('⚠️ [ContractService] Response data is not a List: ${response.data.runtimeType}');
+      return [];
+    } on DioException catch (e) {
+      print('❌ [ContractService] DioException getContractsNeedingPopup: ${e.message}');
+      print('❌ [ContractService] DioException response: ${e.response?.data}');
+      print('❌ [ContractService] DioException request: ${e.requestOptions.uri}');
+      return [];
+    } catch (e) {
+      print('❌ [ContractService] Lỗi getContractsNeedingPopup: $e');
+      print('❌ [ContractService] Stack trace: ${StackTrace.current}');
+      return [];
+    }
+  }
+
+  /// Get active contracts for a unit
+  Future<List<ContractDto>> getActiveContractsByUnit(String unitId) async {
+    try {
+      final client = _contractsClient();
+      final token = await apiClient.storage.readAccessToken();
+      if (token != null) {
+        client.options.headers['Authorization'] = 'Bearer $token';
+      }
+
+      final response = await client.get('/contracts/unit/$unitId/active');
+      if (response.statusCode != 200) {
+        print('⚠️ [ContractService] API trả mã ${response.statusCode}: ${response.data}');
+        return [];
+      }
+
+      if (response.data is List) {
+        return (response.data as List)
+            .map((item) => ContractDto.fromJson(
+                  Map<String, dynamic>.from(item as Map),
+                ))
+            .toList();
+      }
+
+      return [];
+    } on DioException catch (e) {
+      print('❌ [ContractService] DioException getActiveContractsByUnit: ${e.message}');
+      return [];
+    } catch (e) {
+      print('❌ [ContractService] Lỗi getActiveContractsByUnit: $e');
+      return [];
+    }
+  }
+
+  /// Create payment URL for contract renewal
+  Future<Map<String, dynamic>?> createRenewalPaymentUrl({
+    required String contractId,
+    required DateTime startDate,
+    required DateTime endDate,
+    String? createdBy,
+  }) async {
+    try {
+      final client = _contractsClient();
+      final token = await apiClient.storage.readAccessToken();
+      if (token != null) {
+        client.options.headers['Authorization'] = 'Bearer $token';
+      }
+
+      final requestBody = {
+        'contractId': contractId,
+        'startDate': startDate.toIso8601String().split('T')[0],
+        'endDate': endDate.toIso8601String().split('T')[0],
+      };
+
+      final queryParams = createdBy != null ? '?createdBy=$createdBy' : '';
+      final response = await client.post(
+        '/contracts/$contractId/renew/payment$queryParams',
+        data: requestBody,
+      );
+
+      if (response.statusCode == 200 && response.data is Map) {
+        return Map<String, dynamic>.from(response.data as Map);
+      }
+
+      return null;
+    } on DioException catch (e) {
+      print('❌ [ContractService] DioException createRenewalPaymentUrl: ${e.message}');
+      if (e.response != null) {
+        print('⚠️ Response: ${e.response?.data}');
+      }
+      return null;
+    } catch (e) {
+      print('❌ [ContractService] Lỗi createRenewalPaymentUrl: $e');
+      return null;
+    }
+  }
+
+  /// Cancel contract
+  Future<ContractDto?> cancelContract(String contractId, {String? updatedBy}) async {
+    try {
+      final client = _contractsClient();
+      final token = await apiClient.storage.readAccessToken();
+      if (token != null) {
+        client.options.headers['Authorization'] = 'Bearer $token';
+      }
+
+      final queryParams = updatedBy != null ? '?updatedBy=$updatedBy' : '';
+      final response = await client.put('/contracts/$contractId/cancel$queryParams');
+
+      if (response.statusCode == 200 && response.data is Map) {
+        return ContractDto.fromJson(
+          Map<String, dynamic>.from(response.data as Map),
+        );
+      }
+
+      return null;
+    } on DioException catch (e) {
+      print('❌ [ContractService] DioException cancelContract: ${e.message}');
+      return null;
+    } catch (e) {
+      print('❌ [ContractService] Lỗi cancelContract: $e');
+      return null;
+    }
+  }
+
+  /// Complete contract renewal after payment
+  Future<ContractDto?> completeRenewalPayment({
+    required String contractId,
+    required String residentId,
+    String? vnpayTransactionRef,
+  }) async {
+    try {
+      final client = _contractsClient();
+      final token = await apiClient.storage.readAccessToken();
+      if (token != null) {
+        client.options.headers['Authorization'] = 'Bearer $token';
+      }
+
+      final queryParams = '?residentId=$residentId${vnpayTransactionRef != null ? '&vnpayTransactionRef=$vnpayTransactionRef' : ''}';
+      final response = await client.post('/contracts/$contractId/renew/complete$queryParams');
+
+      if (response.statusCode == 200 && response.data is Map) {
+        return ContractDto.fromJson(
+          Map<String, dynamic>.from(response.data as Map),
+        );
+      }
+
+      return null;
+    } on DioException catch (e) {
+      print('❌ [ContractService] DioException completeRenewalPayment: ${e.message}');
+      return null;
+    } catch (e) {
+      print('❌ [ContractService] Lỗi completeRenewalPayment: $e');
+      return null;
+    }
   }
 }
 
