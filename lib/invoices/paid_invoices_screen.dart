@@ -1240,7 +1240,8 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
                     AppLogger.info('   - Description: ${invoice.description}');
                     AppLogger.info('   - Amount: ${invoice.lineTotal.toStringAsFixed(0)} VND');
                     AppLogger.info('   - Service Date: ${invoice.serviceDate}');
-                    AppLogger.info('   - Quantity: ${invoice.quantity} ${invoice.unit}');
+                    final quantityDisplay = _formatQuantity(invoice.quantity);
+                    AppLogger.info('   - Quantity: $quantityDisplay ${invoice.unit}');
                     AppLogger.info('   - Unit Price: ${invoice.unitPrice.toStringAsFixed(0)} VND');
                     if (paidAt != null) {
                       final paidAtDate = DateTime.parse(paidAt.toString());
@@ -1257,7 +1258,9 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
                         'description': invoice.description,
                         'serviceDate': invoice.serviceDate,
                         'lineTotal': invoice.lineTotal,
-                        'quantity': invoice.quantity,
+                        'quantity': invoice.quantity == invoice.quantity.toInt() 
+                            ? invoice.quantity.toInt() 
+                            : invoice.quantity,
                         'unit': invoice.unit,
                         'unitPrice': invoice.unitPrice,
                         'taxAmount': invoice.taxAmount,
@@ -1336,7 +1339,8 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
                       AppLogger.info('   - Description: ${invoice.description}');
                       AppLogger.info('   - Amount: ${invoice.lineTotal.toStringAsFixed(0)} VND');
                       AppLogger.info('   - Service Date: ${invoice.serviceDate}');
-                      AppLogger.info('   - Quantity: ${invoice.quantity} ${invoice.unit}');
+                      final quantityDisplay = _formatQuantity(invoice.quantity);
+                      AppLogger.info('   - Quantity: $quantityDisplay ${invoice.unit}');
                       AppLogger.info('   - Unit Price: ${invoice.unitPrice.toStringAsFixed(0)} VND');
                       if (paidAt != null) {
                         final paidAtDate = DateTime.parse(paidAt.toString());
@@ -1352,7 +1356,9 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
                           'description': invoice.description,
                           'serviceDate': invoice.serviceDate,
                           'lineTotal': invoice.lineTotal,
-                          'quantity': invoice.quantity,
+                          'quantity': invoice.quantity == invoice.quantity.toInt() 
+                              ? invoice.quantity.toInt() 
+                              : invoice.quantity,
                           'unit': invoice.unit,
                           'unitPrice': invoice.unitPrice,
                           'taxAmount': invoice.taxAmount,
@@ -1577,6 +1583,16 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
   }
 
   /// Helper method to format payment date from detailData or fallback to widget.item.paymentDate
+  String _formatQuantity(dynamic quantity) {
+    if (quantity == null) return '0';
+    final qty = quantity is num ? quantity : double.tryParse(quantity.toString()) ?? 0.0;
+    // If quantity is a whole number, display without decimal (e.g., 1 instead of 1.0)
+    if (qty == qty.toInt()) {
+      return qty.toInt().toString();
+    }
+    return qty.toString();
+  }
+
   String _formatPaymentDate(Map<String, dynamic> data) {
     // Try to get paidAt from detailData first (has accurate time)
     if (data['paidAt'] != null) {
@@ -1682,7 +1698,7 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
             isDark,
             Icons.numbers,
             'Số lượng',
-            '${data['quantity']} ${data['unit'] ?? ''}',
+            _formatQuantity(data['quantity']) + ' ${data['unit'] ?? ''}',
           ),
           const SizedBox(height: 16),
           _buildInfoRow(

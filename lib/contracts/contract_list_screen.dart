@@ -563,37 +563,100 @@ class _ContractListScreenState extends State<ContractListScreen> {
               ],
               // Action buttons for RENTAL contracts that are ACTIVE and need renewal
               if (contract.contractType == 'RENTAL' && 
-                  contract.status == 'ACTIVE' && 
-                  (contract.renewalStatus == 'REMINDED' || contract.renewalStatus == 'PENDING')) ...[
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _handleCancelContract(contract),
-                        icon: const Icon(CupertinoIcons.xmark_circle, size: 18),
-                        label: const Text('Hủy hợp đồng'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red,
-                          side: const BorderSide(color: Colors.red),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                  contract.status == 'ACTIVE') ...[
+                const SizedBox(height: 20),
+                // Check if contract is within 3 months before expiration
+                Builder(
+                  builder: (context) {
+                    final canRenew = _canRenewContract(contract);
+                    final showRenewalButtons = contract.renewalStatus == 'REMINDED' || 
+                                             contract.renewalStatus == 'PENDING' ||
+                                             canRenew;
+                    
+                    if (!showRenewalButtons) {
+                      return const SizedBox.shrink();
+                    }
+                    
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (!canRenew && (contract.renewalStatus == 'REMINDED' || contract.renewalStatus == 'PENDING'))
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: theme.colorScheme.outline.withValues(alpha: 0.2),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  CupertinoIcons.info_circle,
+                                  size: 18,
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Chỉ có thể gia hạn trong vòng 3 tháng trước khi hết hạn',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (!canRenew && (contract.renewalStatus == 'REMINDED' || contract.renewalStatus == 'PENDING'))
+                          const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () => _handleCancelContract(contract),
+                                icon: const Icon(CupertinoIcons.xmark_circle, size: 18),
+                                label: const Text('Hủy hợp đồng'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: theme.colorScheme.error,
+                                  side: BorderSide(
+                                    color: theme.colorScheme.error.withValues(alpha: 0.5),
+                                    width: 1.5,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: canRenew ? () => _handleRenewContract(contract) : null,
+                                icon: const Icon(CupertinoIcons.arrow_clockwise, size: 18),
+                                label: const Text('Gia hạn hợp đồng'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: canRenew 
+                                      ? AppColors.primaryBlue 
+                                      : theme.colorScheme.surfaceContainerHighest,
+                                  foregroundColor: canRenew 
+                                      ? Colors.white 
+                                      : theme.colorScheme.onSurface.withValues(alpha: 0.38),
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  elevation: canRenew ? 2 : 0,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 2,
-                      child: FilledButton.icon(
-                        onPressed: () => _handleRenewContract(contract),
-                        icon: const Icon(CupertinoIcons.arrow_clockwise, size: 18),
-                        label: const Text('Gia hạn hợp đồng'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.primaryBlue,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                      ),
-                    ),
-                  ],
+                      ],
+                    );
+                  },
                 ),
               ],
             ],
@@ -603,8 +666,44 @@ class _ContractListScreenState extends State<ContractListScreen> {
     );
   }
 
+  bool _canRenewContract(ContractDto contract) {
+    if (contract.endDate == null) return false;
+    
+    final now = DateTime.now();
+    final endDate = contract.endDate!;
+    
+    // If contract has already expired, cannot renew
+    if (endDate.isBefore(now)) return false;
+    
+    // Calculate months between now and end date
+    // Use year and month difference, then check if we're within 3 months
+    int monthsUntilExpiry = (endDate.year - now.year) * 12 + (endDate.month - now.month);
+    
+    // Adjust if endDate day is before now day in the same month
+    // (e.g., now is Dec 15, endDate is Jan 10 -> should be 0 months, not 1)
+    if (endDate.day < now.day) {
+      monthsUntilExpiry--;
+    }
+    
+    // Can renew if within 3 months before expiration (0 to 3 months)
+    return monthsUntilExpiry >= 0 && monthsUntilExpiry <= 3;
+  }
+
   Future<void> _handleRenewContract(ContractDto contract) async {
     if (_contractService == null) return;
+    
+    // Check if can renew (within 3 months)
+    if (!_canRenewContract(contract)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Chỉ có thể gia hạn hợp đồng trong vòng 3 tháng trước khi hết hạn'),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
     
     await Navigator.of(context).push(
       MaterialPageRoute(
