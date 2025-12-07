@@ -1215,7 +1215,9 @@ class _DirectInvitationsSection extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Bạn có $count lời mời trò chuyện',
+                        count > 0 
+                            ? 'Bạn có $count lời mời trò chuyện'
+                            : 'Lời mời trò chuyện',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                         ),
@@ -1223,21 +1225,24 @@ class _DirectInvitationsSection extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.error,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    count > 99 ? '99+' : '$count',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                // Only show count badge if count >= 1
+                if (count > 0) ...[
+                  const SizedBox(width: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.error,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      count > 99 ? '99+' : '$count',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                ),
+                ],
                 const SizedBox(width: 8),
                 Icon(
                   CupertinoIcons.chevron_right,
