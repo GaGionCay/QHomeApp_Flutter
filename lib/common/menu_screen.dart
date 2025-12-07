@@ -206,8 +206,8 @@ class _MenuScreenState extends State<MenuScreen> {
                   const SizedBox(height: 12),
                   _MenuGlassTile(
                     icon: CupertinoIcons.doc_text_fill,
-                    label: 'Hợp đồng của tôi',
-                    subtitle: 'Quản lý hợp đồng cư trú và tiện ích',
+                    label: 'Quản lý hợp đồng',
+                    subtitle: 'Xem và gia hạn hợp đồng thuê',
                     onTap: () {
                       Navigator.push(
                         context,

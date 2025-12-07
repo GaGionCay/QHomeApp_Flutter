@@ -24,7 +24,8 @@ class ContractListScreen extends StatefulWidget {
   State<ContractListScreen> createState() => _ContractListScreenState();
 }
 
-class _ContractListScreenState extends State<ContractListScreen> {
+class _ContractListScreenState extends State<ContractListScreen>
+    with SingleTickerProviderStateMixin {
   ContractService? _contractService;
   List<UnitInfo> _units = [];
   String? _selectedUnitId;
@@ -33,11 +34,20 @@ class _ContractListScreenState extends State<ContractListScreen> {
   bool _loadingContracts = false;
   String? _error;
   static const _selectedUnitPrefsKey = 'selected_unit_id';
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    // Initialize TabController with 5 tabs: Cần gia hạn, Active, Inactive, Canceled, Expired
+    _tabController = TabController(length: 5, vsync: this);
     _init();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _init() async {
@@ -103,6 +113,8 @@ class _ContractListScreenState extends State<ContractListScreen> {
     try {
       final data = await service.getContractsByUnit(unitId);
       if (!mounted) return;
+      
+      // Store all contracts (will be filtered by tabs)
       setState(() {
         _contracts = data;
       });
@@ -118,6 +130,135 @@ class _ContractListScreenState extends State<ContractListScreen> {
           _loadingContracts = false;
         });
       }
+    }
+  }
+
+  /// Build tab content with filtered contracts
+  Widget _buildTabContent(ThemeData theme, double bottomInset, List<ContractDto> filteredContracts) {
+    if (_loadingContracts) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (filteredContracts.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset),
+          child: _buildEmptyContracts(theme),
+        ),
+      );
+    }
+
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final contract = filteredContracts[index];
+                return _AnimatedContractCard(
+                  key: ValueKey('contract_${contract.id}_${_tabController.index}'),
+                  index: index,
+                  contract: contract,
+                  builder: _buildContractCard,
+                );
+              },
+              childCount: filteredContracts.length,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Get contracts that need renewal (sorted by startDate descending)
+  List<ContractDto> _getRenewalContracts() {
+    final filtered = _contracts.where((contract) => _needsRenewal(contract)).toList();
+    return _sortByStartDate(filtered);
+  }
+
+  /// Get ACTIVE contracts (sorted by startDate descending)
+  List<ContractDto> _getActiveContracts() {
+    final filtered = _contracts.where((contract) => 
+      contract.status.toUpperCase() == 'ACTIVE' && !_needsRenewal(contract)
+    ).toList();
+    return _sortByStartDate(filtered);
+  }
+
+  /// Get INACTIVE contracts (sorted by startDate descending)
+  List<ContractDto> _getInactiveContracts() {
+    final filtered = _contracts.where((contract) => 
+      contract.status.toUpperCase() == 'INACTIVE'
+    ).toList();
+    return _sortByStartDate(filtered);
+  }
+
+  /// Get CANCELLED contracts (sorted by startDate descending)
+  List<ContractDto> _getCanceledContracts() {
+    final filtered = _contracts.where((contract) => 
+      contract.status.toUpperCase() == 'CANCELLED'
+    ).toList();
+    return _sortByStartDate(filtered);
+  }
+
+  /// Get EXPIRED contracts (sorted by startDate descending)
+  List<ContractDto> _getExpiredContracts() {
+    final filtered = _contracts.where((contract) => 
+      contract.status.toUpperCase() == 'EXPIRED'
+    ).toList();
+    return _sortByStartDate(filtered);
+  }
+
+  /// Sort contracts by startDate (most recent first, nulls last)
+  List<ContractDto> _sortByStartDate(List<ContractDto> contracts) {
+    final sorted = List<ContractDto>.from(contracts);
+    sorted.sort((c1, c2) {
+      // Sort by startDate (most recent first, nulls last)
+      if (c1.startDate != null && c2.startDate != null) {
+        return c2.startDate!.compareTo(c1.startDate!);
+      }
+      if (c1.startDate != null) return -1;
+      if (c2.startDate != null) return 1;
+      
+      // If both null, sort by createdAt (most recent first)
+      if (c1.createdAt != null && c2.createdAt != null) {
+        return c2.createdAt!.compareTo(c1.createdAt!);
+      }
+      
+      return 0;
+    });
+    return sorted;
+  }
+
+  /// Get priority for contract status sorting
+  /// Lower number = higher priority
+  /// ACTIVE = 1 (highest), INACTIVE = 2, CANCELLED = 3, EXPIRED = 4 (lowest)
+  int _getStatusPriority(String status) {
+    final upperStatus = status.toUpperCase();
+    switch (upperStatus) {
+      case 'ACTIVE':
+        return 1;
+      case 'INACTIVE':
+        return 2;
+      case 'CANCELLED':
+        return 3;
+      case 'EXPIRED':
+        return 4;
+      default:
+        return 5;
+    }
+  }
+
+  /// Get contract type text in Vietnamese
+  String _getContractTypeText(String contractType) {
+    switch (contractType.toUpperCase()) {
+      case 'RENTAL':
+        return 'Thuê';
+      case 'PURCHASE':
+        return 'Mua';
+      default:
+        return contractType;
     }
   }
 
@@ -246,22 +387,79 @@ class _ContractListScreenState extends State<ContractListScreen> {
       orElse: () => _units.first,
     );
 
-    return RefreshIndicator(
-      color: theme.colorScheme.primary,
-      onRefresh: _refresh,
-      child: ListView(
-        padding: EdgeInsets.fromLTRB(20, 24, 20, bottomInset),
-        children: [
-          _buildUnitSummary(selectedUnit),
-          const SizedBox(height: 20),
-          if (_loadingContracts)
-            const Center(child: CircularProgressIndicator())
-          else if (_contracts.isEmpty)
-            _buildEmptyContracts(theme)
-          else
-            ..._contracts.map(_buildContractCard),
-        ],
-      ),
+    return Column(
+      children: [
+        // Unit Summary
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+          child: _buildUnitSummary(selectedUnit),
+        ),
+        const SizedBox(height: 20),
+        // Tab Bar
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 20),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: TabBar(
+            controller: _tabController,
+            isScrollable: true,
+            labelColor: Colors.white,
+            unselectedLabelColor: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+            indicator: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  theme.colorScheme.primary,
+                  theme.colorScheme.primary.withValues(alpha: 0.8),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            indicatorSize: TabBarIndicatorSize.tab,
+            dividerColor: Colors.transparent,
+            labelStyle: theme.textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+            unselectedLabelStyle: theme.textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w500,
+            ),
+            tabs: const [
+              Tab(text: 'Cần gia hạn'),
+              Tab(text: 'Đang hoạt động'),
+              Tab(text: 'Không hoạt động'),
+              Tab(text: 'Đã hủy'),
+              Tab(text: 'Đã hết hạn'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Tab Bar View
+        Expanded(
+          child: RefreshIndicator(
+            color: theme.colorScheme.primary,
+            onRefresh: _refresh,
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildTabContent(theme, bottomInset, _getRenewalContracts()),
+                _buildTabContent(theme, bottomInset, _getActiveContracts()),
+                _buildTabContent(theme, bottomInset, _getInactiveContracts()),
+                _buildTabContent(theme, bottomInset, _getCanceledContracts()),
+                _buildTabContent(theme, bottomInset, _getExpiredContracts()),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -418,7 +616,10 @@ class _ContractListScreenState extends State<ContractListScreen> {
 
   Widget _buildContractCard(ContractDto contract) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final dateFormat = DateFormat('dd/MM/yyyy');
+    final isActive = contract.status.toUpperCase() == 'ACTIVE';
+    final needsRenewal = _needsRenewal(contract);
 
     String formatDate(DateTime? date) {
       if (date == null) return 'Không xác định';
@@ -433,19 +634,32 @@ class _ContractListScreenState extends State<ContractListScreen> {
 
     late Color statusColor;
     late IconData statusIcon;
+    late String statusText;
     switch (contract.status.toUpperCase()) {
       case 'ACTIVE':
         statusColor = const Color(0xFF34C759);
         statusIcon = CupertinoIcons.check_mark_circled_solid;
-      case 'TERMINATED':
+        statusText = 'Đang hoạt động';
+        break;
+      case 'INACTIVE':
+        statusColor = const Color(0xFF5AC8FA);
+        statusIcon = CupertinoIcons.pause_circle_fill;
+        statusText = 'Không hoạt động';
+        break;
+      case 'CANCELLED':
         statusColor = const Color(0xFFFF3B30);
         statusIcon = CupertinoIcons.xmark_circle_fill;
+        statusText = 'Đã hủy';
+        break;
       case 'EXPIRED':
         statusColor = const Color(0xFFFF9500);
         statusIcon = CupertinoIcons.time_solid;
+        statusText = 'Đã hết hạn';
+        break;
       default:
         statusColor = theme.colorScheme.primary;
         statusIcon = CupertinoIcons.info_circle_fill;
+        statusText = contract.status;
     }
 
     return InkWell(
@@ -457,68 +671,177 @@ class _ContractListScreenState extends State<ContractListScreen> {
           ),
         );
       },
-      child: _ServiceGlassCard(
+      child: _ContractCard(
+        isActive: isActive,
+        isDark: isDark,
+        needsRenewal: needsRenewal,
         child: Padding(
           padding: const EdgeInsets.all(22),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          contract.contractNumber,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Loại: ${contract.contractType}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                        ),
+              // Renewal banner - hiển thị nổi bật ở đầu card
+              if (needsRenewal) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        const Color(0xFFFF9500).withValues(alpha: 0.15),
+                        const Color(0xFFFF9500).withValues(alpha: 0.08),
                       ],
                     ),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: const Color(0xFFFF9500).withValues(alpha: 0.4),
+                      width: 1.5,
+                    ),
                   ),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF9500).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          CupertinoIcons.bell_fill,
+                          color: Color(0xFFFF9500),
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Cần gia hạn hợp đồng',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFFFF9500),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _getRenewalMessage(contract),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        CupertinoIcons.arrow_right_circle_fill,
+                        color: const Color(0xFFFF9500),
+                        size: 20,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Contract number - full width
+                  Text(
+                    contract.contractNumber,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: isActive 
+                          ? theme.colorScheme.onSurface 
+                          : theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  // Contract type
+                  Text(
+                    'Loại: ${_getContractTypeText(contract.contractType)}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                  const SizedBox(height: 12),
+                  // Status badge - "Đang hoạt động"
+                  Row(
+                    children: [
+                      Container(
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isActive 
+                              ? statusColor.withValues(alpha: 0.2)
+                              : statusColor.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(18),
+                          border: isActive 
+                              ? Border.all(
+                                  color: statusColor.withValues(alpha: 0.4),
+                                  width: 1.5,
+                                )
+                              : null,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              statusIcon, 
+                              size: isActive ? 18 : 16, 
+                              color: statusColor,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              statusText,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: statusColor,
+                                fontWeight: isActive ? FontWeight.w800 : FontWeight.w700,
+                                fontSize: isActive ? 11 : 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  // Renewal badge - below status if needs renewal
+                  if (needsRenewal) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.16),
+                        color: const Color(0xFFFF9500).withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: const Color(0xFFFF9500).withValues(alpha: 0.5),
+                          width: 1.5,
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(statusIcon, size: 16, color: statusColor),
+                          Icon(
+                            CupertinoIcons.arrow_clockwise,
+                            size: 16,
+                            color: const Color(0xFFFF9500),
+                          ),
                           const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              contract.status.toUpperCase(),
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: statusColor,
-                                fontWeight: FontWeight.w700,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
+                          Text(
+                            'Cần gia hạn',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: const Color(0xFFFF9500),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11,
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
+                  ],
                 ],
               ),
               const SizedBox(height: 16),
@@ -625,7 +948,8 @@ class _ContractListScreenState extends State<ContractListScreen> {
                                     color: theme.colorScheme.error.withValues(alpha: 0.5),
                                     width: 1.5,
                                   ),
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+                                  minimumSize: const Size(0, 48),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(14),
                                   ),
@@ -645,7 +969,8 @@ class _ContractListScreenState extends State<ContractListScreen> {
                                   foregroundColor: canRenew 
                                       ? Colors.white 
                                       : theme.colorScheme.onSurface.withValues(alpha: 0.38),
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+                                  minimumSize: const Size(0, 48),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(14),
                                   ),
@@ -665,6 +990,57 @@ class _ContractListScreenState extends State<ContractListScreen> {
         ),
       ),
     );
+  }
+
+  /// Check if contract needs renewal (can renew or has renewal status)
+  bool _needsRenewal(ContractDto contract) {
+    // Chỉ hợp đồng RENTAL và ACTIVE mới cần gia hạn
+    if (contract.contractType != 'RENTAL' || contract.status != 'ACTIVE') {
+      return false;
+    }
+    
+    // Nếu có renewalStatus là REMINDED hoặc PENDING, cần gia hạn
+    if (contract.renewalStatus == 'REMINDED' || contract.renewalStatus == 'PENDING') {
+      return true;
+    }
+    
+    // Nếu có thể gia hạn (trong vòng 3 tháng), cần gia hạn
+    return _canRenewContract(contract);
+  }
+
+  /// Get renewal message based on contract state
+  String _getRenewalMessage(ContractDto contract) {
+    if (contract.renewalStatus == 'REMINDED') {
+      if (contract.isFinalReminder == true) {
+        return 'Nhắc nhở cuối cùng - Hợp đồng sắp hết hạn';
+      }
+      return 'Đã nhắc nhở gia hạn - Vui lòng xử lý sớm';
+    }
+    
+    if (contract.renewalStatus == 'PENDING') {
+      return 'Đang chờ gia hạn - Vui lòng hoàn tất thủ tục';
+    }
+    
+    // Calculate days until expiry
+    if (contract.endDate != null) {
+      final now = DateTime.now();
+      final endDate = contract.endDate!;
+      final daysUntilExpiry = endDate.difference(now).inDays;
+      
+      if (daysUntilExpiry < 0) {
+        return 'Hợp đồng đã hết hạn - Cần gia hạn ngay';
+      } else if (daysUntilExpiry <= 30) {
+        return 'Còn ${daysUntilExpiry} ngày - Cần gia hạn sớm';
+      } else if (daysUntilExpiry <= 60) {
+        final months = (daysUntilExpiry / 30).ceil();
+        return 'Còn khoảng $months tháng - Nên gia hạn sớm';
+      } else {
+        final months = (daysUntilExpiry / 30).ceil();
+        return 'Còn khoảng $months tháng - Có thể gia hạn';
+      }
+    }
+    
+    return 'Hợp đồng cần được gia hạn';
   }
 
   bool _canRenewContract(ContractDto contract) {
@@ -996,6 +1372,177 @@ class _ServiceGlassCard extends StatelessWidget {
             boxShadow: AppColors.subtleShadow,
           ),
           child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// Contract card with special styling for ACTIVE contracts and renewal needs
+class _ContractCard extends StatelessWidget {
+  const _ContractCard({
+    required this.isActive,
+    required this.isDark,
+    required this.needsRenewal,
+    required this.child,
+  });
+
+  final bool isActive;
+  final bool isDark;
+  final bool needsRenewal;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    // Special styling for contracts that need renewal
+    if (needsRenewal) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(26),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: isDark
+                  ? AppColors.darkGlassLayerGradient()
+                  : AppColors.glassLayerGradient(),
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(
+                width: 2.5,
+                color: const Color(0xFFFF9500).withValues(alpha: 0.5),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFFF9500).withValues(alpha: 0.25),
+                  blurRadius: 20,
+                  spreadRadius: 0,
+                  offset: const Offset(0, 6),
+                ),
+                if (isActive)
+                  BoxShadow(
+                    color: const Color(0xFF34C759).withValues(alpha: 0.15),
+                    blurRadius: 12,
+                    spreadRadius: 0,
+                    offset: const Offset(0, 3),
+                  ),
+                ...AppColors.subtleShadow,
+              ],
+            ),
+            child: child,
+          ),
+        ),
+      );
+    }
+    
+    if (isActive) {
+      // Special styling for ACTIVE contracts (without renewal need)
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(26),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: isDark
+                  ? AppColors.darkGlassLayerGradient()
+                  : AppColors.glassLayerGradient(),
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(
+                width: 2,
+                color: const Color(0xFF34C759).withValues(alpha: 0.4),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF34C759).withValues(alpha: 0.2),
+                  blurRadius: 16,
+                  spreadRadius: 0,
+                  offset: const Offset(0, 4),
+                ),
+                ...AppColors.subtleShadow,
+              ],
+            ),
+            child: child,
+          ),
+        ),
+      );
+    }
+    
+    // Standard styling for other contracts
+    return _ServiceGlassCard(child: child);
+  }
+}
+
+/// Animated contract card with staggered entrance animation
+class _AnimatedContractCard extends StatefulWidget {
+  const _AnimatedContractCard({
+    required super.key,
+    required this.index,
+    required this.contract,
+    required this.builder,
+  });
+
+  final int index;
+  final ContractDto contract;
+  final Widget Function(ContractDto) builder;
+
+  @override
+  State<_AnimatedContractCard> createState() => _AnimatedContractCardState();
+}
+
+class _AnimatedContractCardState extends State<_AnimatedContractCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: Duration(milliseconds: 300 + (widget.index * 50).clamp(0, 200)),
+      vsync: this,
+    );
+    
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+    
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.1),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+    
+    // Start animation after a small delay based on index
+    Future.delayed(Duration(milliseconds: widget.index * 50), () {
+      if (mounted) {
+        _controller.forward();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: SlideTransition(
+        position: _slideAnimation,
+        child: Padding(
+          padding: EdgeInsets.only(bottom: widget.index == 0 ? 0 : 16),
+          child: widget.builder(widget.contract),
         ),
       ),
     );

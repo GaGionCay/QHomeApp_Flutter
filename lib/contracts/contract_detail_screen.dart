@@ -107,6 +107,9 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
     switch (status.toUpperCase()) {
       case 'ACTIVE':
         return const Color(0xFF34C759);
+      case 'INACTIVE':
+        return const Color(0xFF5AC8FA);
+      case 'CANCELLED':
       case 'TERMINATED':
         return const Color(0xFFFF3B30);
       case 'EXPIRED':
@@ -120,12 +123,43 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
     switch (status.toUpperCase()) {
       case 'ACTIVE':
         return CupertinoIcons.check_mark_circled_solid;
+      case 'INACTIVE':
+        return CupertinoIcons.pause_circle_fill;
+      case 'CANCELLED':
       case 'TERMINATED':
         return CupertinoIcons.xmark_circle_fill;
       case 'EXPIRED':
         return CupertinoIcons.time_solid;
       default:
         return CupertinoIcons.info_circle_fill;
+    }
+  }
+
+  String _getStatusText(String status) {
+    switch (status.toUpperCase()) {
+      case 'ACTIVE':
+        return 'Đang hoạt động';
+      case 'INACTIVE':
+        return 'Không hoạt động';
+      case 'CANCELLED':
+        return 'Đã hủy';
+      case 'TERMINATED':
+        return 'Đã chấm dứt';
+      case 'EXPIRED':
+        return 'Đã hết hạn';
+      default:
+        return status;
+    }
+  }
+
+  String _getContractTypeText(String contractType) {
+    switch (contractType.toUpperCase()) {
+      case 'RENTAL':
+        return 'Thuê';
+      case 'PURCHASE':
+        return 'Mua';
+      default:
+        return contractType;
     }
   }
 
@@ -330,7 +364,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              contract.contractType,
+                              'Loại: ${_getContractTypeText(contract.contractType)}',
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
                               ),
@@ -353,7 +387,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
                             Icon(statusIcon, size: 16, color: statusColor),
                             const SizedBox(width: 6),
                             Text(
-                              contract.status.toUpperCase(),
+                              _getStatusText(contract.status),
                               style: theme.textTheme.labelSmall?.copyWith(
                                 color: statusColor,
                                 fontWeight: FontWeight.w700,
