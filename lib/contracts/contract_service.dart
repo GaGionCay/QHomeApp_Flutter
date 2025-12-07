@@ -453,7 +453,7 @@ class ContractService {
   }
 
   /// Cancel contract
-  Future<ContractDto?> cancelContract(String contractId, {String? updatedBy}) async {
+  Future<ContractDto?> cancelContract(String contractId, {String? updatedBy, DateTime? scheduledDate}) async {
     try {
       final client = _contractsClient();
       final token = await apiClient.storage.readAccessToken();
@@ -461,8 +461,15 @@ class ContractService {
         client.options.headers['Authorization'] = 'Bearer $token';
       }
 
+      final requestBody = scheduledDate != null
+          ? {'scheduledDate': scheduledDate.toIso8601String().split('T')[0]}
+          : null;
+
       final queryParams = updatedBy != null ? '?updatedBy=$updatedBy' : '';
-      final response = await client.put('/contracts/$contractId/cancel$queryParams');
+      final response = await client.put(
+        '/contracts/$contractId/cancel$queryParams',
+        data: requestBody,
+      );
 
       if (response.statusCode == 200 && response.data is Map) {
         return ContractDto.fromJson(

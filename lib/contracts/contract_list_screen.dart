@@ -15,6 +15,7 @@ import '../theme/app_colors.dart';
 import 'contract_detail_screen.dart';
 import 'contract_service.dart';
 import 'contract_renewal_screen.dart';
+import 'contract_cancel_screen.dart';
 
 class ContractListScreen extends StatefulWidget {
   const ContractListScreen({super.key});
@@ -107,6 +108,7 @@ class _ContractListScreenState extends State<ContractListScreen> {
       });
     } catch (e) {
       if (!mounted) return;
+      debugPrint('❌ [ContractList] Lỗi khi load contracts: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Lỗi tải hợp đồng: $e')),
       );
@@ -569,18 +571,17 @@ class _ContractListScreenState extends State<ContractListScreen> {
                 Builder(
                   builder: (context) {
                     final canRenew = _canRenewContract(contract);
-                    final showRenewalButtons = contract.renewalStatus == 'REMINDED' || 
-                                             contract.renewalStatus == 'PENDING' ||
-                                             canRenew;
-                    
-                    if (!showRenewalButtons) {
+                    // Chỉ hiển thị button khi có thể gia hạn (trong vòng 3 tháng trước khi hết hạn)
+                    // Không hiển thị nếu còn hơn 3 tháng, dù có renewalStatus là REMINDED hay PENDING
+                    if (!canRenew) {
                       return const SizedBox.shrink();
                     }
                     
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (!canRenew && (contract.renewalStatus == 'REMINDED' || contract.renewalStatus == 'PENDING'))
+                        // Thông báo nếu có reminder nhưng chưa đến thời điểm gia hạn (không nên xảy ra vì đã check canRenew)
+                        if (contract.renewalStatus == 'REMINDED' || contract.renewalStatus == 'PENDING')
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
@@ -606,10 +607,10 @@ class _ContractListScreenState extends State<ContractListScreen> {
                                     ),
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                        if (!canRenew && (contract.renewalStatus == 'REMINDED' || contract.renewalStatus == 'PENDING'))
+            ],
+          ),
+        ),
+                        if (contract.renewalStatus == 'REMINDED' || contract.renewalStatus == 'PENDING')
                           const SizedBox(height: 12),
                         Row(
                           children: [
@@ -667,6 +668,11 @@ class _ContractListScreenState extends State<ContractListScreen> {
   }
 
   bool _canRenewContract(ContractDto contract) {
+    // Chỉ cho phép gia hạn hợp đồng RENTAL và ACTIVE
+    if (contract.contractType != 'RENTAL' || contract.status != 'ACTIVE') {
+      return false;
+    }
+    
     if (contract.endDate == null) return false;
     
     final now = DateTime.now();
@@ -675,24 +681,28 @@ class _ContractListScreenState extends State<ContractListScreen> {
     // If contract has already expired, cannot renew
     if (endDate.isBefore(now)) return false;
     
-    // Calculate months between now and end date
-    // Use year and month difference, then check if we're within 3 months
-    int monthsUntilExpiry = (endDate.year - now.year) * 12 + (endDate.month - now.month);
+    // Tính số ngày từ hôm nay đến ngày hết hạn
+    final daysUntilExpiry = endDate.difference(now).inDays;
     
-    // Adjust if endDate day is before now day in the same month
-    // (e.g., now is Dec 15, endDate is Jan 10 -> should be 0 months, not 1)
-    if (endDate.day < now.day) {
-      monthsUntilExpiry--;
+    // Chỉ được gia hạn khi còn 3 tháng trước ngày hết hạn
+    // 3 tháng = khoảng 90 ngày (30 ngày/tháng)
+    // Cho phép gia hạn khi: 0 <= daysUntilExpiry <= 90 ngày
+    // Không cho phép khi: daysUntilExpiry > 90 ngày (hơn 3 tháng)
+    
+    // Tính số tháng chính xác dựa trên số ngày
+    // Nếu còn hơn 90 ngày (hơn 3 tháng), không cho phép
+    if (daysUntilExpiry > 90) {
+      return false;
     }
     
-    // Can renew if within 3 months before expiration (0 to 3 months)
-    return monthsUntilExpiry >= 0 && monthsUntilExpiry <= 3;
+    // Nếu còn từ 0 đến 90 ngày (0 đến 3 tháng), cho phép gia hạn
+    return daysUntilExpiry >= 0;
   }
 
   Future<void> _handleRenewContract(ContractDto contract) async {
     if (_contractService == null) return;
     
-    // Check if can renew (within 3 months)
+    // Kiểm tra: chỉ được gia hạn khi còn 3 tháng trước ngày hết hạn
     if (!_canRenewContract(contract)) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -723,53 +733,21 @@ class _ContractListScreenState extends State<ContractListScreen> {
   Future<void> _handleCancelContract(ContractDto contract) async {
     if (_contractService == null) return;
     
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Xác nhận hủy hợp đồng'),
-        content: Text(
-          'Bạn có chắc chắn muốn hủy hợp đồng ${contract.contractNumber}?',
+    // Navigate to cancel screen to select inspection date
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ContractCancelScreen(
+          contract: contract,
+          contractService: _contractService!,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Không'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red,
-            ),
-            child: const Text('Có, hủy hợp đồng'),
-          ),
-        ],
       ),
     );
     
-    if (confirmed == true) {
-      try {
-        await _contractService!.cancelContract(contract.id);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Đã hủy hợp đồng thành công'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-        // Refresh contracts
-        if (_selectedUnitId != null) {
-          await _loadContracts(_selectedUnitId!);
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Lỗi khi hủy hợp đồng: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+    // If cancellation was successful, refresh contracts
+    if (result == true && mounted) {
+      if (_selectedUnitId != null) {
+        await _loadContracts(_selectedUnitId!);
       }
     }
   }

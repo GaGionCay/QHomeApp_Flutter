@@ -7,6 +7,7 @@ import '../models/contract.dart';
 import '../theme/app_colors.dart';
 import 'contract_service.dart';
 import 'contract_renewal_screen.dart';
+import 'contract_cancel_screen.dart';
 
 class ContractReminderPopup extends StatefulWidget {
   final ContractDto contract;
@@ -431,100 +432,27 @@ class _ContractReminderPopupState extends State<ContractReminderPopup>
     }
   }
 
-  void _handleCancel(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: isDark
-            ? AppColors.navySurfaceElevated
-            : AppColors.neutralSurface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+  void _handleCancel(BuildContext context) async {
+    // Mark popup as shown before navigating
+    await _markPopupAsShown();
+    await _dismissDialog();
+    
+    if (!mounted) return;
+    
+    // Navigate to cancel screen to select inspection date
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ContractCancelScreen(
+          contract: widget.contract,
+          contractService: widget.contractService,
         ),
-        title: Text(
-          'Xác nhận hủy hợp đồng',
-          style: TextStyle(
-            color: isDark ? Colors.white : AppColors.textPrimary,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        content: Text(
-          'Bạn có chắc chắn muốn hủy hợp đồng ${widget.contract.contractNumber}?',
-          style: TextStyle(
-            color: isDark ? Colors.white70 : AppColors.textSecondary,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            style: TextButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            child: Text(
-              'Không',
-              style: TextStyle(
-                color: isDark ? Colors.white70 : AppColors.textSecondary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(dialogContext);
-              // Mark popup as shown before canceling
-              await _markPopupAsShown();
-              await _dismissDialog();
-              
-              try {
-                await widget.contractService.cancelContract(widget.contract.id);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text('Đã hủy hợp đồng thành công'),
-                      backgroundColor: AppColors.success,
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  );
-                }
-                widget.onDismiss?.call();
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Lỗi khi hủy hợp đồng: $e'),
-                      backgroundColor: AppColors.danger,
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  );
-                }
-              }
-            },
-            style: TextButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            child: Text(
-              'Có, hủy hợp đồng',
-              style: TextStyle(
-                color: isDark ? Colors.red[300] : Colors.red[600],
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
       ),
     );
+    
+    // If cancellation was successful, call onDismiss
+    if (result == true) {
+      widget.onDismiss?.call();
+    }
   }
 }
