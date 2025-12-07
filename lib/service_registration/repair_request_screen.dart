@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import 'maintenance_request_service.dart';
 import 'video_recorder_screen.dart';
 import 'video_compression_service.dart';
 import 'package:video_player/video_player.dart';
+import 'package:video_compress/video_compress.dart';
 import 'dart:io';
 
 class RepairRequestScreen extends StatefulWidget {
@@ -73,7 +75,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
   String? _preferredDateError;
   String? _preferredTimeError;
 
-  final List<_AttachmentFile> _attachments = [];
+  final List<_AttachmentFile> _attachments = []; // Giữ nguyên thứ tự người dùng chọn
   bool _loadingProfile = true;
   bool _loadingUnit = true;
   bool _submitting = false;
@@ -233,6 +235,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
       
       if (!mounted) return;
       setState(() {
+        // Thêm vào cuối theo thứ tự người dùng chọn (giữ nguyên thứ tự)
         _attachments.add(
           _AttachmentFile(
             bytes: finalBytes,
@@ -278,19 +281,32 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
           color: Colors.orange,
         );
       }
+      
+      // Kiểm tra và xử lý rotation cho video từ gallery
+      // Video sẽ được xử lý rotation khi nén trước khi upload
+      try {
+        final mediaInfo = await VideoCompress.getMediaInfo(pickedFile.path);
+        if (mediaInfo?.orientation != null && mediaInfo!.orientation != 0) {
+          debugPrint('📹 Video từ gallery có rotation: ${mediaInfo.orientation}°');
+          // Rotation sẽ được xử lý khi nén video trước khi upload
+        }
+      } catch (e) {
+        debugPrint('⚠️ Không thể kiểm tra rotation của video: $e');
+      }
     }
     
     final mime = _detectMimeType(pickedFile.path, isVideo: isVideo);
     setState(() {
-      _attachments.add(
-        _AttachmentFile(
+      final newAttachment = _AttachmentFile(
           bytes: bytes,
           mimeType: mime,
           fileName: pickedFile.name,
           isVideo: isVideo,
           videoPath: isVideo ? pickedFile.path : null, // Lưu path cho video để preview
-        ),
       );
+      
+      // Thêm vào cuối theo thứ tự người dùng chọn (giữ nguyên thứ tự)
+      _attachments.add(newAttachment);
     });
   }
 
@@ -326,6 +342,38 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
     setState(() {
       _attachments.removeAt(index);
     });
+  }
+
+  // Widget để preview ảnh với kích thước cố định
+  Widget _ImagePreviewWidget({
+    required List<int> bytes,
+    required double containerWidth,
+    required double containerHeight,
+  }) {
+    return SizedBox(
+      width: containerWidth,
+      height: containerHeight,
+      child: Image.memory(
+        Uint8List.fromList(bytes),
+        fit: BoxFit.cover, // Center crop để fit trong container
+        width: containerWidth,
+        height: containerHeight,
+      ),
+    );
+  }
+
+  void _showFullscreenAttachment(int index) {
+    final attachment = _attachments[index];
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => _FullscreenAttachmentViewer(
+          attachment: attachment,
+          index: index,
+          total: _attachments.length,
+        ),
+      ),
+    );
   }
 
   void _pickDate() async {
@@ -405,20 +453,117 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
     try {
       // Upload attachments to ImageKit
       final List<String> attachmentUrls = [];
-      for (final attachment in _attachments) {
+      for (int i = 0; i < _attachments.length; i++) {
+        final attachment = _attachments[i];
         try {
           File? tempFile;
-          if (attachment.videoPath != null && File(attachment.videoPath!).existsSync()) {
-            // Use existing video file path if available
-            tempFile = File(attachment.videoPath!);
+          
+          if (attachment.isVideo) {
+            // Xử lý video: nén và fix rotation nếu cần
+            if (attachment.videoPath != null && File(attachment.videoPath!).existsSync()) {
+              // Video đã được nén từ camera hoặc cần nén từ gallery
+              final videoFile = File(attachment.videoPath!);
+              
+              // Kiểm tra rotation metadata
+              bool hasRotation = false;
+              try {
+                final mediaInfo = await VideoCompress.getMediaInfo(attachment.videoPath!);
+                hasRotation = mediaInfo?.orientation != null && mediaInfo!.orientation != 0;
+                if (hasRotation) {
+                  debugPrint('📹 Video có rotation: ${mediaInfo.orientation}° - cần xử lý');
+                }
+              } catch (e) {
+                debugPrint('⚠️ Không thể kiểm tra rotation: $e');
+              }
+              
+              // Kiểm tra xem video có cần nén lại không
+              final fileSizeMB = await videoFile.length() / (1024 * 1024);
+              final needsCompression = fileSizeMB > 10 || hasRotation; // Nén nếu > 10MB hoặc có rotation
+              
+              if (needsCompression) {
+                // Hiển thị progress cho video đang nén
+                if (mounted) {
+                  _showMessage('Đang xử lý video ${i + 1}/${_attachments.length}${hasRotation ? ' (sửa rotation)' : ''}...', color: Colors.blue);
+                }
+                
+                // Nén video và xử lý rotation
+                final compressedFile = await VideoCompressionService.instance.compressVideo(
+                  videoPath: attachment.videoPath!,
+                  onProgress: (message) {
+                    debugPrint('Video compression: $message');
+                  },
+                );
+                
+                if (compressedFile != null && await compressedFile.exists()) {
+                  tempFile = compressedFile;
+                } else {
+                  // Nếu nén thất bại, dùng file gốc
+                  tempFile = videoFile;
+                }
+              } else {
+                // Video nhỏ và không có rotation, dùng file gốc
+                tempFile = videoFile;
+              }
+            } else {
+              // Video không có path (từ bytes), tạo temp file và nén
+              final tempDir = Directory.systemTemp;
+              final tempInputFile = File('${tempDir.path}/video_input_${DateTime.now().millisecondsSinceEpoch}_$i.mp4');
+              await tempInputFile.writeAsBytes(attachment.bytes);
+              
+              // Kiểm tra rotation metadata
+              bool hasRotation = false;
+              try {
+                final mediaInfo = await VideoCompress.getMediaInfo(tempInputFile.path);
+                hasRotation = mediaInfo?.orientation != null && mediaInfo!.orientation != 0;
+                if (hasRotation) {
+                  debugPrint('📹 Video từ bytes có rotation: ${mediaInfo.orientation}° - cần xử lý');
+                }
+              } catch (e) {
+                debugPrint('⚠️ Không thể kiểm tra rotation: $e');
+              }
+              
+              // Nén video và xử lý rotation (luôn nén để xử lý rotation nếu có)
+              if (mounted) {
+                _showMessage('Đang xử lý video ${i + 1}/${_attachments.length}${hasRotation ? ' (sửa rotation)' : ''}...', color: Colors.blue);
+              }
+              
+              final compressedFile = await VideoCompressionService.instance.compressVideo(
+                videoPath: tempInputFile.path,
+                onProgress: (message) {
+                  debugPrint('Video compression: $message');
+                },
+              );
+              
+              // Xóa temp input file
+              try {
+                if (await tempInputFile.exists()) {
+                  await tempInputFile.delete();
+                }
+              } catch (e) {
+                debugPrint('⚠️ Không thể xóa temp input file: $e');
+              }
+              
+              if (compressedFile != null && await compressedFile.exists()) {
+                tempFile = compressedFile;
+              } else {
+                // Nếu nén thất bại, tạo temp file từ bytes
+                tempFile = File('${tempDir.path}/video_${DateTime.now().millisecondsSinceEpoch}_$i.mp4');
+                await tempFile.writeAsBytes(attachment.bytes);
+              }
+            }
           } else {
-            // Create temporary file for upload
-            final tempDir = Directory.systemTemp;
-            final extension = attachment.isVideo 
-                ? (attachment.fileName.contains('.') ? attachment.fileName.split('.').last : 'mp4')
-                : (attachment.fileName.contains('.') ? attachment.fileName.split('.').last : 'jpg');
-            tempFile = File('${tempDir.path}/attachment_${DateTime.now().millisecondsSinceEpoch}_${attachmentUrls.length}.$extension');
-            await tempFile.writeAsBytes(attachment.bytes);
+            // Xử lý ảnh: không cần nén
+            if (attachment.videoPath != null && File(attachment.videoPath!).existsSync()) {
+              tempFile = File(attachment.videoPath!);
+            } else {
+              // Create temporary file for upload
+              final tempDir = Directory.systemTemp;
+              final extension = attachment.fileName.contains('.') 
+                  ? attachment.fileName.split('.').last 
+                  : 'jpg';
+              tempFile = File('${tempDir.path}/attachment_${DateTime.now().millisecondsSinceEpoch}_$i.$extension');
+              await tempFile.writeAsBytes(attachment.bytes);
+            }
           }
           
           final url = await _imageKitService.uploadImage(
@@ -427,9 +572,27 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
           );
           attachmentUrls.add(url);
           
-          // Clean up temp file if we created it
-          if (attachment.videoPath == null && await tempFile.exists()) {
-            await tempFile.delete();
+          // Clean up temp file if it was created for compression
+          if (attachment.isVideo && tempFile != null) {
+            try {
+              // Chỉ xóa nếu là file nén (không phải file gốc từ videoPath)
+              if (attachment.videoPath == null || tempFile.path != attachment.videoPath) {
+                if (await tempFile.exists()) {
+                  await tempFile.delete();
+                }
+              }
+            } catch (e) {
+              debugPrint('⚠️ Không thể xóa temp file: $e');
+            }
+          } else if (!attachment.isVideo && attachment.videoPath == null && tempFile != null) {
+            // Xóa temp file cho ảnh nếu được tạo
+            try {
+              if (await tempFile.exists()) {
+                await tempFile.delete();
+              }
+            } catch (e) {
+              debugPrint('⚠️ Không thể xóa temp file: $e');
+            }
           }
         } catch (e) {
           if (!mounted) return;
@@ -888,13 +1051,53 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
               ),
             )
           else
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: List.generate(
-                _attachments.length,
-                (index) => _buildAttachmentPreview(index, theme),
-              ),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                // Tính toán số cột dựa trên width màn hình - responsive
+                final screenWidth = constraints.maxWidth;
+                final spacing = 12.0;
+                const itemHeight = 180.0; // Height cố định
+                
+                // Responsive: 2-4 cột tùy màn hình
+                int crossAxisCount;
+                if (screenWidth < 400) {
+                  crossAxisCount = 2;
+                } else if (screenWidth < 600) {
+                  crossAxisCount = 3;
+                } else {
+                  crossAxisCount = 4;
+                }
+                
+                final itemSize = (screenWidth - (spacing * (crossAxisCount + 1))) / crossAxisCount;
+                
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    crossAxisSpacing: spacing,
+                    mainAxisSpacing: spacing,
+                    childAspectRatio: itemSize / itemHeight,
+                  ),
+                  itemCount: _attachments.length,
+                  itemBuilder: (context, index) {
+                    return AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      transitionBuilder: (child, animation) {
+                        return ScaleTransition(
+                          scale: animation,
+                          child: FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: _buildAttachmentPreview(index, theme, itemSize),
+                      key: ValueKey(_attachments[index].hashCode),
+                    );
+                  },
+                );
+              },
             ),
           if (_attachments.isNotEmpty)
             Padding(
@@ -914,73 +1117,166 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
     required String label,
     required VoidCallback onTap,
   }) {
-    return OutlinedButton.icon(
+    return FilledButton.tonalIcon(
       onPressed: onTap,
-      icon: Icon(icon),
-      label: Text(label),
+      icon: Icon(icon, size: 20),
+      label: Text(
+        label,
+        style: const TextStyle(fontSize: 13),
+      ),
+      style: FilledButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
     );
   }
 
-  Widget _buildAttachmentPreview(int index, ThemeData theme) {
+  Widget _buildAttachmentPreview(int index, ThemeData theme, double itemWidth) {
     final attachment = _attachments[index];
+    const double itemHeight = 180.0; // Height cố định
+    
     return Stack(
+      clipBehavior: Clip.antiAlias,
       children: [
-        Container(
-          width: 96,
-          height: 96,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-            image: attachment.isVideo
-                ? null
-                : DecorationImage(
-                    image: MemoryImage(Uint8List.fromList(attachment.bytes)),
-                    fit: BoxFit.cover,
-                  ),
-          ),
-          child: attachment.isVideo
-              ? _VideoPreviewWidget(
-                  videoPath: attachment.videoPath,
-                  sizeFormatted: attachment.sizeFormatted,
-                  theme: theme,
-                )
-              : null,
-        ),
-        Positioned(
-          top: 4,
-          right: 4,
-          child: GestureDetector(
-            onTap: () => _removeAttachment(index),
-            child: Container(
-              decoration: const BoxDecoration(
-                color: Colors.black54,
-                shape: BoxShape.circle,
+        // Card container với shadow và border radius
+        GestureDetector(
+          onTap: () => _showFullscreenAttachment(index),
+          child: Container(
+            width: itemWidth,
+            height: itemHeight,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+              border: Border.all(
+                color: theme.colorScheme.outline.withValues(alpha: 0.1),
+                width: 1,
               ),
-              padding: const EdgeInsets.all(4),
-              child: const Icon(Icons.close, color: Colors.white, size: 16),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: attachment.isVideo
+                  ? _VideoPreviewWidget(
+                      videoPath: attachment.videoPath,
+                      sizeFormatted: attachment.sizeFormatted,
+                      theme: theme,
+                      containerWidth: itemWidth,
+                      containerHeight: itemHeight,
+                    )
+                  : _ImagePreviewWidget(
+                      bytes: attachment.bytes,
+                      containerWidth: itemWidth,
+                      containerHeight: itemHeight,
+                    ),
             ),
           ),
         ),
-        // Hiển thị cảnh báo nếu file quá lớn
+        // Close button
+        Positioned(
+          top: 8,
+          right: 8,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _removeAttachment(index),
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.close,
+                  color: Colors.white,
+                  size: 16,
+                ),
+              ),
+            ),
+          ),
+        ),
+        // Video indicator badge
+        if (attachment.isVideo)
+          Positioned(
+            top: 8,
+            left: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.play_circle_outline,
+                    color: Colors.white,
+                    size: 14,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Video',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        // File size warning badge
         if (attachment.sizeInMB > 50)
           Positioned(
-            bottom: 4,
-            left: 4,
-            right: 4,
+            bottom: 8,
+            left: 8,
+            right: 8,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.orange.withValues(alpha: 0.9),
-                borderRadius: BorderRadius.circular(4),
+                color: Colors.orange.withValues(alpha: 0.95),
+                borderRadius: BorderRadius.circular(8),
               ),
-              child: Text(
-                'File lớn',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 9,
-                ),
-                textAlign: TextAlign.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.white,
+                    size: 12,
+                  ),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      'File lớn',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 10,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -1013,11 +1309,15 @@ class _VideoPreviewWidget extends StatefulWidget {
   final String? videoPath;
   final String sizeFormatted;
   final ThemeData theme;
+  final double containerWidth;
+  final double containerHeight;
 
   const _VideoPreviewWidget({
     required this.videoPath,
     required this.sizeFormatted,
     required this.theme,
+    required this.containerWidth,
+    required this.containerHeight,
   });
 
   @override
@@ -1027,7 +1327,6 @@ class _VideoPreviewWidget extends StatefulWidget {
 class _VideoPreviewWidgetState extends State<_VideoPreviewWidget> {
   VideoPlayerController? _controller;
   bool _isInitialized = false;
-  bool _isPlaying = false;
 
   @override
   void initState() {
@@ -1046,6 +1345,7 @@ class _VideoPreviewWidgetState extends State<_VideoPreviewWidget> {
 
       _controller = VideoPlayerController.file(file);
       await _controller!.initialize();
+      // Chỉ hiển thị frame đầu tiên (thumbnail), không play video
       if (mounted) {
         setState(() {
           _isInitialized = true;
@@ -1054,19 +1354,6 @@ class _VideoPreviewWidgetState extends State<_VideoPreviewWidget> {
     } catch (e) {
       debugPrint('⚠️ Lỗi khởi tạo video player: $e');
     }
-  }
-
-  void _togglePlayPause() {
-    if (_controller == null || !_isInitialized) return;
-
-    setState(() {
-      if (_isPlaying) {
-        _controller!.pause();
-      } else {
-        _controller!.play();
-      }
-      _isPlaying = !_isPlaying;
-    });
   }
 
   @override
@@ -1078,69 +1365,103 @@ class _VideoPreviewWidgetState extends State<_VideoPreviewWidget> {
   @override
   Widget build(BuildContext context) {
     if (!_isInitialized || _controller == null) {
-      // Hiển thị icon nếu chưa khởi tạo được
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.videocam_outlined,
-              color: widget.theme.colorScheme.primary,
-              size: 32,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              widget.sizeFormatted,
-              style: widget.theme.textTheme.labelSmall?.copyWith(
+      // Hiển thị placeholder khi chưa khởi tạo được
+      return Container(
+        width: widget.containerWidth,
+        height: widget.containerHeight,
+        decoration: BoxDecoration(
+          color: widget.theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.videocam_outlined,
                 color: widget.theme.colorScheme.primary,
-                fontWeight: FontWeight.w600,
-                fontSize: 10,
+                size: 32,
               ),
-            ),
-          ],
+              const SizedBox(height: 4),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Text(
+                  widget.sizeFormatted,
+                  style: widget.theme.textTheme.labelSmall?.copyWith(
+                    color: widget.theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 10,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
 
-    return GestureDetector(
-      onTap: _togglePlayPause,
+    // Tính toán aspect ratio của video để scale thumbnail phù hợp
+    final videoAspectRatio = _controller!.value.aspectRatio;
+    final containerAspectRatio = widget.containerWidth / widget.containerHeight;
+    
+    return Container(
+      width: widget.containerWidth,
+      height: widget.containerHeight,
+      decoration: const BoxDecoration(
+        color: Colors.black,
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Stack(
+        clipBehavior: Clip.antiAlias,
         children: [
-          SizedBox.expand(
-            child: FittedBox(
-              fit: BoxFit.cover,
-              child: SizedBox(
-                width: _controller!.value.size.width,
-                height: _controller!.value.size.height,
-                child: VideoPlayer(_controller!),
+          // Video thumbnail (frame đầu tiên) với auto-scale để fit trong container
+          // Không play video, chỉ hiển thị thumbnail
+          Center(
+            child: SizedBox(
+              width: widget.containerWidth,
+              height: widget.containerHeight,
+              child: FittedBox(
+                fit: BoxFit.contain, // Contain để fit toàn bộ video trong container, giữ aspect ratio
+                clipBehavior: Clip.antiAlias,
+                alignment: Alignment.center,
+                child: SizedBox(
+                  width: _controller!.value.size.width,
+                  height: _controller!.value.size.height,
+                  child: VideoPlayer(_controller!),
+                ),
               ),
             ),
           ),
-          // Overlay với play/pause button
+          // Play icon overlay ở giữa để chỉ ra đây là video
           Center(
             child: Container(
-              decoration: const BoxDecoration(
-                color: Colors.black54,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.5),
                 shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-              padding: const EdgeInsets.all(8),
-              child: Icon(
-                _isPlaying ? Icons.pause : Icons.play_arrow,
+              padding: const EdgeInsets.all(12),
+              child: const Icon(
+                Icons.play_circle_filled,
                 color: Colors.white,
-                size: 24,
+                size: 40,
               ),
             ),
           ),
-          // Size label
+          // Size label ở góc dưới
           Positioned(
-            bottom: 4,
-            left: 4,
-            right: 4,
+            bottom: 8,
+            right: 8,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
               decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(4),
+                color: Colors.black.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
                 widget.sizeFormatted,
@@ -1180,6 +1501,388 @@ class _VideoCompressionDialog extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Fullscreen viewer cho ảnh và video
+class _FullscreenAttachmentViewer extends StatefulWidget {
+  final _AttachmentFile attachment;
+  final int index;
+  final int total;
+
+  const _FullscreenAttachmentViewer({
+    required this.attachment,
+    required this.index,
+    required this.total,
+  });
+
+  @override
+  State<_FullscreenAttachmentViewer> createState() => _FullscreenAttachmentViewerState();
+}
+
+class _FullscreenAttachmentViewerState extends State<_FullscreenAttachmentViewer> {
+  VideoPlayerController? _videoController;
+  bool _isVideoInitialized = false;
+  bool _isVideoPlaying = false;
+  bool _showControls = true;
+  Timer? _controlsTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.attachment.isVideo && widget.attachment.videoPath != null) {
+      _initializeVideo();
+    }
+  }
+
+  Future<void> _initializeVideo() async {
+    try {
+      final file = File(widget.attachment.videoPath!);
+      if (!await file.exists()) {
+        return;
+      }
+
+      _videoController = VideoPlayerController.file(file);
+      await _videoController!.initialize();
+      
+      // Thêm listener để update UI khi video playing/paused
+      _videoController!.addListener(_videoListener);
+      
+      if (mounted) {
+        setState(() {
+          _isVideoInitialized = true;
+        });
+        // Tự động play video khi khởi tạo xong
+        _videoController!.play();
+        _isVideoPlaying = true;
+        // Tự động ẩn controls sau 3 giây
+        _startControlsTimer();
+      }
+    } catch (e) {
+      debugPrint('⚠️ Lỗi khởi tạo video player: $e');
+    }
+  }
+
+  void _videoListener() {
+    if (_videoController == null) return;
+    
+    final isPlaying = _videoController!.value.isPlaying;
+    if (isPlaying != _isVideoPlaying && mounted) {
+      setState(() {
+        _isVideoPlaying = isPlaying;
+      });
+    }
+    
+    // Update UI khi video kết thúc
+    if (_videoController!.value.position >= _videoController!.value.duration &&
+        _videoController!.value.duration > Duration.zero) {
+      if (mounted) {
+        setState(() {
+          _isVideoPlaying = false;
+        });
+      }
+    }
+  }
+
+  void _togglePlayPause() {
+    if (_videoController == null || !_isVideoInitialized) return;
+
+    if (_isVideoPlaying) {
+      _videoController!.pause();
+    } else {
+      _videoController!.play();
+      _startControlsTimer(); // Reset timer khi play
+    }
+  }
+
+  void _toggleControls() {
+    setState(() {
+      _showControls = !_showControls;
+    });
+    if (_showControls) {
+      _startControlsTimer();
+    } else {
+      _controlsTimer?.cancel();
+    }
+  }
+
+  void _startControlsTimer() {
+    _controlsTimer?.cancel();
+    _controlsTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && _isVideoPlaying) {
+        setState(() {
+          _showControls = false;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controlsTimer?.cancel();
+    _videoController?.removeListener(_videoListener);
+    _videoController?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final mediaQuery = MediaQuery.of(context);
+    final isLandscape = mediaQuery.orientation == Orientation.landscape;
+    
+    return Scaffold(
+      backgroundColor: Colors.black,
+      extendBodyBehindAppBar: widget.attachment.isVideo && isLandscape,
+      appBar: AppBar(
+        backgroundColor: widget.attachment.isVideo && isLandscape 
+            ? Colors.transparent 
+            : Colors.black,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text(
+          widget.attachment.isVideo ? 'Video' : 'Ảnh',
+          style: const TextStyle(color: Colors.white),
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Center(
+              child: Text(
+                '${widget.index + 1}/${widget.total}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: widget.attachment.isVideo
+          ? GestureDetector(
+              onTap: _toggleControls,
+              child: _buildVideoView(theme, isLandscape),
+            )
+          : Center(
+              child: _buildImageView(theme),
+            ),
+    );
+  }
+
+  Widget _buildImageView(ThemeData theme) {
+    return InteractiveViewer(
+      minScale: 0.5,
+      maxScale: 4.0,
+      child: Image.memory(
+        Uint8List.fromList(widget.attachment.bytes),
+        fit: BoxFit.contain,
+      ),
+    );
+  }
+
+  Widget _buildVideoView(ThemeData theme, bool isLandscape) {
+    if (!_isVideoInitialized) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: Colors.white),
+            SizedBox(height: 16),
+            Text(
+              'Đang tải video...',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Video player - fullscreen với aspect ratio, hỗ trợ cả portrait và landscape
+        Center(
+          child: FittedBox(
+            fit: BoxFit.contain, // Giữ aspect ratio, fit trong màn hình
+            child: SizedBox(
+              width: _videoController!.value.size.width,
+              height: _videoController!.value.size.height,
+              child: VideoPlayer(_videoController!),
+            ),
+          ),
+        ),
+        // Controls overlay với animation mượt mà
+        AnimatedOpacity(
+          opacity: _showControls ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          child: _showControls
+              ? Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Tap to hide overlay
+                    Positioned.fill(
+                      child: GestureDetector(
+                        onTap: _toggleControls,
+                        child: Container(
+                          color: Colors.transparent,
+                        ),
+                      ),
+                    ),
+                    // Center play/pause button với animation
+                    Center(
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.0, end: _showControls ? 1.0 : 0.0),
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOutBack,
+                        builder: (context, value, child) {
+                          // Clamp opacity để đảm bảo trong phạm vi [0.0, 1.0]
+                          final clampedOpacity = value.clamp(0.0, 1.0);
+                          return Transform.scale(
+                            scale: value.clamp(0.0, 1.0), // Clamp scale cũng để tránh lỗi
+                            child: Opacity(
+                              opacity: clampedOpacity,
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: _togglePlayPause,
+                                  borderRadius: BorderRadius.circular(50),
+                                  child: Container(
+                                    width: 80,
+                                    height: 80,
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(alpha: 0.7),
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(alpha: 0.5),
+                                          blurRadius: 12,
+                                          spreadRadius: 2,
+                                        ),
+                                      ],
+                                    ),
+                                    child: Icon(
+                                      _isVideoPlaying ? Icons.pause : Icons.play_arrow,
+                                      color: Colors.white,
+                                      size: 48,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                )
+              : const SizedBox.shrink(),
+        ),
+        // Bottom controls bar với animation slide up/down
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          bottom: _showControls ? 0 : -120,
+          left: 0,
+          right: 0,
+          child: Container(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 20,
+              bottom: MediaQuery.of(context).padding.bottom + 20,
+            ),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.black.withValues(alpha: 0.9),
+                ],
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Progress bar với scrubbing - cải thiện touch area
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  child: VideoProgressIndicator(
+                    _videoController!,
+                    allowScrubbing: true,
+                    colors: const VideoProgressColors(
+                      playedColor: Colors.white,
+                      bufferedColor: Colors.grey,
+                      backgroundColor: Colors.white24,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Controls row với spacing tốt hơn
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Play/Pause button
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: _togglePlayPause,
+                        borderRadius: BorderRadius.circular(30),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          child: Icon(
+                            _isVideoPlaying ? Icons.pause : Icons.play_arrow,
+                            color: Colors.white,
+                            size: 32,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 24),
+                    // Time display
+                    Text(
+                      _formatDuration(_videoController!.value.position),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                    const Text(
+                      ' / ',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                      ),
+                    ),
+                    Text(
+                      _formatDuration(_videoController!.value.duration),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
   }
 }
 

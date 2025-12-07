@@ -23,6 +23,7 @@ class ContractDto {
   final String? renewalStatus; // PENDING, REMINDED, DECLINED
   final int? reminderCount; // 1, 2, or 3
   final bool? isFinalReminder; // true if reminderCount == 3
+  final bool? needsRenewal; // true if contract is within 1 month before expiration (28-32 days, same as reminder 1)
   final double? totalRent; // Calculated total rent
   final List<ContractFileDto> files;
 
@@ -49,6 +50,7 @@ class ContractDto {
     this.renewalStatus,
     this.reminderCount,
     this.isFinalReminder,
+    this.needsRenewal,
     this.totalRent,
     this.files = const [],
   });
@@ -104,6 +106,7 @@ class ContractDto {
           ? json['reminderCount'] as int
           : int.tryParse(json['reminderCount']?.toString() ?? ''),
       isFinalReminder: json['isFinalReminder'] == true,
+      needsRenewal: json['needsRenewal'] == true,
       totalRent: parseDouble(json['totalRent']),
       files: parseFiles(json['files']),
     );

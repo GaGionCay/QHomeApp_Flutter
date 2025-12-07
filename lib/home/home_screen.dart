@@ -1102,7 +1102,12 @@ class _HomeScreenState extends State<HomeScreen> {
       minimumGap: 16,
     );
 
-    final name = _profile?['fullName'] ?? _profile?['username'] ?? 'Cư dân';
+    // Ưu tiên fullName, fallback về username, cuối cùng là "Cư dân"
+    final name = _profile?['fullName']?.toString().trim().isNotEmpty == true
+        ? _profile!['fullName'].toString().trim()
+        : (_profile?['username']?.toString().trim().isNotEmpty == true
+            ? _profile!['username'].toString().trim()
+            : 'Cư dân');
 
     final backgroundGradient = theme.brightness == Brightness.dark
         ? const LinearGradient(
@@ -1310,20 +1315,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 8),
-                    // User name (larger and bold)
-                    Text(
-                      name,
-                      style: textTheme.displaySmall?.copyWith(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.1,
-                        height: 1.2,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),

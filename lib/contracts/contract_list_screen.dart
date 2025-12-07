@@ -969,20 +969,29 @@ class _ContractListScreenState extends State<ContractListScreen>
     );
   }
 
-  /// Check if contract needs renewal (can renew or has renewal status)
+  /// Check if contract needs renewal
+  /// Sử dụng field needsRenewal từ backend (chỉ true khi trong vòng 1 tháng trước hết hạn - 28-32 ngày)
+  /// Nếu không có field này, fallback về logic cũ
   bool _needsRenewal(ContractDto contract) {
     // Chỉ hợp đồng RENTAL và ACTIVE mới cần gia hạn
     if (contract.contractType != 'RENTAL' || contract.status != 'ACTIVE') {
       return false;
     }
     
-    // Nếu có renewalStatus là REMINDED hoặc PENDING, cần gia hạn
-    if (contract.renewalStatus == 'REMINDED' || contract.renewalStatus == 'PENDING') {
+    // Ưu tiên sử dụng field needsRenewal từ backend
+    // Field này chỉ true khi trong vòng 1 tháng trước hết hạn (28-32 ngày, cùng thời điểm reminder lần 1)
+    if (contract.needsRenewal == true) {
       return true;
     }
     
-    // Nếu có thể gia hạn (trong vòng 3 tháng), cần gia hạn
-    return _canRenewContract(contract);
+    // Fallback: Nếu không có field needsRenewal, kiểm tra renewalStatus
+    // Chỉ hiển thị "cần gia hạn" khi có renewalStatus là REMINDED (đã gửi reminder lần 1)
+    if (contract.renewalStatus == 'REMINDED') {
+      return true;
+    }
+    
+    // Không hiển thị "cần gia hạn" nếu chỉ có PENDING hoặc chưa đến thời điểm reminder
+    return false;
   }
 
   /// Get renewal message based on contract state

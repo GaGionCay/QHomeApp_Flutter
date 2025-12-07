@@ -60,10 +60,39 @@ class ImageKitService {
         AppLogger.success('[ImageKitService] ✅ Image uploaded successfully: $imageUrl');
         return imageUrl;
       } else {
-        throw Exception('Response không có URL: ${response.data}');
+        final errorMsg = response.data['error']?.toString() ?? 'Response không có URL';
+        AppLogger.error('[ImageKitService] ❌ Upload failed: $errorMsg');
+        throw Exception('Lỗi khi upload image: $errorMsg');
       }
-    } catch (e) {
+    } on DioException catch (e) {
       AppLogger.error('[ImageKitService] ❌ Lỗi khi upload image', e);
+      
+      // Xử lý lỗi 500 từ server
+      if (e.response?.statusCode == 500) {
+        final errorMsg = e.response?.data?['error']?.toString() ?? 
+                       e.response?.data?.toString() ?? 
+                       'Lỗi server (500) - Vui lòng thử lại sau';
+        throw Exception('Lỗi server khi upload: $errorMsg');
+      }
+      
+      // Xử lý các lỗi khác
+      if (e.response != null) {
+        final errorMsg = e.response?.data?['error']?.toString() ?? 
+                        e.response?.data?.toString() ?? 
+                        'Lỗi không xác định';
+        throw Exception('Lỗi khi upload image: $errorMsg');
+      }
+      
+      // Lỗi network hoặc timeout
+      if (e.type == DioExceptionType.connectionTimeout || 
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.sendTimeout) {
+        throw Exception('Kết nối quá chậm. Vui lòng kiểm tra kết nối mạng và thử lại.');
+      }
+      
+      throw Exception('Lỗi khi upload image: ${e.message ?? e.toString()}');
+    } catch (e) {
+      AppLogger.error('[ImageKitService] ❌ Lỗi không mong đợi khi upload image', e);
       throw Exception('Lỗi khi upload image: ${e.toString()}');
     }
   }
@@ -108,10 +137,39 @@ class ImageKitService {
         AppLogger.success('[ImageKitService] ✅ Uploaded ${urls.length} images successfully');
         return urls;
       } else {
-        throw Exception('Response không có URLs: ${response.data}');
+        final errorMsg = response.data['error']?.toString() ?? 'Response không có URLs';
+        AppLogger.error('[ImageKitService] ❌ Upload failed: $errorMsg');
+        throw Exception('Lỗi khi upload images: $errorMsg');
       }
-    } catch (e) {
+    } on DioException catch (e) {
       AppLogger.error('[ImageKitService] ❌ Lỗi khi upload images', e);
+      
+      // Xử lý lỗi 500 từ server
+      if (e.response?.statusCode == 500) {
+        final errorMsg = e.response?.data?['error']?.toString() ?? 
+                       e.response?.data?.toString() ?? 
+                       'Lỗi server (500) - Vui lòng thử lại sau';
+        throw Exception('Lỗi server khi upload: $errorMsg');
+      }
+      
+      // Xử lý các lỗi khác
+      if (e.response != null) {
+        final errorMsg = e.response?.data?['error']?.toString() ?? 
+                        e.response?.data?.toString() ?? 
+                        'Lỗi không xác định';
+        throw Exception('Lỗi khi upload images: $errorMsg');
+      }
+      
+      // Lỗi network hoặc timeout
+      if (e.type == DioExceptionType.connectionTimeout || 
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.sendTimeout) {
+        throw Exception('Kết nối quá chậm. Vui lòng kiểm tra kết nối mạng và thử lại.');
+      }
+      
+      throw Exception('Lỗi khi upload images: ${e.message ?? e.toString()}');
+    } catch (e) {
+      AppLogger.error('[ImageKitService] ❌ Lỗi không mong đợi khi upload images', e);
       throw Exception('Lỗi khi upload images: ${e.toString()}');
     }
   }
