@@ -45,11 +45,18 @@ class ChatApiClient {
         if (token != null) options.headers['Authorization'] = 'Bearer $token';
         final deviceId = await _storage.readDeviceId();
         if (deviceId != null) options.headers['X-Device-Id'] = deviceId;
+        print('📤 [ChatApiClient] ${options.method} ${options.path}');
         return handler.next(options);
       },
       onError: (err, handler) async {
         final options = err.requestOptions;
-        if (err.response?.statusCode == 401) {
+        final statusCode = err.response?.statusCode;
+        final path = options.path;
+        
+        // Log error for debugging
+        print('❌ [ChatApiClient] Error ${statusCode ?? 'unknown'} on ${options.method} $path');
+        
+        if (statusCode == 401) {
           final refreshToken = await _storage.readRefreshToken();
           if (refreshToken == null || isRefreshing) {
             await _storage.deleteSessionData();
@@ -57,20 +64,27 @@ class ChatApiClient {
           }
           try {
             isRefreshing = true;
+            print('🔄 [ChatApiClient] Refreshing token for 401 error...');
             await _authService.refreshToken();
             final newAccessToken = await _storage.readAccessToken();
             if (newAccessToken != null) {
               options.headers['Authorization'] = 'Bearer $newAccessToken';
+              print('✅ [ChatApiClient] Token refreshed, retrying request...');
               final cloned = await dio.fetch(options);
               return handler.resolve(cloned);
             }
           } on DioException catch (e) {
+            print('❌ [ChatApiClient] Token refresh failed: ${e.message}');
             await _storage.deleteSessionData();
             return handler.next(e);
           } finally {
             isRefreshing = false;
           }
+        } else if (statusCode == 404) {
+          // Log 404 for debugging (might be service not ready or endpoint doesn't exist)
+          print('⚠️ [ChatApiClient] 404 on $path - Service might not be ready or endpoint not found');
         }
+        
         return handler.next(err);
       },
     ));

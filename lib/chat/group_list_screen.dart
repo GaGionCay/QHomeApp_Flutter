@@ -389,8 +389,8 @@ class _GroupListScreenState extends State<GroupListScreen> {
                   }
                   
                   // Direct invitations section
-                  // Always show if there are pending direct invitations and currentIndex is 0
-                  if (_pendingDirectInvitationsCount > 0 && currentIndex == 0) {
+                  // Always show (like group invitations) - screen should always be visible
+                  if (currentIndex == 0) {
                     return _DirectInvitationsSection(
                       key: ValueKey('direct_invitations_${_pendingDirectInvitationsCount}_$index'),
                       count: _pendingDirectInvitationsCount,
@@ -409,10 +409,8 @@ class _GroupListScreenState extends State<GroupListScreen> {
                     );
                   }
                   
-                  // Adjust index after direct invitations
-                  if (_pendingDirectInvitationsCount > 0) {
-                    currentIndex--;
-                  }
+                  // Adjust index after direct invitations (always present)
+                  currentIndex--;
                   
                   // Direct chat section header
                   if (_directConversations.isNotEmpty && currentIndex == 0) {

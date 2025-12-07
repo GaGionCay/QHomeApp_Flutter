@@ -25,10 +25,15 @@ class ChatService {
         _imageKitService = ImageKitService(ApiClient());
 
   /// Get my groups
+  /// Retries up to 2 times on 404 errors (service might not be ready)
   Future<GroupPagedResponse> getMyGroups({
     int page = 0,
     int size = 20,
+    int retryCount = 0,
   }) async {
+    const maxRetries = 2;
+    const retryDelay = Duration(milliseconds: 500);
+    
     try {
       final response = await _apiClient.dio.get(
         '/groups',
@@ -38,7 +43,37 @@ class ChatService {
         },
       );
       return GroupPagedResponse.fromJson(response.data);
+    } on DioException catch (e) {
+      // Handle 404 - might be service not ready or no groups yet
+      if (e.response?.statusCode == 404) {
+        // If it's a 404 and we haven't retried yet, retry with delay
+        if (retryCount < maxRetries) {
+          print('⚠️ [ChatService] getMyGroups 404, retrying (${retryCount + 1}/$maxRetries)...');
+          await Future.delayed(retryDelay * (retryCount + 1));
+          return getMyGroups(page: page, size: size, retryCount: retryCount + 1);
+        }
+        
+        // After retries, if still 404, return empty response (user might not have groups)
+        print('⚠️ [ChatService] getMyGroups 404 after retries, returning empty list');
+        return GroupPagedResponse(
+          content: [],
+          currentPage: page,
+          pageSize: size,
+          totalElements: 0,
+          totalPages: 0,
+          hasNext: false,
+          hasPrevious: false,
+          isFirst: true,
+          isLast: true,
+        );
+      }
+      
+      // For other errors, throw exception
+      print('❌ [ChatService] getMyGroups error: ${e.response?.statusCode} - ${e.message}');
+      throw Exception('Lỗi khi lấy danh sách nhóm: ${e.message ?? e.toString()}');
     } catch (e) {
+      // Handle non-DioException errors
+      if (e is Exception) rethrow;
       throw Exception('Lỗi khi lấy danh sách nhóm: ${e.toString()}');
     }
   }

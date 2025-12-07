@@ -184,6 +184,7 @@ class _DirectInvitationsScreenState extends State<DirectInvitationsScreen> {
                   )
                 : _invitations.isEmpty
                     ? Center(
+                        // Always show screen even when empty (like group invitations)
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -199,6 +200,13 @@ class _DirectInvitationsScreenState extends State<DirectInvitationsScreen> {
                                 color: theme.colorScheme.onSurface.withOpacity(0.6),
                               ),
                             ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Các lời mời trò chuyện sẽ hiển thị ở đây',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface.withOpacity(0.5),
+                              ),
+                            ),
                           ],
                         ),
                       )
@@ -207,6 +215,10 @@ class _DirectInvitationsScreenState extends State<DirectInvitationsScreen> {
                         itemCount: _invitations.length,
                         itemBuilder: (context, index) {
                           final invitation = _invitations[index];
+                          // Only show PENDING invitations
+                          if (invitation.status != 'PENDING') {
+                            return const SizedBox.shrink();
+                          }
                           return Card(
                             margin: const EdgeInsets.only(bottom: 12),
                             child: Padding(

@@ -119,4 +119,26 @@ class BaseServiceClient {
     // All requests go through API Gateway
     return '${ApiClient.buildServiceBase()}$path';
   }
+
+  /// Update scheduled date for asset inspection
+  /// Allows multiple updates (no restriction on how many times)
+  Future<Map<String, dynamic>?> updateInspectionScheduledDate(
+    String inspectionId,
+    DateTime scheduledDate,
+  ) async {
+    try {
+      final response = await dio.put(
+        '/asset-inspections/$inspectionId/scheduled-date',
+        data: {
+          'scheduledDate': scheduledDate.toIso8601String().split('T')[0],
+        },
+      );
+      if (response.statusCode == 200 && response.data is Map) {
+        return Map<String, dynamic>.from(response.data as Map);
+      }
+      return null;
+    } catch (e) {
+      throw Exception('Lỗi khi cập nhật ngày kiểm tra: ${e.toString()}');
+    }
+  }
 }

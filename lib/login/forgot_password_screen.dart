@@ -214,10 +214,25 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       );
     } catch (e) {
       if (!mounted) return;
+      // Extract error message from Exception
+      String errorMessage = 'Yêu cầu thất bại';
+      final errorStr = e.toString();
+      
+      // Remove "Exception: " prefix if present
+      if (errorStr.startsWith('Exception: ')) {
+        errorMessage = errorStr.substring('Exception: '.length);
+      } else {
+        errorMessage = errorStr;
+      }
+      
+      // Clean up the message (remove any extra formatting)
+      errorMessage = errorMessage.trim();
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Yêu cầu thất bại: ${e.toString()}'),
+          content: Text(errorMessage),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
         ),
       );
     } finally {

@@ -1254,14 +1254,16 @@ class _PostCard extends StatelessWidget {
                           children: [
                             Text(
                               post.author?.name ?? 'Người dùng',
-                              style: theme.textTheme.titleMedium?.copyWith(
+                              style: theme.textTheme.titleLarge?.copyWith(
                                 fontWeight: FontWeight.w700,
+                                fontSize: 16,
                                 color: (currentResidentId != null && 
                                         post.residentId == currentResidentId)
                                     ? theme.colorScheme.primary
                                     : theme.colorScheme.onSurface,
                               ),
-                              overflow: TextOverflow.ellipsis,
+                              overflow: TextOverflow.visible,
+                              softWrap: true,
                             ),
                           const SizedBox(height: 4),
                           if (post.author?.unitNumber != null || post.author?.buildingName != null)
@@ -1307,32 +1309,11 @@ class _PostCard extends StatelessWidget {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (onShareTap != null)
-                              GestureDetector(
-                                onTap: () {
-                                  if (onShareTap != null) {
-                                    onShareTap!();
-                                  }
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.only(right: 8),
-                                  child: Icon(
-                                    CupertinoIcons.share,
-                                    size: 18,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ),
-                              ),
-                            Text(
-                              _formatDate(post.createdAt),
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                              ),
-                            ),
-                          ],
+                        Text(
+                          _formatDate(post.createdAt),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                          ),
                         ),
                       ],
                     ),
@@ -1624,7 +1605,7 @@ class _PostCard extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: 12),
-                // Actions
+                // Actions - Comment and Share
                 Row(
                   children: [
                     Icon(
@@ -1638,6 +1619,21 @@ class _PostCard extends StatelessWidget {
                       key: ValueKey('comment_count_${post.id}_${post.commentCount}'),
                       style: theme.textTheme.bodySmall,
                     ),
+                    if (onShareTap != null) ...[
+                      const SizedBox(width: 16),
+                      GestureDetector(
+                        onTap: () {
+                          if (onShareTap != null) {
+                            onShareTap!();
+                          }
+                        },
+                        child: Icon(
+                          CupertinoIcons.share,
+                          size: 20,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],

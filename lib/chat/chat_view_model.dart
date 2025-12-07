@@ -55,7 +55,16 @@ class ChatViewModel extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _isLoading = false;
-      _error = 'Lỗi khi tải danh sách nhóm: ${e.toString()}';
+      // Only show error if it's not a 404 (404 might mean no groups, which is normal)
+      final errorStr = e.toString();
+      if (errorStr.contains('404') || errorStr.contains('not found')) {
+        // 404 is handled gracefully in service, return empty list
+        _groups = refresh ? [] : _groups;
+        _hasMore = false;
+        _error = null; // Don't show error for 404
+      } else {
+        _error = 'Lỗi khi tải danh sách nhóm: ${e.toString()}';
+      }
       notifyListeners();
     }
   }

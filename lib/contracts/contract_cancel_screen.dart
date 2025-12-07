@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/contract.dart';
 import '../theme/app_colors.dart';
+import '../auth/base_service_client.dart';
 import 'contract_service.dart';
 
 class ContractCancelScreen extends StatefulWidget {
@@ -25,9 +26,12 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
   DateTime? _confirmedDate; // Ngày đã xác nhận (sau khi bấm xác nhận)
   bool _isLoading = false;
   String? _error;
+  String? _inspectionId; // ID của inspection sau khi cancel contract
 
   // Tháng hủy hợp đồng (tháng hiện tại)
   late DateTime _cancelMonth;
+  
+  late final BaseServiceClient _baseServiceClient;
 
   @override
   void initState() {
@@ -35,6 +39,7 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
     // Tháng hủy hợp đồng là tháng hiện tại
     final now = DateTime.now();
     _cancelMonth = DateTime(now.year, now.month, 1);
+    _baseServiceClient = BaseServiceClient();
   }
 
   // Lấy danh sách ngày trong tháng hủy hợp đồng
@@ -67,7 +72,7 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
     return lastDay;
   }
 
-  // Xác nhận ngày kiểm tra (khi người dùng chọn ngày)
+  // Xác nhận ngày kiểm tra (cho phép xác nhận nhiều lần)
   Future<void> _confirmDate() async {
     if (_selectedDate == null) return;
 
@@ -133,9 +138,55 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
     );
 
     if (confirmed == true) {
+      // Cho phép xác nhận nhiều lần - luôn update _confirmedDate
       setState(() {
         _confirmedDate = _selectedDate;
       });
+      
+      // Nếu đã có inspectionId (sau khi cancel contract), update scheduled date
+      if (_inspectionId != null) {
+        setState(() => _isLoading = true);
+        try {
+          await _baseServiceClient.updateInspectionScheduledDate(
+            _inspectionId!,
+            _selectedDate!,
+          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Đã cập nhật ngày kiểm tra: ${_formatDate(_selectedDate!)}'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Lỗi khi cập nhật ngày kiểm tra: ${e.toString()}'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        } finally {
+          if (mounted) {
+            setState(() => _isLoading = false);
+          }
+        }
+      } else {
+        // Chưa có inspectionId (chưa cancel contract), chỉ show message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Đã xác nhận ngày kiểm tra: ${_formatDate(_selectedDate!)}'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -223,6 +274,21 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
       if (!mounted) return;
 
       if (result != null) {
+        // Try to get inspection ID from result or fetch it
+        // Inspection is created when contract is cancelled
+        try {
+          // Get inspection by contract ID to get inspectionId
+          final inspectionResponse = await _baseServiceClient.dio.get(
+            '/asset-inspections/contract/${widget.contract.id}',
+          );
+          if (inspectionResponse.statusCode == 200 && inspectionResponse.data is Map) {
+            final inspectionData = Map<String, dynamic>.from(inspectionResponse.data as Map);
+            _inspectionId = inspectionData['id']?.toString();
+          }
+        } catch (e) {
+          // Inspection might not be created yet, that's okay
+          print('Could not get inspection ID: $e');
+        }
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -515,8 +581,8 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
                       const SizedBox(height: 16),
                     ],
 
-                    // Button xác nhận ngày (chỉ hiển thị khi đã chọn ngày nhưng chưa xác nhận)
-                    if (_selectedDate != null && _confirmedDate == null) ...[
+                    // Button xác nhận ngày (luôn hiển thị khi đã chọn ngày, cho phép xác nhận nhiều lần)
+                    if (_selectedDate != null) ...[
                       FilledButton(
                         onPressed: _confirmDate,
                         style: FilledButton.styleFrom(
@@ -528,9 +594,11 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
                           ),
                           elevation: 0,
                         ),
-                        child: const Text(
-                          'Xác nhận',
-                          style: TextStyle(
+                        child: Text(
+                          _confirmedDate != null && _confirmedDate == _selectedDate
+                              ? 'Xác nhận lại'
+                              : 'Xác nhận',
+                          style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
                           ),

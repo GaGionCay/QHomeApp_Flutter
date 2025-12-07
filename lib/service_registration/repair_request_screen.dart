@@ -81,9 +81,9 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
 
   static const _selectedUnitPrefsKey = 'selected_unit_id';
   static const _maxAttachments = 5;
-  // TEST MODE: Extended working hours for testing (6:00 AM - 23:30 PM)
-  static const TimeOfDay _workingStart = TimeOfDay(hour: 6, minute: 0);
-  static const TimeOfDay _workingEnd = TimeOfDay(hour: 23, minute: 30);
+  // Working hours: 8:00 AM - 8:00 PM (20:00)
+  static const TimeOfDay _workingStart = TimeOfDay(hour: 8, minute: 0);
+  static const TimeOfDay _workingEnd = TimeOfDay(hour: 20, minute: 0);
 
   final DateFormat _dateFormatter = DateFormat('dd/MM/yyyy');
 
@@ -730,7 +730,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
 
     return _buildSection(
       title: 'Thời gian mong muốn',
-      subtitle: 'Khung giờ hỗ trợ 06:00 - 23:30 hằng ngày',
+      subtitle: 'Khung giờ hỗ trợ 08:00 - 20:00 hằng ngày',
       errorText: _preferredTimeError,
       child: Column(
         children: [
@@ -799,9 +799,22 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
               labelText: 'Người liên hệ',
               border: OutlineInputBorder(),
             ),
-            validator: (value) => value == null || value.trim().isEmpty
-                ? 'Không tìm thấy tên người liên hệ'
-                : null,
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return 'Không tìm thấy tên người liên hệ';
+              }
+              // Validate: không có ký tự đặc biệt, không có quá nhiều khoảng cách
+              final trimmed = value.trim();
+              // Check for special characters or numbers (only allow letters and spaces)
+              if (!RegExp(r'^[\p{L}\s]+$', unicode: true).hasMatch(trimmed)) {
+                return 'Họ và tên không được chứa ký tự đặc biệt hoặc số';
+              }
+              // Check for multiple consecutive spaces
+              if (RegExp(r'\s{2,}').hasMatch(trimmed)) {
+                return 'Họ và tên không được có quá nhiều khoảng cách';
+              }
+              return null;
+            },
           ),
           const SizedBox(height: 16),
           TextFormField(
@@ -810,12 +823,20 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
               labelText: 'Số điện thoại',
               border: OutlineInputBorder(),
             ),
+            keyboardType: TextInputType.phone,
             validator: (value) {
               if (value == null || value.trim().isEmpty) {
                 return 'Không tìm thấy số điện thoại';
               }
-              if (!RegExp(r'^0\d{9}$').hasMatch(value.trim())) {
-                return 'Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0';
+              // Remove all non-digit characters for validation
+              final phoneDigits = value.trim().replaceAll(RegExp(r'[^0-9]'), '');
+              // Validate: phải đúng 10 số
+              if (phoneDigits.length != 10) {
+                return 'Số điện thoại phải có đúng 10 chữ số';
+              }
+              // Check if original value contains special characters or spaces
+              if (RegExp(r'[^0-9]').hasMatch(value.trim())) {
+                return 'Số điện thoại không được chứa ký tự đặc biệt và khoảng cách';
               }
               return null;
             },

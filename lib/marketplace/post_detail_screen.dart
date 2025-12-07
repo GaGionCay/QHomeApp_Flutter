@@ -214,14 +214,16 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       try {
         await _marketplaceService.updateComment(widget.post.id, comment.id, result);
         if (context.mounted) {
+          // Update comment in local state without reloading
+          _updateCommentInTree(comment.id, result);
+          
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Đã chỉnh sửa bình luận'),
               backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
             ),
           );
-          // Refresh comments
-          await _loadComments();
         }
       } catch (e) {
         if (context.mounted) {
@@ -1626,7 +1628,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                           style: theme.textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
-                          overflow: TextOverflow.ellipsis,
+                          overflow: TextOverflow.visible,
+                          softWrap: true,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -2129,8 +2132,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                 items.add(
                                   const PopupMenuItem(
                                     value: 'edit',
-                                    child: Row(
-                                      children: [
+                            child: Row(
+                              children: [
                                         Icon(CupertinoIcons.pencil, size: 18, color: Colors.blue),
                                         SizedBox(width: 8),
                                         Text('Chỉnh sửa'),
@@ -2152,7 +2155,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                         SizedBox(width: 8),
                                         Text('Xóa', style: TextStyle(color: Colors.red)),
                                       ],
-                                    ),
+                                ),
                                   ),
                                 );
                               }
@@ -2183,6 +2186,60 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         ),
       ),
     );
+  }
+
+  /// Update comment content in the comment tree recursively
+  void _updateCommentInTree(String commentId, String newContent) {
+    final updatedComments = _comments.map((comment) {
+      return _updateCommentInTreeRecursive(comment, commentId, newContent);
+    }).toList();
+    
+    setState(() {
+      _comments = updatedComments;
+    });
+  }
+  
+  /// Recursively update comment in tree
+  MarketplaceComment _updateCommentInTreeRecursive(MarketplaceComment comment, String commentId, String newContent) {
+    if (comment.id == commentId) {
+      // Found the comment to update
+      return MarketplaceComment(
+        id: comment.id,
+        postId: comment.postId,
+        residentId: comment.residentId,
+        parentCommentId: comment.parentCommentId,
+        content: newContent,
+        author: comment.author,
+        replies: comment.replies,
+        replyCount: comment.replyCount,
+        createdAt: comment.createdAt,
+        updatedAt: DateTime.now(),
+        isDeleted: comment.isDeleted,
+        imageUrl: comment.imageUrl,
+        videoUrl: comment.videoUrl,
+      );
+    } else {
+      // Recursively update replies
+      final updatedReplies = comment.replies.map((reply) {
+        return _updateCommentInTreeRecursive(reply, commentId, newContent);
+      }).toList();
+      
+      return MarketplaceComment(
+        id: comment.id,
+        postId: comment.postId,
+        residentId: comment.residentId,
+        parentCommentId: comment.parentCommentId,
+        content: comment.content,
+        author: comment.author,
+        replies: updatedReplies,
+        replyCount: comment.replyCount,
+        createdAt: comment.createdAt,
+        updatedAt: comment.updatedAt,
+        isDeleted: comment.isDeleted,
+        imageUrl: comment.imageUrl,
+        videoUrl: comment.videoUrl,
+      );
+    }
   }
 
   /// Remove comment from tree recursively and move its replies to parent

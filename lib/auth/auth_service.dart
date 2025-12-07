@@ -95,7 +95,30 @@ class AuthService {
 
   Future<void> requestReset(String email) async {
     final client = _iamClient();
-    await client.post('/auth/request-reset', data: {'email': email});
+    try {
+      await client.post('/auth/request-reset', data: {'email': email});
+    } on DioException catch (e) {
+      // Extract error message from response
+      String errorMessage = 'Yêu cầu thất bại';
+      
+      if (e.response != null && e.response!.data != null) {
+        final responseData = e.response!.data;
+        
+        // Handle Map response (most common case)
+        if (responseData is Map) {
+          final dataMap = Map<String, dynamic>.from(responseData);
+          errorMessage = dataMap['message']?.toString() ?? errorMessage;
+        } 
+        // Handle String response
+        else if (responseData is String) {
+          errorMessage = responseData;
+        }
+      } else if (e.message != null) {
+        errorMessage = e.message!;
+      }
+      
+      throw Exception(errorMessage);
+    }
   }
 
   Future<void> verifyOtp(String email, String otp) async {
