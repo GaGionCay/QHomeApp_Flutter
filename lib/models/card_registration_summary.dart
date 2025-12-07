@@ -81,3 +81,4 @@ class CardRegistrationSummary {
     return null;
   }
 }
+

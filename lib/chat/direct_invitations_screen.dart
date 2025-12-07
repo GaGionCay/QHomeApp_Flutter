@@ -191,20 +191,20 @@ class _DirectInvitationsScreenState extends State<DirectInvitationsScreen> {
                             Icon(
                               CupertinoIcons.mail,
                               size: 64,
-                              color: theme.colorScheme.onSurface.withOpacity(0.3),
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
                             ),
                             const SizedBox(height: 16),
                             Text(
                               'Không có lời mời nào',
                               style: theme.textTheme.titleMedium?.copyWith(
-                                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                               ),
                             ),
                             const SizedBox(height: 8),
                             Text(
                               'Các lời mời trò chuyện sẽ hiển thị ở đây',
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                               ),
                             ),
                           ],
@@ -252,7 +252,7 @@ class _DirectInvitationsScreenState extends State<DirectInvitationsScreen> {
                                             Text(
                                               _formatTime(invitation.createdAt),
                                               style: theme.textTheme.bodySmall?.copyWith(
-                                                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                                               ),
                                             ),
                                           ],
@@ -300,4 +300,6 @@ class _DirectInvitationsScreenState extends State<DirectInvitationsScreen> {
     );
   }
 }
+
+
 

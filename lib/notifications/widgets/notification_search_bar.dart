@@ -108,3 +108,4 @@ class _NotificationSearchBarState extends State<NotificationSearchBar> {
     );
   }
 }
+

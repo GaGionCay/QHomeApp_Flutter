@@ -1,3 +1,4 @@
+// ignore_for_file: use_build_context_synchronously
 import 'package:flutter/material.dart';
 
 import '../auth/api_client.dart';
@@ -98,9 +99,7 @@ class _HouseholdMemberRegistrationScreenState
                 proofOfRelationImages: [], // Không cần ảnh minh chứng
               );
               if (!mounted) return;
-              // ignore: use_build_context_synchronously
               Navigator.of(context).pop();
-              // ignore: use_build_context_synchronously
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Đã gửi yêu cầu tạo tài khoản thành công.'),
@@ -467,5 +466,6 @@ class _HouseholdMemberRegistrationScreenState
   }
 
 }
+
 
 

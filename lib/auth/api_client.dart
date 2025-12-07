@@ -416,7 +416,7 @@ class ApiClient {
               
               // If discovery fails, still retry (might be temporary issue)
               // But skip if FormData to avoid finalized error
-              if (retryCount + 1 < maxRetries && !(options.data is FormData)) {
+              if (retryCount + 1 < maxRetries && options.data is! FormData) {
                 options.extra['retryCount'] = retryCount + 1;
                 options.extra['retryStartTime'] = startTime;
                 final delaySeconds = (1 << retryCount).clamp(1, 10);
@@ -766,5 +766,6 @@ class ApiClient {
     print('🔄 Started periodic ngrok URL check (every ${_discoveryCheckInterval.inSeconds}s)');
   }
 }
+
 
 

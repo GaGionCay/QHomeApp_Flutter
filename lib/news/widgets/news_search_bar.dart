@@ -106,3 +106,4 @@ class _NewsSearchBarState extends State<NewsSearchBar> {
     );
   }
 }
+

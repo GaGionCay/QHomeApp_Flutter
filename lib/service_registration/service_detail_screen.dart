@@ -1175,3 +1175,4 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     return const [];
   }
 }
+

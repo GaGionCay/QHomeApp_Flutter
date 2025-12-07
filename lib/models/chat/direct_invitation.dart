@@ -66,3 +66,4 @@ class DirectInvitation {
   bool get isExpired => DateTime.now().isAfter(expiresAt);
 }
 
+

@@ -99,3 +99,4 @@ class HouseholdMemberRequest {
     return DateFormat('dd/MM/yyyy HH:mm').format(createdAt!.toLocal());
   }
 }
+

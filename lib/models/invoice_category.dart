@@ -45,3 +45,4 @@ class InvoiceCategory {
   bool get hasInvoices => invoices.isNotEmpty;
 }
 
+

@@ -99,3 +99,4 @@ class TokenStorage {
     // fingerprintEnabled are NOT deleted here - they persist across sessions
   }
 }
+

@@ -769,3 +769,4 @@ const Map<String, Color> _priorityColors = <String, Color>{
   'HIGH': Color(0xFFFF7043),
   'URGENT': Color(0xFFD32F2F),
 };
+

@@ -104,3 +104,4 @@ class NotificationTypeFilterWidget extends StatelessWidget {
     );
   }
 }
+

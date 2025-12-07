@@ -78,9 +78,9 @@ class MarketplaceViewModel extends ChangeNotifier {
     }
     
     debugPrint('🔧 [MarketplaceViewModel] Setting up listener for marketplace_update events...');
-    debugPrint('🔧 [MarketplaceViewModel] Instance hashCode: ${hashCode}');
+    debugPrint('🔧 [MarketplaceViewModel] Instance hashCode: $hashCode');
     debugPrint('🔧 [MarketplaceViewModel] Previous listener setup: $_listenerSetup');
-    debugPrint('🔧 [MarketplaceViewModel] Current _posts.length: ${_posts.length}');
+    debugPrint('🔧 [MarketplaceViewModel] Current _posts.length: $_posts.length');
     
     try {
       _marketplaceUpdateSubscription = AppEventBus().on('marketplace_update', (data) {
@@ -93,8 +93,8 @@ class MarketplaceViewModel extends ChangeNotifier {
         debugPrint('📡 [MarketplaceViewModel] ⭐ EVENT RECEIVED ⭐');
         debugPrint('📡 [MarketplaceViewModel] Event received in listener: $data');
         debugPrint('📡 [MarketplaceViewModel] Event data type: ${data.runtimeType}');
-        debugPrint('📡 [MarketplaceViewModel] Instance hashCode: ${hashCode}');
-        debugPrint('📡 [MarketplaceViewModel] Current _posts.length: ${_posts.length}');
+        debugPrint('📡 [MarketplaceViewModel] Instance hashCode: $hashCode');
+        debugPrint('📡 [MarketplaceViewModel] Current _posts.length: $_posts.length');
         if (data is Map<String, dynamic>) {
           debugPrint('📡 [MarketplaceViewModel] Calling _handleRealtimeUpdate...');
           _handleRealtimeUpdate(data);
@@ -250,7 +250,7 @@ class MarketplaceViewModel extends ChangeNotifier {
     // Cancel only this instance's subscription, not all listeners
     _marketplaceUpdateSubscription?.cancel();
     _marketplaceUpdateSubscription = null;
-    debugPrint('🗑️ [MarketplaceViewModel] Disposed listener for instance: ${hashCode}');
+    debugPrint('🗑️ [MarketplaceViewModel] Disposed listener for instance: $hashCode');
     super.dispose();
   }
 
@@ -584,4 +584,5 @@ class MarketplaceViewModel extends ChangeNotifier {
     }
   }
 }
+
 

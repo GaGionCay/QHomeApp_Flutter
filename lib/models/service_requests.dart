@@ -293,3 +293,4 @@ int? _coerceToInt(Object? value) {
   if (value is String) return int.tryParse(value);
   return null;
 }
+

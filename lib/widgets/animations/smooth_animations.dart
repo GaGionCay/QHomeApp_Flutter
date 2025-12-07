@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 
 /// Utility class for smooth, modern animations throughout the app
 /// Provides consistent animation patterns similar to Messenger/Zalo
@@ -343,3 +342,4 @@ class ShimmerLoading extends StatelessWidget {
     );
   }
 }
+

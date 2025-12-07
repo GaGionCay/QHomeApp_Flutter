@@ -6,17 +6,13 @@ import '../models/marketplace_comment.dart';
 import '../models/marketplace_category.dart';
 import '../models/marketplace_paged_response.dart';
 import '../models/comment_paged_response.dart';
-import '../auth/api_client.dart';
-import '../services/imagekit_service.dart';
 import 'marketplace_api_client.dart';
 
 class MarketplaceService {
   final MarketplaceApiClient _apiClient;
-  final ImageKitService _imageKitService;
 
   MarketplaceService() 
-      : _apiClient = MarketplaceApiClient(),
-        _imageKitService = ImageKitService(ApiClient());
+      : _apiClient = MarketplaceApiClient();
 
   /// Lấy danh sách posts với pagination và filter
   Future<MarketplacePagedResponse> getPosts({
@@ -409,4 +405,5 @@ class MarketplaceService {
     }
   }
 }
+
 

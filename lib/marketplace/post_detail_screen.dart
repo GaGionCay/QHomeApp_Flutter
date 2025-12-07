@@ -1,8 +1,8 @@
+// ignore_for_file: use_build_context_synchronously
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:dio/dio.dart';
 import '../chat/linkable_text_widget.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
@@ -17,7 +17,6 @@ import '../auth/api_client.dart';
 import '../services/imagekit_service.dart';
 import 'marketplace_view_model.dart';
 import 'marketplace_service.dart';
-import 'marketplace_api_client.dart';
 import '../core/event_bus.dart';
 import 'image_viewer_screen.dart';
 import 'edit_post_screen.dart';
@@ -47,7 +46,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   final TokenStorage _tokenStorage = TokenStorage();
   final ChatService _chatService = ChatService();
   final ApiClient _apiClient = ApiClient();
-  final MarketplaceApiClient _marketplaceApiClient = MarketplaceApiClient();
   final MarketplaceService _marketplaceService = MarketplaceService();
   final ImageKitService _imageKitService = ImageKitService(ApiClient());
   bool _commentsLoaded = false; // Track if comments have been loaded
@@ -3669,4 +3667,5 @@ class _CommentVideoPlayerDialogState extends State<_CommentVideoPlayerDialog> {
     );
   }
 }
+
 

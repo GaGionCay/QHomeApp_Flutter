@@ -26,3 +26,4 @@ class ElectricityMonthly {
   DateTime get dateTime => DateTime(year, monthNumber);
 }
 
+

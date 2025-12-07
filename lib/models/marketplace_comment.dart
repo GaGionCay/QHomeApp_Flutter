@@ -111,3 +111,4 @@ class MarketplaceComment {
   bool get hasReplies => replies.isNotEmpty || replyCount > 0;
 }
 
+

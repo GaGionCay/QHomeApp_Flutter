@@ -44,3 +44,4 @@ class WebSocketNewsMessage {
   bool get isUpdated => type == 'NEWS_UPDATED';
   bool get isDeleted => type == 'NEWS_DELETED';
 }
+

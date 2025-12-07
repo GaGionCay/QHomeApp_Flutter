@@ -61,3 +61,4 @@ class Household {
     return 'Hộ $code • $kindName';
   }
 }
+

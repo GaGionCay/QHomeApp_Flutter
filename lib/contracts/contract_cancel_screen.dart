@@ -1,4 +1,4 @@
-import 'dart:ui';
+// ignore_for_file: use_build_context_synchronously
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -289,7 +289,6 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
           // Inspection might not be created yet, that's okay
           print('Could not get inspection ID: $e');
         }
-        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('Đã hủy hợp đồng thành công'),
@@ -373,8 +372,8 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: isDark
-                              ? colorScheme.outline.withOpacity(0.3)
-                              : AppColors.neutralOutline.withOpacity(0.3),
+                              ? colorScheme.outline.withValues(alpha: 0.3)
+                              : AppColors.neutralOutline.withValues(alpha: 0.3),
                         ),
                       ),
                       child: Column(
@@ -430,8 +429,8 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: isDark
-                              ? colorScheme.outline.withOpacity(0.3)
-                              : AppColors.neutralOutline.withOpacity(0.3),
+                              ? colorScheme.outline.withValues(alpha: 0.3)
+                              : AppColors.neutralOutline.withValues(alpha: 0.3),
                         ),
                       ),
                       child: GridView.builder(
@@ -469,8 +468,8 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
                                     ? AppColors.primaryBlue
                                     : isToday
                                         ? (isDark
-                                            ? colorScheme.primaryContainer.withOpacity(0.3)
-                                            : AppColors.primaryBlue.withOpacity(0.1))
+                                            ? colorScheme.primaryContainer.withValues(alpha: 0.3)
+                                            : AppColors.primaryBlue.withValues(alpha: 0.1))
                                         : Colors.transparent,
                                 borderRadius: BorderRadius.circular(8),
                                 border: isToday && !isSelected
@@ -489,7 +488,7 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
                                         ? FontWeight.bold
                                         : FontWeight.normal,
                                     color: isPast
-                                        ? textSecondary.withOpacity(0.3)
+                                        ? textSecondary.withValues(alpha: 0.3)
                                         : isSelected
                                             ? Colors.white
                                             : isToday
@@ -510,12 +509,12 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: isDark
-                            ? Colors.blue.withOpacity(0.15)
+                            ? Colors.blue.withValues(alpha: 0.15)
                             : Colors.blue[50],
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: isDark
-                              ? Colors.blue.withOpacity(0.3)
+                              ? Colors.blue.withValues(alpha: 0.3)
                               : Colors.blue[200]!,
                           width: 1.5,
                         ),
@@ -552,10 +551,10 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.1),
+                          color: Colors.red.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: Colors.red.withOpacity(0.3),
+                            color: Colors.red.withValues(alpha: 0.3),
                           ),
                         ),
                         child: Row(
@@ -634,3 +633,5 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
     );
   }
 }
+
+

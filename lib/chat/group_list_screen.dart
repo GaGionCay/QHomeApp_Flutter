@@ -1,3 +1,4 @@
+// ignore_for_file: use_build_context_synchronously
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -442,7 +443,7 @@ class _GroupListScreenState extends State<GroupListScreen> {
                         (conversation.muteUntil != null && 
                          conversation.muteUntil!.isAfter(DateTime.now()));
                     
-                    String _getLastMessagePreview(Conversation conv) {
+                    String getLastMessagePreview(Conversation conv) {
                       final lastMessage = conv.lastMessage;
                       if (lastMessage == null) return 'Chưa có tin nhắn';
                       if (lastMessage.isDeleted) return 'Tin nhắn đã bị xóa';
@@ -496,7 +497,7 @@ class _GroupListScreenState extends State<GroupListScreen> {
                           ),
                         ),
                         subtitle: Text(
-                          _getLastMessagePreview(conversation),
+                          getLastMessagePreview(conversation),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -755,9 +756,10 @@ class _GroupListScreenState extends State<GroupListScreen> {
 
     if (result != null && mounted) {
       try {
+        final messenger = ScaffoldMessenger.of(context);
         if (result == 'unmute') {
           await _chatService.unmuteDirectConversation(conversation.id);
-          ScaffoldMessenger.of(context).showSnackBar(
+          messenger.showSnackBar(
             const SnackBar(content: Text('✅ Đã bật lại thông báo')),
           );
         } else if (result.startsWith('mute_')) {
@@ -776,7 +778,7 @@ class _GroupListScreenState extends State<GroupListScreen> {
             conversationId: conversation.id,
             durationHours: durationHours,
           );
-          ScaffoldMessenger.of(context).showSnackBar(
+          messenger.showSnackBar(
             SnackBar(content: Text('✅ Đã tắt thông báo${durationHours != null ? ' trong $durationHours giờ' : ''}')),
           );
         } else if (result == 'block') {
@@ -1257,5 +1259,6 @@ class _DirectInvitationsSection extends StatelessWidget {
     );
   }
 }
+
 
 

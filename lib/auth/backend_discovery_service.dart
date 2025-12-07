@@ -1075,3 +1075,4 @@ class BackendInfo {
   String toString() =>
       'BackendInfo(hostname=$hostname, port=$port, method=$discoveryMethod, https=$isHttps)';
 }
+

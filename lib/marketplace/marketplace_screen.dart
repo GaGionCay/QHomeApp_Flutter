@@ -1,3 +1,4 @@
+// ignore_for_file: use_build_context_synchronously
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/cupertino.dart';
@@ -213,7 +214,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
         context,
         SmoothPageRoute(
           page: DirectChatScreen(
-            conversationId: friend!.conversationId!,
+            conversationId: friend.conversationId!,
             otherParticipantName: friend.friendName.isNotEmpty ? friend.friendName : (post.author?.name ?? 'Người dùng'),
           ),
         ),
@@ -1688,4 +1689,5 @@ class _PostCard extends StatelessWidget {
     return '';
   }
 }
+
 

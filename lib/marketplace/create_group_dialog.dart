@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 
 class CreateGroupDialog extends StatefulWidget {
   final String? defaultName;
@@ -99,4 +98,5 @@ class _CreateGroupDialogState extends State<CreateGroupDialog> {
     );
   }
 }
+
 

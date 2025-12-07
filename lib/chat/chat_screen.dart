@@ -1,3 +1,4 @@
+// ignore_for_file: use_build_context_synchronously
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
@@ -2130,7 +2131,6 @@ class _FileMessageWidgetState extends State<_FileMessageWidget> {
       }
 
       // Open file
-      // ignore: use_build_context_synchronously
       await _openFile(openFileContext, savedPath);
     } catch (e) {
       if (mounted) {
@@ -2846,17 +2846,15 @@ class _VideoMessageWidgetState extends State<_VideoMessageWidget> {
         },
       );
 
-      if (context.mounted) {
-        messenger.hideCurrentSnackBar();
-        messenger.showSnackBar(
-          const SnackBar(
-            content: Text('✅ Đã tải video thành công!'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('✅ Đã tải video thành công!'),
+          duration: Duration(seconds: 2),
+        ),
+      );
     } catch (e) {
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -3207,17 +3205,15 @@ class _FullScreenVideoViewerState extends State<_FullScreenVideoViewer> {
         },
       );
 
-      if (context.mounted) {
-        messenger.hideCurrentSnackBar();
-        messenger.showSnackBar(
-          const SnackBar(
-            content: Text('✅ Đã tải video thành công!'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('✅ Đã tải video thành công!'),
+          duration: Duration(seconds: 2),
+        ),
+      );
     } catch (e) {
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -3586,5 +3582,6 @@ class _MarketplacePostCard extends StatelessWidget {
     );
   }
 }
+
 
 

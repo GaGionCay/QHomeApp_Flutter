@@ -641,3 +641,4 @@ class _QuickActionChip extends StatelessWidget {
     );
   }
 }
+

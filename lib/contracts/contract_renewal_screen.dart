@@ -1,3 +1,4 @@
+// ignore_for_file: use_build_context_synchronously
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -621,3 +622,4 @@ class _ContractRenewalScreenState extends State<ContractRenewalScreen> {
     );
   }
 }
+

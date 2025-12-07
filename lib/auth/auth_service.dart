@@ -132,3 +132,4 @@ class AuthService {
         data: {'email': email, 'otp': otp, 'newPassword': newPassword});
   }
 }
+

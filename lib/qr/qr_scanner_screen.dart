@@ -1237,3 +1237,4 @@ class _ScannerOverlayPainter extends CustomPainter {
 }
 
 
+

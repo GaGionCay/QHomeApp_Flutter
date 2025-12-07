@@ -15,7 +15,6 @@ import '../news/news_screen.dart';
 import '../profile/profile_service.dart';
 import '../contracts/contract_service.dart';
 import '../contracts/contract_reminder_popup.dart';
-import '../contracts/contract_list_screen.dart';
 import '../models/contract.dart';
 import '../invoices/invoice_list_screen.dart';
 import '../invoices/paid_invoices_screen.dart';
@@ -2722,3 +2721,4 @@ class _WeatherRateLimitException implements Exception {
 
   final String source;
 }
+

@@ -62,3 +62,4 @@ class UnitInfo {
         primaryResidentId!.toLowerCase() == residentId.toLowerCase();
   }
 }
+

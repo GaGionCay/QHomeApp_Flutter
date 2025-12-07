@@ -400,3 +400,4 @@ class _CoverImage extends StatelessWidget {
     );
   }
 }
+

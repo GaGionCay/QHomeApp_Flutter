@@ -381,3 +381,4 @@ class _NotificationCardState extends State<NotificationCard>
     }
   }
 }
+

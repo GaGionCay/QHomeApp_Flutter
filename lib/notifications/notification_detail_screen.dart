@@ -779,3 +779,4 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
     );
   }
 }
+

@@ -48,3 +48,4 @@ class NotificationGroupHeader extends StatelessWidget {
     );
   }
 }
+

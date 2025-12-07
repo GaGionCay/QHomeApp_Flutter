@@ -503,7 +503,7 @@ class ChatService {
     try {
       // Use ApiClient directly since /api/direct-chat is not under /api/chat
       final apiClient = ApiClient();
-      final url = '/direct-chat/conversations';
+      const url = '/direct-chat/conversations';
       
       print('📤 [ChatService] Getting conversations...');
       print('   Base URL: ${apiClient.dio.options.baseUrl}');
@@ -727,7 +727,7 @@ class ChatService {
       
       // Use ApiClient.activeBaseUrl directly since /api/direct-invitations is not under /api/chat
       final apiClient = ApiClient();
-      final url = '/direct-invitations';
+      const url = '/direct-invitations';
       final requestData = {
         if (inviteeId != null) 'inviteeId': inviteeId,
         if (phoneNumber != null) 'phoneNumber': phoneNumber,
@@ -798,7 +798,7 @@ class ChatService {
     try {
       // Use ApiClient directly since /api/direct-invitations is not under /api/chat
       final apiClient = ApiClient();
-      final url = '/direct-invitations/pending';
+      const url = '/direct-invitations/pending';
       
       print('📤 [ChatService] Getting pending direct invitations...');
       print('   Base URL: ${apiClient.dio.options.baseUrl}');
@@ -1198,4 +1198,5 @@ class ChatService {
     }
   }
 }
+
 

@@ -1,3 +1,4 @@
+// ignore_for_file: use_build_context_synchronously
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
@@ -1150,7 +1151,6 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
         if (!didPop) {
           final shouldPop = await _onWillPop();
           if (shouldPop && mounted) {
-            // ignore: use_build_context_synchronously
             Navigator.of(context).pop();
           }
         }
@@ -1630,4 +1630,5 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
     return buffer.toString();
   }
 }
+
 

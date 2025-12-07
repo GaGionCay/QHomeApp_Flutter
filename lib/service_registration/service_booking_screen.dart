@@ -2325,3 +2325,4 @@ class _BookedSlot {
   final TimeOfDay end;
   final String status;
 }
+

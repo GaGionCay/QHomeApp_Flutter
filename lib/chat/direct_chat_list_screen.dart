@@ -1,3 +1,4 @@
+// ignore_for_file: use_build_context_synchronously
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../models/chat/conversation.dart';
@@ -278,13 +279,13 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
                             Icon(
                               CupertinoIcons.chat_bubble,
                               size: 64,
-                              color: theme.colorScheme.onSurface.withOpacity(0.3),
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
                             ),
                             const SizedBox(height: 16),
                             Text(
                               'Chưa có cuộc trò chuyện nào',
                               style: theme.textTheme.titleMedium?.copyWith(
-                                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                               ),
                             ),
                           ],
@@ -334,7 +335,7 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
                                 style: TextStyle(
                                   color: unreadCount > 0
                                       ? theme.colorScheme.primary
-                                      : theme.colorScheme.onSurface.withOpacity(0.6),
+                                      : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                                 ),
                               ),
                               trailing: Column(
@@ -348,13 +349,13 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
                                         Icon(
                                           CupertinoIcons.bell_slash,
                                           size: 16,
-                                          color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                                         ),
                                       if (isMuted) const SizedBox(width: 4),
                                       Text(
                                         _formatTime(conversation.lastMessage?.createdAt ?? conversation.updatedAt),
                                         style: theme.textTheme.bodySmall?.copyWith(
-                                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                                         ),
                                       ),
                                     ],
@@ -505,10 +506,11 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
 
     if (result != null && mounted) {
       try {
+        final messenger = ScaffoldMessenger.of(context);
         if (result == 'unmute') {
           print('🔍 [DirectChatListScreen] Processing: Unmute conversation');
           await _service.unmuteDirectConversation(conversation.id);
-          ScaffoldMessenger.of(context).showSnackBar(
+          messenger.showSnackBar(
             const SnackBar(content: Text('✅ Đã bật lại thông báo')),
           );
         } else if (result.startsWith('mute_')) {
@@ -527,7 +529,7 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
             conversationId: conversation.id,
             durationHours: durationHours,
           );
-          ScaffoldMessenger.of(context).showSnackBar(
+          messenger.showSnackBar(
             SnackBar(content: Text('✅ Đã tắt thông báo${durationHours != null ? ' trong $durationHours giờ' : ''}')),
           );
         } else if (result == 'block') {
@@ -733,4 +735,6 @@ class _DirectChatListScreenState extends State<DirectChatListScreen> {
     );
   }
 }
+
+
 

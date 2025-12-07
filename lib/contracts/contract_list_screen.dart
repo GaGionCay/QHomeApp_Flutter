@@ -231,25 +231,6 @@ class _ContractListScreenState extends State<ContractListScreen>
     return sorted;
   }
 
-  /// Get priority for contract status sorting
-  /// Lower number = higher priority
-  /// ACTIVE = 1 (highest), INACTIVE = 2, CANCELLED = 3, EXPIRED = 4 (lowest)
-  int _getStatusPriority(String status) {
-    final upperStatus = status.toUpperCase();
-    switch (upperStatus) {
-      case 'ACTIVE':
-        return 1;
-      case 'INACTIVE':
-        return 2;
-      case 'CANCELLED':
-        return 3;
-      case 'EXPIRED':
-        return 4;
-      default:
-        return 5;
-    }
-  }
-
   /// Get contract type text in Vietnamese
   String _getContractTypeText(String contractType) {
     switch (contractType.toUpperCase()) {
@@ -640,22 +621,18 @@ class _ContractListScreenState extends State<ContractListScreen>
         statusColor = const Color(0xFF34C759);
         statusIcon = CupertinoIcons.check_mark_circled_solid;
         statusText = 'Đang hoạt động';
-        break;
       case 'INACTIVE':
         statusColor = const Color(0xFF5AC8FA);
         statusIcon = CupertinoIcons.pause_circle_fill;
         statusText = 'Không hoạt động';
-        break;
       case 'CANCELLED':
         statusColor = const Color(0xFFFF3B30);
         statusIcon = CupertinoIcons.xmark_circle_fill;
         statusText = 'Đã hủy';
-        break;
       case 'EXPIRED':
         statusColor = const Color(0xFFFF9500);
         statusIcon = CupertinoIcons.time_solid;
         statusText = 'Đã hết hạn';
-        break;
       default:
         statusColor = theme.colorScheme.primary;
         statusIcon = CupertinoIcons.info_circle_fill;
@@ -1030,7 +1007,7 @@ class _ContractListScreenState extends State<ContractListScreen>
       if (daysUntilExpiry < 0) {
         return 'Hợp đồng đã hết hạn - Cần gia hạn ngay';
       } else if (daysUntilExpiry <= 30) {
-        return 'Còn ${daysUntilExpiry} ngày - Cần gia hạn sớm';
+        return 'Còn $daysUntilExpiry ngày - Cần gia hạn sớm';
       } else if (daysUntilExpiry <= 60) {
         final months = (daysUntilExpiry / 30).ceil();
         return 'Còn khoảng $months tháng - Nên gia hạn sớm';
@@ -1394,8 +1371,6 @@ class _ContractCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    
     // Special styling for contracts that need renewal
     if (needsRenewal) {
       return ClipRRect(
@@ -1548,3 +1523,4 @@ class _AnimatedContractCardState extends State<_AnimatedContractCard>
     );
   }
 }
+

@@ -1,3 +1,4 @@
+// ignore_for_file: use_build_context_synchronously
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
@@ -62,7 +63,6 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
   int _lastMessageCount = 0;
   String? _currentResidentId;
   final ChatService _chatService = ChatService();
-  Set<String> _blockedUserIds = {}; // Cache blocked user IDs
 
   @override
   void initState() {
@@ -127,12 +127,8 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
 
   Future<void> _loadBlockedUsers() async {
     try {
-      final blockedUserIds = await _chatService.getBlockedUsers();
-      if (mounted) {
-        setState(() {
-          _blockedUserIds = blockedUserIds.toSet();
-        });
-      }
+      await _chatService.getBlockedUsers();
+      // Blocked users are now loaded but not stored locally
     } catch (e) {
       print('⚠️ [DirectChatScreen] Error loading blocked users: $e');
     }
@@ -3108,9 +3104,7 @@ class _DirectVideoMessageWidgetState extends State<_DirectVideoMessageWidget> {
 
     return GestureDetector(
       onTap: _showFullScreenVideo,
-      onLongPress: widget.onLongPress != null 
-          ? widget.onLongPress 
-          : () => _showVideoOptions(context),
+      onLongPress: widget.onLongPress ?? () => _showVideoOptions(context),
       child: Container(
         constraints: const BoxConstraints(
           maxHeight: 300,
@@ -3710,4 +3704,5 @@ class _MarketplacePostCard extends StatelessWidget {
     );
   }
 }
+
 

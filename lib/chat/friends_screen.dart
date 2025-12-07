@@ -138,20 +138,20 @@ class _FriendsScreenState extends State<FriendsScreen> {
                             Icon(
                               CupertinoIcons.person_2,
                               size: 64,
-                              color: theme.colorScheme.onSurface.withOpacity(0.3),
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
                             ),
                             const SizedBox(height: 16),
                             Text(
                               'Chưa có bạn bè nào',
                               style: theme.textTheme.titleMedium?.copyWith(
-                                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                               ),
                             ),
                             const SizedBox(height: 8),
                             Text(
                               'Chấp nhận lời mời chat để thêm bạn bè',
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                               ),
                             ),
                           ],
@@ -185,7 +185,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                                   )
                                 : Icon(
                                     CupertinoIcons.chat_bubble,
-                                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                                   ),
                             onTap: () => _navigateToChat(friend),
                           );
@@ -195,4 +195,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
     );
   }
 }
+
+
 

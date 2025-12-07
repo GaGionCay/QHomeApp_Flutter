@@ -374,3 +374,4 @@ class _RegisterGlassTextFieldState extends State<RegisterGlassTextField> {
     );
   }
 }
+

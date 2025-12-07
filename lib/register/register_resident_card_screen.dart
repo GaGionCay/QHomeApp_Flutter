@@ -1531,3 +1531,4 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   }
 }
 
+

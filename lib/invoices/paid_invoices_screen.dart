@@ -1698,7 +1698,7 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
             isDark,
             Icons.numbers,
             'Số lượng',
-            _formatQuantity(data['quantity']) + ' ${data['unit'] ?? ''}',
+            '${_formatQuantity(data['quantity'])} ${data['unit'] ?? ''}',
           ),
           const SizedBox(height: 16),
           _buildInfoRow(
@@ -2006,3 +2006,4 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
     );
   }
 }
+

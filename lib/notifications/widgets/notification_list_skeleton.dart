@@ -80,3 +80,4 @@ class NotificationListSkeleton extends StatelessWidget {
     );
   }
 }
+

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/gestures.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
@@ -161,4 +160,5 @@ class _TextSegment {
     this.url,
   });
 }
+
 

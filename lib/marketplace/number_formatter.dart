@@ -108,3 +108,4 @@ double? parseFormattedNumber(String formattedNumber) {
   return double.tryParse(cleanNumber);
 }
 
+

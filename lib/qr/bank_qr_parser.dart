@@ -606,3 +606,4 @@ class BankQRParser {
   }
 
 }
+

@@ -1,3 +1,4 @@
+// ignore_for_file: use_build_context_synchronously
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -124,6 +125,7 @@ class _ContractReminderPopupState extends State<ContractReminderPopup>
 
     return PopScope(
       canPop: !isFinalReminder,
+      // ignore: deprecated_member_use
       onPopInvoked: (didPop) {
         if (!didPop && isFinalReminder) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -457,3 +459,4 @@ class _ContractReminderPopupState extends State<ContractReminderPopup>
     }
   }
 }
+

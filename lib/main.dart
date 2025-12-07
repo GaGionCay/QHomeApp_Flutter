@@ -56,10 +56,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (type == 'groupMessage' || type == 'directMessage') {
     try {
       final chatId = message.data['chatId']?.toString();
-      final unreadCountStr = message.data['unreadCount']?.toString();
       
       if (chatId != null) {
-        final unreadCount = unreadCountStr != null ? int.tryParse(unreadCountStr) ?? 0 : 0;
+        // Extract unread count (though it won't be used in background handler)
         
         // Emit event to update chat unreadCount (if AppEventBus is available)
         // Note: Background handler runs in isolate, so we can't use AppEventBus directly
@@ -195,7 +194,7 @@ Future<void> _configurePreferredRefreshRate() async {
     // Set refresh rate đã chọn
     await FlutterDisplayMode.setPreferredMode(preferredMode);
     // Refresh rate set successfully
-  } catch (e, stack) {
+  } catch (e) {
     // Error setting refresh rate - trying fallback
     try {
       await FlutterDisplayMode.setHighRefreshRate();
@@ -402,3 +401,4 @@ class _ExitConfirmationWrapperState extends State<ExitConfirmationWrapper> {
     );
   }
 }
+

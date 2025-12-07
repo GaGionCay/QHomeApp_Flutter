@@ -50,7 +50,9 @@ class _SelectGroupDialogState extends State<SelectGroupDialog> {
                         ],
                       ),
                       value: true,
+                      // ignore: deprecated_member_use
                       groupValue: _createNewGroup ? true : null,
+                      // ignore: deprecated_member_use
                       onChanged: (value) {
                         setState(() {
                           _createNewGroup = true;
@@ -99,7 +101,9 @@ class _SelectGroupDialogState extends State<SelectGroupDialog> {
                       ],
                     ),
                     value: group,
+                    // ignore: deprecated_member_use
                     groupValue: _createNewGroup ? null : _selectedGroup,
+                    // ignore: deprecated_member_use
                     onChanged: targetUserInGroup ? null : (value) {
                       setState(() {
                         _selectedGroup = value;
@@ -126,4 +130,5 @@ class _SelectGroupDialogState extends State<SelectGroupDialog> {
     );
   }
 }
+
 

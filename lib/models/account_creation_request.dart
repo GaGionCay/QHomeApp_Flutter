@@ -135,3 +135,4 @@ class AccountCreationRequest {
   bool get isCancelled => status.toUpperCase() == 'CANCELLED';
 }
 
+
