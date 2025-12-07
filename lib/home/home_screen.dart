@@ -402,18 +402,35 @@ class _HomeScreenState extends State<HomeScreen> {
         
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            showDialog(
-              context: context,
-              barrierDismissible: contract.isFinalReminder != true,
-              builder: (context) => ContractReminderPopup(
-                contract: contract,
-                contractService: _contractService,
-                onDismiss: () {
-                  // After dismissing, check if there are more contracts
-                  _checkContractReminders();
+            debugPrint('🎯 [ContractReminder] About to show dialog for contract: ${contract.contractNumber}');
+            try {
+              showDialog(
+                context: context,
+                barrierDismissible: contract.isFinalReminder != true,
+                builder: (dialogContext) {
+                  debugPrint('🎯 [ContractReminder] Dialog builder called for contract: ${contract.contractNumber}');
+                  return ContractReminderPopup(
+                    contract: contract,
+                    contractService: _contractService,
+                    onDismiss: () {
+                      debugPrint('🎯 [ContractReminder] Popup dismissed for contract: ${contract.contractNumber}');
+                      // After dismissing, check if there are more contracts
+                      _checkContractReminders();
+                    },
+                  );
                 },
-              ),
-            );
+              ).then((_) {
+                debugPrint('🎯 [ContractReminder] Dialog closed for contract: ${contract.contractNumber}');
+              }).catchError((error) {
+                debugPrint('❌ [ContractReminder] Error showing dialog: $error');
+                debugPrint('❌ [ContractReminder] Stack trace: ${StackTrace.current}');
+              });
+            } catch (e) {
+              debugPrint('❌ [ContractReminder] Exception when calling showDialog: $e');
+              debugPrint('❌ [ContractReminder] Stack trace: ${StackTrace.current}');
+            }
+          } else {
+            debugPrint('⚠️ [ContractReminder] Widget not mounted, cannot show dialog');
           }
         });
       } else {
@@ -1143,9 +1160,16 @@ class _HomeScreenState extends State<HomeScreen> {
               duration: const Duration(milliseconds: 280),
               child: _loading
                   ? const _HomeLoadingState()
-                  : CustomScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      slivers: [
+                  : RefreshIndicator(
+                      onRefresh: () async {
+                        debugPrint('🔄 [HomeScreen] Pull-to-refresh triggered');
+                        await _refreshAll();
+                        // Also check for contract reminders after refresh
+                        await _checkContractReminders();
+                      },
+                      child: CustomScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        slivers: [
                         SliverPadding(
                           padding: EdgeInsets.symmetric(
                             horizontal: media.size.width > 900
@@ -1192,6 +1216,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ],
                     ),
+                  ),
             ),
           ),
         ],

@@ -91,6 +91,7 @@ class _ContractReminderPopupState extends State<ContractReminderPopup>
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('🎯 [ContractReminderPopup] build() called for contract: ${widget.contract.contractNumber}');
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final dateFormat = DateFormat('dd/MM/yyyy');
