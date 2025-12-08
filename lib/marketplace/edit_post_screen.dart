@@ -10,6 +10,8 @@ import 'marketplace_service.dart';
 import '../auth/token_storage.dart';
 import '../models/marketplace_post.dart';
 import 'number_formatter.dart';
+import 'video_viewer_screen.dart';
+import 'video_preview_widget.dart';
 
 class EditPostScreen extends StatefulWidget {
   final MarketplacePost post;
@@ -59,8 +61,39 @@ class _EditPostScreenState extends State<EditPostScreen> {
       _viewModel.setShowEmail(widget.post.contactInfo!.showEmail);
     }
     
-    // Set existing images
-    _viewModel.setExistingImages(widget.post.images);
+    // Separate images and video from post.images
+    final allMedia = widget.post.images;
+    final images = <MarketplacePostImage>[];
+    MarketplacePostImage? video;
+    
+    for (var media in allMedia) {
+      // Check if it's a video by URL extension or content type
+      final url = media.imageUrl.toLowerCase();
+      // Check for video extensions
+      final isVideo = url.contains('.mp4') || 
+                     url.contains('.mov') || 
+                     url.contains('.avi') || 
+                     url.contains('.webm') ||
+                     url.contains('.mkv') ||
+                     url.contains('video/') ||
+                     // If thumbnailUrl is null and URL doesn't look like an image, it might be video
+                     (media.thumbnailUrl == null && 
+                      !url.contains('.jpg') && 
+                      !url.contains('.jpeg') && 
+                      !url.contains('.png') && 
+                      !url.contains('.webp') &&
+                      !url.contains('.gif'));
+      
+      if (isVideo) {
+        video = media;
+      } else {
+        images.add(media);
+      }
+    }
+    
+    // Set existing images and video
+    _viewModel.setExistingImages(images);
+    _viewModel.setExistingVideo(video);
     
     _viewModel.initialize();
   }
@@ -109,6 +142,36 @@ class _EditPostScreenState extends State<EditPostScreen> {
     }
   }
 
+  Future<void> _showDeleteVideoConfirmation(
+    BuildContext context,
+    EditPostViewModel viewModel,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xác nhận xóa video'),
+        content: const Text('Bạn có chắc chắn muốn xóa video này?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      viewModel.deleteExistingVideo();
+    }
+  }
+
   Future<void> _handleSubmit() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -138,6 +201,8 @@ class _EditPostScreenState extends State<EditPostScreen> {
           : null,
       newImages: _viewModel.newImages,
       imagesToDelete: _viewModel.imagesToDelete,
+      newVideo: _viewModel.newVideo,
+      videoToDelete: _viewModel.videoToDelete,
     );
 
     if (result != null && mounted) {
@@ -523,9 +588,118 @@ class _EditPostScreenState extends State<EditPostScreen> {
               },
             ),
 
+            // Error message for video
+            Consumer<EditPostViewModel>(
+              builder: (context, viewModel, child) {
+                if (viewModel.error == null || !viewModel.error!.contains('video')) {
+                  return const SizedBox.shrink();
+                }
+                
+                return Container(
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: theme.colorScheme.error.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        CupertinoIcons.exclamationmark_triangle_fill,
+                        color: theme.colorScheme.error,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          viewModel.error!,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onErrorContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+
+            // Existing Video
+            Consumer<EditPostViewModel>(
+              builder: (context, viewModel, child) {
+                if (viewModel.existingVideo == null && viewModel.newVideo == null) {
+                  return const SizedBox.shrink();
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Video',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (viewModel.existingVideo != null)
+                          TextButton.icon(
+                            onPressed: () => viewModel.pickVideo(),
+                            icon: const Icon(CupertinoIcons.arrow_clockwise, size: 16),
+                            label: const Text('Thay thế'),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (viewModel.existingVideo != null)
+                      VideoPreviewWidget(
+                        videoUrl: viewModel.existingVideo!.imageUrl,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => VideoViewerScreen(
+                                videoUrl: viewModel.existingVideo!.imageUrl,
+                                title: 'Video hiện tại',
+                              ),
+                            ),
+                          );
+                        },
+                        onDelete: () {
+                          _showDeleteVideoConfirmation(context, viewModel);
+                        },
+                      )
+                    else if (viewModel.newVideo != null)
+                      VideoPreviewWidget(
+                        videoPath: viewModel.newVideo!.path,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => VideoViewerScreen(
+                                videoPath: viewModel.newVideo!.path,
+                                title: 'Video mới',
+                              ),
+                            ),
+                          );
+                        },
+                        onDelete: viewModel.removeNewVideo,
+                      ),
+                    const SizedBox(height: 24),
+                  ],
+                );
+              },
+            ),
+
             // New Images
             Consumer<EditPostViewModel>(
               builder: (context, viewModel, child) {
+                // Allow images and video to coexist - don't hide images section
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -598,6 +772,42 @@ class _EditPostScreenState extends State<EditPostScreen> {
                       },
                       icon: const Icon(CupertinoIcons.photo_on_rectangle),
                       label: const Text('Thêm ảnh'),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                );
+              },
+            ),
+
+            // Add/Replace Video Button (show if no video exists)
+            Consumer<EditPostViewModel>(
+              builder: (context, viewModel, child) {
+                // Hide if video already exists (either existing or new)
+                if (viewModel.existingVideo != null || viewModel.newVideo != null) {
+                  return const SizedBox.shrink();
+                }
+                
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Video',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Thêm video (tùy chọn, tối đa 20 giây). Video và ảnh có thể cùng tồn tại.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: () => viewModel.pickVideo(),
+                      icon: const Icon(CupertinoIcons.videocam_circle),
+                      label: const Text('Thêm video'),
                     ),
                     const SizedBox(height: 24),
                   ],

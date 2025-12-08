@@ -3,10 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:video_player/video_player.dart';
 import 'create_post_view_model.dart';
 import 'marketplace_service.dart';
 import '../auth/token_storage.dart';
 import 'number_formatter.dart';
+import 'video_viewer_screen.dart';
+import 'video_preview_widget.dart';
 
 class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key});
@@ -237,6 +240,42 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   _buildImagesSection(context, viewModel),
                   const SizedBox(height: 24),
 
+                  // Error message
+                  if (viewModel.error != null && viewModel.error!.contains('video'))
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.errorContainer,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: theme.colorScheme.error.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            CupertinoIcons.exclamationmark_triangle_fill,
+                            color: theme.colorScheme.error,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              viewModel.error!,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onErrorContainer,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // Video Section
+                  _buildVideoSection(context, viewModel),
+                  const SizedBox(height: 24),
+
                   // Contact Info Section
                   _buildContactInfoSection(context, viewModel),
                 ],
@@ -250,6 +289,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   Widget _buildImagesSection(BuildContext context, CreatePostViewModel viewModel) {
     final theme = Theme.of(context);
+    // Hide images section if video is selected
+    if (viewModel.selectedVideo != null) {
+      return const SizedBox.shrink();
+    }
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -355,6 +399,83 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             }),
           ],
         ),
+      ],
+    );
+  }
+
+  Widget _buildVideoSection(BuildContext context, CreatePostViewModel viewModel) {
+    final theme = Theme.of(context);
+    // Allow video and images to coexist - don't hide video section
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Video',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Thêm video (tùy chọn, tối đa 20 giây). Video và ảnh có thể cùng tồn tại.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (viewModel.selectedVideo == null)
+          GestureDetector(
+            onTap: viewModel.pickVideo,
+            child: Container(
+              width: double.infinity,
+              height: 200,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: theme.colorScheme.outline.withValues(alpha: 0.2),
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    CupertinoIcons.videocam_circle,
+                    size: 48,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Thêm video',
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Tối đa 20 giây',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          VideoPreviewWidget(
+            videoPath: viewModel.selectedVideo!.path,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => VideoViewerScreen(
+                    videoPath: viewModel.selectedVideo!.path,
+                    title: 'Xem trước video',
+                  ),
+                ),
+              );
+            },
+            onDelete: viewModel.removeVideo,
+          ),
       ],
     );
   }

@@ -11,6 +11,8 @@ import '../models/marketplace_category.dart';
 import 'create_post_screen.dart';
 import 'post_detail_screen.dart';
 import 'image_viewer_screen.dart';
+import 'video_preview_widget.dart';
+import 'video_viewer_screen.dart';
 import '../chat/chat_service.dart';
 import '../chat/group_list_screen.dart';
 import '../chat/direct_chat_list_screen.dart';
@@ -1486,125 +1488,172 @@ class _PostCard extends StatelessWidget {
                     ],
                   ),
                 ],
-                // Images - Only show first 3 images, click to view all
-                if (post.images.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 200,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: post.images.length > 3 ? 3 : post.images.length,
-                      itemBuilder: (context, index) {
-                        final image = post.images[index];
-                        final isLastVisible = index == 2 && post.images.length > 3;
-                        return GestureDetector(
-                          onTap: () {
-                            // Open image viewer
-                            Navigator.push(
-                              context,
-                              SmoothPageRoute(
-                                page: ImageViewerScreen(
-                                  images: post.images,
-                                  initialIndex: index,
+                // Separate images and video, then display
+                Builder(
+                  builder: (context) {
+                    final allMedia = post.images;
+                    final images = <MarketplacePostImage>[];
+                    MarketplacePostImage? video;
+                    
+                    for (var media in allMedia) {
+                      final url = media.imageUrl.toLowerCase();
+                      final isVideo = url.contains('.mp4') || 
+                                     url.contains('.mov') || 
+                                     url.contains('.avi') || 
+                                     url.contains('.webm') ||
+                                     url.contains('.mkv') ||
+                                     url.contains('video/') ||
+                                     (media.thumbnailUrl == null && 
+                                      !url.contains('.jpg') && 
+                                      !url.contains('.jpeg') && 
+                                      !url.contains('.png') && 
+                                      !url.contains('.webp') &&
+                                      !url.contains('.gif'));
+                      
+                      if (isVideo) {
+                        video = media;
+                      } else {
+                        images.add(media);
+                      }
+                    }
+                    
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Video (if exists) - show first
+                        if (video != null) ...[
+                          const SizedBox(height: 12),
+                          VideoPreviewWidget(
+                            videoUrl: video.imageUrl,
+                            height: 200,
+                            width: double.infinity,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                SmoothPageRoute(
+                                  page: VideoViewerScreen(
+                                    videoUrl: video!.imageUrl,
+                                    title: post.title,
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
-                          child: Stack(
-                            children: [
-                              Container(
-                                width: 200,
-                                margin: EdgeInsets.only(
-                                  right: index < (post.images.length > 3 ? 2 : post.images.length - 1) ? 8 : 0,
-                                ),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  color: theme.colorScheme.surfaceContainerHighest,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.08),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Builder(
-                                    builder: (context) {
-                                      // Use full imageUrl for better quality (same as PostDetailScreen)
-                                      // CachedNetworkImage will handle lazy loading automatically
-                                      final imageUrl = image.imageUrl;
-                                      
-                                      if (imageUrl.isNotEmpty) {
-                                        return CachedNetworkImage(
-                                          imageUrl: imageUrl,
-                                          fit: BoxFit.cover,
-                                          httpHeaders: {
-                                            'ngrok-skip-browser-warning': 'true',
-                                          },
-                                          placeholder: (context, url) => Container(
-                                            color: theme.colorScheme.surfaceContainerHighest,
+                              );
+                            },
+                          ),
+                        ],
+                        
+                        // Images - Only show first 3 images, click to view all
+                        if (images.isNotEmpty) ...[
+                          SizedBox(height: video != null ? 12 : 0),
+                          SizedBox(
+                            height: 200,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: images.length > 3 ? 3 : images.length,
+                              itemBuilder: (context, index) {
+                                final image = images[index];
+                                final isLastVisible = index == 2 && images.length > 3;
+                                return GestureDetector(
+                                  onTap: () {
+                                    // Open image viewer with only images (not video)
+                                    Navigator.push(
+                                      context,
+                                      SmoothPageRoute(
+                                        page: ImageViewerScreen(
+                                          images: images,
+                                          initialIndex: index,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  child: Stack(
+                                    children: [
+                                      Container(
+                                        width: 200,
+                                        margin: EdgeInsets.only(
+                                          right: index < (images.length > 3 ? 2 : images.length - 1) ? 8 : 0,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(12),
+                                          color: theme.colorScheme.surfaceContainerHighest,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withValues(alpha: 0.08),
+                                              blurRadius: 6,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(12),
+                                          child: image.imageUrl.isNotEmpty
+                                              ? CachedNetworkImage(
+                                                  imageUrl: image.imageUrl,
+                                                  fit: BoxFit.cover,
+                                                  httpHeaders: {
+                                                    'ngrok-skip-browser-warning': 'true',
+                                                  },
+                                                  placeholder: (context, url) => Container(
+                                                    color: theme.colorScheme.surfaceContainerHighest,
+                                                    child: Center(
+                                                      child: SizedBox(
+                                                        width: 24,
+                                                        height: 24,
+                                                        child: CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                          color: theme.colorScheme.primary,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  errorWidget: (context, url, error) => Container(
+                                                    color: theme.colorScheme.surfaceContainerHighest,
+                                                    child: Icon(
+                                                      CupertinoIcons.photo,
+                                                      size: 48,
+                                                      color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                                                    ),
+                                                  ),
+                                                )
+                                              : Container(
+                                                  color: theme.colorScheme.surfaceContainerHighest,
+                                                  child: Icon(
+                                                    CupertinoIcons.photo,
+                                                    size: 48,
+                                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                                                  ),
+                                                ),
+                                        ),
+                                      ),
+                                      // Show "+X more" badge on last visible image if there are more images
+                                      if (isLastVisible)
+                                        Positioned.fill(
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              borderRadius: BorderRadius.circular(12),
+                                              color: Colors.black.withValues(alpha: 0.5),
+                                            ),
                                             child: Center(
-                                              child: SizedBox(
-                                                width: 24,
-                                                height: 24,
-                                                child: CircularProgressIndicator(
-                                                  strokeWidth: 2,
-                                                  color: theme.colorScheme.primary,
+                                              child: Text(
+                                                '+${images.length - 3}',
+                                                style: theme.textTheme.titleLarge?.copyWith(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.bold,
                                                 ),
                                               ),
                                             ),
                                           ),
-                                          errorWidget: (context, url, error) => Container(
-                                            color: theme.colorScheme.surfaceContainerHighest,
-                                            child: Icon(
-                                              CupertinoIcons.photo,
-                                              size: 48,
-                                              color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
-                                            ),
-                                          ),
-                                        );
-                                      } else {
-                                        return Container(
-                                          color: theme.colorScheme.surfaceContainerHighest,
-                                          child: Icon(
-                                            CupertinoIcons.photo,
-                                            size: 48,
-                                            color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
-                                          ),
-                                        );
-                                      }
-                                    },
-                                  ),
-                                ),
-                              ),
-                              // Show "+X more" badge on last visible image if there are more images
-                              if (isLastVisible)
-                                Positioned.fill(
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(12),
-                                      color: Colors.black.withValues(alpha: 0.5),
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        '+${post.images.length - 3}',
-                                        style: theme.textTheme.titleLarge?.copyWith(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
                                         ),
-                                      ),
-                                    ),
+                                    ],
                                   ),
-                                ),
-                            ],
+                                );
+                              },
+                            ),
                           ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                        ],
+                      ],
+                    );
+                  },
+                ),
                 const SizedBox(height: 12),
                 // Actions - Comment and Share
                 Row(

@@ -10,6 +10,8 @@ import 'package:shimmer/shimmer.dart';
 import 'package:video_player/video_player.dart';
 import 'dart:async';
 import '../models/marketplace_post.dart';
+import 'video_preview_widget.dart';
+import 'video_viewer_screen.dart';
 import '../models/marketplace_comment.dart';
 import '../models/comment_paged_response.dart';
 import '../auth/token_storage.dart';
@@ -389,11 +391,21 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
-  /// Reload post to get latest comment count
-  /// Reload post to get latest comment count
-  /// Only updates if the new count is different to avoid unnecessary rebuilds
+  /// Check if two image lists are equal
+  bool _areImagesEqual(List<MarketplacePostImage> images1, List<MarketplacePostImage> images2) {
+    if (images1.length != images2.length) return false;
+    for (int i = 0; i < images1.length; i++) {
+      if (images1[i].id != images2[i].id || images1[i].imageUrl != images2[i].imageUrl) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Reload post to get latest data (comment count, view count, images, etc.)
+  /// Only updates if data changed to avoid unnecessary rebuilds
   /// Optionally emits event to update marketplace screen
-  Future<void> _reloadPost({bool emitEvent = false}) async {
+  Future<void> _reloadPost({bool emitEvent = false, bool forceUpdateImages = false}) async {
     try {
       final updatedPost = await _marketplaceService.getPostById(widget.post.id);
       if (mounted) {
@@ -405,11 +417,21 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           final calculatedCount = _comments.isNotEmpty ? _calculateCommentCount() : null;
           final commentCountToUse = calculatedCount ?? updatedPost.commentCount;
           
+          // Check if images changed
+          final imagesChanged = forceUpdateImages || 
+              updatedPost.images.length != currentPost.images.length ||
+              !_areImagesEqual(updatedPost.images, currentPost.images);
           
-          // Only update if comment count or view count changed
+          // Only update if comment count, view count, or images changed
           // Use calculated count if available, otherwise use API count
           final shouldUpdate = commentCountToUse != currentPost.commentCount ||
-                              updatedPost.viewCount != currentPost.viewCount;
+                              updatedPost.viewCount != currentPost.viewCount ||
+                              imagesChanged ||
+                              updatedPost.title != currentPost.title ||
+                              updatedPost.description != currentPost.description ||
+                              updatedPost.price != currentPost.price ||
+                              updatedPost.category != currentPost.category ||
+                              updatedPost.location != currentPost.location;
           
           if (shouldUpdate) {
             // Create updated post with calculated count if available
@@ -436,12 +458,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 : updatedPost; // Use API post if no comments loaded yet
             
             _currentPost = postToUse;
-            print('🔄 [PostDetailScreen] Updated post - commentCount: ${currentPost.commentCount} -> ${postToUse.commentCount}');
+            print('🔄 [PostDetailScreen] Updated post - commentCount: ${currentPost.commentCount} -> ${postToUse.commentCount}, images: ${currentPost.images.length} -> ${postToUse.images.length}');
             
             // Always emit event when comment count changes, even if not explicitly requested
             // This ensures marketplace screen gets updated when post is reloaded from backend
             final commentCountChanged = commentCountToUse != currentPost.commentCount;
-            if (emitEvent || commentCountChanged) {
+            if (emitEvent || commentCountChanged || imagesChanged) {
               // Use a small delay to ensure setState completes before emitting
               Future.delayed(const Duration(milliseconds: 50), () {
                 AppEventBus().emit('marketplace_update', {
@@ -579,8 +601,21 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       if (viewModel != null) {
         await viewModel.refresh();
       }
-      // Pop to go back to marketplace screen, or refresh current screen
-      navigator.pop(true);
+      
+      // Reload post detail once to get updated data (images are now uploaded sync, so they should be available immediately)
+      if (mounted) {
+        await _reloadPost(emitEvent: true, forceUpdateImages: true);
+      }
+      
+      // Only pop if still mounted and Navigator is still valid
+      // Use post-frame callback to ensure widget tree is stable
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && Navigator.of(context).canPop()) {
+            Navigator.of(context).pop(true);
+          }
+        });
+      }
     }
   }
 
@@ -1700,92 +1735,146 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               ),
             ],
             
-            // Images
-            if (post.images.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 300,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: post.images.length,
-                  itemBuilder: (context, index) {
-                    final image = post.images[index];
-                    // Debug: Log image URLs
-                    return GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          SmoothPageRoute(
-                            page: ImageViewerScreen(
-                              images: post.images,
-                              initialIndex: index,
+            // Separate images and video
+            Builder(
+              builder: (context) {
+                final allMedia = post.images;
+                final images = <MarketplacePostImage>[];
+                MarketplacePostImage? video;
+                
+                for (var media in allMedia) {
+                  final url = media.imageUrl.toLowerCase();
+                  final isVideo = url.contains('.mp4') || 
+                                 url.contains('.mov') || 
+                                 url.contains('.avi') || 
+                                 url.contains('.webm') ||
+                                 url.contains('.mkv') ||
+                                 url.contains('video/') ||
+                                 (media.thumbnailUrl == null && 
+                                  !url.contains('.jpg') && 
+                                  !url.contains('.jpeg') && 
+                                  !url.contains('.png') && 
+                                  !url.contains('.webp') &&
+                                  !url.contains('.gif'));
+                  
+                  if (isVideo) {
+                    video = media;
+                  } else {
+                    images.add(media);
+                  }
+                }
+                
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Video (if exists)
+                    if (video != null) ...[
+                      const SizedBox(height: 16),
+                      VideoPreviewWidget(
+                        videoUrl: video.imageUrl,
+                        height: 300,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            SmoothPageRoute(
+                              page: VideoViewerScreen(
+                                videoUrl: video!.imageUrl,
+                                title: post.title,
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                      child: Container(
-                        width: 300,
-                        margin: EdgeInsets.only(
-                          right: index < post.images.length - 1 ? 8 : 0,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          color: theme.colorScheme.surfaceContainerHighest,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: image.imageUrl.isNotEmpty
-                              ? CachedNetworkImage(
-                                  imageUrl: image.imageUrl,
-                                  fit: BoxFit.cover,
-                                  httpHeaders: {
-                                    'ngrok-skip-browser-warning': 'true', // Skip ngrok browser warning
-                                  },
-                                  placeholder: (context, url) {
-                                    return Container(
-                                      color: theme.colorScheme.surfaceContainerHighest,
-                                      child: Center(
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: theme.colorScheme.primary,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                  errorWidget: (context, url, error) {
-                                    // Error loading image - handled silently
-                                    return Container(
-                                      color: theme.colorScheme.surfaceContainerHighest,
-                                      child: Icon(
-                                        CupertinoIcons.photo,
-                                        size: 48,
-                                        color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
-                                      ),
-                                    );
-                                  },
-                                )
-                              : Container(
-                                  color: theme.colorScheme.surfaceContainerHighest,
-                                  child: Icon(
-                                    CupertinoIcons.photo,
-                                    size: 48,
-                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                          );
+                        },
+                      ),
+                    ],
+                    
+                    // Images
+                    if (images.isNotEmpty) ...[
+                      SizedBox(height: video != null ? 16 : 0),
+                      SizedBox(
+                        height: 300,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: images.length,
+                          itemBuilder: (context, index) {
+                            final image = images[index];
+                            return GestureDetector(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  SmoothPageRoute(
+                                    page: ImageViewerScreen(
+                                      images: images,
+                                      initialIndex: index,
+                                    ),
                                   ),
+                                );
+                              },
+                              child: Container(
+                                width: 300,
+                                margin: EdgeInsets.only(
+                                  right: index < images.length - 1 ? 8 : 0,
                                 ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  color: theme.colorScheme.surfaceContainerHighest,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.1),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: image.imageUrl.isNotEmpty
+                                      ? CachedNetworkImage(
+                                          imageUrl: image.imageUrl,
+                                          fit: BoxFit.cover,
+                                          httpHeaders: {
+                                            'ngrok-skip-browser-warning': 'true',
+                                          },
+                                          placeholder: (context, url) {
+                                            return Container(
+                                              color: theme.colorScheme.surfaceContainerHighest,
+                                              child: Center(
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  color: theme.colorScheme.primary,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                          errorWidget: (context, url, error) {
+                                            return Container(
+                                              color: theme.colorScheme.surfaceContainerHighest,
+                                              child: Icon(
+                                                CupertinoIcons.photo,
+                                                size: 48,
+                                                color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                                              ),
+                                            );
+                                          },
+                                        )
+                                      : Container(
+                                          color: theme.colorScheme.surfaceContainerHighest,
+                                          child: Icon(
+                                            CupertinoIcons.photo,
+                                            size: 48,
+                                            color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ),
-                    );
-                  },
-                ),
-              ),
-            ],
+                    ],
+                  ],
+                );
+              },
+            ),
             
             const SizedBox(height: 12),
             

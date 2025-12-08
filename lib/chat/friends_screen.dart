@@ -64,23 +64,43 @@ class _FriendsScreenState extends State<FriendsScreen> {
     } else {
       // Create new invitation to start conversation
       try {
-        await _service.createDirectInvitation(
+        final invitation = await _service.createDirectInvitation(
           inviteeId: friend.friendId,
           initialMessage: null,
         );
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Đã gửi lời mời chat'),
-            ),
-          );
+          // Check invitation status to show appropriate message
+          // If status is PENDING and invitation was created more than 1 second ago, it's an existing invitation
+          final now = DateTime.now();
+          final createdAt = invitation.createdAt;
+          final isExistingInvitation = createdAt != null && 
+              now.difference(createdAt).inSeconds > 1;
+          
+          if (invitation.status == 'PENDING' && isExistingInvitation) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Lời mời đã tồn tại và đang chờ phản hồi'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 3),
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✅ Đã gửi lời mời chat'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
         }
       } catch (e) {
         if (mounted) {
+          final errorMessage = e.toString().replaceFirst('Exception: ', '');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Lỗi khi gửi lời mời: ${e.toString()}'),
+              content: Text('Lỗi khi gửi lời mời: $errorMessage'),
               backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
             ),
           );
         }

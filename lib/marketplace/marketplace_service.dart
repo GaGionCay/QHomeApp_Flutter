@@ -90,6 +90,7 @@ class MarketplaceService {
   }
 
   /// Lấy chi tiết post
+  /// Timeout được tự động tăng lên 90 giây trong interceptor cho request này
   Future<MarketplacePost> getPostById(String postId) async {
     try {
       final response = await _apiClient.dio.get('/posts/$postId');
@@ -109,6 +110,7 @@ class MarketplaceService {
     String? location,
     MarketplaceContactInfo? contactInfo,
     required List<XFile> images,
+    XFile? video,
     String? scope,
   }) async {
     try {
@@ -168,6 +170,19 @@ class MarketplaceService {
         }
       }
 
+      // Thêm video (nếu có)
+      if (video != null) {
+        formData.files.add(
+          MapEntry(
+            'video',
+            await MultipartFile.fromFile(
+              video.path,
+              filename: 'video.mp4',
+            ),
+          ),
+        );
+      }
+
       print('📤 [MarketplaceService] Sending POST request to /posts');
       print('   - FormData keys: ${formData.fields.map((e) => e.key).toList()}');
       print('   - FormData files: ${formData.files.map((e) => e.key).toList()}');
@@ -207,6 +222,8 @@ class MarketplaceService {
     MarketplaceContactInfo? contactInfo,
     List<XFile>? newImages,
     List<String>? imagesToDelete, // IDs của images cần xóa
+    XFile? video,
+    String? videoToDelete, // ID của video cần xóa
   }) async {
     try {
       // Tạo JSON data cho UpdatePostRequest
@@ -219,6 +236,9 @@ class MarketplaceService {
       if (contactInfo != null) requestData['contactInfo'] = contactInfo.toJson();
       if (imagesToDelete != null && imagesToDelete.isNotEmpty) {
         requestData['imagesToDelete'] = imagesToDelete;
+      }
+      if (videoToDelete != null && videoToDelete.isNotEmpty) {
+        requestData['videoToDelete'] = videoToDelete;
       }
 
       // Convert to JSON string
@@ -251,6 +271,19 @@ class MarketplaceService {
             ),
           );
         }
+      }
+
+      // Thêm video mới (nếu có)
+      if (video != null) {
+        formData.files.add(
+          MapEntry(
+            'video',
+            await MultipartFile.fromFile(
+              video.path,
+              filename: 'video.mp4',
+            ),
+          ),
+        );
       }
 
       final response = await _apiClient.dio.put(

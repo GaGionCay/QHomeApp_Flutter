@@ -646,19 +646,15 @@ class _HouseholdMemberRequestScreenState
                       if (v.length > 100) {
                         return 'Họ và tên không được quá 100 ký tự.';
                       }
-                      // Cho phép chữ cái tiếng Việt, khoảng trắng đơn, dấu gạch nối
+                      // Chỉ validate: không có số và không có ký tự đặc biệt
+                      // Cho phép chữ cái tiếng Việt và khoảng trắng (không giới hạn số lượng)
+                      if (RegExp(r'[0-9]').hasMatch(v)) {
+                        return 'Họ và tên không được chứa số.';
+                      }
+                      // Kiểm tra ký tự đặc biệt (chỉ cho phép chữ cái, khoảng trắng, dấu gạch nối)
                       final nameRegex = RegExp(r"^[A-Za-zÀ-ỹà-ỹĐđ\s\-]+$");
                       if (!nameRegex.hasMatch(v)) {
-                        return 'Họ và tên không được chứa ký tự đặc biệt hoặc số.';
-                      }
-                      // Không được sử dụng khoảng trắng quá 2 lần trong chuỗi
-                      final spaceCount = ' '.allMatches(v).length;
-                      if (spaceCount > 2) {
-                        return 'Họ và tên không được dùng quá 2 khoảng trắng.';
-                      }
-                      // Không cho phép khoảng trắng lặp (nhiều dấu cách liền nhau)
-                      if (RegExp(r'\s{2,}').hasMatch(v)) {
-                        return 'Không dùng nhiều dấu cách liên tiếp.';
+                        return 'Họ và tên không được chứa ký tự đặc biệt.';
                       }
                       return null;
                     },
@@ -882,9 +878,6 @@ class _HouseholdMemberRequestScreenState
                       if (v.isEmpty) return null;
                       if (!RegExp(r'^[0-9]+$').hasMatch(v)) {
                         return 'CMND/CCCD chỉ gồm chữ số, không có khoảng trắng/ký tự đặc biệt.';
-                      }
-                      if (v.length != 13) {
-                        return 'CCCD phải có đúng 13 số.';
                       }
                       return null;
                     },

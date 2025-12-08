@@ -57,6 +57,51 @@ class MarketplaceApiClient {
         if (token != null) options.headers['Authorization'] = 'Bearer $token';
         final deviceId = await _storage.readDeviceId();
         if (deviceId != null) options.headers['X-Device-Id'] = deviceId;
+        
+        // Increase timeout for different request types
+        
+        // 1. GET /posts - List posts (may include many posts with videos)
+        if (options.path == '/posts' && options.method == 'GET') {
+          final newOptions = options.copyWith(
+            receiveTimeout: const Duration(seconds: 60), // 60 seconds for list with videos
+            sendTimeout: const Duration(seconds: 30),
+          );
+          return handler.next(newOptions);
+        }
+        
+        // 2. GET /posts/{id} - Post detail (may include video)
+        if (options.path.contains('/posts/') && 
+            !options.path.contains('/comments') && 
+            !options.path.contains('/status') &&
+            options.method == 'GET') {
+          final newOptions = options.copyWith(
+            receiveTimeout: const Duration(seconds: 90), // 90 seconds for post with video
+            sendTimeout: const Duration(seconds: 30),
+          );
+          return handler.next(newOptions);
+        }
+        
+        // 3. POST /posts - Create post (upload video/images)
+        if (options.path == '/posts' && options.method == 'POST') {
+          final newOptions = options.copyWith(
+            receiveTimeout: const Duration(seconds: 120), // 120 seconds for upload
+            sendTimeout: const Duration(seconds: 120), // 120 seconds for upload
+          );
+          return handler.next(newOptions);
+        }
+        
+        // 4. PUT /posts/{id} - Update post (upload video/images)
+        if (options.path.contains('/posts/') && 
+            !options.path.contains('/comments') && 
+            !options.path.contains('/status') &&
+            options.method == 'PUT') {
+          final newOptions = options.copyWith(
+            receiveTimeout: const Duration(seconds: 120), // 120 seconds for upload
+            sendTimeout: const Duration(seconds: 120), // 120 seconds for upload
+          );
+          return handler.next(newOptions);
+        }
+        
         return handler.next(options);
       },
       onError: (err, handler) async {

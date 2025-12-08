@@ -744,9 +744,15 @@ class ChatService {
         data: requestData,
       );
       
-      print('✅ [ChatService] Direct invitation created successfully');
+      print('✅ [ChatService] Direct invitation response received');
       print('   Response status: ${response.statusCode}');
       print('   Response data: ${response.data}');
+      
+      // Check if response contains error
+      if (response.data is Map && response.data['error'] == true) {
+        final errorMessage = response.data['message'] ?? 'Không thể tạo lời mời. Vui lòng thử lại.';
+        throw Exception(errorMessage);
+      }
       
       return DirectInvitation.fromJson(response.data);
     } on DioException catch (e) {

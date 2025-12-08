@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:video_player/video_player.dart';
+import 'dart:io';
 import '../models/marketplace_post.dart';
 import '../models/marketplace_category.dart';
 import 'marketplace_service.dart';
@@ -24,6 +26,7 @@ class CreatePostViewModel extends ChangeNotifier {
   bool _showEmail = false;
   String? _selectedScope; // BUILDING, ALL, or BOTH
   List<XFile> _selectedImages = [];
+  XFile? _selectedVideo;
   bool _isSubmitting = false;
   String? _error;
 
@@ -44,6 +47,7 @@ class CreatePostViewModel extends ChangeNotifier {
   bool get showEmail => _showEmail;
   String? get selectedScope => _selectedScope;
   List<XFile> get selectedImages => _selectedImages;
+  XFile? get selectedVideo => _selectedVideo;
   bool get isSubmitting => _isSubmitting;
   String? get error => _error;
   List<MarketplaceCategory> get categories => _categories;
@@ -127,6 +131,8 @@ class CreatePostViewModel extends ChangeNotifier {
 
   Future<void> pickImages() async {
     try {
+      // Allow images and video to coexist - don't clear video
+      
       final picker = ImagePicker();
       final pickedFiles = await picker.pickMultiImage(
         imageQuality: 85,
@@ -155,6 +161,45 @@ class CreatePostViewModel extends ChangeNotifier {
       _selectedImages.removeAt(index);
       notifyListeners();
     }
+  }
+
+  Future<void> pickVideo() async {
+    try {
+      final picker = ImagePicker();
+      final pickedVideo = await picker.pickVideo(
+        source: ImageSource.gallery,
+        maxDuration: const Duration(seconds: 20),
+      );
+
+      if (pickedVideo != null) {
+        // Validate video duration (max 20 seconds)
+        final videoFile = File(pickedVideo.path);
+        final videoPlayerController = VideoPlayerController.file(videoFile);
+        await videoPlayerController.initialize();
+        
+        final duration = videoPlayerController.value.duration;
+        await videoPlayerController.dispose();
+
+        if (duration.inSeconds > 20) {
+          _error = 'Video không được dài quá 20 giây. Video hiện tại có độ dài ${duration.inSeconds} giây. Vui lòng chọn video khác hoặc cắt ngắn video.';
+          notifyListeners();
+          return;
+        }
+
+        _selectedVideo = pickedVideo;
+        // Allow images and video to coexist - don't clear images
+        _error = null; // Clear any previous errors
+        notifyListeners();
+      }
+    } catch (e) {
+      _error = 'Lỗi khi chọn video: ${e.toString()}';
+      notifyListeners();
+    }
+  }
+
+  void removeVideo() {
+    _selectedVideo = null;
+    notifyListeners();
   }
 
   Future<MarketplacePost?> submitPost() async {
@@ -212,6 +257,7 @@ class CreatePostViewModel extends ChangeNotifier {
         location: _location,
         contactInfo: contactInfo,
         images: _selectedImages,
+        video: _selectedVideo,
         scope: _selectedScope ?? 'BUILDING',
       );
 
