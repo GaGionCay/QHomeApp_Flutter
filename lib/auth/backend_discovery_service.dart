@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, NetworkInterface, InternetAddressType;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
@@ -167,13 +167,83 @@ class BackendDiscoveryService {
     }
 
     // Priority 5: Try cached backend info
-    // Store cached info for potential use in fallback
+    // BUT: Check if cached IP is in same subnet as current device IP
+    // If different subnet (e.g., switched from WiFi to mobile hotspot), clear cache and scan new subnet
     BackendInfo? cachedBackendInfo = _getCachedBackendInfo();
-    if (cachedBackendInfo != null && await _isBackendReachable(cachedBackendInfo)) {
-      if (kDebugMode) {
-        print('✅ Using cached backend: ${cachedBackendInfo.hostname}:${cachedBackendInfo.port}');
+    if (cachedBackendInfo != null) {
+      // Get current device IP to check subnet
+      String? currentDeviceIp;
+      try {
+        final interfaces = await NetworkInterface.list(
+          includeLinkLocal: false,
+          type: InternetAddressType.IPv4,
+        );
+        
+        for (final interface in interfaces) {
+          for (final addr in interface.addresses) {
+            final ip = addr.address;
+            final parts = ip.split('.');
+            if (parts.length == 4) {
+              final first = int.tryParse(parts[0]);
+              final second = int.tryParse(parts[1]);
+              if (first != null && second != null) {
+                // Check if private IP
+                if (first == 10 || (first == 172 && second >= 16 && second <= 31) || 
+                    (first == 192 && second == 168)) {
+                  currentDeviceIp = ip;
+                  break;
+                }
+              }
+            }
+          }
+          if (currentDeviceIp != null) break;
+        }
+        
+        if (currentDeviceIp == null) {
+          currentDeviceIp = await _networkInfo.getWifiIP();
+        }
+      } catch (e) {
+        // Ignore
       }
-      return cachedBackendInfo;
+      
+      // Check if cached IP is in same subnet as current device IP
+      bool isSameSubnet = false;
+      if (currentDeviceIp != null && cachedBackendInfo.hostname.contains('.')) {
+        final deviceParts = currentDeviceIp.split('.');
+        final cachedParts = cachedBackendInfo.hostname.split('.');
+        
+        if (deviceParts.length >= 3 && cachedParts.length >= 3) {
+          final deviceSubnet = '${deviceParts[0]}.${deviceParts[1]}.${deviceParts[2]}';
+          final cachedSubnet = '${cachedParts[0]}.${cachedParts[1]}.${cachedParts[2]}';
+          isSameSubnet = deviceSubnet == cachedSubnet;
+          
+          if (kDebugMode && !isSameSubnet) {
+            print('⚠️ Cached backend IP (${cachedBackendInfo.hostname}) is in different subnet ($cachedSubnet)');
+            print('   Current device subnet: $deviceSubnet');
+            print('   Clearing cache and scanning new subnet...');
+          }
+        }
+      }
+      
+      // If same subnet, try cached backend
+      if (isSameSubnet && await _isBackendReachable(cachedBackendInfo)) {
+        if (kDebugMode) {
+          print('✅ Using cached backend (same subnet): ${cachedBackendInfo.hostname}:${cachedBackendInfo.port}');
+        }
+        return cachedBackendInfo;
+      } else if (!isSameSubnet && currentDeviceIp != null) {
+        // Different subnet - clear cache and continue to scan new subnet
+        if (kDebugMode) {
+          print('🗑️ Clearing cached backend (different subnet detected)');
+        }
+        await clearCache();
+        cachedBackendInfo = null; // Don't use cached backend
+      } else if (cachedBackendInfo != null) {
+        // Same subnet but not reachable - try anyway but will fall through to scan
+        if (kDebugMode) {
+          print('⚠️ Cached backend not reachable, will try network scan...');
+        }
+      }
     }
 
     // Priority 6: Try mDNS hostname discovery (local network only)
@@ -209,19 +279,22 @@ class BackendDiscoveryService {
     }
 
     // Priority 7: Try local network scanning (local network only)
+    // This includes mobile hotspot scenario - scan subnet comprehensively
     // Skip if device has no network or different network
     // Only try if we haven't found anything yet
     try {
       final connectivity = await _connectivity.checkConnectivity();
+      // Include mobile connectivity for mobile hotspot scenario
       if (connectivity.contains(ConnectivityResult.wifi) || 
-          connectivity.contains(ConnectivityResult.ethernet)) {
+          connectivity.contains(ConnectivityResult.ethernet) ||
+          connectivity.contains(ConnectivityResult.mobile)) {
         if (kDebugMode) {
-          print('🔍 Scanning local network...');
+          print('🔍 Scanning local network (network type: $connectivity)...');
         }
         final scanInfo = await _discoverByLocalNetworkScan()
-            .timeout(const Duration(seconds: 5), onTimeout: () {
+            .timeout(const Duration(seconds: 30), onTimeout: () {
           if (kDebugMode) {
-            print('⏱️ Local network scan timeout (5s)');
+            print('⏱️ Local network scan timeout (30s)');
           }
           return null;
         });
@@ -388,69 +461,411 @@ class BackendDiscoveryService {
 
   /// Discover backend via local network scanning
   /// Scans common local network IP ranges
+  /// Discover backend by scanning local network
+  /// Optimized for mobile hotspot scenario: when phone is hotspot and laptop connects to it
+  /// Strategy:
+  /// 1. Detect device's private IP using NetworkInterface (more reliable than network_info_plus)
+  /// 2. Filter out public IPs (mobile data) - only use private IPs for subnet scanning
+  /// 3. Scan subnet intelligently: priority IPs first, then comprehensive scan
+  /// 4. If no private IP found, try common mobile hotspot subnets
   Future<BackendInfo?> _discoverByLocalNetworkScan() async {
     try {
+      final connectivity = await _connectivity.checkConnectivity();
+      final networkType = connectivity.isNotEmpty ? connectivity.first : ConnectivityResult.none;
+      
       if (kDebugMode) {
-        print('🔍 Scanning local network...');
+        print('🔍 Scanning local network (network type: $networkType)...');
       }
 
-      final deviceIp = await _networkInfo.getWifiIP();
-      if (deviceIp == null) return null;
-
-      // Extract network prefix (e.g., "192.168.1" from "192.168.1.100")
+      String? deviceIp;
+      
+      // Helper function to check if IP is private (local network)
+      bool isPrivateIp(String ip) {
+        final parts = ip.split('.');
+        if (parts.length != 4) return false;
+        final first = int.tryParse(parts[0]);
+        final second = int.tryParse(parts[1]);
+        if (first == null || second == null) return false;
+        
+        // Private IP ranges:
+        // 10.0.0.0/8 (10.0.0.0 - 10.255.255.255)
+        // 172.16.0.0/12 (172.16.0.0 - 172.31.255.255)
+        // 192.168.0.0/16 (192.168.0.0 - 192.168.255.255)
+        if (first == 10) return true;
+        if (first == 172 && second >= 16 && second <= 31) return true;
+        if (first == 192 && second == 168) return true;
+        return false;
+      }
+      
+      // Step 1: Try to get private IP from NetworkInterface (most reliable)
+      // This works for both WiFi and mobile hotspot scenarios
+      try {
+        final interfaces = await NetworkInterface.list(
+          includeLinkLocal: false,
+          type: InternetAddressType.IPv4,
+        );
+        
+        final privateIps = <String>[];
+        final allIps = <String>[];
+        
+        for (final interface in interfaces) {
+          // Check if this is a hotspot interface (common names)
+          final isHotspotInterface = interface.name.toLowerCase().contains('hotspot') ||
+                                     interface.name.toLowerCase().contains('ap') ||
+                                     interface.name.toLowerCase().contains('wlan');
+          
+          for (final addr in interface.addresses) {
+            final ip = addr.address;
+            allIps.add(ip);
+            
+            if (isPrivateIp(ip)) {
+              privateIps.add(ip);
+              if (kDebugMode) {
+                print('📱 Found private IP: $ip (interface: ${interface.name}${isHotspotInterface ? " [HOTSPOT]" : ""})');
+              }
+            }
+          }
+        }
+        
+        // Prioritize private IPs (for mobile hotspot scenario)
+        if (privateIps.isNotEmpty) {
+          deviceIp = privateIps.first;
+          if (kDebugMode) {
+            print('✅ Using private IP for subnet detection: $deviceIp');
+          }
+        } else if (allIps.isNotEmpty) {
+          // Fallback to any IP if no private IP found (shouldn't happen in hotspot scenario)
+          deviceIp = allIps.first;
+          if (kDebugMode) {
+            print('⚠️ No private IP found, using public IP: $deviceIp');
+            print('   This may not work for mobile hotspot - laptop IP is in private range');
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('⚠️ Failed to get IP from NetworkInterface: $e');
+        }
+      }
+      
+      // Step 2: Fallback to network_info_plus if NetworkInterface didn't work
+      if (deviceIp == null || deviceIp.isEmpty) {
+        try {
+          deviceIp = await _networkInfo.getWifiIP();
+          if (deviceIp != null && deviceIp.isNotEmpty) {
+            if (kDebugMode) {
+              print('📱 Found device IP via network_info_plus: $deviceIp');
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ Failed to get IP from network_info_plus: $e');
+          }
+        }
+      }
+      
+      // Step 3: If still no IP found, try common hotspot subnets
+      if (deviceIp == null || deviceIp.isEmpty) {
+        if (kDebugMode) {
+          print('⚠️ Could not get device IP address');
+          print('   Will try common mobile hotspot subnets instead...');
+        }
+        return await _tryCommonHotspotSubnets();
+      }
+      
+      if (kDebugMode) {
+        print('📱 Device IP: $deviceIp');
+      }
+      
+      // Check if IP is private - if not, try common hotspot subnets
+      if (!isPrivateIp(deviceIp)) {
+        if (kDebugMode) {
+          print('⚠️ Device IP is public ($deviceIp), not suitable for local network scan');
+          print('   For mobile hotspot, need private IP (10.x.x.x, 192.168.x.x, 172.16-31.x.x)');
+          print('   Will try common mobile hotspot subnets instead...');
+        }
+        return await _tryCommonHotspotSubnets();
+      }
+      
+      // Step 4: Extract subnet and perform comprehensive scan
       final parts = deviceIp.split('.');
-      if (parts.length < 3) return null;
-
+      if (parts.length < 3) {
+        if (kDebugMode) {
+          print('⚠️ Invalid IP format: $deviceIp');
+        }
+        return null;
+      }
+      
       final networkPrefix = '${parts[0]}.${parts[1]}.${parts[2]}';
-
-      // Scan common backend IPs in the network
-      final commonBackendIps = [
-        '$networkPrefix.1', // Router/gateway sometimes runs services
-        '$networkPrefix.10',
-        '$networkPrefix.100',
-        '$networkPrefix.200',
-        '$networkPrefix.254',
-      ];
-
-      for (final ip in commonBackendIps) {
+      
+      if (kDebugMode) {
+        print('🌐 Detected subnet: $networkPrefix.x');
+        print('🔍 Scanning subnet comprehensively (mobile hotspot optimized)...');
+      }
+      
+      // Strategy: Scan with priority order
+      // 1. Priority IPs (gateway/router): .1, .2, .3, .254
+      // 2. Known laptop IP (.236) for subnet 10.141.70.x - HIGHEST PRIORITY
+      // 3. Device IP itself and nearby IPs (±100 range)
+      // 4. Remaining IPs in subnet (1-254, excluding already tried)
+      
+      final priorityIps = <int>[1, 2, 3, 254];
+      
+      // For subnet 10.141.70.x, add laptop IP (.236) to highest priority
+      if (networkPrefix == '10.141.70') {
+        priorityIps.insert(0, 236); // Add .236 as first priority
+        if (kDebugMode) {
+          print('🎯 Subnet 10.141.70.x detected - prioritizing laptop IP (.236)');
+        }
+      }
+      
+      final triedIps = <int>{...priorityIps};
+      
+      // Step 1: Try priority IPs first (including .236 for 10.141.70.x)
+      for (final lastOctet in priorityIps) {
+        final ip = '$networkPrefix.$lastOctet';
+        if (kDebugMode) {
+          print('🔍 Priority IP: $ip${lastOctet == 236 ? " (LAPTOP)" : ""}');
+        }
         final info = await _tryBackendAtIp(ip, _defaultBackendPort);
         if (info != null) {
           if (kDebugMode) {
-            print('✅ Found backend at: $ip:$_defaultBackendPort');
+            print('✅ Found backend via priority scan: $ip:$_defaultBackendPort');
           }
+          await _cacheBackendInfo(info);
           return info;
         }
+      }
+      
+      // Step 2: Try device IP itself and nearby IPs (±100 range)
+      // This covers cases where laptop IP is near device IP (common in mobile hotspot)
+      if (parts.length == 4) {
+        final deviceLastOctet = int.tryParse(parts[3]);
+        if (deviceLastOctet != null) {
+          // Try device IP itself first
+          final deviceIpFull = '$networkPrefix.$deviceLastOctet';
+          if (kDebugMode) {
+            print('🔍 Trying device IP: $deviceIpFull');
+          }
+          if (!triedIps.contains(deviceLastOctet)) {
+            final deviceInfo = await _tryBackendAtIp(deviceIpFull, _defaultBackendPort);
+            if (deviceInfo != null) {
+              if (kDebugMode) {
+                print('✅ Found backend at device IP: $deviceIpFull:$_defaultBackendPort');
+              }
+              await _cacheBackendInfo(deviceInfo);
+              return deviceInfo;
+            }
+            triedIps.add(deviceLastOctet);
+          }
+          
+          // Scan nearby IPs (±100 range) - this will cover laptop IP 236
+          // Scan in expanding order: 1, 2, 3... up to 100
+          if (kDebugMode) {
+            print('🔍 Scanning nearby IPs (±100 range from device IP $deviceLastOctet)...');
+          }
+          for (int offset = 1; offset <= 100; offset++) {
+            // Try IPs above device IP
+            final testIpAbove = deviceLastOctet + offset;
+            if (testIpAbove > 0 && testIpAbove < 255 && !triedIps.contains(testIpAbove)) {
+              final ip = '$networkPrefix.$testIpAbove';
+              triedIps.add(testIpAbove);
+              final info = await _tryBackendAtIp(ip, _defaultBackendPort);
+              if (info != null) {
+                if (kDebugMode) {
+                  print('✅ Found backend via nearby scan: $ip:$_defaultBackendPort');
+                }
+                await _cacheBackendInfo(info);
+                return info;
+              }
+            }
+            
+            // Try IPs below device IP
+            final testIpBelow = deviceLastOctet - offset;
+            if (testIpBelow > 0 && testIpBelow < 255 && !triedIps.contains(testIpBelow)) {
+              final ip = '$networkPrefix.$testIpBelow';
+              triedIps.add(testIpBelow);
+              final info = await _tryBackendAtIp(ip, _defaultBackendPort);
+              if (info != null) {
+                if (kDebugMode) {
+                  print('✅ Found backend via nearby scan: $ip:$_defaultBackendPort');
+                }
+                await _cacheBackendInfo(info);
+                return info;
+              }
+            }
+          }
+        }
+      }
+      
+      // Step 3: Scan remaining IPs in subnet (1-254, excluding already tried)
+      // This ensures we cover ALL IPs including high numbers like 236
+      if (kDebugMode) {
+        print('🔍 Scanning remaining IPs in subnet (excluding ${triedIps.length} already tried)...');
+      }
+      
+      // Scan remaining IPs (all 1-254, excluding already tried)
+      for (int lastOctet = 1; lastOctet < 255; lastOctet++) {
+        if (triedIps.contains(lastOctet)) continue;
+        triedIps.add(lastOctet);
+        
+        final ip = '$networkPrefix.$lastOctet';
+        final info = await _tryBackendAtIp(ip, _defaultBackendPort);
+        if (info != null) {
+          if (kDebugMode) {
+            print('✅ Found backend via comprehensive scan: $ip:$_defaultBackendPort');
+          }
+          await _cacheBackendInfo(info);
+          return info;
+        }
+      }
+      
+      if (kDebugMode) {
+        print('⚠️ Comprehensive scan completed: scanned ${triedIps.length} IPs in subnet $networkPrefix.x, backend not found');
       }
     } catch (e) {
       if (kDebugMode) {
         print('❌ Local network scan failed: $e');
       }
     }
+    
+    // Before falling back to emulator IP, try common mobile hotspot subnets
+    // This handles cases where device IP is public (mobile data) but backend is on hotspot subnet
+    if (kDebugMode) {
+      print('⚠️ Trying common mobile hotspot subnets as last resort...');
+    }
+    final hotspotResult = await _tryCommonHotspotSubnets();
+    if (hotspotResult != null) {
+      return hotspotResult;
+    }
+    
+    return null;
+  }
+  
+  /// Try common mobile hotspot subnets
+  /// This is used when device IP is public (mobile data) but backend is on hotspot subnet
+  /// Common mobile hotspot subnets:
+  /// - 192.168.43.x (Android hotspot)
+  /// - 172.20.10.x (iOS hotspot)
+  /// - 192.168.137.x (Windows hotspot)
+  /// - 10.141.70.x (User's specific hotspot)
+  Future<BackendInfo?> _tryCommonHotspotSubnets() async {
+    if (kDebugMode) {
+      print('🔍 Trying common mobile hotspot subnets...');
+    }
+    
+    // Common mobile hotspot subnets
+    final hotspotSubnets = [
+      '10.141.70',  // User's specific hotspot subnet (priority)
+      '192.168.43', // Android hotspot
+      '172.20.10',  // iOS hotspot
+      '192.168.137', // Windows hotspot
+      '192.168.1',   // Common router subnet (fallback)
+      '10.0.0',      // Common private subnet
+    ];
+    
+    // For each subnet, try priority IPs first, then scan nearby IPs
+    for (final subnet in hotspotSubnets) {
+      if (kDebugMode) {
+        print('🔍 Trying hotspot subnet: $subnet.x');
+      }
+      
+      // Priority IPs: gateway (.1), common server IPs, and user's laptop IP (.236)
+      final priorityIps = [1, 2, 3, 10, 100, 236, 254]; // Include .236 for user's laptop
+      
+      for (final lastOctet in priorityIps) {
+        final ip = '$subnet.$lastOctet';
+        if (kDebugMode) {
+          print('  🔍 Priority IP: $ip');
+        }
+        final info = await _tryBackendAtIp(ip, _defaultBackendPort);
+        if (info != null) {
+          if (kDebugMode) {
+            print('✅ Found backend in hotspot subnet: $ip:$_defaultBackendPort');
+          }
+          await _cacheBackendInfo(info);
+          return info;
+        }
+      }
+      
+      // If priority IPs didn't work, try scanning nearby IPs around .236 (user's laptop)
+      if (subnet == '10.141.70') {
+        if (kDebugMode) {
+          print('  🔍 Scanning around laptop IP (.236) in subnet $subnet.x...');
+        }
+        for (int offset = 1; offset <= 20; offset++) {
+          // Try IPs around 236
+          final testIpAbove = 236 + offset;
+          final testIpBelow = 236 - offset;
+          
+          if (testIpAbove < 255) {
+            final ip = '$subnet.$testIpAbove';
+            final info = await _tryBackendAtIp(ip, _defaultBackendPort);
+            if (info != null) {
+              if (kDebugMode) {
+                print('✅ Found backend near laptop IP: $ip:$_defaultBackendPort');
+              }
+              await _cacheBackendInfo(info);
+              return info;
+            }
+          }
+          
+          if (testIpBelow > 0) {
+            final ip = '$subnet.$testIpBelow';
+            final info = await _tryBackendAtIp(ip, _defaultBackendPort);
+            if (info != null) {
+              if (kDebugMode) {
+                print('✅ Found backend near laptop IP: $ip:$_defaultBackendPort');
+              }
+              await _cacheBackendInfo(info);
+              return info;
+            }
+          }
+        }
+      }
+    }
+    
+    if (kDebugMode) {
+      print('⚠️ Common hotspot subnets scan completed, backend not found');
+    }
     return null;
   }
 
   /// Try to connect to backend at specific IP
+  /// Uses shorter timeout for faster scanning
+  /// Tries multiple endpoints to increase success rate
   Future<BackendInfo?> _tryBackendAtIp(String ip, int port) async {
-    try {
-      final dio = Dio();
-      dio.options.connectTimeout = const Duration(seconds: 2);
-      dio.options.receiveTimeout = const Duration(seconds: 2);
+    final dio = Dio();
+    // Shorter timeout for faster scanning (1s instead of 2s)
+    dio.options.connectTimeout = const Duration(seconds: 1);
+    dio.options.receiveTimeout = const Duration(seconds: 1);
 
-      final response = await dio.get('http://$ip:$port/api/health').timeout(
-        const Duration(seconds: 2),
-      );
+    // Try multiple endpoints - discovery/health is more reliable
+    final endpoints = [
+      '/api/discovery/health',  // Discovery health endpoint (preferred)
+      '/api/health',             // General health endpoint
+      '/api/discovery/info',     // Discovery info endpoint
+    ];
 
-      if (response.statusCode == 200) {
-        return BackendInfo(
-          hostname: ip,
-          ip: ip,
-          port: port,
-          discoveryMethod: 'scan',
+    for (final endpoint in endpoints) {
+      try {
+        final response = await dio.get('http://$ip:$port$endpoint').timeout(
+          const Duration(seconds: 1),
         );
+
+        if (response.statusCode == 200) {
+          return BackendInfo(
+            hostname: ip,
+            ip: ip,
+            port: port,
+            discoveryMethod: 'scan',
+          );
+        }
+      } catch (_) {
+        // Try next endpoint
+        continue;
       }
-    } catch (_) {
-      // Silently fail and try next IP
     }
+    
     return null;
   }
 
@@ -725,29 +1140,111 @@ class BackendDiscoveryService {
 
   /// Start listening for network changes
   /// When network changes, automatically re-discover backend
+  /// Optimized for mobile hotspot scenario: detects when hotspot IP changes
   /// This works for both local network and internet (ngrok) connections
   void startNetworkChangeListener(Future<void> Function() onNetworkChanged) {
     _onNetworkChangedCallback = onNetworkChanged;
     
+    // Track previous network state to detect changes
+    List<ConnectivityResult>? _previousConnectivity;
+    String? _previousDeviceIp;
+    
     // Listen for connectivity changes
     _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
-      (List<ConnectivityResult> results) {
+      (List<ConnectivityResult> results) async {
         if (kDebugMode) {
           print('🌐 Network connectivity changed: $results');
         }
         
-        // Trigger re-discovery for any connectivity change:
+        // Get current device IP to detect IP changes (important for mobile hotspot)
+        String? currentDeviceIp;
+        try {
+          // Try NetworkInterface first (more reliable)
+          final interfaces = await NetworkInterface.list(
+            includeLinkLocal: false,
+            type: InternetAddressType.IPv4,
+          );
+          
+          for (final interface in interfaces) {
+            for (final addr in interface.addresses) {
+              final ip = addr.address;
+              // Check if IP is private (for hotspot scenario)
+              final parts = ip.split('.');
+              if (parts.length == 4) {
+                final first = int.tryParse(parts[0]);
+                final second = int.tryParse(parts[1]);
+                if (first != null && second != null) {
+                  if (first == 10 || (first == 172 && second >= 16 && second <= 31) || 
+                      (first == 192 && second == 168)) {
+                    currentDeviceIp = ip;
+                    break;
+                  }
+                }
+              }
+            }
+            if (currentDeviceIp != null) break;
+          }
+          
+          // Fallback to network_info_plus
+          if (currentDeviceIp == null) {
+            currentDeviceIp = await _networkInfo.getWifiIP();
+          }
+        } catch (e) {
+          // Ignore errors
+        }
+        
+        // Detect if IP changed (important for mobile hotspot scenario)
+        final ipChanged = _previousDeviceIp != null && 
+                         currentDeviceIp != null && 
+                         _previousDeviceIp != currentDeviceIp;
+        
+        // Detect if connectivity type changed
+        final connectivityChanged = _previousConnectivity == null ||
+                                   (_previousConnectivity != null && !_listEquals(_previousConnectivity!, results));
+        
+        if (kDebugMode) {
+          if (ipChanged) {
+            print('📱 Device IP changed: $_previousDeviceIp → $currentDeviceIp');
+            print('   This may indicate hotspot IP changed - will re-discover backend');
+          }
+          if (connectivityChanged) {
+            print('🌐 Connectivity type changed');
+          }
+        }
+        
+        // Update previous state
+        _previousConnectivity = results;
+        _previousDeviceIp = currentDeviceIp;
+        
+        // Trigger re-discovery for any connectivity change or IP change:
         // - WiFi/Ethernet: Try local network discovery + ngrok URL
         // - Mobile data: Try ngrok URL (works even without local network)
+        // - IP changed: Force re-discovery (hotspot IP may have changed)
         // - No network: Still try saved ngrok URL (might work if backend has internet)
         if (results.contains(ConnectivityResult.wifi) || 
             results.contains(ConnectivityResult.mobile) ||
             results.contains(ConnectivityResult.ethernet) ||
+            ipChanged || // Force re-discovery if IP changed
             results.isEmpty) { // Even if no network, try saved ngrok URL
           
           // Debounce: wait a bit before re-discovering to avoid rapid changes
-          Future.delayed(const Duration(seconds: 2), () {
+          // Longer delay if IP changed (hotspot may need more time to stabilize)
+          final delaySeconds = ipChanged ? 3 : 2;
+          Future.delayed(Duration(seconds: delaySeconds), () async {
             if (_onNetworkChangedCallback != null) {
+              // Clear cache if IP changed to force fresh discovery
+              if (ipChanged) {
+                if (kDebugMode) {
+                  print('🗑️ Clearing cache due to IP change (hotspot IP may have changed)');
+                }
+                try {
+                  await clearCache();
+                } catch (e) {
+                  if (kDebugMode) {
+                    print('⚠️ Failed to clear cache: $e');
+                  }
+                }
+              }
               _onNetworkChangedCallback!();
             }
           });
@@ -771,8 +1268,17 @@ class BackendDiscoveryService {
     );
     
     if (kDebugMode) {
-      print('👂 Started listening for network changes');
+      print('👂 Started listening for network changes (mobile hotspot optimized)');
     }
+  }
+  
+  /// Helper function to compare lists
+  bool _listEquals<T>(List<T> a, List<T> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   /// Stop listening for network changes

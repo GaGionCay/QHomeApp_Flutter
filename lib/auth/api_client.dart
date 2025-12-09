@@ -15,7 +15,7 @@ class ApiClient {
   // Use API Gateway port (8989) instead of individual service ports
   // API Gateway will route requests to appropriate microservices
   static const int apiPort = 8989;
-  static const int timeoutSeconds = 10;
+  static const int timeoutSeconds = 15; // Increased for mobile hotspot compatibility
 
   // Dynamic host IP - will be discovered automatically
   static String _activeHostIp = kIsWeb ? localhostIp : localhostIp;
@@ -402,15 +402,24 @@ class ApiClient {
             } catch (discoveryErr) {
               print('⚠️ Re-discovery failed: $discoveryErr');
               
-              // If we've tried multiple times and still getting "Network is unreachable",
-              // clear the cached backend to force fresh discovery
-              if (retryCount >= 3 && err.error.toString().contains('Network is unreachable')) {
-                print('🗑️ Cached backend unreachable after multiple attempts, clearing cache...');
-                try {
-                  await _discoveryService.clearCache();
-                  print('✅ Cleared cached backend, will try fresh discovery on next attempt');
-                } catch (clearErr) {
-                  print('⚠️ Failed to clear cache: $clearErr');
+              // If we've tried multiple times and still getting connection errors,
+              // clear the cached backend to force fresh discovery (hotspot IP may have changed)
+              if (retryCount >= 2) {
+                final errorStr = err.error.toString();
+                final isNetworkUnreachable = errorStr.contains('Network is unreachable') ||
+                                            errorStr.contains('connection timeout') ||
+                                            errorStr.contains('Connection refused') ||
+                                            errorStr.contains('Connection timed out');
+                
+                if (isNetworkUnreachable) {
+                  print('🗑️ Backend unreachable after ${retryCount + 1} attempts, clearing cache...');
+                  print('   This may indicate hotspot IP changed - will force fresh discovery');
+                  try {
+                    await _discoveryService.clearCache();
+                    print('✅ Cleared cached backend, will try fresh discovery on next attempt');
+                  } catch (clearErr) {
+                    print('⚠️ Failed to clear cache: $clearErr');
+                  }
                 }
               }
               
