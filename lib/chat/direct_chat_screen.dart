@@ -2931,9 +2931,17 @@ class _DirectVideoMessageWidgetState extends State<_DirectVideoMessageWidget> {
         _error = null;
       });
 
+      // Check if URL is from ImageKit and use proxy if needed
+      String videoUrl = widget.videoUrl;
+      if (_isImageKitUrl(videoUrl)) {
+        final encodedUrl = Uri.encodeComponent(videoUrl);
+        videoUrl = '${ApiClient.activeBaseUrl}/marketplace/media/video?url=$encodedUrl';
+        debugPrint('📹 [DirectChatVideo] Using proxy URL for ImageKit video: $videoUrl');
+      }
+      
       // Use network URL directly - no need to download
       _controller = VideoPlayerController.networkUrl(
-        Uri.parse(widget.videoUrl),
+        Uri.parse(videoUrl),
       );
 
       await _controller!.initialize();
@@ -2975,6 +2983,12 @@ class _DirectVideoMessageWidgetState extends State<_DirectVideoMessageWidget> {
     final minutes = twoDigits(duration.inMinutes.remainder(60));
     final seconds = twoDigits(duration.inSeconds.remainder(60));
     return '$minutes:$seconds';
+  }
+
+  /// Check if URL is from ImageKit
+  bool _isImageKitUrl(String url) {
+    if (url.isEmpty) return false;
+    return url.contains('ik.imagekit.io') || url.contains('imagekit.io');
   }
 
   String _formatFileSize(int bytes) {

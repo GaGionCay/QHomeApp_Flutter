@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:video_player/video_player.dart';
+import 'package:flutter/foundation.dart';
+import '../auth/api_client.dart';
 
 /// Full screen video viewer screen
 /// Supports both local file and network URL
@@ -47,12 +49,24 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
         // Local file
         controller = VideoPlayerController.file(File(widget.videoPath!));
       } else if (widget.videoUrl != null) {
-        // Network URL - use httpHeaders for better timeout handling
-        final fullUrl = widget.videoUrl!.startsWith('http://') || widget.videoUrl!.startsWith('https://')
-            ? widget.videoUrl!
-            : 'https://${widget.videoUrl!}';
+        // Network URL - check if it's ImageKit URL and use proxy if needed
+        String videoUrl = widget.videoUrl!;
+        
+        // Check if URL is from ImageKit (ik.imagekit.io)
+        if (_isImageKitUrl(videoUrl)) {
+          // Use proxy endpoint to avoid 403 errors
+          final encodedUrl = Uri.encodeComponent(videoUrl);
+          videoUrl = '${ApiClient.activeBaseUrl}/marketplace/media/video?url=$encodedUrl';
+          debugPrint('📹 [VideoViewer] Using proxy URL for ImageKit video: $videoUrl');
+        } else {
+          // For non-ImageKit URLs, use directly
+          videoUrl = videoUrl.startsWith('http://') || videoUrl.startsWith('https://')
+              ? videoUrl
+              : 'https://$videoUrl';
+        }
+        
         controller = VideoPlayerController.networkUrl(
-          Uri.parse(fullUrl),
+          Uri.parse(videoUrl),
           httpHeaders: {
             'Connection': 'keep-alive',
           },
@@ -172,6 +186,12 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
     final minutes = twoDigits(duration.inMinutes.remainder(60));
     final seconds = twoDigits(duration.inSeconds.remainder(60));
     return '$minutes:$seconds';
+  }
+
+  /// Check if URL is from ImageKit
+  bool _isImageKitUrl(String url) {
+    if (url.isEmpty) return false;
+    return url.contains('ik.imagekit.io') || url.contains('imagekit.io');
   }
 
   @override
