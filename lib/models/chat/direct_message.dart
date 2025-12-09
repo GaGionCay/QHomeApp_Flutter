@@ -27,6 +27,7 @@ class DirectMessage {
   final String? postThumbnailUrl;
   final double? postPrice;
   final String? deepLink;
+  final String? postStatus; // ACTIVE, SOLD, DELETED - checked from marketplace service
 
   DirectMessage({
     required this.id,
@@ -57,6 +58,7 @@ class DirectMessage {
     this.postThumbnailUrl,
     this.postPrice,
     this.deepLink,
+    this.postStatus,
   });
 
   factory DirectMessage.fromJson(Map<String, dynamic> json) {
@@ -95,6 +97,7 @@ class DirectMessage {
           ? (json['postPrice'] is num ? json['postPrice'].toDouble() : double.tryParse(json['postPrice'].toString()))
           : null,
       deepLink: json['deepLink']?.toString(),
+      postStatus: json['postStatus']?.toString(),
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'])
           : DateTime.now(),
@@ -134,6 +137,7 @@ class DirectMessage {
       'postThumbnailUrl': postThumbnailUrl,
       'postPrice': postPrice,
       'deepLink': deepLink,
+      'postStatus': postStatus,
     };
   }
 }

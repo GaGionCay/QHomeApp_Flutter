@@ -29,6 +29,7 @@ class ChatMessage {
   final String? postThumbnailUrl;
   final double? postPrice;
   final String? deepLink;
+  final String? postStatus; // ACTIVE, SOLD, DELETED - checked from marketplace service
 
   ChatMessage({
     required this.id,
@@ -59,6 +60,7 @@ class ChatMessage {
     this.postThumbnailUrl,
     this.postPrice,
     this.deepLink,
+    this.postStatus,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
@@ -93,6 +95,7 @@ class ChatMessage {
           ? (json['postPrice'] is num ? json['postPrice'].toDouble() : double.tryParse(json['postPrice'].toString()))
           : null,
       deepLink: json['deepLink']?.toString(),
+      postStatus: json['postStatus']?.toString(),
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'])
           : DateTime.now(),
@@ -132,6 +135,7 @@ class ChatMessage {
       'postThumbnailUrl': postThumbnailUrl,
       'postPrice': postPrice,
       'deepLink': deepLink,
+      'postStatus': postStatus,
     };
   }
 }

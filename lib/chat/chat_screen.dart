@@ -28,6 +28,7 @@ import '../marketplace/post_detail_screen.dart';
 import '../marketplace/marketplace_service.dart';
 import 'linkable_text_widget.dart';
 import '../widgets/animations/smooth_animations.dart';
+import 'package:dio/dio.dart';
 
 class ChatScreen extends StatefulWidget {
   final String groupId;
@@ -1193,10 +1194,56 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } catch (e) {
       if (mounted) {
+        // Check if error is 404 or post not found
+        bool isPostDeleted = false;
+        if (e is DioException) {
+          // Check HTTP status code (404, 400, or 500 if backend throws RuntimeException)
+          final statusCode = e.response?.statusCode;
+          isPostDeleted = statusCode == 404 || statusCode == 400 || statusCode == 500;
+          
+          // Check error message in response data
+          if (e.response?.data != null) {
+            try {
+              final responseData = e.response!.data;
+              String errorMessage = '';
+              if (responseData is Map) {
+                errorMessage = (responseData['error']?.toString() ?? '').toLowerCase();
+              } else {
+                errorMessage = responseData.toString().toLowerCase();
+              }
+              if (errorMessage.contains('post not found') ||
+                  errorMessage.contains('bài viết không tồn tại')) {
+                isPostDeleted = true;
+              }
+            } catch (_) {
+              // Ignore parsing errors
+            }
+          }
+          
+          // Check error message in DioException
+          final errorMessage = (e.message?.toLowerCase() ?? '') + 
+                              (e.toString().toLowerCase());
+          if (errorMessage.contains('post not found') ||
+              errorMessage.contains('bài viết không tồn tại')) {
+            isPostDeleted = true;
+          }
+        } else {
+          // Check exception message for "Post not found"
+          final errorMessage = e.toString().toLowerCase();
+          isPostDeleted = errorMessage.contains('post not found') ||
+                         errorMessage.contains('404') || 
+                         errorMessage.contains('not found') ||
+                         errorMessage.contains('không tìm thấy') ||
+                         errorMessage.contains('bài viết không tồn tại');
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Không thể tải bài viết: ${e.toString()}'),
+            content: Text(isPostDeleted 
+                ? 'Bài viết đã bị xóa' 
+                : 'Không thể tải bài viết: ${e.toString()}'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -1551,10 +1598,14 @@ class _MessageBubble extends StatelessWidget {
                 postThumbnailUrl: message.postThumbnailUrl,
                 postPrice: message.postPrice,
                 deepLink: message.deepLink ?? '',
+                postStatus: message.postStatus,
                 theme: theme,
                 onTap: () {
-                  // Handle deep-link navigation
-                  if (message.deepLink != null && message.deepLink!.isNotEmpty && onDeepLinkTap != null) {
+                  // Handle deep-link navigation - only if post is not deleted
+                  if (message.postStatus != 'DELETED' &&
+                      message.deepLink != null && 
+                      message.deepLink!.isNotEmpty && 
+                      onDeepLinkTap != null) {
                     onDeepLinkTap!(message.deepLink!);
                   }
                 },
@@ -3461,6 +3512,7 @@ class _MarketplacePostCard extends StatelessWidget {
   final String? postThumbnailUrl;
   final double? postPrice;
   final String deepLink;
+  final String? postStatus; // ACTIVE, SOLD, DELETED
   final ThemeData theme;
   final VoidCallback onTap;
 
@@ -3470,6 +3522,7 @@ class _MarketplacePostCard extends StatelessWidget {
     this.postThumbnailUrl,
     this.postPrice,
     required this.deepLink,
+    this.postStatus,
     required this.theme,
     required this.onTap,
   });
@@ -3481,104 +3534,135 @@ class _MarketplacePostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        constraints: const BoxConstraints(maxWidth: 280),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: theme.colorScheme.outline.withValues(alpha: 0.2),
-          ),
+    final isDeleted = postStatus == 'DELETED';
+    
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxWidth: 280),
+      decoration: BoxDecoration(
+        color: isDeleted 
+            ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)
+            : theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDeleted
+              ? theme.colorScheme.error.withValues(alpha: 0.3)
+              : theme.colorScheme.outline.withValues(alpha: 0.2),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Thumbnail
-            if (postThumbnailUrl != null && postThumbnailUrl!.isNotEmpty)
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                child: CachedNetworkImage(
-                  imageUrl: postThumbnailUrl!,
-                  width: double.infinity,
-                  height: 150,
-                  fit: BoxFit.cover,
-                  placeholder: (context, url) => Container(
-                    height: 150,
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    child: const Center(child: CircularProgressIndicator()),
+      ),
+      child: isDeleted
+          ? // Deleted post UI
+          Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(
+                    CupertinoIcons.delete,
+                    color: theme.colorScheme.error.withValues(alpha: 0.7),
+                    size: 20,
                   ),
-                  errorWidget: (context, url, error) => Container(
-                    height: 150,
-                    color: theme.colorScheme.errorContainer,
-                    child: Icon(
-                      CupertinoIcons.photo,
-                      color: theme.colorScheme.onErrorContainer,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Bài viết này đã bị xoá',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                        fontStyle: FontStyle.italic,
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
-            // Content
-            Padding(
-              padding: const EdgeInsets.all(12),
+            )
+          : // Active post UI
+          GestureDetector(
+              onTap: onTap,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Title
-                  Text(
-                    postTitle,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
+                  // Thumbnail
+                  if (postThumbnailUrl != null && postThumbnailUrl!.isNotEmpty)
+                    ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                      child: CachedNetworkImage(
+                        imageUrl: postThumbnailUrl!,
+                        width: double.infinity,
+                        height: 150,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          height: 150,
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          child: const Center(child: CircularProgressIndicator()),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          height: 150,
+                          color: theme.colorScheme.errorContainer,
+                          child: Icon(
+                            CupertinoIcons.photo,
+                            color: theme.colorScheme.onErrorContainer,
+                          ),
+                        ),
+                      ),
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                  // Price
-                  Row(
-                    children: [
-                      Icon(
-                        CupertinoIcons.money_dollar,
-                        size: 16,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _formatPrice(postPrice),
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.w600,
+                  // Content
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Title
+                        Text(
+                          postTitle,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  // Link indicator
-                  Row(
-                    children: [
-                      Icon(
-                        CupertinoIcons.link,
-                        size: 14,
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Xem bài viết',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.primary,
+                        const SizedBox(height: 8),
+                        // Price
+                        Row(
+                          children: [
+                            Icon(
+                              CupertinoIcons.money_dollar,
+                              size: 16,
+                              color: theme.colorScheme.primary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _formatPrice(postPrice),
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        // Link indicator
+                        Row(
+                          children: [
+                            Icon(
+                              CupertinoIcons.link,
+                              size: 14,
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Xem bài viết',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-          ],
-        ),
-      ),
     );
   }
 }
