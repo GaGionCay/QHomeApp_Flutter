@@ -10,7 +10,6 @@ import 'create_group_screen.dart';
 import 'chat_screen.dart';
 import 'invitations_screen.dart';
 import 'direct_chat_screen.dart';
-import 'direct_invitations_screen.dart';
 import 'blocked_users_screen.dart';
 import 'friends_screen.dart';
 import '../auth/token_storage.dart';
@@ -114,19 +113,35 @@ class _GroupListScreenState extends State<GroupListScreen> {
   }
 
   Future<void> _loadDirectConversations() async {
+    print('📋 [GroupListScreen] ========== _loadDirectConversations START ==========');
+    print('📋 [GroupListScreen] Current _directConversations.length: ${_directConversations.length}');
     try {
+      print('📋 [GroupListScreen] Calling _chatService.getConversations()...');
       final conversations = await _chatService.getConversations();
+      print('📋 [GroupListScreen] getConversations() returned ${conversations.length} conversations');
+      
       if (mounted) {
+        print('📋 [GroupListScreen] Widget is mounted, updating state...');
         setState(() {
           _directConversations = conversations;
         });
+        print('📋 [GroupListScreen] State updated successfully');
+        print('📋 [GroupListScreen]   _directConversations.length: ${_directConversations.length}');
+      } else {
+        print('⚠️ [GroupListScreen] Widget NOT mounted, skipping state update');
       }
-    } catch (e) {
+      print('📋 [GroupListScreen] ========== _loadDirectConversations END ==========');
+    } catch (e, stackTrace) {
+      print('❌ [GroupListScreen] Error loading direct conversations:');
+      print('❌ [GroupListScreen]   Error: $e');
+      print('❌ [GroupListScreen]   Stack trace: $stackTrace');
       if (mounted) {
         setState(() {
           _directConversations = [];
         });
+        print('⚠️ [GroupListScreen] Set _directConversations to empty list due to error');
       }
+      print('📋 [GroupListScreen] ========== _loadDirectConversations END (ERROR) ==========');
     }
   }
 
@@ -140,13 +155,19 @@ class _GroupListScreenState extends State<GroupListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    print('📋 [GroupListScreen] ========== build() called ==========');
+    print('📋 [GroupListScreen]   _directConversations.length: ${_directConversations.length}');
+    print('📋 [GroupListScreen]   _pendingInvitationsCount: $_pendingInvitationsCount');
+    print('📋 [GroupListScreen]   _pendingDirectInvitationsCount: $_pendingDirectInvitationsCount');
+    print('📋 [GroupListScreen]   viewModel.groups.length: ${_viewModel.groups.length}');
+    
     final theme = Theme.of(context);
     return ChangeNotifierProvider.value(
       value: _viewModel,
       child: Scaffold(
         backgroundColor: theme.colorScheme.surface,
         appBar: AppBar(
-          title: const Text('Nhóm chat'),
+          title: const Text('Trò chuyện'),
           backgroundColor: Colors.transparent,
           elevation: 0,
           actions: [
@@ -165,11 +186,13 @@ class _GroupListScreenState extends State<GroupListScreen> {
                     if (mounted) {
                       _viewModel.refresh();
                       _loadInvitationsCount();
+                      _loadDirectInvitationsCount();
+                      _loadDirectConversations();
                     }
                   },
                 ),
-                // Badge for invitations count
-                if (_pendingInvitationsCount > 0)
+                // Badge for total invitations count (group + direct)
+                if ((_pendingInvitationsCount + _pendingDirectInvitationsCount) > 0)
                   Positioned(
                     right: 8,
                     top: 8,
@@ -189,9 +212,9 @@ class _GroupListScreenState extends State<GroupListScreen> {
                       ),
                       child: Center(
                         child: Text(
-                          _pendingInvitationsCount > 99
+                          (_pendingInvitationsCount + _pendingDirectInvitationsCount) > 99
                               ? '99+'
-                              : '$_pendingInvitationsCount',
+                              : '${_pendingInvitationsCount + _pendingDirectInvitationsCount}',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 11,
@@ -296,8 +319,8 @@ class _GroupListScreenState extends State<GroupListScreen> {
               );
             }
 
-            // Show empty state only if no groups AND no direct invitations AND no direct conversations
-            if (viewModel.groups.isEmpty && _pendingDirectInvitationsCount == 0 && _directConversations.isEmpty) {
+            // Show empty state only if no groups AND no direct conversations
+            if (viewModel.groups.isEmpty && _directConversations.isEmpty) {
               return Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -309,14 +332,14 @@ class _GroupListScreenState extends State<GroupListScreen> {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'Chưa có nhóm chat nào',
+                      'Chưa có cuộc trò chuyện nào',
                       style: theme.textTheme.titleMedium?.copyWith(
                         color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Tạo nhóm mới để bắt đầu trò chuyện',
+                      'Tạo nhóm mới hoặc mời bạn bè để bắt đầu trò chuyện',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                       ),
@@ -342,14 +365,27 @@ class _GroupListScreenState extends State<GroupListScreen> {
               );
             }
 
-            // Calculate itemCount - use state variables directly so it rebuilds when they change
-            final itemCount = (_pendingInvitationsCount > 0 ? 1 : 0) + // Group invitations
-                            (_pendingDirectInvitationsCount > 0 ? 1 : 0) + // Direct invitations
-                            (_directConversations.isNotEmpty ? 1 : 0) + // Direct chat section header
-                            _directConversations.length +
-                            (viewModel.groups.isNotEmpty ? 1 : 0) + // Group chat section header
-                            viewModel.groups.length + 
-                            (viewModel.hasMore ? 1 : 0);
+            // Calculate itemCount with clear sections - chỉ Direct Chat và Group Chat
+            int itemCount = 0;
+            int directChatHeaderCount = _directConversations.isNotEmpty ? 1 : 0;
+            int directChatItemsCount = _directConversations.length;
+            int groupChatHeaderCount = viewModel.groups.isNotEmpty ? 1 : 0;
+            int groupChatItemsCount = viewModel.groups.length;
+            int loadMoreCount = viewModel.hasMore ? 1 : 0;
+            
+            itemCount = directChatHeaderCount + 
+                       directChatItemsCount + 
+                       groupChatHeaderCount + 
+                       groupChatItemsCount + 
+                       loadMoreCount;
+            
+            print('📋 [GroupListScreen] ListView itemCount calculation:');
+            print('📋 [GroupListScreen]   directChatHeaderCount: $directChatHeaderCount');
+            print('📋 [GroupListScreen]   directChatItemsCount: $directChatItemsCount');
+            print('📋 [GroupListScreen]   groupChatHeaderCount: $groupChatHeaderCount');
+            print('📋 [GroupListScreen]   groupChatItemsCount: $groupChatItemsCount');
+            print('📋 [GroupListScreen]   loadMoreCount: $loadMoreCount');
+            print('📋 [GroupListScreen]   Total itemCount: $itemCount');
             
             return RefreshIndicator(
               onRefresh: () async {
@@ -359,66 +395,21 @@ class _GroupListScreenState extends State<GroupListScreen> {
                 await _loadDirectConversations();
               },
               child: ListView.builder(
-                key: ValueKey('list_${_pendingDirectInvitationsCount}_${_pendingInvitationsCount}_${_directConversations.length}_${viewModel.groups.length}'),
+                key: ValueKey('list_${_directConversations.length}_${viewModel.groups.length}'),
                 padding: const EdgeInsets.all(16),
                 itemCount: itemCount,
                 itemBuilder: (context, index) {
-                  int currentIndex = index;
+                  print('📋 [GroupListScreen] ListView.builder building item $index');
                   
-                  // Group invitations section (first item if there are invitations)
-                  if (_pendingInvitationsCount > 0 && currentIndex == 0) {
-                    return _InvitationsSection(
-                      count: _pendingInvitationsCount,
-                      onTap: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const InvitationsScreen(),
-                          ),
-                        );
-                        if (mounted) {
-                          _viewModel.refresh();
-                          _loadInvitationsCount();
-                        }
-                      },
-                    );
-                  }
+                  int offset = 0;
                   
-                  // Adjust index after group invitations
-                  if (_pendingInvitationsCount > 0) {
-                    currentIndex--;
-                  }
-                  
-                  // Direct invitations section
-                  // Always show (like group invitations) - screen should always be visible
-                  if (currentIndex == 0) {
-                    return _DirectInvitationsSection(
-                      key: ValueKey('direct_invitations_${_pendingDirectInvitationsCount}_$index'),
-                      count: _pendingDirectInvitationsCount,
-                      onTap: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const DirectInvitationsScreen(),
-                          ),
-                        );
-                        if (mounted) {
-                          _loadDirectInvitationsCount();
-                          _loadDirectConversations();
-                        }
-                      },
-                    );
-                  }
-                  
-                  // Adjust index after direct invitations (always present)
-                  currentIndex--;
-                  
-                  // Direct chat section header
-                  if (_directConversations.isNotEmpty && currentIndex == 0) {
+                  // 1. Direct chat section header
+                  if (index == offset && directChatHeaderCount > 0) {
+                    print('📋 [GroupListScreen]   Rendering direct chat header');
                     return Padding(
                       padding: const EdgeInsets.only(top: 8, bottom: 12),
                       child: Text(
-                        'Trò chuyện',
+                        'Trò chuyện trực tiếp',
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                           color: theme.colorScheme.primary,
@@ -426,15 +417,16 @@ class _GroupListScreenState extends State<GroupListScreen> {
                       ),
                     );
                   }
+                  offset += directChatHeaderCount;
                   
-                  // Adjust index after direct chat header
-                  if (_directConversations.isNotEmpty) {
-                    currentIndex--;
-                  }
-                  
-                  // Direct chat conversations
-                  if (currentIndex < _directConversations.length) {
-                    final conversation = _directConversations[currentIndex];
+                  // 2. Direct chat conversations
+                  if (index >= offset && index < offset + directChatItemsCount) {
+                    final conversationIndex = index - offset;
+                    print('📋 [GroupListScreen]   Rendering direct conversation item $conversationIndex of ${_directConversations.length}');
+                    final conversation = _directConversations[conversationIndex];
+                    print('📋 [GroupListScreen]     Conversation ID: ${conversation.id}');
+                    print('📋 [GroupListScreen]     Status: ${conversation.status}');
+                    
                     final otherParticipantName = _currentResidentId != null
                         ? (conversation.getOtherParticipantName(_currentResidentId!) ?? 'Người dùng')
                         : (conversation.participant1Name ?? conversation.participant2Name ?? 'Người dùng');
@@ -442,6 +434,9 @@ class _GroupListScreenState extends State<GroupListScreen> {
                     final isMuted = conversation.isMuted || 
                         (conversation.muteUntil != null && 
                          conversation.muteUntil!.isAfter(DateTime.now()));
+                    
+                    print('📋 [GroupListScreen]     otherParticipantName: $otherParticipantName');
+                    print('📋 [GroupListScreen]     unreadCount: $unreadCount');
                     
                     String getLastMessagePreview(Conversation conv) {
                       final lastMessage = conv.lastMessage;
@@ -584,12 +579,11 @@ class _GroupListScreenState extends State<GroupListScreen> {
                       ),
                     );
                   }
+                  offset += directChatItemsCount;
                   
-                  // Adjust index after direct conversations
-                  currentIndex -= _directConversations.length;
-                  
-                  // Group chat section header
-                  if (viewModel.groups.isNotEmpty && currentIndex == 0) {
+                  // 3. Group chat section header
+                  if (index == offset && groupChatHeaderCount > 0) {
+                    print('📋 [GroupListScreen]   Rendering group chat header');
                     return Padding(
                       padding: const EdgeInsets.only(top: 8, bottom: 12),
                       child: Text(
@@ -601,15 +595,13 @@ class _GroupListScreenState extends State<GroupListScreen> {
                       ),
                     );
                   }
+                  offset += groupChatHeaderCount;
                   
-                  // Adjust index after group chat header
-                  if (viewModel.groups.isNotEmpty) {
-                    currentIndex--;
-                  }
-                  
-                  // Group chat groups
-                  if (currentIndex < viewModel.groups.length) {
-                    final group = viewModel.groups[currentIndex];
+                  // 4. Group chat groups
+                  if (index >= offset && index < offset + groupChatItemsCount) {
+                    final groupIndex = index - offset;
+                    print('📋 [GroupListScreen]   Rendering group item $groupIndex of ${viewModel.groups.length}');
+                    final group = viewModel.groups[groupIndex];
                     return _GroupListItem(
                       group: group,
                       onTap: () async {
@@ -655,14 +647,11 @@ class _GroupListScreenState extends State<GroupListScreen> {
                       onLongPress: () => _showGroupOptions(context, group),
                     );
                   }
+                  offset += groupChatItemsCount;
                   
-                  // Adjust index after groups
-                  if (viewModel.groups.isNotEmpty) {
-                    currentIndex -= viewModel.groups.length;
-                  }
-                  
-                  // Load more indicator
-                  if (viewModel.hasMore && currentIndex == 0) {
+                  // 5. Load more indicator
+                  if (index == offset && loadMoreCount > 0) {
+                    print('📋 [GroupListScreen]   Rendering load more indicator');
                     return const Center(
                       child: Padding(
                         padding: EdgeInsets.all(16),
@@ -670,23 +659,10 @@ class _GroupListScreenState extends State<GroupListScreen> {
                       ),
                     );
                   }
-
-                  final group = viewModel.groups[currentIndex];
-                  return _GroupListItem(
-                    group: group,
-                    onTap: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ChatScreen(groupId: group.id),
-                        ),
-                      );
-                      // Refresh to update unread count after returning from chat
-                      if (mounted) {
-                        _viewModel.refresh();
-                      }
-                    },
-                  );
+                  
+                  // Should not reach here
+                  print('⚠️ [GroupListScreen] Unexpected index: $index, itemCount: $itemCount, offset: $offset');
+                  return const SizedBox.shrink();
                 },
               ),
             );
@@ -1105,24 +1081,33 @@ class _GroupListItem extends StatelessWidget {
         title: Text(
           group.name,
           style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: hasUnread ? FontWeight.bold : FontWeight.normal,
+            fontWeight: hasUnread ? FontWeight.bold : FontWeight.w600,
+            fontSize: 16,
           ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            if (group.description != null && group.description!.isNotEmpty)
+            if (group.description != null && group.description!.isNotEmpty) ...[
+              const SizedBox(height: 4),
               Text(
                 group.description!,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                ),
               ),
+            ],
             const SizedBox(height: 4),
             Text(
               '${group.currentMemberCount}/${group.maxMembers} thành viên',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                fontSize: 13,
               ),
             ),
           ],
@@ -1158,6 +1143,203 @@ class _GroupListItem extends StatelessWidget {
         ),
         onLongPress: onLongPress,
         onTap: onTap,
+      ),
+    );
+  }
+}
+
+class _UnifiedInvitationsSection extends StatelessWidget {
+  final int groupInvitationsCount;
+  final int directInvitationsCount;
+  final VoidCallback onGroupInvitationsTap;
+  final VoidCallback onDirectInvitationsTap;
+
+  const _UnifiedInvitationsSection({
+    required this.groupInvitationsCount,
+    required this.directInvitationsCount,
+    required this.onGroupInvitationsTap,
+    required this.onDirectInvitationsTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final totalCount = groupInvitationsCount + directInvitationsCount;
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Card(
+        elevation: 2,
+        child: Column(
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    height: 48,
+                    width: 48,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      CupertinoIcons.mail,
+                      color: theme.colorScheme.onPrimaryContainer,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Lời mời',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          totalCount > 0 
+                              ? 'Bạn có $totalCount lời mời mới'
+                              : 'Lời mời',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (totalCount > 0) ...[
+                    const SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.error,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        totalCount > 99 ? '99+' : '$totalCount',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            // Divider
+            const Divider(height: 1),
+            // Group invitations button
+            if (groupInvitationsCount > 0)
+              InkWell(
+                onTap: onGroupInvitationsTap,
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      Icon(
+                        CupertinoIcons.group,
+                        size: 20,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Lời mời tham gia nhóm',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.error,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          groupInvitationsCount > 99 ? '99+' : '$groupInvitationsCount',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        CupertinoIcons.chevron_right,
+                        size: 16,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            // Direct invitations button
+            if (directInvitationsCount > 0)
+              InkWell(
+                onTap: onDirectInvitationsTap,
+                borderRadius: BorderRadius.only(
+                  bottomLeft: const Radius.circular(12),
+                  bottomRight: const Radius.circular(12),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: groupInvitationsCount > 0 ? 12 : 12,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        CupertinoIcons.chat_bubble_2,
+                        size: 20,
+                        color: theme.colorScheme.secondary,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Lời mời trò chuyện',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.error,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          directInvitationsCount > 99 ? '99+' : '$directInvitationsCount',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        CupertinoIcons.chevron_right,
+                        size: 16,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

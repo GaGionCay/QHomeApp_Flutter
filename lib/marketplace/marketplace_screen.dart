@@ -15,7 +15,7 @@ import 'video_preview_widget.dart';
 import 'video_viewer_screen.dart';
 import '../chat/chat_service.dart';
 import '../chat/group_list_screen.dart';
-import '../chat/direct_chat_list_screen.dart';
+import '../chat/group_list_screen.dart';
 import '../chat/direct_chat_screen.dart';
 import '../models/chat/group.dart';
 import '../models/chat/friend.dart';
@@ -387,7 +387,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
         }
       } else {
         // Show group selection dialog with target and current resident IDs
-        selectedGroup = await showDialog<ChatGroup>(
+        final result = await showDialog<dynamic>(
           context: context,
           builder: (context) => SelectGroupDialog(
             groups: groups,
@@ -396,15 +396,66 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
           ),
         );
         
-        if (selectedGroup == null || !context.mounted) {
+        if (result == null || !context.mounted) {
           return;
         }
         
-        // Show loading
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Đang gửi lời mời...')),
+        if (result == 'create_new') {
+          // User wants to create a new group
+          final groupData = await showDialog<Map<String, String?>>(
+            context: context,
+            builder: (context) => CreateGroupDialog(
+              defaultName: 'Nhóm với ${post.author?.name ?? 'người dùng'}',
+            ),
           );
+          
+          if (groupData == null || !context.mounted) {
+            return;
+          }
+          
+          // Show loading
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Đang tạo nhóm...')),
+            );
+          }
+          
+          // Create new group
+          try {
+            selectedGroup = await _chatService.createGroup(
+              name: groupData['name']!,
+              description: groupData['description'],
+            );
+            
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Đang gửi lời mời...')),
+              );
+            }
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Lỗi khi tạo nhóm: ${e.toString()}'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+            return;
+          }
+        } else if (result is ChatGroup) {
+          selectedGroup = result;
+          
+          // Show loading
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Đang gửi lời mời...')),
+            );
+          }
+        } else {
+          return;
         }
       }
       
@@ -435,19 +486,42 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
       }
       
       // Invite to group
-      await _chatService.inviteMembersByPhone(
+      print('📨 [MarketplaceScreen] Inviting user to group - groupId: ${selectedGroup.id}, phoneNumber: $phoneNumber, targetResidentId: ${post.residentId}');
+      final inviteResult = await _chatService.inviteMembersByPhone(
         groupId: selectedGroup.id,
         phoneNumbers: [phoneNumber],
       );
       
+      print('📨 [MarketplaceScreen] Invite result - successful: ${inviteResult.successfulInvitations?.length ?? 0}, invalid: ${inviteResult.invalidPhones?.length ?? 0}, skipped: ${inviteResult.skippedPhones?.length ?? 0}');
+      if (inviteResult.successfulInvitations != null && inviteResult.successfulInvitations!.isNotEmpty) {
+        for (var inv in inviteResult.successfulInvitations!) {
+          print('📨 [MarketplaceScreen]   Successful invitation - ID: ${inv.id}, InviteeResidentId: ${inv.inviteeResidentId}, InviteePhone: ${inv.inviteePhone}');
+        }
+      }
+      if (inviteResult.invalidPhones != null && inviteResult.invalidPhones!.isNotEmpty) {
+        print('📨 [MarketplaceScreen]   Invalid phones: ${inviteResult.invalidPhones}');
+      }
+      if (inviteResult.skippedPhones != null && inviteResult.skippedPhones!.isNotEmpty) {
+        print('📨 [MarketplaceScreen]   Skipped phones: ${inviteResult.skippedPhones}');
+      }
+      
       if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Đã gửi lời mời vào nhóm "${selectedGroup.name}"'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        if (inviteResult.successfulInvitations != null && inviteResult.successfulInvitations!.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Đã gửi lời mời vào nhóm "${selectedGroup.name}"'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Không thể gửi lời mời: ${inviteResult.invalidPhones?.join(", ") ?? inviteResult.skippedPhones?.join(", ") ?? "Lỗi không xác định"}'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
       }
     } catch (e) {
       if (context.mounted) {
@@ -637,7 +711,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                 Navigator.push(
                   context,
                   SmoothPageRoute(
-                    page: DirectChatListScreen(sharePost: post),
+                    page: GroupListScreen(sharePost: post),
                   ),
                 );
               },

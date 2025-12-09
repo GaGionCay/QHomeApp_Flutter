@@ -24,6 +24,9 @@ class TokenStorage {
   Future<void> writeUsername(String? username) async =>
       _storage.write(key: 'username', value: username);
 
+  Future<void> writeUserId(dynamic id) async =>
+      _storage.write(key: 'userId', value: id?.toString());
+
   Future<String?> readAccessToken() async => _storage.read(key: 'accessToken');
 
   Future<String?> readRefreshToken() async =>
@@ -34,6 +37,7 @@ class TokenStorage {
   Future<String?> readBuildingId() async => _storage.read(key: 'buildingId');
   Future<String?> readRole() async => _storage.read(key: 'role');
   Future<String?> readUsername() async => _storage.read(key: 'username');
+  Future<String?> readUserId() async => _storage.read(key: 'userId');
 
   Future<void> writeBiometricCredentials({
     required String username,
@@ -95,6 +99,7 @@ class TokenStorage {
     await _storage.delete(key: 'buildingId');
     await _storage.delete(key: 'role');
     await _storage.delete(key: 'username');
+    await _storage.delete(key: 'userId');
     // Note: biometricUsername, biometricPassword, biometricEnabled, 
     // fingerprintEnabled are NOT deleted here - they persist across sessions
   }

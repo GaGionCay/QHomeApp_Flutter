@@ -1913,14 +1913,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Nhóm chat',
+                    'Trò chuyện',
                     style: textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Trò chuyện với cư dân trong tòa nhà',
+                    'Nhóm chat và trò chuyện trực tiếp',
                     style: textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
                     ),

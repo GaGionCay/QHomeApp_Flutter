@@ -28,6 +28,9 @@ class AuthService {
     if (data['userInfo'] is Map<String, dynamic>) {
       final userInfo = Map<String, dynamic>.from(data['userInfo']);
       await storage.writeUsername(userInfo['username']?.toString() ?? username);
+      if (userInfo['userId'] != null) {
+        await storage.writeUserId(userInfo['userId']?.toString());
+      }
     } else if (data['username'] != null) {
       await storage.writeUsername(data['username']?.toString());
     } else {
@@ -55,7 +58,10 @@ class AuthService {
       await storage.writeAccessToken(data['accessToken'].toString());
       await storage.writeRefreshToken(data['refreshToken']?.toString());
     }
-    if (data['userId'] != null) data['userId'] = data['userId'].toString();
+    if (data['userId'] != null) {
+      data['userId'] = data['userId'].toString();
+      await storage.writeUserId(data['userId']);
+    }
     return data;
   }
 
@@ -80,10 +86,15 @@ class AuthService {
     final deviceId = await storage.readDeviceId();
     final accessToken = await storage.readAccessToken();
     try {
-      await dio.post('/auth/logout',
+      // Use IAM client since logout endpoint is in iam-service
+      final iamClient = _iamClient();
+      final userId = await storage.readUserId();
+      
+      await iamClient.post('/auth/logout',
           options: Options(headers: {
             if (accessToken != null) 'Authorization': 'Bearer $accessToken',
             if (deviceId != null) 'X-Device-Id': deviceId,
+            if (userId != null) 'X-User-ID': userId,
           }));
     } catch (e) {
       print('Logout failed: $e');

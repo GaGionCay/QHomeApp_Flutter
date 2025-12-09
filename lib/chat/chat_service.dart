@@ -206,14 +206,60 @@ class ChatService {
     required List<String> phoneNumbers,
   }) async {
     try {
+      print('📨 [ChatService] ========== inviteMembersByPhone START ==========');
+      print('📨 [ChatService] groupId: $groupId');
+      print('📨 [ChatService] phoneNumbers: $phoneNumbers');
+      print('📨 [ChatService] Calling API: /groups/$groupId/invite');
+      
       final response = await _apiClient.dio.post(
         '/groups/$groupId/invite',
         data: {
           'phoneNumbers': phoneNumbers,
         },
       );
-      return InviteMembersResponse.fromJson(response.data);
-    } catch (e) {
+      
+      print('📨 [ChatService] API Response received: Status Code: ${response.statusCode}');
+      print('📨 [ChatService] Response data: ${response.data}');
+      
+      final result = InviteMembersResponse.fromJson(response.data);
+      
+      print('📨 [ChatService] Parsed InviteMembersResponse:');
+      print('📨 [ChatService]   successfulInvitations: ${result.successfulInvitations?.length ?? 0}');
+      print('📨 [ChatService]   invalidPhones: ${result.invalidPhones?.length ?? 0}');
+      print('📨 [ChatService]   skippedPhones: ${result.skippedPhones?.length ?? 0}');
+      
+      if (result.successfulInvitations != null && result.successfulInvitations!.isNotEmpty) {
+        for (var inv in result.successfulInvitations!) {
+          print('📨 [ChatService]   Successful invitation:');
+          print('📨 [ChatService]     ID: ${inv.id}');
+          print('📨 [ChatService]     GroupId: ${inv.groupId}');
+          print('📨 [ChatService]     GroupName: ${inv.groupName}');
+          print('📨 [ChatService]     InviteeResidentId: ${inv.inviteeResidentId}');
+          print('📨 [ChatService]     InviteePhone: ${inv.inviteePhone}');
+          print('📨 [ChatService]     InviterId: ${inv.inviterId}');
+          print('📨 [ChatService]     InviterName: ${inv.inviterName}');
+          print('📨 [ChatService]     Status: ${inv.status}');
+        }
+      }
+      
+      if (result.invalidPhones != null && result.invalidPhones!.isNotEmpty) {
+        print('📨 [ChatService]   Invalid phones: ${result.invalidPhones}');
+      }
+      
+      if (result.skippedPhones != null && result.skippedPhones!.isNotEmpty) {
+        print('📨 [ChatService]   Skipped phones: ${result.skippedPhones}');
+      }
+      
+      print('📨 [ChatService] ========== inviteMembersByPhone END ==========');
+      return result;
+    } catch (e, stackTrace) {
+      print('❌ [ChatService] Error in inviteMembersByPhone: $e');
+      print('❌ [ChatService] Stack trace: $stackTrace');
+      if (e is DioException) {
+        print('❌ [ChatService]   Status code: ${e.response?.statusCode}');
+        print('❌ [ChatService]   Response data: ${e.response?.data}');
+        print('❌ [ChatService]   Request URL: ${e.requestOptions.uri}');
+      }
       throw Exception('Lỗi khi mời thành viên: ${e.toString()}');
     }
   }
@@ -221,11 +267,34 @@ class ChatService {
   /// Get my pending invitations
   Future<List<GroupInvitationResponse>> getMyPendingInvitations() async {
     try {
+      print('📋 [ChatService] ========== getMyPendingInvitations START ==========');
+      print('📋 [ChatService] Calling API: /groups/invitations/my');
       final response = await _apiClient.dio.get('/groups/invitations/my');
-      return (response.data as List<dynamic>)
+      print('📋 [ChatService] API Response received: Status Code: ${response.statusCode}');
+      if (response.data is List) {
+        final rawInvitations = response.data as List;
+        print('📋 [ChatService]   Raw Invitations Count: ${rawInvitations.length}');
+        for (var i = 0; i < rawInvitations.length; i++) {
+          final inv = rawInvitations[i];
+          print('📋 [ChatService]   [$i] Invitation:');
+          print('📋 [ChatService]      id: ${inv['id']}');
+          print('📋 [ChatService]      groupId: ${inv['groupId']}');
+          print('📋 [ChatService]      groupName: ${inv['groupName']}');
+          print('📋 [ChatService]      inviteeResidentId: ${inv['inviteeResidentId']}');
+          print('📋 [ChatService]      inviteePhone: ${inv['inviteePhone']}');
+          print('📋 [ChatService]      inviterId: ${inv['inviterId']}');
+          print('📋 [ChatService]      inviterName: ${inv['inviterName']}');
+          print('📋 [ChatService]      status: ${inv['status']}');
+        }
+      }
+      final result = (response.data as List<dynamic>)
           .map((json) => GroupInvitationResponse.fromJson(json))
           .toList();
+      print('📋 [ChatService] Parsed ${result.length} GroupInvitationResponse objects');
+      print('📋 [ChatService] ========== getMyPendingInvitations END ==========');
+      return result;
     } catch (e) {
+      print('❌ [ChatService] Error in getMyPendingInvitations: $e');
       throw Exception('Lỗi khi lấy lời mời: ${e.toString()}');
     }
   }
@@ -505,42 +574,71 @@ class ChatService {
       final apiClient = ApiClient();
       const url = '/direct-chat/conversations';
       
-      print('📤 [ChatService] Getting conversations...');
-      print('   Base URL: ${apiClient.dio.options.baseUrl}');
-      print('   Full URL: ${apiClient.dio.options.baseUrl}$url');
+      print('📋 [ChatService] ========== getConversations START ==========');
+      print('📋 [ChatService] Base URL: ${apiClient.dio.options.baseUrl}');
+      print('📋 [ChatService] Full URL: ${apiClient.dio.options.baseUrl}$url');
       
       final response = await apiClient.dio.get(url);
       
-      print('✅ [ChatService] Got conversations:');
-      print('   Status: ${response.statusCode}');
-      print('   Count: ${(response.data as List).length}');
+      print('📋 [ChatService] API Response received:');
+      print('📋 [ChatService]   Status Code: ${response.statusCode}');
+      print('📋 [ChatService]   Response Type: ${response.data.runtimeType}');
       
-      // Log unread counts for debugging
       if (response.data is List) {
-        final conversations = response.data as List;
-        print('📊 [ChatService] Unread counts per conversation:');
-        for (var i = 0; i < conversations.length; i++) {
-          final conv = conversations[i];
-          final unreadCount = conv['unreadCount'] ?? 0;
+        final rawConversations = response.data as List;
+        print('📋 [ChatService]   Raw Conversations Count: ${rawConversations.length}');
+        
+        // Log detailed info for each conversation
+        print('📋 [ChatService] Raw conversations details:');
+        for (var i = 0; i < rawConversations.length; i++) {
+          final conv = rawConversations[i];
           final convId = conv['id']?.toString() ?? 'unknown';
-          print('   [$i] Conversation id=$convId, unreadCount=$unreadCount');
+          final status = conv['status']?.toString() ?? 'unknown';
+          final unreadCount = conv['unreadCount'] ?? 0;
+          final participant1Id = conv['participant1Id']?.toString() ?? 'unknown';
+          final participant2Id = conv['participant2Id']?.toString() ?? 'unknown';
+          final participant1Name = conv['participant1Name']?.toString() ?? 'unknown';
+          final participant2Name = conv['participant2Name']?.toString() ?? 'unknown';
+          print('📋 [ChatService]   [$i] Conversation:');
+          print('📋 [ChatService]      id: $convId');
+          print('📋 [ChatService]      status: $status');
+          print('📋 [ChatService]      unreadCount: $unreadCount');
+          print('📋 [ChatService]      participant1Id: $participant1Id ($participant1Name)');
+          print('📋 [ChatService]      participant2Id: $participant2Id ($participant2Name)');
+          print('📋 [ChatService]      createdAt: ${conv['createdAt']?.toString() ?? 'null'}');
+          print('📋 [ChatService]      updatedAt: ${conv['updatedAt']?.toString() ?? 'null'}');
         }
+      } else {
+        print('⚠️ [ChatService] Response data is NOT a List: ${response.data.runtimeType}');
+        print('⚠️ [ChatService] Response data: ${response.data}');
       }
       
       final result = (response.data as List<dynamic>)
-          .map((json) => Conversation.fromJson(json))
+          .map((json) {
+            try {
+              return Conversation.fromJson(json);
+            } catch (e) {
+              print('❌ [ChatService] Error parsing conversation JSON: $e');
+              print('❌ [ChatService] JSON: $json');
+              rethrow;
+            }
+          })
           .toList();
       
-      print('✅ [ChatService] Parsed ${result.length} conversations');
+      print('📋 [ChatService] Parsed ${result.length} Conversation objects');
+      print('📋 [ChatService] ========== getConversations END ==========');
       return result;
     } on DioException catch (e) {
-      print('❌ [ChatService] Error getting conversations:');
-      print('   Status code: ${e.response?.statusCode}');
-      print('   Response data: ${e.response?.data}');
-      print('   Request URL: ${e.requestOptions.uri}');
+      print('❌ [ChatService] DioException getting conversations:');
+      print('❌ [ChatService]   Type: ${e.type}');
+      print('❌ [ChatService]   Status code: ${e.response?.statusCode}');
+      print('❌ [ChatService]   Response data: ${e.response?.data}');
+      print('❌ [ChatService]   Request URL: ${e.requestOptions.uri}');
+      print('❌ [ChatService]   Message: ${e.message}');
       throw Exception('Lỗi khi lấy danh sách cuộc trò chuyện: ${e.message ?? e.toString()}');
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('❌ [ChatService] Unexpected error getting conversations: $e');
+      print('❌ [ChatService] Stack trace: $stackTrace');
       throw Exception('Lỗi khi lấy danh sách cuộc trò chuyện: ${e.toString()}');
     }
   }
