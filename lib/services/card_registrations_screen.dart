@@ -1082,6 +1082,8 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
     return switch (normalized) {
       'PAID' => 'Đã thanh toán',
       'PAYMENT_PENDING' => 'Thanh toán đang xử lý',
+      'PAYMENT_IN_PROGRESS' => 'Thanh toán đang xử lý',
+      'PAYMENT_FAILED' => 'Thanh toán không thành công',
       'UNPAID' => 'Chưa thanh toán',
       'PENDING' => 'Thanh toán đang chờ',
       _ => null,
@@ -1161,8 +1163,10 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
       case 'PAID':
         return AppColors.success;
       case 'PAYMENT_PENDING':
+      case 'PAYMENT_IN_PROGRESS':
       case 'PENDING':
         return AppColors.warning;
+      case 'PAYMENT_FAILED':
       case 'UNPAID':
         return theme.colorScheme.error;
       default:
@@ -1370,28 +1374,40 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
     final cardType = widget.card.cardType.trim().toUpperCase();
 
     // Chỉ cho phép tiếp tục thanh toán nếu:
-    // 1. payment_status là UNPAID, PAYMENT_PENDING, hoặc PAYMENT_APPROVAL (cho vehicle)
-    // 2. status không phải REJECTED
-    // 3. Trong vòng 10 phút từ khi tạo (hoặc updatedAt nếu có)
-    final allowedPaymentStatuses = ['UNPAID', 'PAYMENT_PENDING'];
-    if (cardType.contains('VEHICLE')) {
-      allowedPaymentStatuses.add('PAYMENT_APPROVAL');
-    }
-
-    if (!allowedPaymentStatuses.contains(paymentStatus)) {
+    // 1. payment_status là PAYMENT_IN_PROGRESS (đang thanh toán dở bằng VNPay)
+    // 2. status không phải REJECTED hoặc CANCELLED
+    // 3. Trong vòng 10 phút từ khi bắt đầu thanh toán (vnpayInitiatedAt)
+    if (paymentStatus != 'PAYMENT_IN_PROGRESS') {
       return false;
     }
     if (status == 'REJECTED' || status == 'CANCELLED') {
       return false;
     }
 
-    // Kiểm tra thời gian: trong vòng 10 phút
+    // Kiểm tra thời gian: trong vòng 10 phút từ khi bắt đầu thanh toán
     final now = DateTime.now();
-    final pivot = widget.card.updatedAt ?? widget.card.createdAt;
+    final pivot = widget.card.vnpayInitiatedAt;
     if (pivot == null) return false;
 
     final diff = now.difference(pivot);
     return diff.inMinutes <= 10;
+  }
+
+  bool _canRetryPayment() {
+    final paymentStatus = widget.card.paymentStatus?.trim().toUpperCase() ?? '';
+    final status = widget.card.status?.trim().toUpperCase() ?? '';
+
+    // Cho phép thanh toán lại nếu:
+    // 1. payment_status là PAYMENT_FAILED hoặc UNPAID
+    // 2. status không phải REJECTED hoặc CANCELLED
+    if (paymentStatus != 'PAYMENT_FAILED' && paymentStatus != 'UNPAID') {
+      return false;
+    }
+    if (status == 'REJECTED' || status == 'CANCELLED') {
+      return false;
+    }
+
+    return true;
   }
 
   bool _canRenewCard() {
@@ -2042,6 +2058,8 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
     return switch (normalized) {
       'PAID' => 'Đã thanh toán',
       'PAYMENT_PENDING' => 'Thanh toán đang xử lý',
+      'PAYMENT_IN_PROGRESS' => 'Thanh toán đang xử lý',
+      'PAYMENT_FAILED' => 'Thanh toán không thành công',
       'UNPAID' => 'Chưa thanh toán',
       'PENDING' => 'Thanh toán đang chờ',
       _ => null,
@@ -2054,8 +2072,10 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
       case 'PAID':
         return AppColors.success;
       case 'PAYMENT_PENDING':
+      case 'PAYMENT_IN_PROGRESS':
       case 'PENDING':
         return AppColors.warning;
+      case 'PAYMENT_FAILED':
       case 'UNPAID':
         return theme.colorScheme.error;
       default:
@@ -2241,6 +2261,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final canResume = _canResumePayment();
+    final canRetry = _canRetryPayment();
     final canRenew = _canRenewCard();
     final canRequestReplacement = _canRequestReplacement();
     final canCancel = _canCancelCard();
@@ -2450,7 +2471,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
 
                   if (canResume && !canRenew) const SizedBox(height: 12),
 
-                  // Info message
+                  // Info message for resume payment
                   if (canResume && !canRenew)
                     Container(
                       padding: const EdgeInsets.all(12),
@@ -2466,7 +2487,55 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              'Bạn có thể tiếp tục thanh toán trong vòng 10 phút kể từ khi tạo đăng ký.',
+                              'Bạn có thể tiếp tục thanh toán trong vòng 10 phút kể từ khi bắt đầu thanh toán.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.7),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // Retry payment button (khi thanh toán thất bại hoặc chưa thanh toán)
+                  if (canRetry && !canResume && !canRenew)
+                    FilledButton.icon(
+                      onPressed: _isProcessingPayment ? null : _resumePayment,
+                      icon: _isProcessingPayment
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.refresh),
+                      label: Text(_isProcessingPayment
+                          ? 'Đang xử lý...'
+                          : 'Thanh toán lại'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: theme.colorScheme.error,
+                      ),
+                    ),
+
+                  if (canRetry && !canResume && !canRenew) const SizedBox(height: 12),
+
+                  // Info message for retry payment
+                  if (canRetry && !canResume && !canRenew)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline,
+                              size: 20, color: theme.colorScheme.error),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Thanh toán trước đó không thành công hoặc đã hết hạn. Vui lòng thanh toán lại.',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: theme.colorScheme.onSurface
                                     .withValues(alpha: 0.7),

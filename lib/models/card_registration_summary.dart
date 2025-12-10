@@ -17,6 +17,7 @@ class CardRegistrationSummary {
   final String? buildingName;
   final String? note;
   final DateTime? approvedAt;
+  final DateTime? vnpayInitiatedAt;
 
   const CardRegistrationSummary({
     required this.id,
@@ -37,6 +38,7 @@ class CardRegistrationSummary {
     this.buildingName,
     this.note,
     this.approvedAt,
+    this.vnpayInitiatedAt,
   });
 
   factory CardRegistrationSummary.fromJson(Map<String, dynamic> json) {
@@ -59,6 +61,7 @@ class CardRegistrationSummary {
       buildingName: json['buildingName']?.toString(),
       note: json['note']?.toString(),
       approvedAt: _parseDateTime(json['approvedAt']),
+      vnpayInitiatedAt: _parseDateTime(json['vnpayInitiatedAt']),
     );
   }
 
