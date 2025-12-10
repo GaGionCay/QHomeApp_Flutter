@@ -264,8 +264,12 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
 
       if (uri.scheme == 'qhomeapp' && uri.host == 'vnpay-result') {
         final invoiceId = uri.queryParameters['invoiceId'];
-        final invoiceLabel = invoiceId ?? 'hóa đơn';
         final responseCode = uri.queryParameters['responseCode'];
+        final successParam = uri.queryParameters['success'];
+        final message = uri.queryParameters['message'];
+        
+        // Decode message if it exists (URL encoded)
+        final decodedMessage = message != null ? Uri.decodeComponent(message) : null;
 
         if (!mounted) return;
 
@@ -276,16 +280,29 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
           debugPrint('❌ [InvoiceList] Lỗi xóa pending invoice payment: $e');
         }
 
-        if (responseCode == '00') {
+        // Determine success status: use 'success' parameter if available, otherwise check responseCode
+        final isSuccess = successParam == 'true' || responseCode == '00';
+        
+        if (isSuccess) {
           if (!mounted) return;
+          // Use message from backend if available, otherwise fallback to default
+          final successMessage = decodedMessage ?? 
+              (invoiceId != null 
+                  ? '✅ Hóa đơn $invoiceId đã được thanh toán thành công!'
+                  : '✅ Đã thanh toán hóa đơn thành công!');
           _navigateToServicesHome(
-            snackMessage: '✅ $invoiceLabel đã được thanh toán thành công!',
+            snackMessage: successMessage,
           );
         } else {
           if (!mounted) return;
+          // Use message from backend if available, otherwise fallback to default
+          final errorMessage = decodedMessage ?? 
+              (invoiceId != null 
+                  ? '❌ Thanh toán hóa đơn $invoiceId thất bại'
+                  : '❌ Thanh toán hóa đơn thất bại');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('❌ Thanh toán $invoiceLabel thất bại'),
+              content: Text(errorMessage),
               behavior: SnackBarBehavior.floating,
               backgroundColor: Colors.red,
             ),
