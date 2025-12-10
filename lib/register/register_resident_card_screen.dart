@@ -637,12 +637,23 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   String _resolveErrorMessage(Object error) {
     if (error is DioException) {
       final data = error.response?.data;
+      String? message;
       if (data is Map<String, dynamic>) {
-        final message = data['message'];
-        if (message is String && message.isNotEmpty) return message;
+        message = data['message']?.toString();
       } else if (data is String && data.isNotEmpty) {
-        return data;
+        message = data;
       }
+      
+      // Kiểm tra và format message về việc chưa được duyệt thành viên
+      if (message != null && message.isNotEmpty) {
+        if (message.contains('chưa được duyệt thành thành viên') || 
+            message.contains('chưa được duyệt') ||
+            message.contains('đợi admin duyệt')) {
+          return '⚠️ $message\n\nVui lòng đợi admin duyệt yêu cầu tạo tài khoản trước khi đăng ký thẻ cư dân.';
+        }
+        return message;
+      }
+      
       if (error.message != null && error.message!.isNotEmpty) {
         return error.message!;
       }
@@ -650,12 +661,23 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     // ignore: deprecated_member_use
     if (error is DioError) {
       final data = error.response?.data;
+      String? message;
       if (data is Map<String, dynamic>) {
-        final message = data['message'];
-        if (message is String && message.isNotEmpty) return message;
+        message = data['message']?.toString();
       } else if (data is String && data.isNotEmpty) {
-        return data;
+        message = data;
       }
+      
+      // Kiểm tra và format message về việc chưa được duyệt thành viên
+      if (message != null && message.isNotEmpty) {
+        if (message.contains('chưa được duyệt thành thành viên') || 
+            message.contains('chưa được duyệt') ||
+            message.contains('đợi admin duyệt')) {
+          return '⚠️ $message\n\nVui lòng đợi admin duyệt yêu cầu tạo tài khoản trước khi đăng ký thẻ cư dân.';
+        }
+        return message;
+      }
+      
       if (error.message != null && error.message!.isNotEmpty) {
         return error.message!;
       }
@@ -1009,8 +1031,22 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       }
 
       if (mounted) {
+        // Hiển thị thông báo với duration dài hơn nếu là lỗi về việc chưa được duyệt
+        final isApprovalError = message.contains('chưa được duyệt') || 
+                                message.contains('đợi admin duyệt');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi: $message')),
+          SnackBar(
+            content: Text('Lỗi: $message'),
+            backgroundColor: isApprovalError ? Colors.orange.shade700 : Colors.red,
+            duration: isApprovalError ? const Duration(seconds: 6) : const Duration(seconds: 4),
+            action: isApprovalError ? SnackBarAction(
+              label: 'Đóng',
+              textColor: Colors.white,
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              },
+            ) : null,
+          ),
         );
       }
     } finally {
