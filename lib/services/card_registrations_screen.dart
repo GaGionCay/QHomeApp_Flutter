@@ -1107,6 +1107,8 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
         return 'Chờ thanh toán';
       case 'PAYMENT_PENDING':
         return 'Thanh toán đang xử lý';
+      case 'PAYMENT_FAILED':
+        return 'Thanh toán không thành công';
       case 'PROCESSING':
       case 'IN_PROGRESS':
         return 'Đang xử lý';
@@ -1141,6 +1143,8 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
         return theme.colorScheme.error;
       case 'PAYMENT_PENDING':
         return AppColors.warning;
+      case 'PAYMENT_FAILED':
+        return theme.colorScheme.error; // Màu đỏ để cảnh báo thanh toán thất bại
       case 'PROCESSING':
       case 'IN_PROGRESS':
         return AppColors.warning;
@@ -2005,6 +2009,8 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
         return 'Chờ thanh toán';
       case 'PAYMENT_PENDING':
         return 'Thanh toán đang xử lý';
+      case 'PAYMENT_FAILED':
+        return 'Thanh toán không thành công';
       case 'PROCESSING':
       case 'IN_PROGRESS':
         return 'Đang xử lý';
@@ -2037,6 +2043,8 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
         return theme.colorScheme.error;
       case 'PAYMENT_PENDING':
         return AppColors.warning;
+      case 'PAYMENT_FAILED':
+        return theme.colorScheme.error; // Màu đỏ để cảnh báo thanh toán thất bại
       case 'PROCESSING':
       case 'IN_PROGRESS':
         return AppColors.warning;

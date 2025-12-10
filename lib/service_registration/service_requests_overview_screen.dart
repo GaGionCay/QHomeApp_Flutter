@@ -1098,6 +1098,9 @@ class _MaintenanceRequestDetailSheet extends StatelessWidget {
         normalized.contains('DONE')) {
       return AppColors.success;
     }
+    if (normalized == 'PAYMENT_FAILED') {
+      return AppColors.danger; // Màu đỏ cho thanh toán thất bại
+    }
     if (normalized.contains('PENDING') ||
         normalized.contains('PROCESSING') ||
         normalized.contains('IN_PROGRESS')) {
@@ -1117,6 +1120,7 @@ class _MaintenanceRequestDetailSheet extends StatelessWidget {
     if (normalized.contains('DONE') || normalized.contains('COMPLETED')) return 'Hoàn thành';
     if (normalized.contains('CANCEL')) return 'Đã hủy';
     if (normalized.contains('REJECT') || normalized.contains('DENIED')) return 'Bị từ chối';
+    if (normalized == 'PAYMENT_FAILED') return 'Thanh toán không thành công';
     return status;
   }
 

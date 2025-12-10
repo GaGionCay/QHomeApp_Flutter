@@ -265,10 +265,19 @@ class _RegisterServiceDetailScreenState
     IconData icon;
     String label;
 
-    if (paymentStatus == 'PAID') {
+    final normalized = (paymentStatus ?? '').toUpperCase();
+    if (normalized == 'PAID') {
       color = Colors.green.shade600;
       icon = Icons.payment;
       label = 'Đã thanh toán';
+    } else if (normalized == 'PAYMENT_FAILED') {
+      color = Colors.red.shade600;
+      icon = Icons.error_outline;
+      label = 'Thanh toán không thành công';
+    } else if (normalized == 'PAYMENT_PENDING' || normalized == 'PAYMENT_IN_PROGRESS') {
+      color = Colors.orange.shade600;
+      icon = Icons.pending;
+      label = 'Thanh toán đang xử lý';
     } else {
       color = Colors.red.shade600;
       icon = Icons.payment_outlined;
