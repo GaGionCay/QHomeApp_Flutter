@@ -443,12 +443,41 @@ class ContractService {
     } on DioException catch (e) {
       print('❌ [ContractService] DioException createRenewalPaymentUrl: ${e.message}');
       if (e.response != null) {
-        print('⚠️ Response: ${e.response?.data}');
+        print('⚠️ Response status: ${e.response?.statusCode}');
+        print('⚠️ Response data: ${e.response?.data}');
+        
+        // Extract error message from response
+        String errorMessage = 'Lỗi khi tạo URL thanh toán';
+        if (e.response?.data != null) {
+          final responseData = e.response!.data;
+          if (responseData is Map) {
+            // Backend returns ErrorResponse with 'message' field
+            final message = responseData['message']?.toString();
+            if (message != null && message.isNotEmpty) {
+              // Use message directly (already in Vietnamese, not URL-encoded)
+              errorMessage = message;
+            } else {
+              // Fallback to other possible fields
+              errorMessage = responseData['error']?.toString() ?? 
+                            responseData['errorMessage']?.toString() ?? 
+                            errorMessage;
+            }
+          } else if (responseData is String) {
+            errorMessage = responseData;
+          }
+        }
+        
+        // Throw exception with error message so caller can handle it
+        throw Exception(errorMessage);
       }
-      return null;
+      throw Exception('Lỗi kết nối khi tạo URL thanh toán: ${e.message}');
     } catch (e) {
       print('❌ [ContractService] Lỗi createRenewalPaymentUrl: $e');
-      return null;
+      // Re-throw if it's already an Exception, otherwise wrap it
+      if (e is Exception) {
+        rethrow;
+      }
+      throw Exception('Lỗi không xác định: $e');
     }
   }
 

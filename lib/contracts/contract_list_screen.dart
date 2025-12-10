@@ -616,27 +616,36 @@ class _ContractListScreenState extends State<ContractListScreen>
     late Color statusColor;
     late IconData statusIcon;
     late String statusText;
-    switch (contract.status.toUpperCase()) {
-      case 'ACTIVE':
-        statusColor = const Color(0xFF34C759);
-        statusIcon = CupertinoIcons.check_mark_circled_solid;
-        statusText = 'Đang hoạt động';
-      case 'INACTIVE':
-        statusColor = const Color(0xFF5AC8FA);
-        statusIcon = CupertinoIcons.pause_circle_fill;
-        statusText = 'Không hoạt động';
-      case 'CANCELLED':
-        statusColor = const Color(0xFFFF3B30);
-        statusIcon = CupertinoIcons.xmark_circle_fill;
-        statusText = 'Đã hủy';
-      case 'EXPIRED':
-        statusColor = const Color(0xFFFF9500);
-        statusIcon = CupertinoIcons.time_solid;
-        statusText = 'Đã hết hạn';
-      default:
-        statusColor = theme.colorScheme.primary;
-        statusIcon = CupertinoIcons.info_circle_fill;
-        statusText = contract.status;
+    
+    // Kiểm tra nếu hợp đồng đã được gia hạn thành công
+    if (contract.renewedContractId != null) {
+      statusColor = AppColors.primaryBlue;
+      statusIcon = CupertinoIcons.checkmark_circle_fill;
+      statusText = 'Đã gia hạn';
+    } else {
+      // Logic status bình thường
+      switch (contract.status.toUpperCase()) {
+        case 'ACTIVE':
+          statusColor = const Color(0xFF34C759);
+          statusIcon = CupertinoIcons.check_mark_circled_solid;
+          statusText = 'Đang hoạt động';
+        case 'INACTIVE':
+          statusColor = const Color(0xFF5AC8FA);
+          statusIcon = CupertinoIcons.pause_circle_fill;
+          statusText = 'Không hoạt động';
+        case 'CANCELLED':
+          statusColor = const Color(0xFFFF3B30);
+          statusIcon = CupertinoIcons.xmark_circle_fill;
+          statusText = 'Đã hủy';
+        case 'EXPIRED':
+          statusColor = const Color(0xFFFF9500);
+          statusIcon = CupertinoIcons.time_solid;
+          statusText = 'Đã hết hạn';
+        default:
+          statusColor = theme.colorScheme.primary;
+          statusIcon = CupertinoIcons.info_circle_fill;
+          statusText = contract.status;
+      }
     }
 
     return InkWell(
@@ -658,7 +667,8 @@ class _ContractListScreenState extends State<ContractListScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Renewal banner - hiển thị nổi bật ở đầu card
-              if (needsRenewal) ...[
+              // Chỉ hiển thị nếu chưa được gia hạn (renewedContractId == null)
+              if (needsRenewal && contract.renewedContractId == null) ...[
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
@@ -786,7 +796,8 @@ class _ContractListScreenState extends State<ContractListScreen>
                     ],
                   ),
                   // Renewal badge - below status if needs renewal
-                  if (needsRenewal) ...[
+                  // Chỉ hiển thị nếu chưa được gia hạn (renewedContractId == null)
+                  if (needsRenewal && contract.renewedContractId == null) ...[
                     const SizedBox(height: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -863,9 +874,45 @@ class _ContractListScreenState extends State<ContractListScreen>
                   children: contract.files.map(_buildFileChip).toList(),
                 ),
               ],
+              // Hiển thị trạng thái "Đã gia hạn" nếu hợp đồng đã được gia hạn thành công
+              if (contract.renewedContractId != null) ...[
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppColors.primaryBlue.withValues(alpha: 0.3),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        CupertinoIcons.checkmark_circle_fill,
+                        color: AppColors.primaryBlue,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Đã gia hạn hợp đồng thành công',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primaryBlue,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               // Action buttons for RENTAL contracts that are ACTIVE and need renewal
+              // Không hiển thị nếu hợp đồng đã được gia hạn thành công (có renewedContractId)
               if (contract.contractType == 'RENTAL' && 
-                  contract.status == 'ACTIVE') ...[
+                  contract.status == 'ACTIVE' &&
+                  contract.renewedContractId == null) ...[
                 const SizedBox(height: 20),
                 // Check if contract is within 3 months before expiration
                 Builder(
@@ -1077,7 +1124,7 @@ class _ContractListScreenState extends State<ContractListScreen>
       return;
     }
     
-    await Navigator.of(context).push(
+    final result = await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => ContractRenewalScreen(
           contract: contract,
@@ -1086,10 +1133,14 @@ class _ContractListScreenState extends State<ContractListScreen>
       ),
     );
     
-    // Refresh contracts after returning
+    // Refresh contracts after returning (especially if renewal was successful)
     if (_selectedUnitId != null) {
       await _loadContracts(_selectedUnitId!);
     }
+    
+    // Show success message if renewal was successful
+    // Note: Thông báo thành công đã được hiển thị trong contract_renewal_screen.dart
+    // khi nhận deep link từ VNPay, nên không cần hiển thị lại ở đây
   }
 
   Future<void> _handleCancelContract(ContractDto contract) async {

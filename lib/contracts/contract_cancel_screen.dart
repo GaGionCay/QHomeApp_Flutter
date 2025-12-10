@@ -291,12 +291,32 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
         }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Đã hủy hợp đồng thành công'),
-            backgroundColor: AppColors.success,
+            content: const Row(
+              children: [
+                Icon(
+                  CupertinoIcons.checkmark_circle_fill,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Hủy hợp đồng thành công!',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
+            margin: const EdgeInsets.all(16),
           ),
         );
         Navigator.of(context).pop(true); // Return true to indicate success

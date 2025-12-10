@@ -1,5 +1,7 @@
 // ignore_for_file: use_build_context_synchronously
+import 'dart:async';
 import 'dart:ui';
+import 'package:app_links/app_links.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -30,6 +32,8 @@ class _ContractRenewalScreenState extends State<ContractRenewalScreen> {
   DateTime? _selectedEndDate;
   bool _isLoading = false;
   String? _error;
+  StreamSubscription<Uri>? _appLinkSubscription;
+  final AppLinks _appLinks = AppLinks();
 
   @override
   void initState() {
@@ -39,12 +43,124 @@ class _ContractRenewalScreenState extends State<ContractRenewalScreen> {
     _selectedStartDate = DateTime(now.year, now.month + 1, 1);
     // Set default end date to last day of start month (same month as start)
     _updateEndDate();
+    
+    // Listen for VNPay callback deep links
+    _initAppLinksListener();
+  }
+
+  @override
+  void dispose() {
+    _appLinkSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _initAppLinksListener() {
+    _appLinkSubscription = _appLinks.uriLinkStream.listen(
+      (Uri uri) {
+        debugPrint('🔗 [ContractRenewal] Nhận deep link: $uri');
+        
+        if (uri.scheme == 'qhomeapp' && uri.host == 'vnpay-result') {
+          final success = uri.queryParameters['success'] == 'true';
+          final contractId = uri.queryParameters['contractId'];
+          final message = uri.queryParameters['message'];
+          
+          if (success && contractId != null && mounted) {
+            // Show success message
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(
+                      CupertinoIcons.checkmark_circle_fill,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        message != null && message.isNotEmpty
+                            ? Uri.decodeComponent(message)
+                            : 'Gia hạn hợp đồng thành công!',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 3),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                margin: const EdgeInsets.all(16),
+              ),
+            );
+            
+            // Pop back to contract list screen
+            // The contract list will refresh automatically when navigated back
+            Future.delayed(const Duration(milliseconds: 500), () {
+              if (mounted) {
+                Navigator.of(context).pop(true); // Return true to indicate success
+              }
+            });
+          } else if (!success && mounted) {
+            // Show error message
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(
+                      CupertinoIcons.xmark_circle_fill,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        message != null && message.isNotEmpty
+                            ? Uri.decodeComponent(message)
+                            : 'Thanh toán không thành công',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 4),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                margin: const EdgeInsets.all(16),
+              ),
+            );
+          }
+        }
+      },
+      onError: (err) {
+        debugPrint('❌ [ContractRenewal] Lỗi khi nhận deep link: $err');
+      },
+    );
   }
 
   void _updateEndDate() {
     if (_selectedStartDate != null) {
-      // Get last day of the selected month
-      final lastDayOfMonth = DateTime(_selectedStartDate!.year, _selectedStartDate!.month + 1, 0);
+      // Set end date to last day of the month that is 3 months after start date
+      // Example: Start date = 01/2026 -> End date = 31/03/2026 (last day of March 2026)
+      final startYear = _selectedStartDate!.year;
+      final startMonth = _selectedStartDate!.month;
+      final endMonth = startMonth + 3;
+      final endYear = endMonth > 12 ? startYear + 1 : startYear;
+      final adjustedEndMonth = endMonth > 12 ? endMonth - 12 : endMonth;
+      
+      // Get last day of the end month
+      final lastDayOfMonth = DateTime(endYear, adjustedEndMonth + 1, 0);
       setState(() {
         _selectedEndDate = lastDayOfMonth;
       });
@@ -77,9 +193,15 @@ class _ContractRenewalScreenState extends State<ContractRenewalScreen> {
     final initialYear = _selectedEndDate?.year ?? _selectedStartDate!.year;
     final initialMonth = _selectedEndDate?.month ?? _selectedStartDate!.month;
     
-    // Minimum date: same month as start date or later
-    final minYear = _selectedStartDate!.year;
-    final minMonth = _selectedStartDate!.month;
+    // Extract start date components for validation
+    final startYear = _selectedStartDate!.year;
+    final startMonth = _selectedStartDate!.month;
+    
+    // Minimum date: 3 months after start date (gia hạn tối thiểu 3 tháng)
+    final minYear = startYear;
+    final minMonth = startMonth + 3; // Ít nhất 3 tháng sau ngày bắt đầu
+    final minYearAdjusted = minMonth > 12 ? minYear + 1 : minYear;
+    final minMonthAdjusted = minMonth > 12 ? minMonth - 12 : minMonth;
     
     // Maximum date: 3 years from now
     final maxYear = now.year + 3;
@@ -88,7 +210,7 @@ class _ContractRenewalScreenState extends State<ContractRenewalScreen> {
     int? selectedYear;
     int? selectedMonth;
 
-    // Step 1: Select year
+    // Step 1: Select year (all years are selectable, validation happens in month picker)
     final yearResult = await showDialog<int>(
       context: context,
       builder: (context) {
@@ -98,9 +220,9 @@ class _ContractRenewalScreenState extends State<ContractRenewalScreen> {
             width: double.maxFinite,
             child: ListView.builder(
               shrinkWrap: true,
-              itemCount: maxYear - minYear + 1,
+              itemCount: maxYear - minYearAdjusted + 1,
               itemBuilder: (context, index) {
-                final year = minYear + index;
+                final year = minYearAdjusted + index;
                 return ListTile(
                   title: Text(year.toString()),
                   onTap: () => Navigator.of(context).pop(year),
@@ -161,7 +283,10 @@ class _ContractRenewalScreenState extends State<ContractRenewalScreen> {
                     itemCount: 12,
                     itemBuilder: (context, index) {
                       final month = index + 1;
-                      final isDisabled = selectedYear == minYear && month < minMonth;
+                      
+                      // Calculate if this month/year combination is at least 3 months after start date
+                      final monthsDiff = (selectedYear! - startYear) * 12 + (month - startMonth);
+                      final isDisabled = monthsDiff < 3;
                       final isSelected = !isDisabled && month == initialMonth;
                       
                       return InkWell(
@@ -244,6 +369,26 @@ class _ContractRenewalScreenState extends State<ContractRenewalScreen> {
     if (monthResult == null) return;
     selectedMonth = monthResult;
 
+    // Validate: End month must be at least 3 months after start month
+    final endYear = selectedYear!;
+    final endMonth = selectedMonth!;
+    
+    // Calculate months difference
+    final monthsDiff = (endYear - startYear) * 12 + (endMonth - startMonth);
+    
+    if (monthsDiff < 3) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Gia hạn hợp đồng phải ít nhất 3 tháng. Vui lòng chọn tháng kết thúc cách tháng bắt đầu ít nhất 3 tháng.'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      return;
+    }
+
     // Set to last day of selected month
     final lastDayOfMonth = DateTime(selectedYear, selectedMonth + 1, 0);
     setState(() {
@@ -290,9 +435,43 @@ class _ContractRenewalScreenState extends State<ContractRenewalScreen> {
       return;
     }
 
-    if (_selectedEndDate!.isBefore(_selectedStartDate!)) {
+    // Validate: Ngày kết thúc phải sau ngày bắt đầu và không được trùng nhau
+    if (_selectedEndDate!.isBefore(_selectedStartDate!) || 
+        _selectedEndDate!.isAtSameMomentAs(_selectedStartDate!)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ngày kết thúc phải sau ngày bắt đầu')),
+        const SnackBar(
+          content: Text('Ngày kết thúc phải sau ngày bắt đầu và không được trùng nhau'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    // Validate: Gia hạn phải ít nhất 3 tháng
+    final startDate = _selectedStartDate!;
+    final endDate = _selectedEndDate!;
+    
+    // Calculate months difference accurately
+    // Start date is first day of month, end date is last day of month
+    // So we calculate from start of start month to start of end month
+    final startOfStartMonth = DateTime(startDate.year, startDate.month, 1);
+    final startOfEndMonth = DateTime(endDate.year, endDate.month, 1);
+    
+    // Calculate difference in months
+    final monthsDifference = (endDate.year - startDate.year) * 12 + (endDate.month - startDate.month);
+    
+    // Check if at least 3 months
+    // Since startDate is first day of month and endDate is last day of month,
+    // if monthsDifference is 2, it means we have 2 full months + partial month = less than 3 months
+    // We need at least 3 months difference (e.g., Jan -> Apr = 3 months)
+    if (monthsDifference < 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Gia hạn hợp đồng phải ít nhất 3 tháng. Ngày kết thúc phải cách ngày bắt đầu ít nhất 3 tháng.'),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 4),
+        ),
       );
       return;
     }
@@ -333,10 +512,81 @@ class _ContractRenewalScreenState extends State<ContractRenewalScreen> {
       });
 
       if (mounted) {
+        // Parse error message to show user-friendly message
+        // Try to get message from Exception first, fallback to toString()
+        String errorMessage = '';
+        if (e is Exception) {
+          errorMessage = e.toString();
+          // Remove "Exception: " prefix if present
+          if (errorMessage.startsWith('Exception: ')) {
+            errorMessage = errorMessage.substring(11);
+          }
+        } else {
+          errorMessage = e.toString();
+        }
+        
+        debugPrint('🔍 [ContractRenewal] Error message: $errorMessage');
+        
+        // Handle specific error messages from backend
+        if (errorMessage.contains('ít nhất 3 tháng') || errorMessage.contains('3 tháng')) {
+          errorMessage = 'Gia hạn hợp đồng phải ít nhất 3 tháng. Vui lòng chọn ngày kết thúc cách ngày bắt đầu ít nhất 3 tháng.';
+        } else if (errorMessage.contains('trùng thời gian') || errorMessage.contains('trùng')) {
+          // Extract contract number and date range from error message if available
+          // Format: "Hợp đồng mới trùng thời gian với hợp đồng hiện có (Số hợp đồng: XXX, từ YYYY-MM-DD đến YYYY-MM-DD). Vui lòng chọn khoảng thời gian khác."
+          String displayMessage = errorMessage;
+          
+          // Try to extract and format the information more clearly
+          // Updated regex to be more flexible with whitespace
+          final contractMatch = RegExp(r'Số hợp đồng:\s*([^,)]+)').firstMatch(errorMessage);
+          final dateMatch = RegExp(r'từ\s*(\d{4}-\d{2}-\d{2})\s*đến\s*(\d{4}-\d{2}-\d{2})').firstMatch(errorMessage);
+          
+          debugPrint('🔍 [ContractRenewal] Contract match: ${contractMatch?.group(1)}');
+          debugPrint('🔍 [ContractRenewal] Date match: ${dateMatch?.group(1)} - ${dateMatch?.group(2)}');
+          
+          if (contractMatch != null && dateMatch != null) {
+            final contractNumber = contractMatch.group(1)?.trim() ?? '';
+            final startDate = dateMatch.group(1) ?? '';
+            final endDate = dateMatch.group(2) ?? '';
+            
+            // Format dates to DD/MM/YYYY
+            try {
+              final startParts = startDate.split('-');
+              final endParts = endDate.split('-');
+              if (startParts.length == 3 && endParts.length == 3) {
+                final formattedStart = '${startParts[2]}/${startParts[1]}/${startParts[0]}';
+                final formattedEnd = '${endParts[2]}/${endParts[1]}/${endParts[0]}';
+                
+                displayMessage = 'Hợp đồng mới trùng thời gian với hợp đồng đã được gia hạn trước đó.\n\n'
+                    'Số hợp đồng trùng: $contractNumber\n'
+                    'Thời gian: Từ $formattedStart đến $formattedEnd\n\n'
+                    'Vui lòng chọn khoảng thời gian khác để gia hạn hợp đồng.';
+              }
+            } catch (ex) {
+              debugPrint('⚠️ [ContractRenewal] Date parsing failed: $ex');
+              // If date parsing fails, use original message
+            }
+          } else {
+            // If regex doesn't match, still show a formatted message
+            displayMessage = 'Hợp đồng mới trùng thời gian với hợp đồng đã được gia hạn trước đó.\n\n'
+                'Vui lòng chọn khoảng thời gian khác để gia hạn hợp đồng.';
+          }
+          
+          errorMessage = displayMessage;
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lỗi: $e'),
+            content: Text(
+              errorMessage,
+              style: const TextStyle(fontSize: 14),
+            ),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 6),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            margin: const EdgeInsets.all(16),
           ),
         );
       }
@@ -406,7 +656,7 @@ class _ContractRenewalScreenState extends State<ContractRenewalScreen> {
                   : 'Chọn tháng/năm',
               onTap: _selectEndDate,
               icon: CupertinoIcons.calendar,
-              helperText: 'Chọn tháng và năm kết thúc hợp đồng',
+              helperText: 'Chọn tháng và năm kết thúc hợp đồng (tối thiểu 3 tháng từ ngày bắt đầu)',
             ),
             if (totalRent != null) ...[
               const SizedBox(height: 24),
