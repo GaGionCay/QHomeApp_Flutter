@@ -34,8 +34,8 @@ class VideoCompressionService {
       final fileSizeMB = await file.length() / (1024 * 1024);
       
       // Quyết định độ phân giải dựa trên kích thước file
-      // Nếu > 30MB hoặc quá nặng thì dùng 480p, ngược lại dùng 720p
-      final targetResolution = fileSizeMB > 30 ? 480 : 720;
+      // Giảm độ phân giải để tiết kiệm dung lượng: > 20MB thì dùng 360p, ngược lại dùng 480p
+      final targetResolution = fileSizeMB > 20 ? 360 : 480;
       
       onProgress('Đang nén video xuống ${targetResolution}p${hasRotation ? ' và sửa rotation' : ''}...');
 
@@ -43,12 +43,12 @@ class VideoCompressionService {
       // VideoCompress sẽ tự động xử lý rotation khi nén
       final MediaInfo? mediaInfo = await VideoCompress.compressVideo(
         videoPath,
-        quality: targetResolution == 480 
-            ? VideoQuality.LowQuality   // 480p
-            : VideoQuality.MediumQuality, // 720p
+        quality: targetResolution == 360 
+            ? VideoQuality.DefaultQuality   // 360p (lowest quality)
+            : VideoQuality.LowQuality, // 480p
         deleteOrigin: false, // Không xóa file gốc
         includeAudio: true,
-        frameRate: 30, // Giữ frame rate ổn định
+        frameRate: 24, // Giảm frame rate xuống 24fps để tiết kiệm dung lượng
       );
 
       if (mediaInfo == null || mediaInfo.path == null) {
@@ -66,21 +66,21 @@ class VideoCompressionService {
         // Điều này thường không ảnh hưởng đến playback vì rotation đã được apply vào video
       }
       
-      // Nếu file nén vẫn > 30MB, thử nén lại với chất lượng thấp hơn (480p)
+      // Nếu file nén vẫn > 30MB, thử nén lại với chất lượng thấp hơn (360p)
       final compressedSizeMB = await compressedFile.length() / (1024 * 1024);
-      if (compressedSizeMB > 30 && targetResolution != 480) {
-        onProgress('File vẫn lớn, đang nén lại xuống 480p...');
+      if (compressedSizeMB > 30 && targetResolution != 360) {
+        onProgress('File vẫn lớn, đang nén lại xuống 360p...');
         
-        // Xóa file nén 720p
+        // Xóa file nén 480p
         await compressedFile.delete();
         
         // Nén lại với chất lượng thấp hơn
         final lowQualityInfo = await VideoCompress.compressVideo(
           videoPath,
-          quality: VideoQuality.LowQuality, // Low quality tương đương 480p
+          quality: VideoQuality.DefaultQuality, // Default quality tương đương 360p
           deleteOrigin: false,
           includeAudio: true,
-          frameRate: 30,
+          frameRate: 24, // Giảm frame rate xuống 24fps
         );
 
         if (lowQualityInfo == null || lowQualityInfo.path == null) {

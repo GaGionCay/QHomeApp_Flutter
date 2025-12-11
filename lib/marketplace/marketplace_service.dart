@@ -1,18 +1,27 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:video_compress/video_compress.dart';
 import '../models/marketplace_post.dart';
 import '../models/marketplace_comment.dart';
 import '../models/marketplace_category.dart';
 import '../models/marketplace_paged_response.dart';
 import '../models/comment_paged_response.dart';
+import '../services/imagekit_service.dart';
+import '../service_registration/video_compression_service.dart';
+import '../auth/api_client.dart';
 import 'marketplace_api_client.dart';
 
 class MarketplaceService {
   final MarketplaceApiClient _apiClient;
+  final ImageKitService _imageKitService;
+  final ApiClient _baseApiClient;
 
   MarketplaceService() 
-      : _apiClient = MarketplaceApiClient();
+      : _apiClient = MarketplaceApiClient(),
+        _imageKitService = ImageKitService(ApiClient()),
+        _baseApiClient = ApiClient();
 
   /// Lấy danh sách posts với pagination và filter
   Future<MarketplacePagedResponse> getPosts({
@@ -170,17 +179,88 @@ class MarketplaceService {
         }
       }
 
-      // Thêm video (nếu có)
+      // Upload video to data-docs-service first if provided
+      String? videoUrl;
       if (video != null) {
-        formData.files.add(
-          MapEntry(
-            'video',
-            await MultipartFile.fromFile(
-              video.path,
-              filename: 'video.mp4',
-            ),
-          ),
-        );
+        try {
+          // Lấy userId từ storage
+          final userId = await _baseApiClient.storage.readUserId();
+          if (userId == null) {
+            throw Exception('Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.');
+          }
+          
+          // Nén video trước khi upload
+          final compressedFile = await VideoCompressionService.instance.compressVideo(
+            videoPath: video.path,
+            onProgress: (message) {
+              print('Video compression: $message');
+            },
+          );
+          
+          final videoFileToUpload = compressedFile ?? File(video.path);
+          
+          // Lấy video metadata nếu có thể
+          String? resolution;
+          int? durationSeconds;
+          int? width;
+          int? height;
+          
+          try {
+            final mediaInfo = await VideoCompress.getMediaInfo(videoFileToUpload.path);
+            if (mediaInfo != null) {
+              if (mediaInfo.width != null && mediaInfo.height != null) {
+                width = mediaInfo.width;
+                height = mediaInfo.height;
+                if (height! <= 360) {
+                  resolution = '360p';
+                } else if (height! <= 480) {
+                  resolution = '480p';
+                } else if (height! <= 720) {
+                  resolution = '720p';
+                } else {
+                  resolution = '1080p';
+                }
+              }
+              if (mediaInfo.duration != null) {
+                durationSeconds = (mediaInfo.duration! / 1000).round();
+              }
+            }
+          } catch (e) {
+            print('⚠️ Không thể lấy video metadata: $e');
+          }
+          
+          // Upload video lên data-docs-service
+          final videoData = await _imageKitService.uploadVideo(
+            file: videoFileToUpload,
+            category: 'marketplace_post',
+            ownerId: null, // Sẽ được set sau khi tạo post
+            uploadedBy: userId,
+            resolution: resolution,
+            durationSeconds: durationSeconds,
+            width: width,
+            height: height,
+          );
+          
+          videoUrl = videoData['fileUrl'] as String;
+          print('✅ [MarketplaceService] Video uploaded to backend: $videoUrl');
+          
+          // Xóa file nén nếu khác file gốc
+          if (compressedFile != null && compressedFile.path != video.path) {
+            try {
+              await compressedFile.delete();
+            } catch (e) {
+              print('⚠️ Không thể xóa file nén: $e');
+            }
+          }
+        } catch (e) {
+          print('❌ [MarketplaceService] Error uploading video: $e');
+          throw Exception('Lỗi khi upload video: ${e.toString()}');
+        }
+      }
+      
+      // Thêm videoUrl vào requestData nếu đã upload thành công
+      if (videoUrl != null) {
+        requestData['videoUrl'] = videoUrl;
       }
 
       print('📤 [MarketplaceService] Sending POST request to /posts');
@@ -273,17 +353,88 @@ class MarketplaceService {
         }
       }
 
-      // Thêm video mới (nếu có)
+      // Upload video to data-docs-service first if provided
+      String? videoUrl;
       if (video != null) {
-        formData.files.add(
-          MapEntry(
-            'video',
-            await MultipartFile.fromFile(
-              video.path,
-              filename: 'video.mp4',
-            ),
-          ),
-        );
+        try {
+          // Lấy userId từ storage
+          final userId = await _baseApiClient.storage.readUserId();
+          if (userId == null) {
+            throw Exception('Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.');
+          }
+          
+          // Nén video trước khi upload
+          final compressedFile = await VideoCompressionService.instance.compressVideo(
+            videoPath: video.path,
+            onProgress: (message) {
+              print('Video compression: $message');
+            },
+          );
+          
+          final videoFileToUpload = compressedFile ?? File(video.path);
+          
+          // Lấy video metadata nếu có thể
+          String? resolution;
+          int? durationSeconds;
+          int? width;
+          int? height;
+          
+          try {
+            final mediaInfo = await VideoCompress.getMediaInfo(videoFileToUpload.path);
+            if (mediaInfo != null) {
+              if (mediaInfo.width != null && mediaInfo.height != null) {
+                width = mediaInfo.width;
+                height = mediaInfo.height;
+                if (height! <= 360) {
+                  resolution = '360p';
+                } else if (height! <= 480) {
+                  resolution = '480p';
+                } else if (height! <= 720) {
+                  resolution = '720p';
+                } else {
+                  resolution = '1080p';
+                }
+              }
+              if (mediaInfo.duration != null) {
+                durationSeconds = (mediaInfo.duration! / 1000).round();
+              }
+            }
+          } catch (e) {
+            print('⚠️ Không thể lấy video metadata: $e');
+          }
+          
+          // Upload video lên data-docs-service
+          final videoData = await _imageKitService.uploadVideo(
+            file: videoFileToUpload,
+            category: 'marketplace_post',
+            ownerId: postId, // Sử dụng postId làm ownerId khi update
+            uploadedBy: userId,
+            resolution: resolution,
+            durationSeconds: durationSeconds,
+            width: width,
+            height: height,
+          );
+          
+          videoUrl = videoData['fileUrl'] as String;
+          print('✅ [MarketplaceService] Video uploaded to backend: $videoUrl');
+          
+          // Xóa file nén nếu khác file gốc
+          if (compressedFile != null && compressedFile.path != video.path) {
+            try {
+              await compressedFile.delete();
+            } catch (e) {
+              print('⚠️ Không thể xóa file nén: $e');
+            }
+          }
+        } catch (e) {
+          print('❌ [MarketplaceService] Error uploading video: $e');
+          throw Exception('Lỗi khi upload video: ${e.toString()}');
+        }
+      }
+      
+      // Thêm videoUrl vào requestData nếu đã upload thành công
+      if (videoUrl != null) {
+        requestData['videoUrl'] = videoUrl;
       }
 
       final response = await _apiClient.dio.put(

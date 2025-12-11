@@ -566,10 +566,75 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
             }
           }
           
-          final url = await _imageKitService.uploadImage(
-            file: tempFile,
-            folder: 'repair-requests/attachments',
-          );
+          String url;
+          if (attachment.isVideo) {
+            // Upload video lên backend database thay vì ImageKit
+            try {
+              // Lấy userId từ storage
+              final userId = await _apiClient.storage.readUserId();
+              if (userId == null) {
+                throw Exception('Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.');
+              }
+              
+              // Lấy video metadata nếu có thể
+              String? resolution;
+              int? durationSeconds;
+              int? width;
+              int? height;
+              
+              try {
+                final mediaInfo = await VideoCompress.getMediaInfo(tempFile.path);
+                if (mediaInfo != null) {
+                  // Xác định resolution từ width/height
+                  if (mediaInfo.width != null && mediaInfo.height != null) {
+                    width = mediaInfo.width;
+                    height = mediaInfo.height;
+                    if (height! <= 360) {
+                      resolution = '360p';
+                    } else if (height! <= 480) {
+                      resolution = '480p';
+                    } else if (height! <= 720) {
+                      resolution = '720p';
+                    } else {
+                      resolution = '1080p';
+                    }
+                  }
+                  // Lấy duration nếu có
+                  if (mediaInfo.duration != null) {
+                    durationSeconds = (mediaInfo.duration! / 1000).round(); // Convert từ milliseconds
+                  }
+                }
+              } catch (e) {
+                debugPrint('⚠️ Không thể lấy video metadata: $e');
+                // Vẫn tiếp tục upload nếu không lấy được metadata
+              }
+              
+              // Upload video lên backend
+              final videoData = await _imageKitService.uploadVideo(
+                file: tempFile,
+                category: 'repair_request',
+                ownerId: null, // Sẽ được set sau khi tạo request
+                uploadedBy: userId,
+                resolution: resolution,
+                durationSeconds: durationSeconds,
+                width: width,
+                height: height,
+              );
+              
+              url = videoData['fileUrl'] as String;
+              debugPrint('✅ Video uploaded to backend: $url');
+            } catch (e) {
+              if (!mounted) return;
+              _showMessage('Lỗi khi upload video "${attachment.fileName}": ${e.toString()}', color: Colors.red);
+              return;
+            }
+          } else {
+            // Upload ảnh lên ImageKit như cũ
+            url = await _imageKitService.uploadImage(
+              file: tempFile,
+              folder: 'repair-requests/attachments',
+            );
+          }
           attachmentUrls.add(url);
           
           // Clean up temp file if it was created for compression

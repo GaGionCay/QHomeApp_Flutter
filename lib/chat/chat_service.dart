@@ -14,6 +14,8 @@ import '../models/chat/friend.dart';
 import '../models/marketplace_post.dart';
 import '../auth/api_client.dart';
 import '../services/imagekit_service.dart';
+import '../service_registration/video_compression_service.dart';
+import 'package:video_compress/video_compress.dart';
 import 'chat_api_client.dart';
 
 class ChatService {
@@ -533,7 +535,7 @@ class ChatService {
     }
   }
 
-  /// Upload video
+  /// Upload video for group chat to data-docs-service
   Future<Map<String, dynamic>> uploadVideo({
     required String groupId,
     required File videoFile,
@@ -543,21 +545,83 @@ class ChatService {
       print('📤 [ChatService] Video path: ${videoFile.path}');
       print('📤 [ChatService] Video size: ${await videoFile.length()} bytes');
       
-      final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(
-          videoFile.path,
-          filename: videoFile.path.split('/').last,
-        ),
-      });
-
-      print('📤 [ChatService] Gửi request POST /uploads/chat/$groupId/video');
-      final response = await _apiClient.dio.post(
-        '/uploads/chat/$groupId/video',
-        data: formData,
+      // Lấy userId từ storage
+      final userId = await ApiClient().storage.readUserId();
+      if (userId == null) {
+        throw Exception('Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.');
+      }
+      
+      // Nén video trước khi upload
+      final compressedFile = await VideoCompressionService.instance.compressVideo(
+        videoPath: videoFile.path,
+        onProgress: (message) {
+          print('Video compression: $message');
+        },
       );
-
-      print('✅ [ChatService] Upload video thành công!');
-      return response.data as Map<String, dynamic>;
+      
+      final videoFileToUpload = compressedFile ?? videoFile;
+      
+      // Lấy video metadata nếu có thể
+      String? resolution;
+      int? durationSeconds;
+      int? width;
+      int? height;
+      
+      try {
+        final mediaInfo = await VideoCompress.getMediaInfo(videoFileToUpload.path);
+        if (mediaInfo != null) {
+          if (mediaInfo.width != null && mediaInfo.height != null) {
+            width = mediaInfo.width;
+            height = mediaInfo.height;
+            if (height! <= 360) {
+              resolution = '360p';
+            } else if (height! <= 480) {
+              resolution = '480p';
+            } else if (height! <= 720) {
+              resolution = '720p';
+            } else {
+              resolution = '1080p';
+            }
+          }
+          if (mediaInfo.duration != null) {
+            durationSeconds = (mediaInfo.duration! / 1000).round();
+          }
+        }
+      } catch (e) {
+        print('⚠️ Không thể lấy video metadata: $e');
+      }
+      
+      // Upload video lên data-docs-service
+      final videoData = await _imageKitService.uploadVideo(
+        file: videoFileToUpload,
+        category: 'group_chat',
+        ownerId: groupId,
+        uploadedBy: userId,
+        resolution: resolution,
+        durationSeconds: durationSeconds,
+        width: width,
+        height: height,
+      );
+      
+      final videoUrl = videoData['fileUrl'] as String;
+      print('✅ [ChatService] Video uploaded to backend: $videoUrl');
+      
+      // Xóa file nén nếu khác file gốc
+      if (compressedFile != null && compressedFile.path != videoFile.path) {
+        try {
+          await compressedFile.delete();
+        } catch (e) {
+          print('⚠️ Không thể xóa file nén: $e');
+        }
+      }
+      
+      // Return response tương tự như API cũ để tương thích
+      return {
+        'fileUrl': videoUrl,
+        'fileName': videoData['originalFileName'] ?? videoFile.path.split('/').last,
+        'fileSize': videoData['fileSize']?.toString() ?? await videoFileToUpload.length().toString(),
+        'mimeType': videoData['contentType'] ?? 'video/mp4',
+      };
     } catch (e, stackTrace) {
       print('❌ [ChatService] Lỗi khi upload video: $e');
       print('📋 [ChatService] Stack trace: $stackTrace');
@@ -1021,7 +1085,7 @@ class ChatService {
     }
   }
 
-  /// Upload video for direct chat
+  /// Upload video for direct chat to data-docs-service
   Future<Map<String, dynamic>> uploadDirectVideo({
     required String conversationId,
     required File videoFile,
@@ -1031,21 +1095,83 @@ class ChatService {
       print('📤 [ChatService] Video path: ${videoFile.path}');
       print('📤 [ChatService] Video size: ${await videoFile.length()} bytes');
       
-      final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(
-          videoFile.path,
-          filename: videoFile.path.split('/').last,
-        ),
-      });
-
-      print('📤 [ChatService] Gửi request POST /uploads/chat/direct/$conversationId/video');
-      final response = await _apiClient.dio.post(
-        '/uploads/chat/direct/$conversationId/video',
-        data: formData,
+      // Lấy userId từ storage
+      final userId = await ApiClient().storage.readUserId();
+      if (userId == null) {
+        throw Exception('Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.');
+      }
+      
+      // Nén video trước khi upload
+      final compressedFile = await VideoCompressionService.instance.compressVideo(
+        videoPath: videoFile.path,
+        onProgress: (message) {
+          print('Video compression: $message');
+        },
       );
-
-      print('✅ [ChatService] Upload video thành công!');
-      return response.data as Map<String, dynamic>;
+      
+      final videoFileToUpload = compressedFile ?? videoFile;
+      
+      // Lấy video metadata nếu có thể
+      String? resolution;
+      int? durationSeconds;
+      int? width;
+      int? height;
+      
+      try {
+        final mediaInfo = await VideoCompress.getMediaInfo(videoFileToUpload.path);
+        if (mediaInfo != null) {
+          if (mediaInfo.width != null && mediaInfo.height != null) {
+            width = mediaInfo.width;
+            height = mediaInfo.height;
+            if (height! <= 360) {
+              resolution = '360p';
+            } else if (height! <= 480) {
+              resolution = '480p';
+            } else if (height! <= 720) {
+              resolution = '720p';
+            } else {
+              resolution = '1080p';
+            }
+          }
+          if (mediaInfo.duration != null) {
+            durationSeconds = (mediaInfo.duration! / 1000).round();
+          }
+        }
+      } catch (e) {
+        print('⚠️ Không thể lấy video metadata: $e');
+      }
+      
+      // Upload video lên data-docs-service
+      final videoData = await _imageKitService.uploadVideo(
+        file: videoFileToUpload,
+        category: 'direct_chat',
+        ownerId: conversationId,
+        uploadedBy: userId,
+        resolution: resolution,
+        durationSeconds: durationSeconds,
+        width: width,
+        height: height,
+      );
+      
+      final videoUrl = videoData['fileUrl'] as String;
+      print('✅ [ChatService] Video uploaded to backend: $videoUrl');
+      
+      // Xóa file nén nếu khác file gốc
+      if (compressedFile != null && compressedFile.path != videoFile.path) {
+        try {
+          await compressedFile.delete();
+        } catch (e) {
+          print('⚠️ Không thể xóa file nén: $e');
+        }
+      }
+      
+      // Return response tương tự như API cũ để tương thích
+      return {
+        'fileUrl': videoUrl,
+        'fileName': videoData['originalFileName'] ?? videoFile.path.split('/').last,
+        'fileSize': videoData['fileSize']?.toString() ?? await videoFileToUpload.length().toString(),
+        'mimeType': videoData['contentType'] ?? 'video/mp4',
+      };
     } catch (e, stackTrace) {
       print('❌ [ChatService] Lỗi khi upload video: $e');
       print('📋 [ChatService] Stack trace: $stackTrace');

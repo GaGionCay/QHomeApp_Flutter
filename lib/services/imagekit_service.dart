@@ -173,5 +173,92 @@ class ImageKitService {
       throw Exception('Lỗi khi upload images: ${e.toString()}');
     }
   }
+
+  /// Upload a video file to backend database (not ImageKit)
+  /// 
+  /// [file] - The video file to upload (XFile or File)
+  /// [category] - Category of video: 'repair_request', 'marketplace_post', 'direct_chat', 'group_chat', 'marketplace_comment'
+  /// [ownerId] - Optional ID of the entity that owns the video (post_id, conversation_id, group_id, request_id)
+  /// [uploadedBy] - ID of the user uploading the video
+  /// [resolution] - Optional video resolution (e.g., '480p', '360p')
+  /// [durationSeconds] - Optional video duration in seconds
+  /// [width] - Optional video width in pixels
+  /// [height] - Optional video height in pixels
+  /// Returns the video URL and metadata
+  Future<Map<String, dynamic>> uploadVideo({
+    required dynamic file, // XFile or File
+    required String category,
+    String? ownerId,
+    required String uploadedBy,
+    String? resolution,
+    int? durationSeconds,
+    int? width,
+    int? height,
+  }) async {
+    try {
+      AppLogger.debug('[ImageKitService] Uploading video: category=$category, ownerId=$ownerId');
+      
+      final filePath = file is XFile ? file.path : (file as File).path;
+      final fileName = file is XFile ? file.name : (file as File).path.split('/').last;
+      
+      final dio = await _getDio();
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(filePath, filename: fileName),
+        'category': category,
+        'uploadedBy': uploadedBy,
+        if (ownerId != null && ownerId.isNotEmpty) 'ownerId': ownerId,
+        if (resolution != null && resolution.isNotEmpty) 'resolution': resolution,
+        if (durationSeconds != null) 'durationSeconds': durationSeconds.toString(),
+        if (width != null) 'width': width.toString(),
+        if (height != null) 'height': height.toString(),
+      });
+
+      final response = await dio.post(
+        '/videos/upload',
+        data: formData,
+      );
+
+      if (response.statusCode == 201 && response.data != null) {
+        final videoData = response.data as Map<String, dynamic>;
+        final videoUrl = videoData['fileUrl'] as String;
+        AppLogger.success('[ImageKitService] ✅ Video uploaded successfully: $videoUrl');
+        return videoData;
+      } else {
+        final errorMsg = response.data?['error']?.toString() ?? 'Response không có dữ liệu';
+        AppLogger.error('[ImageKitService] ❌ Upload failed: $errorMsg');
+        throw Exception('Lỗi khi upload video: $errorMsg');
+      }
+    } on DioException catch (e) {
+      AppLogger.error('[ImageKitService] ❌ Lỗi khi upload video', e);
+      
+      // Xử lý lỗi 500 từ server
+      if (e.response?.statusCode == 500) {
+        final errorMsg = e.response?.data?['error']?.toString() ?? 
+                       e.response?.data?.toString() ?? 
+                       'Lỗi server (500) - Vui lòng thử lại sau';
+        throw Exception('Lỗi server khi upload: $errorMsg');
+      }
+      
+      // Xử lý các lỗi khác
+      if (e.response != null) {
+        final errorMsg = e.response?.data?['error']?.toString() ?? 
+                        e.response?.data?.toString() ?? 
+                        'Lỗi không xác định';
+        throw Exception('Lỗi khi upload video: $errorMsg');
+      }
+      
+      // Lỗi network hoặc timeout
+      if (e.type == DioExceptionType.connectionTimeout || 
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.sendTimeout) {
+        throw Exception('Kết nối quá chậm. Vui lòng kiểm tra kết nối mạng và thử lại.');
+      }
+      
+      throw Exception('Lỗi khi upload video: ${e.message ?? e.toString()}');
+    } catch (e) {
+      AppLogger.error('[ImageKitService] ❌ Lỗi không mong đợi khi upload video', e);
+      throw Exception('Lỗi khi upload video: ${e.toString()}');
+    }
+  }
 }
 
