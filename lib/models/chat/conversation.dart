@@ -14,6 +14,8 @@ class Conversation {
   final DateTime? muteUntil;
   final bool isMuted;
   final bool? isBlockedByOther; // True if current user is blocked by the other participant
+  final bool? isBlockedByMe; // True if current user has blocked the other participant
+  final bool? areFriends; // True if current user and other participant are friends (active friendship)
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -31,6 +33,8 @@ class Conversation {
     this.muteUntil,
     this.isMuted = false,
     this.isBlockedByOther,
+    this.isBlockedByMe,
+    this.areFriends,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -56,6 +60,8 @@ class Conversation {
           : null,
       isMuted: json['isMuted'] ?? false,
       isBlockedByOther: json['isBlockedByOther'],
+      isBlockedByMe: json['isBlockedByMe'],
+      areFriends: json['areFriends'],
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'])
           : DateTime.now(),
@@ -80,6 +86,8 @@ class Conversation {
       'muteUntil': muteUntil?.toIso8601String(),
       'isMuted': isMuted,
       'isBlockedByOther': isBlockedByOther,
+      'isBlockedByMe': isBlockedByMe,
+      'areFriends': areFriends,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };

@@ -151,20 +151,47 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
   }
 
   /// Check if conversation input should be disabled
-  /// Returns true if current user is blocked by the other participant
+  /// Returns true if either party has blocked the other OR they are not friends
   bool _isConversationBlocked() {
     if (_currentResidentId == null || _viewModel.conversation == null) {
       return false;
     }
     
     try {
-      // Only disable input if the other participant has blocked current user
-      // If current user blocked the other participant, they can still send messages
-      // but the other participant won't receive FCM notifications
-      return _viewModel.conversation?.isBlockedByOther == true;
+      // Disable input if either party has blocked the other
+      // If A blocks B: A sees "Bạn đã chặn người dùng này", B sees "Người dùng hiện không hoạt động"
+      final isBlockedByOther = _viewModel.conversation?.isBlockedByOther == true;
+      final isBlockedByMe = _viewModel.conversation?.isBlockedByMe == true;
+      
+      // Also disable if they are not friends
+      final areFriends = _viewModel.conversation?.areFriends == true;
+      
+      return isBlockedByOther || isBlockedByMe || !areFriends;
     } catch (e) {
       return false;
     }
+  }
+
+  /// Get the appropriate placeholder text for blocked conversation
+  String _getBlockedPlaceholderText() {
+    if (_viewModel.conversation == null) {
+      return 'Nhập tin nhắn...';
+    }
+    
+    final isBlockedByMe = _viewModel.conversation?.isBlockedByMe == true;
+    final isBlockedByOther = _viewModel.conversation?.isBlockedByOther == true;
+    final areFriends = _viewModel.conversation?.areFriends == true;
+    
+    // Priority: block status > friendship status
+    if (isBlockedByMe) {
+      return 'Bạn đã chặn người dùng này';
+    } else if (isBlockedByOther) {
+      return 'Người dùng hiện không hoạt động';
+    } else if (!areFriends) {
+      return 'Bạn chưa gửi lời mời trò chuyện';
+    }
+    
+    return 'Nhập tin nhắn...';
   }
 
   Future<void> _loadCurrentResidentId() async {
@@ -1590,6 +1617,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
             Consumer<DirectChatViewModel>(
               builder: (context, viewModel, child) {
                 final isBlocked = _isConversationBlocked();
+                final placeholderText = isBlocked ? _getBlockedPlaceholderText() : null;
                 return _DirectMessageInput(
                   controller: _messageController,
                   onSend: _sendMessage,
@@ -1601,6 +1629,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                   isRecording: _isRecording,
                   recordingDuration: _recordingDuration,
                   enabled: !isBlocked,
+                  placeholderText: placeholderText,
                 );
               },
             ),
@@ -1788,6 +1817,7 @@ class _DirectMessageInput extends StatefulWidget {
   final bool isRecording;
   final Duration recordingDuration;
   final bool enabled;
+  final String? placeholderText;
 
   const _DirectMessageInput({
     required this.controller,
@@ -1800,6 +1830,7 @@ class _DirectMessageInput extends StatefulWidget {
     this.isRecording = false,
     this.recordingDuration = Duration.zero,
     this.enabled = true,
+    this.placeholderText,
   });
 
   @override
@@ -1903,7 +1934,7 @@ class _DirectMessageInputState extends State<_DirectMessageInput> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Hiện tại không tìm thấy người dùng',
+                      widget.placeholderText ?? 'Hiện tại không tìm thấy người dùng',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                       ),
@@ -2012,9 +2043,11 @@ class _DirectMessageInputState extends State<_DirectMessageInput> {
                 Expanded(
                   child: TextField(
                     controller: widget.controller,
-                    enabled: !widget.isRecording,
+                    enabled: widget.enabled && !widget.isRecording,
                     decoration: InputDecoration(
-                      hintText: widget.isRecording ? 'Đang ghi âm...' : 'Nhập tin nhắn...',
+                      hintText: widget.isRecording 
+                          ? 'Đang ghi âm...' 
+                          : (widget.placeholderText ?? 'Nhập tin nhắn...'),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
                       ),

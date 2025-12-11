@@ -714,11 +714,19 @@ class _GroupListScreenState extends State<GroupListScreen> {
               ),
             ],
             const Divider(),
-            ListTile(
-              leading: const Icon(CupertinoIcons.person_crop_circle_badge_xmark, color: Colors.red),
-              title: const Text('Chặn người dùng', style: TextStyle(color: Colors.red)),
-              onTap: () => Navigator.pop(context, 'block'),
-            ),
+            // Show "Bỏ chặn người dùng" if already blocked, otherwise show "Chặn người dùng"
+            if (conversation.isBlockedByMe == true)
+              ListTile(
+                leading: const Icon(CupertinoIcons.check_mark_circled, color: Colors.green),
+                title: const Text('Bỏ chặn người dùng', style: TextStyle(color: Colors.green)),
+                onTap: () => Navigator.pop(context, 'unblock'),
+              )
+            else
+              ListTile(
+                leading: const Icon(CupertinoIcons.person_crop_circle_badge_xmark, color: Colors.red),
+                title: const Text('Chặn người dùng', style: TextStyle(color: Colors.red)),
+                onTap: () => Navigator.pop(context, 'block'),
+              ),
             ListTile(
               leading: const Icon(CupertinoIcons.delete, color: Colors.red),
               title: const Text('Xóa đoạn chat', style: TextStyle(color: Colors.red)),
@@ -818,6 +826,76 @@ class _GroupListScreenState extends State<GroupListScreen> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text('Lỗi khi chặn người dùng: ${e.toString()}'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            }
+          }
+        } else if (result == 'unblock') {
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Bỏ chặn người dùng'),
+              content: const Text(
+                'Bạn có chắc chắn muốn bỏ chặn người dùng này? Sau khi bỏ chặn, bạn sẽ cần gửi lại lời mời để có thể chat trực tiếp.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Hủy'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: FilledButton.styleFrom(backgroundColor: Colors.green),
+                  child: const Text('Bỏ chặn'),
+                ),
+              ],
+            ),
+          );
+          
+          if (confirmed == true && mounted) {
+            try {
+              if (_currentResidentId == null) {
+                await _loadCurrentResidentId();
+              }
+              
+              if (_currentResidentId == null) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Không thể xác định người dùng để bỏ chặn'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+                return;
+              }
+              
+              final otherParticipantId = conversation.getOtherParticipantId(_currentResidentId!);
+              await _chatService.unblockUser(otherParticipantId);
+              
+              // Emit event to update badges and refresh blocked users list
+              AppEventBus().emit('direct_chat_activity_updated');
+              AppEventBus().emit('blocked_users_updated');
+              
+              // Reload conversations to update isBlockedByMe status
+              await _loadDirectConversations();
+              
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ Đã bỏ chặn người dùng'),
+                    backgroundColor: Colors.green,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Lỗi khi bỏ chặn người dùng: ${e.toString()}'),
                     backgroundColor: Colors.red,
                   ),
                 );
