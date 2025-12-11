@@ -49,21 +49,23 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
         // Local file
         controller = VideoPlayerController.file(File(widget.videoPath!));
       } else if (widget.videoUrl != null) {
-        // Network URL - check if it's ImageKit URL and use proxy if needed
+        // Network URL - skip ImageKit videos (out of storage)
         String videoUrl = widget.videoUrl!;
         
-        // Check if URL is from ImageKit (ik.imagekit.io)
+        // Skip ImageKit videos - ImageKit is out of storage and blocking requests
         if (_isImageKitUrl(videoUrl)) {
-          // Use proxy endpoint to avoid 403 errors
-          final encodedUrl = Uri.encodeComponent(videoUrl);
-          videoUrl = '${ApiClient.activeBaseUrl}/marketplace/media/video?url=$encodedUrl';
-          debugPrint('📹 [VideoViewer] Using proxy URL for ImageKit video: $videoUrl');
-        } else {
-          // For non-ImageKit URLs, use directly
-          videoUrl = videoUrl.startsWith('http://') || videoUrl.startsWith('https://')
-              ? videoUrl
-              : 'https://$videoUrl';
+          debugPrint('⚠️ [VideoViewer] Skipping ImageKit video (out of storage): $videoUrl');
+          setState(() {
+            _errorMessage = 'Video này đang được lưu trữ trên ImageKit và hiện không khả dụng do hết dung lượng.';
+            _isLoading = false;
+          });
+          return;
         }
+        
+        // For database video URLs, use directly
+        videoUrl = videoUrl.startsWith('http://') || videoUrl.startsWith('https://')
+            ? videoUrl
+            : 'https://$videoUrl';
         
         controller = VideoPlayerController.networkUrl(
           Uri.parse(videoUrl),

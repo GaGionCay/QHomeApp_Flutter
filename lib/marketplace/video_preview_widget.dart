@@ -81,16 +81,22 @@ class _VideoPreviewWidgetState extends State<VideoPreviewWidget> {
     try {
       String videoUrl = widget.videoUrl!;
       
-      // Check if URL is from ImageKit and use proxy if needed
+      // Skip ImageKit videos - ImageKit is out of storage and blocking requests
       if (_isImageKitUrl(videoUrl)) {
-        final encodedUrl = Uri.encodeComponent(videoUrl);
-        videoUrl = '${ApiClient.activeBaseUrl}/marketplace/media/video?url=$encodedUrl';
-        debugPrint('📹 [VideoPreview] Using proxy URL for ImageKit video: $videoUrl');
-      } else {
-        videoUrl = videoUrl.startsWith('http://') || videoUrl.startsWith('https://')
-            ? videoUrl
-            : 'https://$videoUrl';
+        debugPrint('⚠️ [VideoPreview] Skipping ImageKit video (out of storage): $videoUrl');
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _hasError = true;
+          });
+        }
+        return;
       }
+      
+      // Use database video URL directly
+      videoUrl = videoUrl.startsWith('http://') || videoUrl.startsWith('https://')
+          ? videoUrl
+          : 'https://$videoUrl';
       
       // Create controller with httpHeaders for better timeout handling
       final controller = VideoPlayerController.networkUrl(
@@ -355,6 +361,7 @@ class _VideoPreviewWidgetState extends State<VideoPreviewWidget> {
   }
 
   Widget _buildErrorWidget(ThemeData theme) {
+    final isImageKit = widget.videoUrl != null && _isImageKitUrl(widget.videoUrl!);
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -366,10 +373,13 @@ class _VideoPreviewWidgetState extends State<VideoPreviewWidget> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Không thể tải video',
+            isImageKit 
+                ? 'Video ImageKit không khả dụng'
+                : 'Không thể tải video',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
             ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),

@@ -3584,10 +3584,27 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       VideoPlayerController controller;
       
       try {
+        // Check if video URL is from ImageKit (old videos) - skip if ImageKit is blocked
+        if (videoUrl.contains('ik.imagekit.io') || videoUrl.contains('imagekit.io')) {
+          if (context.mounted) {
+            Navigator.of(context).pop(); // Close loading dialog
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Video này đang được lưu trữ trên ImageKit và hiện không khả dụng. Vui lòng thử lại sau.'),
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
+        }
+        
         // Use network URL directly (videoUrl is already absolute URL from model)
         final fullUrl = videoUrl.startsWith('http://') || videoUrl.startsWith('https://')
             ? videoUrl
             : ApiClient.fileUrl(videoUrl);
+        
+        debugPrint('🎬 [PostDetailScreen] Loading video from URL: $fullUrl');
+        
         controller = VideoPlayerController.networkUrl(Uri.parse(fullUrl));
         
         // Initialize video player
@@ -3616,9 +3633,16 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       } catch (e) {
         if (context.mounted) {
           Navigator.of(context).pop(); // Close loading dialog
+          String errorMessage = 'Không thể tải video';
+          if (e.toString().contains('403') || e.toString().contains('Forbidden')) {
+            errorMessage = 'Video không khả dụng. Vui lòng thử lại sau.';
+          } else if (e.toString().contains('imagekit') || e.toString().contains('ImageKit')) {
+            errorMessage = 'Video này đang được lưu trữ trên ImageKit và hiện không khả dụng.';
+          }
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Không thể tải video: $e'),
+              content: Text(errorMessage),
+              duration: const Duration(seconds: 3),
             ),
           );
         }

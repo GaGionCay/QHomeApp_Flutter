@@ -2815,15 +2815,20 @@ class _VideoMessageWidgetState extends State<_VideoMessageWidget> {
         _error = null;
       });
 
-      // Check if URL is from ImageKit and use proxy if needed
+      // Skip ImageKit videos - ImageKit is out of storage and blocking requests
       String videoUrl = widget.videoUrl;
       if (_isImageKitUrl(videoUrl)) {
-        final encodedUrl = Uri.encodeComponent(videoUrl);
-        videoUrl = '${ApiClient.activeBaseUrl}/marketplace/media/video?url=$encodedUrl';
-        debugPrint('📹 [ChatVideo] Using proxy URL for ImageKit video: $videoUrl');
+        debugPrint('⚠️ [ChatVideo] Skipping ImageKit video (out of storage): $videoUrl');
+        if (mounted) {
+          setState(() {
+            _error = 'Video ImageKit không khả dụng do hết dung lượng';
+            _isLoading = false;
+          });
+        }
+        return;
       }
       
-      // Use network URL directly - no need to download
+      // Use database video URL directly
       _controller = VideoPlayerController.networkUrl(
         Uri.parse(videoUrl),
       );
