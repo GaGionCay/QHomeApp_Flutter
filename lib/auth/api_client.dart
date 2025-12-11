@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:dio/io.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 
 import '../core/event_bus.dart';
 import 'auth_service.dart';
@@ -69,6 +71,20 @@ class ApiClient {
       receiveTimeout: const Duration(seconds: timeoutSeconds),
       headers: headers,
     ));
+    
+    // Configure SSL certificate validation for development
+    // In development, allow self-signed certificates to avoid HandshakeException
+    if (!kIsWeb && kDebugMode) {
+      (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
+        final client = HttpClient();
+        // Allow bad certificates in debug mode (development only)
+        client.badCertificateCallback = (X509Certificate cert, String host, int port) {
+          print('⚠️ [ApiClient] SSL Certificate validation bypassed for $host:$port (DEBUG MODE ONLY)');
+          return true; // Accept all certificates in debug mode
+        };
+        return client;
+      };
+    }
 
     final authDio = Dio(BaseOptions(
       baseUrl: _activeBaseUrl,
@@ -76,6 +92,19 @@ class ApiClient {
       receiveTimeout: const Duration(seconds: timeoutSeconds),
       headers: headers,
     ));
+    
+    // Configure SSL certificate validation for development
+    if (!kIsWeb && kDebugMode) {
+      (authDio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
+        final client = HttpClient();
+        // Allow bad certificates in debug mode (development only)
+        client.badCertificateCallback = (X509Certificate cert, String host, int port) {
+          print('⚠️ [ApiClient] SSL Certificate validation bypassed for $host:$port (DEBUG MODE ONLY)');
+          return true; // Accept all certificates in debug mode
+        };
+        return client;
+      };
+    }
 
     final authService = AuthService(authDio, storage);
 

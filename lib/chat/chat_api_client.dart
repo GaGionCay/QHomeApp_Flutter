@@ -1,4 +1,7 @@
+import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import '../auth/api_client.dart';
 import '../auth/auth_service.dart';
 import '../auth/token_storage.dart';
@@ -29,11 +32,38 @@ class ChatApiClient {
       connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
       receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
     ));
+    
+    // Configure SSL certificate validation for development
+    if (!kIsWeb && kDebugMode) {
+      (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
+        final client = HttpClient();
+        // Allow bad certificates in debug mode (development only)
+        client.badCertificateCallback = (X509Certificate cert, String host, int port) {
+          print('⚠️ [ChatApiClient] SSL Certificate validation bypassed for $host:$port (DEBUG MODE ONLY)');
+          return true; // Accept all certificates in debug mode
+        };
+        return client;
+      };
+    }
+    
     final authDio = Dio(BaseOptions(
       baseUrl: ApiClient.activeBaseUrl,
       connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
       receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
     ));
+    
+    // Configure SSL certificate validation for development
+    if (!kIsWeb && kDebugMode) {
+      (authDio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
+        final client = HttpClient();
+        // Allow bad certificates in debug mode (development only)
+        client.badCertificateCallback = (X509Certificate cert, String host, int port) {
+          print('⚠️ [ChatApiClient] SSL Certificate validation bypassed for $host:$port (DEBUG MODE ONLY)');
+          return true; // Accept all certificates in debug mode
+        };
+        return client;
+      };
+    }
     final authService = AuthService(authDio, storage);
     return ChatApiClient._(dio, storage, authService);
   }
