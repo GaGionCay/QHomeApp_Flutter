@@ -274,40 +274,40 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
       if (!mounted) return;
 
       if (result != null) {
-        // Try to get inspection ID from result or fetch it
-        // Inspection is created when contract is cancelled
-        try {
-          // Get inspection by contract ID to get inspectionId
-          final inspectionResponse = await _baseServiceClient.dio.get(
-            '/asset-inspections/contract/${widget.contract.id}',
-          );
-          if (inspectionResponse.statusCode == 200 && inspectionResponse.data is Map) {
-            final inspectionData = Map<String, dynamic>.from(inspectionResponse.data as Map);
-            _inspectionId = inspectionData['id']?.toString();
+          // Try to get inspection ID from result or fetch it
+          // Inspection is created when contract is cancelled
+          try {
+            // Get inspection by contract ID to get inspectionId
+            final inspectionResponse = await _baseServiceClient.dio.get(
+              '/asset-inspections/contract/${widget.contract.id}',
+            );
+            if (inspectionResponse.statusCode == 200 && inspectionResponse.data is Map) {
+              final inspectionData = Map<String, dynamic>.from(inspectionResponse.data as Map);
+              _inspectionId = inspectionData['id']?.toString();
+            }
+          } catch (e) {
+            // Inspection might not be created yet, that's okay
+            print('Could not get inspection ID: $e');
           }
-        } catch (e) {
-          // Inspection might not be created yet, that's okay
-          print('Could not get inspection ID: $e');
-        }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Row(
-              children: [
-                Icon(
-                  CupertinoIcons.checkmark_circle_fill,
-                  color: Colors.white,
-                  size: 20,
-                ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Hủy hợp đồng thành công!',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Row(
+                children: [
+                  Icon(
+                    CupertinoIcons.checkmark_circle_fill,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Hủy hợp đồng thành công!',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
             backgroundColor: Colors.green,
@@ -328,10 +328,38 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
       }
     } catch (e) {
       if (!mounted) return;
+      
+      // Parse error message to show user-friendly message
+      String errorMessage = '';
+      if (e is Exception) {
+        errorMessage = e.toString();
+        // Remove "Exception: " prefix if present
+        if (errorMessage.startsWith('Exception: ')) {
+          errorMessage = errorMessage.substring(11);
+        }
+      } else {
+        errorMessage = e.toString();
+      }
+      
+      // Handle specific error messages from backend
+      if (errorMessage.contains('Chỉ chủ căn hộ') || errorMessage.contains('OWNER') || errorMessage.contains('TENANT') || errorMessage.contains('không được phép')) {
+        // Permission error - user is not OWNER/TENANT
+        errorMessage = 'Chỉ chủ căn hộ (OWNER hoặc người thuê TENANT) mới được hủy gia hạn hợp đồng. Thành viên hộ gia đình không được phép hủy gia hạn.';
+      }
+      
       setState(() {
-        _error = 'Lỗi khi hủy hợp đồng: $e';
+        _error = errorMessage;
         _isLoading = false;
       });
+      
+      // Show error in SnackBar as well
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
   }
 

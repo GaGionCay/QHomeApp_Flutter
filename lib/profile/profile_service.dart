@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import '../auth/api_client.dart';
 import '../services/imagekit_service.dart';
 
@@ -63,6 +64,17 @@ class ProfileService {
     } catch (e) {
       print('Unexpected error: $e');
       rethrow;
+    }
+  }
+
+  /// Lấy thông tin household và danh sách thành viên theo residentId
+  Future<Map<String, dynamic>?> getHouseholdInfoWithMembers(String residentId) async {
+    try {
+      final res = await dio.get('/household-members/residents/$residentId/household-info');
+      return Map<String, dynamic>.from(res.data);
+    } catch (e) {
+      debugPrint('⚠️ Lỗi tải thông tin household: $e');
+      return null;
     }
   }
 }

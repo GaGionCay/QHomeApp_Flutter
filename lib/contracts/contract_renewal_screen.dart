@@ -528,7 +528,10 @@ class _ContractRenewalScreenState extends State<ContractRenewalScreen> {
         debugPrint('🔍 [ContractRenewal] Error message: $errorMessage');
         
         // Handle specific error messages from backend
-        if (errorMessage.contains('ít nhất 3 tháng') || errorMessage.contains('3 tháng')) {
+        if (errorMessage.contains('Chỉ chủ căn hộ') || errorMessage.contains('OWNER') || errorMessage.contains('TENANT') || errorMessage.contains('không được phép')) {
+          // Permission error - user is not OWNER/TENANT
+          errorMessage = 'Chỉ chủ căn hộ (OWNER hoặc người thuê TENANT) mới được gia hạn hợp đồng. Thành viên hộ gia đình không được phép gia hạn.';
+        } else if (errorMessage.contains('ít nhất 3 tháng') || errorMessage.contains('3 tháng')) {
           errorMessage = 'Gia hạn hợp đồng phải ít nhất 3 tháng. Vui lòng chọn ngày kết thúc cách ngày bắt đầu ít nhất 3 tháng.';
         } else if (errorMessage.contains('trùng thời gian') || errorMessage.contains('trùng')) {
           // Extract contract number and date range from error message if available

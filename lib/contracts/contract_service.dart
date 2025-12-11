@@ -509,10 +509,42 @@ class ContractService {
       return null;
     } on DioException catch (e) {
       print('❌ [ContractService] DioException cancelContract: ${e.message}');
-      return null;
+      if (e.response != null) {
+        print('⚠️ Response status: ${e.response?.statusCode}');
+        print('⚠️ Response data: ${e.response?.data}');
+        
+        // Extract error message from response
+        String errorMessage = 'Lỗi khi hủy hợp đồng';
+        if (e.response?.data != null) {
+          final responseData = e.response!.data;
+          if (responseData is Map) {
+            // Backend returns ErrorResponse with 'message' field
+            final message = responseData['message']?.toString();
+            if (message != null && message.isNotEmpty) {
+              // Use message directly (already in Vietnamese, not URL-encoded)
+              errorMessage = message;
+            } else {
+              // Fallback to other possible fields
+              errorMessage = responseData['error']?.toString() ?? 
+                            responseData['errorMessage']?.toString() ?? 
+                            errorMessage;
+            }
+          } else if (responseData is String) {
+            errorMessage = responseData;
+          }
+        }
+        
+        // Throw exception with error message so caller can handle it
+        throw Exception(errorMessage);
+      }
+      throw Exception('Lỗi kết nối khi hủy hợp đồng: ${e.message}');
     } catch (e) {
       print('❌ [ContractService] Lỗi cancelContract: $e');
-      return null;
+      // Re-throw if it's already an Exception, otherwise wrap it
+      if (e is Exception) {
+        rethrow;
+      }
+      throw Exception('Lỗi không xác định: $e');
     }
   }
 

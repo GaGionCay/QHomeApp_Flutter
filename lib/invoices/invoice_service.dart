@@ -245,8 +245,8 @@ class InvoiceService {
       
       if (res.statusCode != 200) {
         log('⚠️ API trả mã ${res.statusCode}: ${res.data}');
-        throw Exception(
-            res.data['message'] ?? 'Server trả lỗi ${res.statusCode}');
+        final errorMessage = res.data['error'] ?? res.data['message'] ?? 'Server trả lỗi ${res.statusCode}';
+        throw Exception(errorMessage);
       }
 
       if (res.data['paymentUrl'] == null) {

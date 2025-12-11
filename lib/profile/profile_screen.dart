@@ -21,6 +21,8 @@ class _ProfileScreenState extends State<ProfileScreen>
   late AnimationController _fadeCtrl;
   late ProfileService _service;
   ContractService? _contractService;
+  Map<String, dynamic>? _householdInfo;
+  bool _loadingHousehold = false;
 
   @override
   void initState() {
@@ -47,10 +49,28 @@ class _ProfileScreenState extends State<ProfileScreen>
     } catch (e) {
       debugPrint('⚠️ Lỗi tải danh sách căn hộ: $e');
     }
+    
+    // Load household info và danh sách thành viên
+    Map<String, dynamic>? householdInfo;
+    final residentId = data['residentId']?.toString();
+    if (residentId != null && residentId.isNotEmpty) {
+      try {
+        setState(() => _loadingHousehold = true);
+        householdInfo = await _service.getHouseholdInfoWithMembers(residentId);
+      } catch (e) {
+        debugPrint('⚠️ Lỗi tải thông tin household: $e');
+      } finally {
+        if (mounted) {
+          setState(() => _loadingHousehold = false);
+        }
+      }
+    }
+    
     if (!mounted) return;
     setState(() {
       _profile = data;
       _units = units;
+      _householdInfo = householdInfo;
       _loadingUnits = false;
       _loading = false;
     });
@@ -96,6 +116,15 @@ class _ProfileScreenState extends State<ProfileScreen>
                         const Center(child: CircularProgressIndicator())
                       else
                         _OwnedUnitsCard(units: _units),
+                      if (_householdInfo != null && 
+                          (_householdInfo!['unitCode'] != null || 
+                           (_householdInfo!['members'] as List?)?.isNotEmpty == true)) ...[
+                        const SizedBox(height: 20),
+                        _HouseholdMembersCard(
+                          householdInfo: _householdInfo!,
+                          currentResidentId: _profile!['residentId']?.toString(),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -166,6 +195,219 @@ class _ProfileHeader extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HouseholdMembersCard extends StatelessWidget {
+  const _HouseholdMembersCard({
+    required this.householdInfo,
+    required this.currentResidentId,
+  });
+
+  final Map<String, dynamic> householdInfo;
+  final String? currentResidentId;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final unitCode = householdInfo['unitCode']?.toString() ?? '';
+    final primaryResidentName = householdInfo['primaryResidentName']?.toString() ?? '';
+    final primaryResidentId = householdInfo['primaryResidentId']?.toString();
+    final members = (householdInfo['members'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+
+    if (members.isEmpty && unitCode.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.08)),
+        boxShadow: AppColors.subtleShadow,
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryBlue.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(Icons.people_outline, color: AppColors.primaryBlue),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Thành viên trong căn hộ',
+                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 4),
+                    if (unitCode.isNotEmpty)
+                      Text(
+                        'Căn hộ: $unitCode',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (primaryResidentName.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.08)),
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.1),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.home_outlined,
+                    color: AppColors.primaryEmerald,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Chủ hộ',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        RichText(
+                          text: TextSpan(
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                            children: [
+                              TextSpan(
+                                text: primaryResidentName,
+                              ),
+                              // Nếu user hiện tại là chủ hộ, thêm "(tôi)"
+                              if (primaryResidentId != null &&
+                                  currentResidentId != null &&
+                                  primaryResidentId!.toLowerCase() == currentResidentId!.toLowerCase())
+                                TextSpan(
+                                  text: ' (tôi)',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: theme.colorScheme.primary,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (members.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(
+              'Thành viên:',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ...members.map((member) {
+              final memberName = member['residentName']?.toString() ?? '—';
+              final memberResidentId = member['residentId']?.toString();
+              final relation = member['relation']?.toString() ?? '—';
+              final isPrimary = member['isPrimary'] == true;
+              final isCurrentUser = memberResidentId != null &&
+                  currentResidentId != null &&
+                  memberResidentId!.toLowerCase() == currentResidentId!.toLowerCase();
+              
+              // Bỏ qua primary resident vì đã hiển thị ở trên
+              if (isPrimary && primaryResidentId != null && 
+                  memberResidentId != null &&
+                  memberResidentId!.toLowerCase() == primaryResidentId!.toLowerCase()) {
+                return const SizedBox.shrink();
+              }
+              
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.08)),
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.05),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: theme.colorScheme.primary.withValues(alpha: 0.6),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(
+                          style: theme.textTheme.bodyMedium,
+                          children: [
+                            TextSpan(
+                              text: memberName,
+                              style: TextStyle(
+                                fontWeight: isCurrentUser ? FontWeight.w600 : FontWeight.normal,
+                                color: isCurrentUser 
+                                    ? theme.colorScheme.primary 
+                                    : theme.colorScheme.onSurface,
+                              ),
+                            ),
+                            TextSpan(
+                              text: ' — $relation',
+                              style: TextStyle(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+                              ),
+                            ),
+                            if (isCurrentUser)
+                              TextSpan(
+                                text: ' (Tôi)',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: theme.colorScheme.primary,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ],
         ],
       ),
     );

@@ -813,6 +813,17 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove(_pendingInvoicePaymentKey);
       } catch (_) {}
+      
+      if (mounted) {
+        final errorMessage = e.toString().replaceFirst('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

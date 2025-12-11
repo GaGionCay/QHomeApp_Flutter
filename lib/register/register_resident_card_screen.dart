@@ -67,6 +67,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   List<Map<String, dynamic>> _selectedResidents = [];
   List<Map<String, dynamic>> _householdMembers = [];
   bool _loadingHouseholdMembers = false;
+  bool _isOwner = false; // Track xem user có phải OWNER không
 
   Future<Dio> _servicesCardClient() async {
     if (_servicesCardDio == null) {
@@ -333,8 +334,12 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       if (selectedUnit != null) {
         _applyUnitContext(selectedUnit);
         await prefs.setString(_selectedUnitPrefsKey, selectedUnit.id);
-        // Load danh sách thành viên khi có unit
-        await _loadHouseholdMembers();
+        // Load danh sách thành viên khi có unit và check OWNER
+        final isOwner = await _loadHouseholdMembers();
+        // Nếu không phải OWNER, tự động điền thông tin của chính user
+        if (!isOwner) {
+          await _loadResidentContextDataOnly();
+        }
       }
     } catch (e) {
       debugPrint('❌ Lỗi tải thông tin căn hộ: $e');
@@ -358,6 +363,10 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
 
       final profilePhone =
           profile['phoneNumber']?.toString() ?? profile['phone']?.toString();
+      final profileFullName = profile['fullName']?.toString() ?? '';
+      final profileCitizenId = profile['citizenId']?.toString() ?? 
+                               profile['identityNumber']?.toString() ?? '';
+      final profileResidentId = profile['residentId']?.toString();
 
       setState(() {
         _defaultPhoneNumber = profilePhone;
@@ -366,15 +375,37 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
           _phoneNumberCtrl.text = _defaultPhoneNumber!;
         }
       });
+      
+      // Nếu không phải OWNER, tự động điền thông tin và set selectedResidents
+      if (!_isOwner && profileResidentId != null && profileResidentId.isNotEmpty) {
+        // Tự động điền thông tin của chính user
+        if (_fullNameCtrl.text.isEmpty && profileFullName.isNotEmpty) {
+          _fullNameCtrl.text = profileFullName;
+        }
+        if (_citizenIdCtrl.text.isEmpty && profileCitizenId.isNotEmpty) {
+          _citizenIdCtrl.text = profileCitizenId;
+        }
+        
+        // Tự động set selectedResidents với chính user
+        if (_selectedResidents.isEmpty) {
+          setState(() {
+            _selectedResidents = [{
+              'residentId': profileResidentId,
+              'fullName': profileFullName,
+              'citizenId': profileCitizenId,
+            }];
+          });
+        }
+      }
     } catch (e) {
       debugPrint('❌ Lỗi tải thông tin cư dân: $e');
     }
   }
   
-  // Load danh sách thành viên trong căn hộ
-  Future<void> _loadHouseholdMembers() async {
+  // Load danh sách thành viên trong căn hộ (chỉ OWNER mới được xem)
+  Future<bool> _loadHouseholdMembers() async {
     if (_selectedUnitId == null || _selectedUnitId!.isEmpty) {
-      return;
+      return false;
     }
     
     setState(() => _loadingHouseholdMembers = true);
@@ -389,9 +420,32 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       if (res.statusCode == 200 && res.data is List) {
         setState(() {
           _householdMembers = List<Map<String, dynamic>>.from(res.data);
+          _isOwner = true; // User là OWNER
         });
         debugPrint('✅ [ResidentCard] Đã tải ${_householdMembers.length} thành viên');
+        return true; // User là OWNER
       }
+      return false;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 403) {
+        // User không phải OWNER
+        debugPrint('⚠️ [ResidentCard] User không phải OWNER, không thể xem danh sách thành viên');
+        setState(() {
+          _isOwner = false;
+        });
+        // Không hiển thị snackbar nữa vì đây là behavior mong muốn
+        return false; // User không phải OWNER
+      }
+      debugPrint('❌ [ResidentCard] Lỗi tải danh sách thành viên: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể tải danh sách thành viên: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return false;
     } catch (e) {
       debugPrint('❌ [ResidentCard] Lỗi tải danh sách thành viên: $e');
       if (mounted) {
@@ -402,6 +456,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
           ),
         );
       }
+      return false;
     } finally {
       if (mounted) {
         setState(() => _loadingHouseholdMembers = false);
@@ -409,12 +464,17 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     }
   }
 
-  // Hiển thị dialog chọn cư dân (cho phép chọn nhiều)
+  // Hiển thị dialog chọn cư dân (chỉ OWNER mới được chọn nhiều người)
   Future<void> _showSelectResidentsDialog() async {
     // Nếu chưa có danh sách thành viên, load trước
     if (_householdMembers.isEmpty && _selectedUnitId != null) {
-      await _loadHouseholdMembers();
+      final isOwner = await _loadHouseholdMembers();
       if (!mounted) return;
+      
+      // Nếu không phải OWNER, không hiển thị dialog
+      if (!isOwner) {
+        return;
+      }
     }
     
     // Nếu vẫn không có thành viên
@@ -735,11 +795,14 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     }
 
     // Kiểm tra đã chọn cư dân chưa
+    // Nếu không phải OWNER, _selectedResidents đã được tự động set với chính user
     if (_selectedResidents.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vui lòng chọn ít nhất một cư dân để đăng ký thẻ'),
+        SnackBar(
+          content: Text(_isOwner 
+              ? 'Vui lòng chọn ít nhất một cư dân để đăng ký thẻ'
+              : 'Vui lòng kiểm tra lại thông tin cá nhân'),
           backgroundColor: Colors.red,
         ),
       );
@@ -1283,6 +1346,11 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   }
 
   Widget _buildSelectResidentsButton() {
+    // Chỉ hiển thị button chọn thành viên nếu là OWNER
+    if (!_isOwner) {
+      return const SizedBox.shrink();
+    }
+    
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     return RegisterGlassPanel(
