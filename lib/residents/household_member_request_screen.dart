@@ -564,9 +564,7 @@ class _HouseholdMemberRequestScreenState
             _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
         residentEmail:
             _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
-        residentNationalId: _nationalIdCtrl.text.trim().isEmpty
-            ? null
-            : _nationalIdCtrl.text.trim(),
+        residentNationalId: _nationalIdCtrl.text.trim(),
         residentDob: _dob,
         relation: _relationCtrl.text.trim().isEmpty
             ? null
@@ -871,11 +869,13 @@ class _HouseholdMemberRequestScreenState
                     focusNode: _nationalIdFocus,
                     controller: _nationalIdCtrl,
                     decoration: const InputDecoration(
-                      labelText: 'CMND/CCCD (nếu có)',
+                      labelText: 'CMND/CCCD *',
                     ),
                     validator: (value) {
                       final v = (value ?? '').trim();
-                      if (v.isEmpty) return null;
+                      if (v.isEmpty) {
+                        return 'Vui lòng nhập CMND/CCCD';
+                      }
                       if (!RegExp(r'^[0-9]+$').hasMatch(v)) {
                         return 'CMND/CCCD chỉ gồm chữ số, không có khoảng trắng/ký tự đặc biệt.';
                       }
