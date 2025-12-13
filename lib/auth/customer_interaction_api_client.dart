@@ -7,6 +7,14 @@ class CustomerInteractionApiClient {
   // All requests go through API Gateway (port 8989)
   // Gateway routes /api/customer-interaction/** to customer-interaction-service (8086)
 
+  /// Check if hostname is an ngrok URL
+  static bool _isNgrokUrl(String hostname) {
+    return hostname.contains('ngrok-free.dev') ||
+           hostname.contains('ngrok-free.app') ||
+           hostname.contains('ngrok.io') ||
+           hostname.contains('ngrok.app');
+  }
+
   static String get baseUrl => ApiClient.buildServiceBase(
         path: '/api/customer-interaction',
       );
@@ -57,6 +65,13 @@ class CustomerInteractionApiClient {
         if (token != null) options.headers['Authorization'] = 'Bearer $token';
         final deviceId = await _storage.readDeviceId();
         if (deviceId != null) options.headers['X-Device-Id'] = deviceId;
+        
+        // Add ngrok-skip-browser-warning header for ngrok URLs
+        final uri = options.uri;
+        if (_isNgrokUrl(uri.host)) {
+          options.headers['ngrok-skip-browser-warning'] = 'true';
+        }
+        
         return handler.next(options);
       },
       onError: (err, handler) async {

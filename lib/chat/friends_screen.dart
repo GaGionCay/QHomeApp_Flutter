@@ -95,12 +95,31 @@ class _FriendsScreenState extends State<FriendsScreen> {
         }
       } catch (e) {
         if (mounted) {
-          final errorMessage = e.toString().replaceFirst('Exception: ', '');
+          print('❌ [FriendsScreen] Error creating invitation: $e');
+          
+          // Extract error message - remove "Exception: " prefix if present
+          String errorMessage = e.toString().replaceFirst('Exception: ', '');
+          print('   📋 Extracted error message: $errorMessage');
+          
+          // Check if this is an informational message (not an error)
+          bool isInfoMessage = errorMessage.contains('Bạn đã gửi lời mời rồi') || 
+                               errorMessage.contains('đã gửi lời mời cho bạn rồi') ||
+                               errorMessage.contains('Vui lòng đợi phản hồi');
+          
+          print('   📋 Is info message: $isInfoMessage');
+          
+          // If error message already contains the full message, use it directly
+          // Otherwise, prepend "Lỗi khi gửi lời mời: "
+          if (!errorMessage.startsWith('Lỗi khi') && !errorMessage.contains('đã gửi lời mời')) {
+            errorMessage = 'Lỗi khi gửi lời mời: $errorMessage';
+          }
+          
+          print('   🚀 Showing SnackBar with message: $errorMessage');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Lỗi khi gửi lời mời: $errorMessage'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
+              content: Text(errorMessage),
+              backgroundColor: isInfoMessage ? Colors.orange : Colors.red,
+              duration: Duration(seconds: isInfoMessage ? 5 : 4),
             ),
           );
         }

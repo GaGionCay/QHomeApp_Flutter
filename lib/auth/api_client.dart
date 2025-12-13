@@ -27,8 +27,12 @@ class ApiClient {
   
   // Track last discovery check time to avoid checking too frequently
   static DateTime? _lastDiscoveryCheck;
-  static const _discoveryCheckInterval = Duration(seconds: 10); // Check every 10 seconds for ngrok URL
+  static const Duration _discoveryCheckInterval = Duration(seconds: 10); // Check every 10 seconds (after initial discovery)
+  static const Duration _initialDiscoveryCheckInterval = Duration(seconds: 3); // Check every 3 seconds during initial startup
   static Timer? _ngrokCheckTimer; // Periodic timer to check for ngrok URL
+  static bool _hasFoundNgrokUrl = false; // Track if we've found ngrok URL at least once
+  static int _initialDiscoveryAttempts = 0; // Track initial discovery attempts
+  static const int _maxInitialDiscoveryAttempts = 20; // Try for 60 seconds (20 * 3s) during startup
 
   static bool _isInitialized = false;
   static Future<void>? _initializing;
@@ -38,6 +42,9 @@ class ApiClient {
   static String get activeBaseUrl => _activeBaseUrl;
   static String get activeFileBaseUrl => _activeFileBaseUrl;
   static bool get isInitialized => _isInitialized;
+  
+  /// Get the discovery service instance (for use in error handlers)
+  static BackendDiscoveryService? get discoveryService => _isInitialized ? _discoveryService : null;
 
   final Dio dio;
   final TokenStorage _storage;
@@ -61,7 +68,7 @@ class ApiClient {
 
     // Add ngrok-skip-browser-warning header if using ngrok URL
     final headers = <String, dynamic>{};
-    if (_activeHostIp.contains('ngrok') || _activeHostIp.contains('ngrok-free.app')) {
+    if (_isNgrokUrl(_activeHostIp)) {
       headers['ngrok-skip-browser-warning'] = 'true';
     }
 
@@ -130,6 +137,12 @@ class ApiClient {
         // Check for ngrok URL immediately on startup
         _checkForNgrokUrlInBackground();
         
+        // Start aggressive initial discovery (every 3 seconds) if ngrok URL not found
+        // This handles the case where Flutter starts before backend
+        if (!_isNgrokUrl(backendInfo.hostname)) {
+          _startInitialDiscoveryRetry();
+        }
+        
         // Start periodic check for ngrok URL (every 10 seconds)
         _startPeriodicNgrokCheck();
       } catch (e) {
@@ -151,11 +164,9 @@ class ApiClient {
       final backendInfo = await _discoveryService.discoverBackend();
       print('✅ Re-discovered backend: ${backendInfo.hostname}:${backendInfo.port} (${backendInfo.discoveryMethod})');
       
-      // Check if new backend is ngrok URL and current is not (prefer ngrok)
-      final isNewNgrok = backendInfo.hostname.contains('ngrok') || 
-                         backendInfo.hostname.contains('ngrok-free.app');
-      final isCurrentNgrok = _activeHostIp.contains('ngrok') || 
-                            _activeHostIp.contains('ngrok-free.app');
+              // Check if new backend is ngrok URL and current is not (prefer ngrok)
+              final isNewNgrok = _isNgrokUrl(backendInfo.hostname);
+              final isCurrentNgrok = _isNgrokUrl(_activeHostIp);
       
       // Always update, but prioritize ngrok URL
       if (isNewNgrok && !isCurrentNgrok) {
@@ -195,6 +206,70 @@ class ApiClient {
       _activeBaseUrl = '$_activeScheme://$hostIp:$port/api';
       _activeFileBaseUrl = '$_activeScheme://$hostIp:$port';
     }
+  }
+  
+  /// Public method to update active host (used for fallback scenarios)
+  static void setActiveHost(String hostIp, [int port = apiPort, bool isHttps = false]) {
+    _setActiveHost(hostIp, port, isHttps);
+    if (kDebugMode) {
+      print('🔄 [ApiClient] Updated active host to: $_activeBaseUrl');
+    }
+  }
+
+  /// Public method to manually set ngrok URL
+  /// This is useful when ngrok URL changes and app hasn't discovered it yet
+  /// Usage: In Flutter DevTools console, run: ApiClient.setNgrokUrl('https://xxx.ngrok-free.app')
+  static Future<void> setNgrokUrl(String ngrokUrl) async {
+    if (kDebugMode) {
+      print('🔧 [ApiClient] Manually setting ngrok URL: $ngrokUrl');
+    }
+    
+    try {
+      // Parse the URL
+      final uri = Uri.parse(ngrokUrl);
+      final hostname = uri.host;
+      final isHttps = uri.scheme == 'https';
+      
+      // Validate it's an ngrok URL
+      if (!_isNgrokUrl(hostname)) {
+        print('⚠️ [ApiClient] Warning: URL does not appear to be an ngrok URL: $hostname');
+      }
+      
+      // Set the active host
+      _setActiveHost(hostname, 0, isHttps);
+      _hasFoundNgrokUrl = true;
+      
+      // Save to preferences via discovery service
+      if (_isInitialized) {
+        await _discoveryService.setManualBackendUrl(ngrokUrl);
+        if (kDebugMode) {
+          print('✅ [ApiClient] Ngrok URL set and saved: $_activeBaseUrl');
+        }
+      }
+      
+      // Switch to normal periodic check
+      _startPeriodicNgrokCheck();
+      
+    } catch (e) {
+      print('❌ [ApiClient] Error setting ngrok URL: $e');
+      rethrow;
+    }
+  }
+
+  /// Force refresh discovery to find ngrok URL immediately
+  /// This is useful when ngrok URL changes and app hasn't discovered it yet
+  static void forceRefreshDiscovery() {
+    if (kDebugMode) {
+      print('🔄 [ApiClient] Force refreshing discovery...');
+    }
+    
+    if (!_isInitialized) {
+      print('⚠️ [ApiClient] ApiClient not initialized yet. Call ensureInitialized() first.');
+      return;
+    }
+    
+    // Check for ngrok URL immediately (runs in background)
+    _checkForNgrokUrlInBackground();
   }
 
   static Future<void> ensureInitialized() async {
@@ -281,8 +356,7 @@ class ApiClient {
                               now.difference(_lastDiscoveryCheck!) > _discoveryCheckInterval;
           
           // Only check if we're not already using ngrok URL
-          final isCurrentlyUsingNgrok = _activeHostIp.contains('ngrok') || 
-                                       _activeHostIp.contains('ngrok-free.app');
+          final isCurrentlyUsingNgrok = _isNgrokUrl(_activeHostIp);
           
           if (shouldCheck && !isCurrentlyUsingNgrok) {
             // Check for ngrok URL from backend discovery endpoint in background
@@ -306,7 +380,7 @@ class ApiClient {
         
         // Add ngrok-skip-browser-warning header for ngrok URLs
         final uri = options.uri;
-        if (uri.host.contains('ngrok') || uri.host.contains('ngrok-free.app')) {
+        if (_isNgrokUrl(uri.host)) {
           options.headers['ngrok-skip-browser-warning'] = 'true';
         }
         
@@ -358,7 +432,7 @@ class ApiClient {
               print('🔄 Connection error detected, attempting to re-discover backend... (attempt ${retryCount + 1}, elapsed: ${elapsedSeconds}s)');
               
               // If HandshakeException, clear cached ngrok URL first
-              if (isHandshakeException && (_activeHostIp.contains('ngrok') || _activeHostIp.contains('ngrok-free.app'))) {
+              if (isHandshakeException && _isNgrokUrl(_activeHostIp)) {
                 print('   HandshakeException detected with ngrok URL - clearing cached URL...');
                 try {
                   await _discoveryService.clearManualBackendUrl();
@@ -373,8 +447,8 @@ class ApiClient {
               final newBaseUrl = backendInfo.baseUrl;
               
               // Check if new backend is ngrok URL and current is not
-              final isNewNgrok = backendInfo.hostname.contains('ngrok') || backendInfo.hostname.contains('ngrok-free.app');
-              final isCurrentNgrok = _activeHostIp.contains('ngrok') || _activeHostIp.contains('ngrok-free.app');
+              final isNewNgrok = _isNgrokUrl(backendInfo.hostname);
+              final isCurrentNgrok = _isNgrokUrl(_activeHostIp);
               
               // Always update if:
               // 1. Base URL changed, OR
@@ -615,6 +689,14 @@ class ApiClient {
     return ApiClient._(dio, storage, authService);
   }
 
+  /// Check if hostname is an ngrok URL
+  static bool _isNgrokUrl(String hostname) {
+    return hostname.contains('ngrok-free.dev') ||
+           hostname.contains('ngrok-free.app') ||
+           hostname.contains('ngrok.io') ||
+           hostname.contains('ngrok.app');
+  }
+
   static String fileUrl(String path) {
     if (path.startsWith('http')) {
       // Nếu URL chứa localhost hoặc port 8082, thay thế bằng host đúng
@@ -625,9 +707,7 @@ class ApiClient {
         final scheme = _activeScheme;
         
         // Check if this is an ngrok URL - ngrok URLs don't need explicit port
-        final isNgrokUrl = host.contains('ngrok') || 
-                         host.contains('ngrok-free.app') ||
-                         host.contains('ngrok.io');
+        final isNgrokUrl = _isNgrokUrl(host);
         
         if (isNgrokUrl) {
           // Ngrok URLs don't need port - they automatically route to the configured port
@@ -667,8 +747,7 @@ class ApiClient {
     Future.microtask(() async {
       try {
         // If currently using ngrok URL, check if it's still reachable
-        final isCurrentlyUsingNgrok = _activeHostIp.contains('ngrok') || 
-                                     _activeHostIp.contains('ngrok-free.app');
+        final isCurrentlyUsingNgrok = _isNgrokUrl(_activeHostIp);
         
         if (isCurrentlyUsingNgrok) {
           // Check if ngrok URL is still reachable
@@ -706,8 +785,9 @@ class ApiClient {
           if (response.statusCode == 200 && response.data != null) {
             final publicUrl = response.data['publicUrl'] as String?;
             
-            if (publicUrl != null && publicUrl.isNotEmpty && 
-                (publicUrl.contains('ngrok') || publicUrl.contains('ngrok-free.app'))) {
+            if (publicUrl != null && publicUrl.isNotEmpty) {
+              final ngrokUri = Uri.tryParse(publicUrl);
+              if (ngrokUri != null && _isNgrokUrl(ngrokUri.host)) {
               // Found ngrok URL - verify it's reachable before switching
               try {
                 final ngrokDio = Dio();
@@ -724,7 +804,6 @@ class ApiClient {
                   print('   Ngrok URL: $publicUrl');
                   
                   // Parse ngrok URL to extract hostname
-                  final ngrokUri = Uri.parse(publicUrl);
                   final ngrokHostname = ngrokUri.host;
                   final isHttps = ngrokUri.scheme == 'https';
                   
@@ -732,6 +811,9 @@ class ApiClient {
                   _setActiveHost(ngrokHostname, 0, isHttps); // Port 0 means no port in URL
                   print('✅ Switched to ngrok URL: $ngrokHostname');
                   print('   New base URL: $_activeBaseUrl');
+                  
+                  // Mark that we've found ngrok URL (stop aggressive initial discovery)
+                  _hasFoundNgrokUrl = true;
                   
                   // Also save this ngrok URL to preferences for future use
                   try {
@@ -745,6 +827,7 @@ class ApiClient {
                 // Ngrok URL not reachable - keep using IP address
               }
             }
+          }
           }
         }
       } catch (e) {
@@ -762,8 +845,7 @@ class ApiClient {
       
       // Re-discover to get IP address
       final backendInfo = await _discoveryService.discoverBackend();
-      final isNgrokUrl = backendInfo.hostname.contains('ngrok') || 
-                        backendInfo.hostname.contains('ngrok-free.app');
+      final isNgrokUrl = _isNgrokUrl(backendInfo.hostname);
       
       if (!isNgrokUrl) {
         // Found IP address - switch to it
@@ -774,6 +856,55 @@ class ApiClient {
     } catch (e) {
       print('⚠️ Failed to switch to IP address: $e');
     }
+  }
+  
+  /// Start aggressive initial discovery retry
+  /// This runs every 3 seconds during startup until ngrok URL is found or max attempts reached
+  /// Handles the case where Flutter starts before backend
+  static void _startInitialDiscoveryRetry() {
+    if (kIsWeb) return;
+    if (_hasFoundNgrokUrl) return; // Already found ngrok URL
+    
+    _initialDiscoveryAttempts = 0;
+    
+    if (kDebugMode) {
+      print('🔄 Starting aggressive initial discovery (every ${_initialDiscoveryCheckInterval.inSeconds}s for ${_maxInitialDiscoveryAttempts * _initialDiscoveryCheckInterval.inSeconds}s)...');
+      print('   This handles the case where Flutter starts before backend');
+    }
+    
+    Timer.periodic(_initialDiscoveryCheckInterval, (timer) {
+      if (!_isInitialized) {
+        timer.cancel();
+        return;
+      }
+      
+      // Stop if we've found ngrok URL
+      if (_hasFoundNgrokUrl) {
+        if (kDebugMode) {
+          print('✅ Found ngrok URL, stopping aggressive initial discovery');
+        }
+        timer.cancel();
+        return;
+      }
+      
+      // Stop if max attempts reached
+      if (_initialDiscoveryAttempts >= _maxInitialDiscoveryAttempts) {
+        if (kDebugMode) {
+          print('⏱️ Initial discovery timeout (${_maxInitialDiscoveryAttempts * _initialDiscoveryCheckInterval.inSeconds}s), switching to normal periodic check');
+        }
+        timer.cancel();
+        return;
+      }
+      
+      _initialDiscoveryAttempts++;
+      
+      // Check for ngrok URL
+      if (kDebugMode && _initialDiscoveryAttempts % 5 == 0) {
+        print('🔍 Initial discovery attempt $_initialDiscoveryAttempts/$_maxInitialDiscoveryAttempts...');
+      }
+      
+      _checkForNgrokUrlInBackground();
+    });
   }
   
   /// Start periodic check for ngrok URL
@@ -792,8 +923,7 @@ class ApiClient {
       }
       
       // Only check if not currently using ngrok
-      final isCurrentlyUsingNgrok = _activeHostIp.contains('ngrok') || 
-                                   _activeHostIp.contains('ngrok-free.app');
+      final isCurrentlyUsingNgrok = _isNgrokUrl(_activeHostIp);
       
       if (!isCurrentlyUsingNgrok) {
         // Check for ngrok URL in background
@@ -801,7 +931,9 @@ class ApiClient {
       }
     });
     
-    print('🔄 Started periodic ngrok URL check (every ${_discoveryCheckInterval.inSeconds}s)');
+    if (kDebugMode) {
+      print('🔄 Started periodic ngrok URL check (every ${_discoveryCheckInterval.inSeconds}s)');
+    }
   }
 }
 

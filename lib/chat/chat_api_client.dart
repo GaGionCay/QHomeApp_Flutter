@@ -11,6 +11,14 @@ class ChatApiClient {
         path: '/api/chat',
       );
 
+  /// Check if hostname is an ngrok URL
+  static bool _isNgrokUrl(String hostname) {
+    return hostname.contains('ngrok-free.dev') ||
+           hostname.contains('ngrok-free.app') ||
+           hostname.contains('ngrok.io') ||
+           hostname.contains('ngrok.app');
+  }
+
   final Dio dio;
   final TokenStorage _storage;
   final AuthService _authService;
@@ -75,6 +83,13 @@ class ChatApiClient {
         if (token != null) options.headers['Authorization'] = 'Bearer $token';
         final deviceId = await _storage.readDeviceId();
         if (deviceId != null) options.headers['X-Device-Id'] = deviceId;
+        
+        // Add ngrok-skip-browser-warning header for ngrok URLs
+        final uri = options.uri;
+        if (_isNgrokUrl(uri.host)) {
+          options.headers['ngrok-skip-browser-warning'] = 'true';
+        }
+        
         print('📤 [ChatApiClient] ${options.method} ${options.path}');
         return handler.next(options);
       },

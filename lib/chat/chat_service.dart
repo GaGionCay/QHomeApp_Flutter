@@ -925,13 +925,35 @@ class ChatService {
       print('   Request URL: ${e.requestOptions.uri}');
       print('   Request headers: ${e.requestOptions.headers}');
       
+      // Extract error message from response if available
+      String errorMessage = 'Lỗi khi tạo lời mời. Vui lòng thử lại.';
+      
+      if (e.response?.data != null && e.response!.data is Map) {
+        final responseData = e.response!.data as Map<String, dynamic>;
+        print('   📋 Response data keys: ${responseData.keys.toList()}');
+        print('   📋 Response data message: ${responseData['message']}');
+        
+        if (responseData.containsKey('message') && responseData['message'] != null) {
+          errorMessage = responseData['message'].toString();
+          print('   ✅ Extracted error message: $errorMessage');
+        } else if (responseData.containsKey('error') && responseData['error'] is String) {
+          errorMessage = responseData['error'].toString();
+        }
+      }
+      
       if (e.response?.statusCode == 403) {
         throw Exception('Không có quyền tạo lời mời. Vui lòng kiểm tra quyền truy cập của bạn.');
       }
       
-      throw Exception('Lỗi khi tạo lời mời: ${e.message ?? e.toString()}');
+      // Throw exception with extracted message for UI to display
+      print('   🚀 Throwing exception with message: $errorMessage');
+      throw Exception(errorMessage);
     } catch (e) {
       print('❌ [ChatService] Unexpected error creating direct invitation: $e');
+      // If it's already an Exception with message, rethrow it
+      if (e is Exception) {
+        rethrow;
+      }
       throw Exception('Lỗi khi tạo lời mời: ${e.toString()}');
     }
   }

@@ -319,7 +319,7 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
             margin: const EdgeInsets.all(16),
           ),
         );
-        Navigator.of(context).pop(true); // Return true to indicate success
+        Navigator.of(context).pop(true); 
       } else {
         setState(() {
           _error = 'Không thể hủy hợp đồng. Vui lòng thử lại.';

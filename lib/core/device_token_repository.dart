@@ -4,9 +4,10 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../auth/admin_api_client.dart';
 
 class DeviceTokenRepository {
-  DeviceTokenRepository() : _dio = AdminApiClient().dio;
+  DeviceTokenRepository();
 
-  final Dio _dio;
+  // Get Dio instance dynamically to ensure we always use the latest base URL
+  Dio get _dio => AdminApiClient().dio;
 
   Future<void> registerToken({
     required String token,
@@ -24,6 +25,13 @@ class DeviceTokenRepository {
       if (buildingId != null) 'buildingId': buildingId,
       if (role != null) 'role': role,
     };
+
+    // Log the full URL for debugging
+    final baseUrl = _dio.options.baseUrl;
+    final fullUrl = '$baseUrl/notifications/device-tokens';
+    print('🔍 [DeviceTokenRepository] Registering token to: $fullUrl');
+    print('   Base URL: $baseUrl');
+    print('   Payload: $payload');
 
     await _dio.post(
       '/notifications/device-tokens',

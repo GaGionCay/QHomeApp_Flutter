@@ -246,72 +246,9 @@ class BackendDiscoveryService {
       }
     }
 
-    // Priority 6: Try mDNS hostname discovery (local network only)
-    // Skip if device has no network or different network
-    // Only try if we haven't found anything yet
-    try {
-      final connectivity = await _connectivity.checkConnectivity();
-      if (connectivity.contains(ConnectivityResult.wifi) || 
-          connectivity.contains(ConnectivityResult.ethernet)) {
-        if (kDebugMode) {
-          print('🔍 Trying mDNS hostname: $_defaultBackendHostname');
-        }
-        final mdnsInfo = await _discoverByHostname(_defaultBackendHostname, _defaultBackendPort)
-            .timeout(const Duration(seconds: 3), onTimeout: () {
-          if (kDebugMode) {
-            print('⏱️ mDNS discovery timeout (3s)');
-          }
-          return null;
-        });
-        if (mdnsInfo != null && await _isBackendReachable(mdnsInfo)) {
-          if (kDebugMode) {
-            print('✅ Discovered via mDNS: ${mdnsInfo.hostname}:${mdnsInfo.port}');
-          }
-          await _cacheBackendInfo(mdnsInfo);
-          return mdnsInfo;
-        }
-      }
-    } catch (e) {
-      // Silently skip - this is expected if mDNS is not available
-      if (kDebugMode) {
-        print('ℹ️ mDNS discovery not available (expected)');
-      }
-    }
-
-    // Priority 7: Try local network scanning (local network only)
-    // This includes mobile hotspot scenario - scan subnet comprehensively
-    // Skip if device has no network or different network
-    // Only try if we haven't found anything yet
-    try {
-      final connectivity = await _connectivity.checkConnectivity();
-      // Include mobile connectivity for mobile hotspot scenario
-      if (connectivity.contains(ConnectivityResult.wifi) || 
-          connectivity.contains(ConnectivityResult.ethernet) ||
-          connectivity.contains(ConnectivityResult.mobile)) {
-        if (kDebugMode) {
-          print('🔍 Scanning local network (network type: $connectivity)...');
-        }
-        final scanInfo = await _discoverByLocalNetworkScan()
-            .timeout(const Duration(seconds: 30), onTimeout: () {
-          if (kDebugMode) {
-            print('⏱️ Local network scan timeout (30s)');
-          }
-          return null;
-        });
-        if (scanInfo != null && await _isBackendReachable(scanInfo)) {
-          if (kDebugMode) {
-            print('✅ Discovered via local scan: ${scanInfo.hostname}:${scanInfo.port}');
-          }
-          await _cacheBackendInfo(scanInfo);
-          return scanInfo;
-        }
-      }
-    } catch (e) {
-      // Silently skip - this is expected if local network scan fails
-      if (kDebugMode) {
-        print('ℹ️ Local network scan not available (expected)');
-      }
-    }
+    // Priority 6 & 7: REMOVED - Local network scanning and mDNS discovery
+    // In ngrok-only architecture, we don't scan local networks
+    // All communication goes through ngrok public URL
 
     // Priority 8: If we have saved manual URL but it wasn't reachable,
     // try it again as last resort (might be temporary network issue)
@@ -338,94 +275,24 @@ class BackendDiscoveryService {
       }
     }
 
-    // Before falling back to localhost/emulator IP, try cached backend one more time
-    // This handles cases where backend might be temporarily unreachable but cached IP is still valid
-    if (cachedBackendInfo != null) {
-      if (kDebugMode) {
-        print('⚠️ All discovery methods failed, but found cached backend: ${cachedBackendInfo.hostname}:${cachedBackendInfo.port}');
-        print('   Will use cached backend (may retry connection later)');
-      }
-      // Use cached backend even if reachability check failed
-      // The retry logic in ApiClient will handle connection failures
-      return cachedBackendInfo;
-    }
-
-    // Fall back to localhost variants (works on web/desktop/emulator, not physical mobile)
+    // In ngrok-only architecture, we don't fall back to localhost/IP addresses
+    // Return placeholder that indicates ngrok URL is required
     if (kDebugMode) {
-      print('⚠️ All discovery methods failed, no cached backend found');
-      if (kIsWeb) {
-        print('⚠️ Using fallback: localhost:$_defaultBackendPort');
-      } else if (Platform.isAndroid) {
-        print('⚠️ Using fallback: 10.0.2.2:$_defaultBackendPort (Android emulator)');
-        print('   For physical Android device, ensure backend is running and on same network');
-        print('   Example: http://192.168.1.100:8989 (IP of your backend machine)');
-      } else if (Platform.isIOS) {
-        print('⚠️ Using fallback: localhost:$_defaultBackendPort (iOS simulator)');
-        print('   For physical iOS device, ensure backend is running and on same network');
-        print('   Example: http://192.168.1.100:8989 (IP of your backend machine)');
-      } else {
-        print('⚠️ Using fallback: localhost:$_defaultBackendPort');
-      }
+      print('❌ No ngrok URL found!');
+      print('Ngrok URL is required for connection.');
+      print('Please ensure:');
+      print('1. Backend is running with ngrok tunnel active');
+      print('2. VNPAY_BASE_URL environment variable is set to ngrok URL');
+      print('3. Or manually set ngrok URL in app settings');
     }
     
-    // Return appropriate localhost variant based on platform
-    if (kIsWeb) {
-      // Web: use localhost
-      return BackendInfo(
-        hostname: 'localhost',
-        port: _defaultBackendPort,
-        discoveryMethod: 'fallback',
-      );
-    } else if (Platform.isAndroid) {
-      // Android: try emulator IP first
-      // If saved URL exists and it's NOT an offline ngrok URL, use it as last resort
-      if (savedManualUrl != null && savedManualUrl.isNotEmpty) {
-        final isSavedNgrokUrl = savedManualUrl.contains('ngrok') || savedManualUrl.contains('ngrok-free.app');
-        if (!isSavedNgrokUrl) {
-          // Only use non-ngrok URLs (IP addresses) as last resort
-          final parsedInfo = _parseUrl(savedManualUrl);
-          if (parsedInfo != null) {
-            if (kDebugMode) {
-              print('⚠️ Using saved URL (IP address) as last resort: $savedManualUrl');
-            }
-            return parsedInfo;
-          }
-        }
-      }
-      return BackendInfo(
-        hostname: '10.0.2.2',
-        port: _defaultBackendPort,
-        discoveryMethod: 'fallback_android_emulator',
-      );
-    } else if (Platform.isIOS) {
-      // iOS: use localhost (works on simulator)
-      // If saved URL exists and it's NOT an offline ngrok URL, use it as last resort
-      if (savedManualUrl != null && savedManualUrl.isNotEmpty) {
-        final isSavedNgrokUrl = savedManualUrl.contains('ngrok') || savedManualUrl.contains('ngrok-free.app');
-        if (!isSavedNgrokUrl) {
-          // Only use non-ngrok URLs (IP addresses) as last resort
-          final parsedInfo = _parseUrl(savedManualUrl);
-          if (parsedInfo != null) {
-            if (kDebugMode) {
-              print('⚠️ Using saved URL (IP address) as last resort: $savedManualUrl');
-            }
-            return parsedInfo;
-          }
-        }
-      }
-      return BackendInfo(
-        hostname: 'localhost',
-        port: _defaultBackendPort,
-        discoveryMethod: 'fallback',
-      );
-    } else {
-      // Desktop: use localhost
-      return BackendInfo(
-        hostname: 'localhost',
-        port: _defaultBackendPort,
-        discoveryMethod: 'fallback',
-      );
-    }
+    // Return placeholder URL - app will start but API calls will fail gracefully
+    // Background discovery will continue to try to find ngrok URL
+    return BackendInfo(
+      hostname: 'ngrok-url-required.please-set-manually',
+      port: _defaultBackendPort,
+      discoveryMethod: 'placeholder',
+    );
   }
 
   /// Try to discover backend via hostname (mDNS)
@@ -461,20 +328,28 @@ class BackendDiscoveryService {
 
   /// Discover backend via local network scanning
   /// Scans common local network IP ranges
-  /// Discover backend by scanning local network
-  /// Optimized for mobile hotspot scenario: when phone is hotspot and laptop connects to it
+  /// Supports both scenarios:
+  /// 1. Mobile hotspot: Phone is hotspot, laptop connects to it
+  /// 2. WiFi hotspot: Both phone and laptop connect to same WiFi router
   /// Strategy:
   /// 1. Detect device's private IP using NetworkInterface (more reliable than network_info_plus)
   /// 2. Filter out public IPs (mobile data) - only use private IPs for subnet scanning
-  /// 3. Scan subnet intelligently: priority IPs first, then comprehensive scan
+  /// 3. Scan subnet intelligently: priority IPs first (gateway/router), then comprehensive scan
   /// 4. If no private IP found, try common mobile hotspot subnets
   Future<BackendInfo?> _discoverByLocalNetworkScan() async {
     try {
       final connectivity = await _connectivity.checkConnectivity();
       final networkType = connectivity.isNotEmpty ? connectivity.first : ConnectivityResult.none;
+      final isWifi = connectivity.contains(ConnectivityResult.wifi) || connectivity.contains(ConnectivityResult.ethernet);
+      final isMobileHotspot = connectivity.contains(ConnectivityResult.mobile) && !isWifi;
       
       if (kDebugMode) {
         print('🔍 Scanning local network (network type: $networkType)...');
+        if (isWifi) {
+          print('   📶 WiFi/Ethernet detected - scanning for backend on same WiFi/router');
+        } else if (isMobileHotspot) {
+          print('   📱 Mobile hotspot detected - scanning for backend on hotspot subnet');
+        }
       }
 
       String? deviceIp;
@@ -512,7 +387,15 @@ class BackendDiscoveryService {
           // Check if this is a hotspot interface (common names)
           final isHotspotInterface = interface.name.toLowerCase().contains('hotspot') ||
                                      interface.name.toLowerCase().contains('ap') ||
-                                     interface.name.toLowerCase().contains('wlan');
+                                     (interface.name.toLowerCase().contains('wlan') && 
+                                      !interface.name.toLowerCase().contains('wifi'));
+          
+          // Check if this is a WiFi interface (common names)
+          final isWifiInterface = interface.name.toLowerCase().contains('wifi') ||
+                                  interface.name.toLowerCase().contains('wireless') ||
+                                  interface.name.toLowerCase().contains('ethernet') ||
+                                  (interface.name.toLowerCase().contains('wlan') && 
+                                   !isHotspotInterface);
           
           for (final addr in interface.addresses) {
             final ip = addr.address;
@@ -521,24 +404,36 @@ class BackendDiscoveryService {
             if (isPrivateIp(ip)) {
               privateIps.add(ip);
               if (kDebugMode) {
-                print('📱 Found private IP: $ip (interface: ${interface.name}${isHotspotInterface ? " [HOTSPOT]" : ""})');
+                String label = '';
+                if (isHotspotInterface) label = ' [MOBILE_HOTSPOT]';
+                else if (isWifiInterface) label = ' [WIFI]';
+                print('📱 Found private IP: $ip (interface: ${interface.name}$label)');
               }
             }
           }
         }
         
-        // Prioritize private IPs (for mobile hotspot scenario)
+        // Prioritize private IPs (works for both WiFi and mobile hotspot scenarios)
         if (privateIps.isNotEmpty) {
           deviceIp = privateIps.first;
           if (kDebugMode) {
             print('✅ Using private IP for subnet detection: $deviceIp');
+            if (isWifi) {
+              print('   📶 WiFi scenario: Will scan subnet for backend on same router');
+            } else if (isMobileHotspot) {
+              print('   📱 Mobile hotspot scenario: Will scan subnet for laptop IP');
+            }
           }
         } else if (allIps.isNotEmpty) {
-          // Fallback to any IP if no private IP found (shouldn't happen in hotspot scenario)
+          // Fallback to any IP if no private IP found
           deviceIp = allIps.first;
           if (kDebugMode) {
             print('⚠️ No private IP found, using public IP: $deviceIp');
-            print('   This may not work for mobile hotspot - laptop IP is in private range');
+            if (isMobileHotspot) {
+              print('   📱 Mobile hotspot: This may not work - laptop IP is in private range');
+            } else {
+              print('   📶 WiFi: This may not work - need private IP for subnet scan');
+            }
           }
         }
       } catch (e) {
@@ -563,11 +458,15 @@ class BackendDiscoveryService {
         }
       }
       
-      // Step 3: If still no IP found, try common hotspot subnets
+      // Step 3: If still no IP found, try common hotspot/WiFi subnets
       if (deviceIp == null || deviceIp.isEmpty) {
         if (kDebugMode) {
           print('⚠️ Could not get device IP address');
-          print('   Will try common mobile hotspot subnets instead...');
+          if (isWifi) {
+            print('   Will try common WiFi router subnets instead...');
+          } else {
+            print('   Will try common mobile hotspot subnets instead...');
+          }
         }
         return await _tryCommonHotspotSubnets();
       }
@@ -576,12 +475,17 @@ class BackendDiscoveryService {
         print('📱 Device IP: $deviceIp');
       }
       
-      // Check if IP is private - if not, try common hotspot subnets
+      // Check if IP is private - if not, try common hotspot/WiFi subnets
       if (!isPrivateIp(deviceIp)) {
         if (kDebugMode) {
           print('⚠️ Device IP is public ($deviceIp), not suitable for local network scan');
-          print('   For mobile hotspot, need private IP (10.x.x.x, 192.168.x.x, 172.16-31.x.x)');
-          print('   Will try common mobile hotspot subnets instead...');
+          if (isWifi) {
+            print('   For WiFi, need private IP (10.x.x.x, 192.168.x.x, 172.16-31.x.x)');
+            print('   Will try common WiFi router subnets instead...');
+          } else {
+            print('   For mobile hotspot, need private IP (10.x.x.x, 192.168.x.x, 172.16-31.x.x)');
+            print('   Will try common mobile hotspot subnets instead...');
+          }
         }
         return await _tryCommonHotspotSubnets();
       }
@@ -599,18 +503,36 @@ class BackendDiscoveryService {
       
       if (kDebugMode) {
         print('🌐 Detected subnet: $networkPrefix.x');
-        print('🔍 Scanning subnet comprehensively (mobile hotspot optimized)...');
+        if (isWifi) {
+          print('🔍 Scanning subnet for WiFi scenario (both devices on same WiFi/router)...');
+          print('   Priority: Gateway/router IP (.1), then common server IPs');
+        } else {
+          print('🔍 Scanning subnet for mobile hotspot scenario...');
+        }
       }
       
       // Strategy: Scan with priority order
+      // For WiFi scenario: Gateway/router (.1) is highest priority
+      // For mobile hotspot: Known laptop IPs have priority
       // 1. Priority IPs (gateway/router): .1, .2, .3, .254
-      // 2. Known laptop IP (.236) for subnet 10.141.70.x - HIGHEST PRIORITY
+      // 2. Known laptop IP (.236) for subnet 10.141.70.x - HIGHEST PRIORITY for hotspot
       // 3. Device IP itself and nearby IPs (±100 range)
       // 4. Remaining IPs in subnet (1-254, excluding already tried)
       
-      final priorityIps = <int>[1, 2, 3, 254];
+      final priorityIps = <int>[];
       
-      // For subnet 10.141.70.x, add laptop IP (.236) to highest priority
+      // For WiFi scenario: Gateway/router (.1) is highest priority
+      if (isWifi) {
+        priorityIps.addAll([1, 2, 3, 10, 100, 254]); // Gateway/router first
+        if (kDebugMode) {
+          print('   🎯 WiFi scenario - prioritizing gateway/router IP (.1)');
+        }
+      } else {
+        // For mobile hotspot: Known laptop IPs have priority
+        priorityIps.addAll([1, 2, 3, 254]); // Gateway still important
+      }
+      
+      // For subnet 10.141.70.x, add laptop IP (.236) to highest priority (both scenarios)
       if (networkPrefix == '10.141.70') {
         priorityIps.insert(0, 236); // Add .236 as first priority
         if (kDebugMode) {
@@ -620,16 +542,27 @@ class BackendDiscoveryService {
       
       final triedIps = <int>{...priorityIps};
       
-      // Step 1: Try priority IPs first (including .236 for 10.141.70.x)
+      // Step 1: Try priority IPs first
+      // For WiFi: Gateway/router (.1) first
+      // For hotspot: Known laptop IPs first
       for (final lastOctet in priorityIps) {
         final ip = '$networkPrefix.$lastOctet';
         if (kDebugMode) {
-          print('🔍 Priority IP: $ip${lastOctet == 236 ? " (LAPTOP)" : ""}');
+          String label = '';
+          if (lastOctet == 1) label = ' (GATEWAY/ROUTER)';
+          else if (lastOctet == 236) label = ' (LAPTOP)';
+          else if (lastOctet == 2 || lastOctet == 3) label = ' (COMMON_ROUTER)';
+          print('🔍 Priority IP: $ip$label');
         }
         final info = await _tryBackendAtIp(ip, _defaultBackendPort);
         if (info != null) {
           if (kDebugMode) {
             print('✅ Found backend via priority scan: $ip:$_defaultBackendPort');
+            if (isWifi) {
+              print('   📶 WiFi scenario: Backend found on same WiFi/router');
+            } else {
+              print('   📱 Mobile hotspot scenario: Backend found on hotspot subnet');
+            }
           }
           await _cacheBackendInfo(info);
           return info;
@@ -658,10 +591,16 @@ class BackendDiscoveryService {
             triedIps.add(deviceLastOctet);
           }
           
-          // Scan nearby IPs (±100 range) - this will cover laptop IP 236
-          // Scan in expanding order: 1, 2, 3... up to 100
+          // Scan nearby IPs (±100 range)
+          // For WiFi: This covers cases where backend is on same subnet but different IP
+          // For hotspot: This covers laptop IP near device IP
           if (kDebugMode) {
             print('🔍 Scanning nearby IPs (±100 range from device IP $deviceLastOctet)...');
+            if (isWifi) {
+              print('   📶 WiFi scenario: Scanning for backend on same subnet');
+            } else {
+              print('   📱 Hotspot scenario: Scanning for laptop IP near device');
+            }
           }
           for (int offset = 1; offset <= 100; offset++) {
             // Try IPs above device IP
@@ -722,20 +661,48 @@ class BackendDiscoveryService {
       if (kDebugMode) {
         print('⚠️ Comprehensive scan completed: scanned ${triedIps.length} IPs in subnet $networkPrefix.x, backend not found');
       }
+      
+      // Before falling back to emulator IP, try common hotspot/WiFi subnets
+      // This handles cases where:
+      // - Device IP is public (mobile data) but backend is on hotspot subnet
+      // - Subnet scan didn't find backend, try common router subnets
+      if (kDebugMode) {
+        if (isWifi) {
+          print('⚠️ Subnet scan didn\'t find backend, trying common WiFi router subnets as last resort...');
+        } else {
+          print('⚠️ Trying common mobile hotspot subnets as last resort...');
+        }
+      }
+      final hotspotResult = await _tryCommonHotspotSubnets();
+      if (hotspotResult != null) {
+        return hotspotResult;
+      }
     } catch (e) {
       if (kDebugMode) {
         print('❌ Local network scan failed: $e');
       }
-    }
-    
-    // Before falling back to emulator IP, try common mobile hotspot subnets
-    // This handles cases where device IP is public (mobile data) but backend is on hotspot subnet
-    if (kDebugMode) {
-      print('⚠️ Trying common mobile hotspot subnets as last resort...');
-    }
-    final hotspotResult = await _tryCommonHotspotSubnets();
-    if (hotspotResult != null) {
-      return hotspotResult;
+      
+      // On error, still try common subnets as fallback
+      try {
+        final connectivity = await _connectivity.checkConnectivity();
+        final isWifiFallback = connectivity.contains(ConnectivityResult.wifi) || connectivity.contains(ConnectivityResult.ethernet);
+        
+        if (kDebugMode) {
+          if (isWifiFallback) {
+            print('⚠️ Trying common WiFi router subnets as fallback...');
+          } else {
+            print('⚠️ Trying common mobile hotspot subnets as fallback...');
+          }
+        }
+        final hotspotResult = await _tryCommonHotspotSubnets();
+        if (hotspotResult != null) {
+          return hotspotResult;
+        }
+      } catch (e2) {
+        if (kDebugMode) {
+          print('❌ Fallback subnet scan also failed: $e2');
+        }
+      }
     }
     
     return null;
@@ -743,34 +710,41 @@ class BackendDiscoveryService {
   
   /// Try common mobile hotspot subnets
   /// This is used when device IP is public (mobile data) but backend is on hotspot subnet
+  /// Also used as fallback for WiFi scenario when subnet scan didn't find backend
   /// Common mobile hotspot subnets:
   /// - 192.168.43.x (Android hotspot)
   /// - 172.20.10.x (iOS hotspot)
   /// - 192.168.137.x (Windows hotspot)
   /// - 10.141.70.x (User's specific hotspot)
+  /// Common WiFi router subnets:
+  /// - 192.168.1.x, 192.168.0.x (Most common router subnets)
+  /// - 10.0.0.x, 10.0.1.x (Some routers use 10.x.x.x)
   Future<BackendInfo?> _tryCommonHotspotSubnets() async {
     if (kDebugMode) {
-      print('🔍 Trying common mobile hotspot subnets...');
+      print('🔍 Trying common hotspot/WiFi subnets...');
     }
     
-    // Common mobile hotspot subnets
+    // Common subnets for both mobile hotspot and WiFi scenarios
     final hotspotSubnets = [
       '10.141.70',  // User's specific hotspot subnet (priority)
+      '192.168.1',  // Most common WiFi router subnet (high priority for WiFi)
+      '192.168.0',  // Common WiFi router subnet
       '192.168.43', // Android hotspot
       '172.20.10',  // iOS hotspot
       '192.168.137', // Windows hotspot
-      '192.168.1',   // Common router subnet (fallback)
-      '10.0.0',      // Common private subnet
+      '10.0.0',     // Common private subnet (some routers use this)
+      '10.0.1',     // Common router subnet
     ];
     
     // For each subnet, try priority IPs first, then scan nearby IPs
     for (final subnet in hotspotSubnets) {
       if (kDebugMode) {
-        print('🔍 Trying hotspot subnet: $subnet.x');
+        print('🔍 Trying subnet: $subnet.x');
       }
       
-      // Priority IPs: gateway (.1), common server IPs, and user's laptop IP (.236)
-      final priorityIps = [1, 2, 3, 10, 100, 236, 254]; // Include .236 for user's laptop
+      // Priority IPs: gateway/router (.1) is highest priority for WiFi
+      // For hotspot: Known laptop IPs (.236) also have priority
+      final priorityIps = [1, 2, 3, 10, 100, 236, 254]; // Gateway first, then laptop IP
       
       for (final lastOctet in priorityIps) {
         final ip = '$subnet.$lastOctet';
@@ -967,6 +941,11 @@ class BackendDiscoveryService {
   }
 
   /// Get cached backend info
+  /// Get cached backend info (public method for use in error handlers)
+  BackendInfo? getCachedBackendInfo() {
+    return _getCachedBackendInfo();
+  }
+  
   BackendInfo? _getCachedBackendInfo() {
     try {
       final hostname = _prefs.getString(_cacheKeyBackendHostname);
@@ -1308,72 +1287,9 @@ class BackendDiscoveryService {
         potentialBackends.add(cachedInfo);
       }
       
-      // 2. Try common local network IPs (if we have WiFi info)
-      try {
-        final connectivity = await _connectivity.checkConnectivity();
-        if (connectivity.contains(ConnectivityResult.wifi) || 
-            connectivity.contains(ConnectivityResult.ethernet)) {
-          final deviceIp = await _networkInfo.getWifiIP();
-          if (deviceIp != null) {
-            if (kDebugMode) {
-              print('  Device IP: $deviceIp');
-            }
-            final parts = deviceIp.split('.');
-            if (parts.length >= 3) {
-              final networkPrefix = '${parts[0]}.${parts[1]}.${parts[2]}';
-              // Try common backend IPs - expand range to find backend
-              final commonIps = <String>[];
-              
-              // Try gateway/router first (usually .1)
-              commonIps.add('$networkPrefix.1');
-              
-              // Try common server IPs
-              commonIps.addAll([
-                '$networkPrefix.10',
-                '$networkPrefix.100',
-                '$networkPrefix.200',
-                '$networkPrefix.254',
-              ]);
-              
-              // Also try device IP itself and nearby IPs (in case backend is on same device or nearby)
-              final deviceIpParts = deviceIp.split('.');
-              if (deviceIpParts.length == 4) {
-                final lastOctet = int.tryParse(deviceIpParts[3]);
-                if (lastOctet != null) {
-                  // Try nearby IPs (expanded range)
-                  for (int offset = -10; offset <= 10; offset++) {
-                    final testIp = lastOctet + offset;
-                    if (testIp > 0 && testIp < 255 && !commonIps.contains('$networkPrefix.$testIp')) {
-                      commonIps.add('$networkPrefix.$testIp');
-                    }
-                  }
-                }
-              }
-              
-              if (kDebugMode) {
-                print('  Will try ${commonIps.length} IP addresses in network $networkPrefix.x');
-              }
-              
-              for (final ip in commonIps) {
-                potentialBackends.add(BackendInfo(
-                  hostname: ip,
-                  ip: ip,
-                  port: _defaultBackendPort,
-                  discoveryMethod: 'scan',
-                ));
-              }
-            }
-          } else {
-            if (kDebugMode) {
-              print('  Cannot get device IP, will try limited IPs');
-            }
-          }
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print('  Error getting network info: $e');
-        }
-      }
+      // 2. REMOVED - Local network IP scanning
+      // In ngrok-only architecture, we don't scan local network IPs
+      // Only use localhost/10.0.2.2 for emulator/web bootstrap
       
       // 3. Try localhost variants (works on web/desktop/emulator)
       // Android emulator uses 10.0.2.2 to access host machine's localhost
@@ -1448,16 +1364,45 @@ class BackendDiscoveryService {
             );
             
             if (response.statusCode == 200 && response.data != null) {
+              // Prefer HTTP URL to avoid ngrok warning page
+              final httpUrl = response.data['httpUrl'] as String?;
+              final httpsUrl = response.data['httpsUrl'] as String?;
               final publicUrl = response.data['publicUrl'] as String?;
-              if (publicUrl != null && publicUrl.isNotEmpty && !publicUrl.contains('your-ngrok-url')) {
-                // Remove trailing slash if present
-                final ngrokUrl = publicUrl.endsWith('/') 
+              
+              String? ngrokUrl;
+              
+              // Priority 1: Use HTTP URL if available (avoids ngrok warning page)
+              if (httpUrl != null && httpUrl.isNotEmpty && !httpUrl.contains('your-ngrok-url')) {
+                ngrokUrl = httpUrl.endsWith('/') 
+                    ? httpUrl.substring(0, httpUrl.length - 1) 
+                    : httpUrl;
+                if (kDebugMode) {
+                  print('✅ Backend found at ${backend.hostname}:${backend.port}');
+                  print('✅ Using HTTP tunnel (avoids ngrok warning page): $ngrokUrl');
+                }
+              }
+              // Priority 2: Use HTTPS URL if HTTP not available
+              else if (httpsUrl != null && httpsUrl.isNotEmpty && !httpsUrl.contains('your-ngrok-url')) {
+                ngrokUrl = httpsUrl.endsWith('/') 
+                    ? httpsUrl.substring(0, httpsUrl.length - 1) 
+                    : httpsUrl;
+                if (kDebugMode) {
+                  print('✅ Backend found at ${backend.hostname}:${backend.port}');
+                  print('⚠️ Using HTTPS tunnel (may have ngrok warning page): $ngrokUrl');
+                }
+              }
+              // Priority 3: Fallback to publicUrl
+              else if (publicUrl != null && publicUrl.isNotEmpty && !publicUrl.contains('your-ngrok-url')) {
+                ngrokUrl = publicUrl.endsWith('/') 
                     ? publicUrl.substring(0, publicUrl.length - 1) 
                     : publicUrl;
                 if (kDebugMode) {
                   print('✅ Backend found at ${backend.hostname}:${backend.port}');
                   print('✅ Backend exposed ngrok URL: $ngrokUrl');
                 }
+              }
+              
+              if (ngrokUrl != null) {
                 // Cache the working backend for next time
                 await _cacheBackendInfo(backend);
                 return ngrokUrl;
