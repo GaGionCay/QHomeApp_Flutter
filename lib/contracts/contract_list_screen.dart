@@ -908,11 +908,45 @@ class _ContractListScreenState extends State<ContractListScreen>
                   ),
                 ),
               ],
+              // Permission message (nếu user không phải OWNER/TENANT)
+              if (contract.permissionMessage != null && contract.permissionMessage!.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.orange.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        CupertinoIcons.info_circle,
+                        color: Colors.orange[700],
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          contract.permissionMessage!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.orange[900],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               // Action buttons for RENTAL contracts that are ACTIVE and need renewal
               // Không hiển thị nếu hợp đồng đã được gia hạn thành công (có renewedContractId)
+              // Chỉ hiển thị nếu user là OWNER/TENANT (isOwner == true)
               if (contract.contractType == 'RENTAL' && 
                   contract.status == 'ACTIVE' &&
-                  contract.renewedContractId == null) ...[
+                  contract.renewedContractId == null &&
+                  contract.isOwner == true) ...[
                 const SizedBox(height: 20),
                 // Check if contract is within 3 months before expiration
                 Builder(
@@ -963,13 +997,19 @@ class _ContractListScreenState extends State<ContractListScreen>
                           children: [
                             Expanded(
                               child: OutlinedButton.icon(
-                                onPressed: () => _handleCancelContract(contract),
+                                onPressed: contract.canCancel == true 
+                                    ? () => _handleCancelContract(contract) 
+                                    : null,
                                 icon: const Icon(CupertinoIcons.xmark_circle, size: 18),
                                 label: const Text('Hủy hợp đồng'),
                                 style: OutlinedButton.styleFrom(
-                                  foregroundColor: theme.colorScheme.error,
+                                  foregroundColor: contract.canCancel == true
+                                      ? theme.colorScheme.error
+                                      : theme.colorScheme.onSurface.withValues(alpha: 0.38),
                                   side: BorderSide(
-                                    color: theme.colorScheme.error.withValues(alpha: 0.5),
+                                    color: contract.canCancel == true
+                                        ? theme.colorScheme.error.withValues(alpha: 0.5)
+                                        : theme.colorScheme.outline.withValues(alpha: 0.2),
                                     width: 1.5,
                                   ),
                                   padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
@@ -983,14 +1023,16 @@ class _ContractListScreenState extends State<ContractListScreen>
                             const SizedBox(width: 12),
                             Expanded(
                               child: FilledButton.icon(
-                                onPressed: canRenew ? () => _handleRenewContract(contract) : null,
+                                onPressed: (canRenew && contract.canRenew == true) 
+                                    ? () => _handleRenewContract(contract) 
+                                    : null,
                                 icon: const Icon(CupertinoIcons.arrow_clockwise, size: 18),
                                 label: const Text('Gia hạn hợp đồng'),
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: canRenew 
+                                  backgroundColor: (canRenew && contract.canRenew == true)
                                       ? AppColors.primaryBlue 
                                       : theme.colorScheme.surfaceContainerHighest,
-                                  foregroundColor: canRenew 
+                                  foregroundColor: (canRenew && contract.canRenew == true)
                                       ? Colors.white 
                                       : theme.colorScheme.onSurface.withValues(alpha: 0.38),
                                   padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
@@ -998,7 +1040,7 @@ class _ContractListScreenState extends State<ContractListScreen>
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(14),
                                   ),
-                                  elevation: canRenew ? 2 : 0,
+                                  elevation: (canRenew && contract.canRenew == true) ? 2 : 0,
                                 ),
                               ),
                             ),

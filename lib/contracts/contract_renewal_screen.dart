@@ -428,6 +428,21 @@ class _ContractRenewalScreenState extends State<ContractRenewalScreen> {
   }
 
   Future<void> _proceedToPayment() async {
+    // Check permission before proceeding
+    if (widget.contract.isOwner == false) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.contract.permissionMessage ?? 
+                'Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng.',
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+    
     if (_selectedStartDate == null || _selectedEndDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Vui lòng chọn đầy đủ ngày bắt đầu và kết thúc')),
@@ -531,6 +546,12 @@ class _ContractRenewalScreenState extends State<ContractRenewalScreen> {
         if (errorMessage.contains('Chỉ chủ căn hộ') || errorMessage.contains('OWNER') || errorMessage.contains('TENANT') || errorMessage.contains('không được phép')) {
           // Permission error - user is not OWNER/TENANT
           errorMessage = 'Chỉ chủ căn hộ (OWNER hoặc người thuê TENANT) mới được gia hạn hợp đồng. Thành viên hộ gia đình không được phép gia hạn.';
+        }
+        
+        // Check permission before allowing renewal
+        if (widget.contract.isOwner == false) {
+          errorMessage = widget.contract.permissionMessage ?? 
+              'Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng.';
         } else if (errorMessage.contains('ít nhất 3 tháng') || errorMessage.contains('3 tháng')) {
           errorMessage = 'Gia hạn hợp đồng phải ít nhất 3 tháng. Vui lòng chọn ngày kết thúc cách ngày bắt đầu ít nhất 3 tháng.';
         } else if (errorMessage.contains('trùng thời gian') || errorMessage.contains('trùng')) {

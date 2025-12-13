@@ -27,6 +27,13 @@ class ContractDto {
   final double? totalRent; // Calculated total rent
   final String? renewedContractId; // ID of the new contract created when this contract is renewed successfully
   final List<ContractFileDto> files;
+  
+  // Permission fields
+  final bool? isOwner; // true if current user is OWNER or TENANT of the unit
+  final bool? canRenew; // true if user can renew contract
+  final bool? canCancel; // true if user can cancel contract
+  final bool? canExtend; // true if user can extend contract
+  final String? permissionMessage; // Message to display if user doesn't have permission
 
   ContractDto({
     required this.id,
@@ -55,6 +62,11 @@ class ContractDto {
     this.totalRent,
     this.renewedContractId,
     this.files = const [],
+    this.isOwner,
+    this.canRenew,
+    this.canCancel,
+    this.canExtend,
+    this.permissionMessage,
   });
 
   factory ContractDto.fromJson(Map<String, dynamic> json) {
@@ -112,6 +124,11 @@ class ContractDto {
       totalRent: parseDouble(json['totalRent']),
       renewedContractId: json['renewedContractId']?.toString(),
       files: parseFiles(json['files']),
+      isOwner: json['isOwner'] == true,
+      canRenew: json['canRenew'] == true,
+      canCancel: json['canCancel'] == true,
+      canExtend: json['canExtend'] == true,
+      permissionMessage: json['permissionMessage']?.toString(),
     );
   }
 

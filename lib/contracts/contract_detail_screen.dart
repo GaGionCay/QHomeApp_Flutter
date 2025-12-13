@@ -611,6 +611,33 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
             const SizedBox(height: 20),
           ],
 
+          // Permission message (nếu user không phải OWNER/TENANT)
+          if (contract.permissionMessage != null && contract.permissionMessage!.isNotEmpty) ...[
+            _DetailGlassCard(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Row(
+                  children: [
+                    Icon(
+                      CupertinoIcons.info_circle,
+                      color: Colors.orange[700],
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        contract.permissionMessage!,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: Colors.orange[900],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
           // Metadata
           _DetailGlassCard(
             child: Padding(

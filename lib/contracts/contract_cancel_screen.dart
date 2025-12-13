@@ -191,6 +191,24 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
   }
 
   Future<void> _confirmCancel() async {
+    // Check permission before showing dialog
+    if (widget.contract.isOwner == false) {
+      final theme = Theme.of(context);
+      final isDark = theme.brightness == Brightness.dark;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.contract.permissionMessage ?? 
+                'Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng.',
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+    
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -345,6 +363,12 @@ class _ContractCancelScreenState extends State<ContractCancelScreen> {
       if (errorMessage.contains('Chỉ chủ căn hộ') || errorMessage.contains('OWNER') || errorMessage.contains('TENANT') || errorMessage.contains('không được phép')) {
         // Permission error - user is not OWNER/TENANT
         errorMessage = 'Chỉ chủ căn hộ (OWNER hoặc người thuê TENANT) mới được hủy gia hạn hợp đồng. Thành viên hộ gia đình không được phép hủy gia hạn.';
+      }
+      
+      // Check permission before allowing cancel
+      if (widget.contract.isOwner == false) {
+        errorMessage = widget.contract.permissionMessage ?? 
+            'Bạn không phải chủ căn hộ nên không thể gia hạn hay hủy hợp đồng.';
       }
       
       setState(() {
