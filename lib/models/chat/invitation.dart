@@ -6,9 +6,9 @@ class GroupInvitationResponse {
   final String? inviterName;
   final String inviteePhone;
   final String? inviteeResidentId;
-  final String status; // PENDING, ACCEPTED, DECLINED, EXPIRED
+  final String status; // PENDING, ACCEPTED, DECLINED (no longer EXPIRED - invitations don't expire)
   final DateTime createdAt;
-  final DateTime expiresAt;
+  final DateTime? expiresAt; // No longer used - invitations don't expire, only accept/decline changes status
 
   GroupInvitationResponse({
     required this.id,
@@ -20,7 +20,7 @@ class GroupInvitationResponse {
     this.inviteeResidentId,
     required this.status,
     required this.createdAt,
-    required this.expiresAt,
+    this.expiresAt, // Optional now since backend doesn't set it
   });
 
   factory GroupInvitationResponse.fromJson(Map<String, dynamic> json) {
@@ -38,9 +38,27 @@ class GroupInvitationResponse {
           : DateTime.now(),
       expiresAt: json['expiresAt'] != null
           ? DateTime.parse(json['expiresAt'])
-          : DateTime.now(),
+          : null, // Backend no longer sets expiresAt - invitations don't expire
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'groupId': groupId,
+      'groupName': groupName,
+      'inviterId': inviterId,
+      'inviterName': inviterName,
+      'inviteePhone': inviteePhone,
+      'inviteeResidentId': inviteeResidentId,
+      'status': status,
+      'createdAt': createdAt.toIso8601String(),
+      'expiresAt': expiresAt?.toIso8601String(),
+    };
+  }
+
+  // Invitations no longer expire - only accept/decline changes status
+  bool get isExpired => false;
 }
 
 

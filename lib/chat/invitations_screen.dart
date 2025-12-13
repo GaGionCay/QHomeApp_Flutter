@@ -523,35 +523,8 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
                                                 ),
                                                 const SizedBox(height: 12),
                                               ],
-                                              // Dòng 3: Thời gian hết hạn - luôn hiển thị đầy đủ, có thể xuống dòng
-                                              Row(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Padding(
-                                                    padding: const EdgeInsets.only(top: 2),
-                                                    child: Icon(
-                                                      CupertinoIcons.clock,
-                                                      size: 14,
-                                                      color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 6),
-                                                  Expanded(
-                                                    child: Text(
-                                                      'Hết hạn: ${_formatDate(invitation.expiresAt)}',
-                                                      style: theme.textTheme.bodySmall?.copyWith(
-                                                        color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
-                                                        fontSize: 13,
-                                                        height: 1.5,
-                                                        fontWeight: FontWeight.w500,
-                                                      ),
-                                                      maxLines: 2,
-                                                      softWrap: true,
-                                                      overflow: TextOverflow.ellipsis,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
+                                              // Don't show expiration date - group invitations don't expire
+                                              // Removed expiration display section
                                             ],
                                           ),
                                         ),
