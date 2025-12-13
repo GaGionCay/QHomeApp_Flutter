@@ -5,10 +5,10 @@ class DirectInvitation {
   final String? inviterName;
   final String inviteeId;
   final String? inviteeName;
-  final String status; // PENDING, ACCEPTED, DECLINED, EXPIRED
+  final String status; // PENDING, ACCEPTED, DECLINED (no longer EXPIRED - invitations don't expire)
   final String? initialMessage;
   final DateTime createdAt;
-  final DateTime expiresAt;
+  final DateTime? expiresAt; // No longer used - invitations don't expire, only accept/decline changes status
   final DateTime? respondedAt;
 
   DirectInvitation({
@@ -21,7 +21,7 @@ class DirectInvitation {
     required this.status,
     this.initialMessage,
     required this.createdAt,
-    required this.expiresAt,
+    this.expiresAt, // Optional now since backend doesn't set it
     this.respondedAt,
   });
 
@@ -40,7 +40,7 @@ class DirectInvitation {
           : DateTime.now(),
       expiresAt: json['expiresAt'] != null
           ? DateTime.parse(json['expiresAt'])
-          : DateTime.now().add(const Duration(days: 7)),
+          : null, // Backend no longer sets expiresAt - invitations don't expire
       respondedAt: json['respondedAt'] != null
           ? DateTime.parse(json['respondedAt'])
           : null,
@@ -58,12 +58,13 @@ class DirectInvitation {
       'status': status,
       'initialMessage': initialMessage,
       'createdAt': createdAt.toIso8601String(),
-      'expiresAt': expiresAt.toIso8601String(),
+      'expiresAt': expiresAt?.toIso8601String(),
       'respondedAt': respondedAt?.toIso8601String(),
     };
   }
 
-  bool get isExpired => DateTime.now().isAfter(expiresAt);
+  // Invitations no longer expire - only accept/decline changes status
+  bool get isExpired => false;
 }
 
 
