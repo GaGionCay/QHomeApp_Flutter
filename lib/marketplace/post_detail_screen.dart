@@ -2839,10 +2839,23 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        // Extract error message - remove "Exception: " prefix if present
+        String errorMessage = e.toString().replaceFirst('Exception: ', '');
+        
+        // Check if this is an informational message (not an error)
+        bool isInfoMessage = errorMessage.contains('Bạn đã gửi lời mời rồi') || 
+                             errorMessage.contains('đã gửi lời mời cho bạn rồi');
+        
+        // If error message already contains the full message, use it directly
+        if (!errorMessage.startsWith('Lỗi') && !errorMessage.contains('đã gửi lời mời')) {
+          errorMessage = 'Lỗi: $errorMessage';
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lỗi: ${e.toString()}'),
-            backgroundColor: Colors.red,
+            content: Text(errorMessage),
+            backgroundColor: isInfoMessage ? Colors.orange : Colors.red,
+            duration: Duration(seconds: isInfoMessage ? 5 : 4),
           ),
         );
       }
@@ -3278,29 +3291,69 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       }
       
       // Invite to group
-      await _chatService.inviteMembersByPhone(
+      final inviteResult = await _chatService.inviteMembersByPhone(
         groupId: selectedGroup.id,
         phoneNumbers: [phoneNumber],
       );
       
       if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(createNewGroup 
-                ? 'Đã tạo nhóm "${selectedGroup.name}" và gửi lời mời'
-                : 'Đã gửi lời mời vào nhóm "${selectedGroup.name}"'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        // Check if there are successful invitations
+        if (inviteResult.successfulInvitations != null && inviteResult.successfulInvitations!.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(createNewGroup 
+                  ? 'Đã tạo nhóm "${selectedGroup.name}" và gửi lời mời'
+                  : 'Đã gửi lời mời vào nhóm "${selectedGroup.name}"'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else if (inviteResult.skippedPhones != null && inviteResult.skippedPhones!.isNotEmpty) {
+          // If only skipped phones (e.g., already sent invitation), show message from skippedPhones
+          String skippedMessage = inviteResult.skippedPhones!.first;
+          // Extract message from format: "phone (message)"
+          if (skippedMessage.contains('(') && skippedMessage.contains(')')) {
+            int start = skippedMessage.indexOf('(') + 1;
+            int end = skippedMessage.lastIndexOf(')');
+            skippedMessage = skippedMessage.substring(start, end);
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(skippedMessage),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        } else {
+          // Fallback error message
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Không thể gửi lời mời'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        // Extract error message - remove "Exception: " prefix if present
+        String errorMessage = e.toString().replaceFirst('Exception: ', '');
+        
+        // Check if this is an informational message (not an error)
+        bool isInfoMessage = errorMessage.contains('Bạn đã gửi lời mời rồi') || 
+                             errorMessage.contains('đã gửi lời mời cho bạn rồi');
+        
+        // If error message already contains the full message, use it directly
+        if (!errorMessage.startsWith('Lỗi') && !errorMessage.contains('đã gửi lời mời')) {
+          errorMessage = 'Lỗi: $errorMessage';
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lỗi: ${e.toString()}'),
-            backgroundColor: Colors.red,
+            content: Text(errorMessage),
+            backgroundColor: isInfoMessage ? Colors.orange : Colors.red,
+            duration: Duration(seconds: isInfoMessage ? 5 : 4),
           ),
         );
       }

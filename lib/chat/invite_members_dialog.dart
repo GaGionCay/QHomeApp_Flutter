@@ -108,10 +108,23 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> {
       }
     } catch (e) {
       if (mounted) {
+        // Extract error message - remove "Exception: " prefix if present
+        String errorMessage = e.toString().replaceFirst('Exception: ', '');
+        
+        // Check if this is an informational message (not an error)
+        bool isInfoMessage = errorMessage.contains('Bạn đã gửi lời mời rồi') || 
+                             errorMessage.contains('đã gửi lời mời cho bạn rồi');
+        
+        // If error message already contains the full message, use it directly
+        if (!errorMessage.startsWith('Lỗi') && !errorMessage.contains('đã gửi lời mời')) {
+          errorMessage = 'Lỗi khi mời thành viên: $errorMessage';
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lỗi khi mời thành viên: ${e.toString()}'),
-            backgroundColor: Colors.red,
+            content: Text(errorMessage),
+            backgroundColor: isInfoMessage ? Colors.orange : Colors.red,
+            duration: Duration(seconds: isInfoMessage ? 5 : 4),
           ),
         );
       }

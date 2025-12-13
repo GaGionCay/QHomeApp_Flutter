@@ -539,10 +539,23 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        // Extract error message - remove "Exception: " prefix if present
+        String errorMessage = e.toString().replaceFirst('Exception: ', '');
+        
+        // Check if this is an informational message (not an error)
+        bool isInfoMessage = errorMessage.contains('Bạn đã gửi lời mời rồi') || 
+                             errorMessage.contains('đã gửi lời mời cho bạn rồi');
+        
+        // If error message already contains the full message, use it directly
+        if (!errorMessage.startsWith('Lỗi') && !errorMessage.contains('đã gửi lời mời')) {
+          errorMessage = 'Lỗi: $errorMessage';
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lỗi: ${e.toString()}'),
-            backgroundColor: Colors.red,
+            content: Text(errorMessage),
+            backgroundColor: isInfoMessage ? Colors.orange : Colors.red,
+            duration: Duration(seconds: isInfoMessage ? 5 : 4),
           ),
         );
       }

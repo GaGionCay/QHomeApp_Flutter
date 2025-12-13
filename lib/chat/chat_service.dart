@@ -254,13 +254,38 @@ class ChatService {
       
       print('📨 [ChatService] ========== inviteMembersByPhone END ==========');
       return result;
+    } on DioException catch (e) {
+      print('❌ [ChatService] Error in inviteMembersByPhone:');
+      print('   Type: ${e.type}');
+      print('   Status code: ${e.response?.statusCode}');
+      print('   Response data: ${e.response?.data}');
+      print('   Request URL: ${e.requestOptions.uri}');
+      
+      // Extract error message from response if available
+      String errorMessage = 'Lỗi khi mời thành viên. Vui lòng thử lại.';
+      
+      if (e.response?.data != null && e.response!.data is Map) {
+        final responseData = e.response!.data as Map<String, dynamic>;
+        print('   📋 Response data keys: ${responseData.keys.toList()}');
+        print('   📋 Response data message: ${responseData['message']}');
+        
+        if (responseData.containsKey('message') && responseData['message'] != null) {
+          errorMessage = responseData['message'].toString();
+          print('   ✅ Extracted error message: $errorMessage');
+        } else if (responseData.containsKey('error') && responseData['error'] is String) {
+          errorMessage = responseData['error'].toString();
+        }
+      }
+      
+      // Throw exception with extracted message for UI to display
+      print('   🚀 Throwing exception with message: $errorMessage');
+      throw Exception(errorMessage);
     } catch (e, stackTrace) {
-      print('❌ [ChatService] Error in inviteMembersByPhone: $e');
+      print('❌ [ChatService] Unexpected error in inviteMembersByPhone: $e');
       print('❌ [ChatService] Stack trace: $stackTrace');
-      if (e is DioException) {
-        print('❌ [ChatService]   Status code: ${e.response?.statusCode}');
-        print('❌ [ChatService]   Response data: ${e.response?.data}');
-        print('❌ [ChatService]   Request URL: ${e.requestOptions.uri}');
+      // If it's already an Exception with message, rethrow it
+      if (e is Exception) {
+        rethrow;
       }
       throw Exception('Lỗi khi mời thành viên: ${e.toString()}');
     }
