@@ -1,8 +1,10 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
 import 'chat_service.dart';
 import '../models/chat/friend.dart';
+import '../auth/api_client.dart';
 
 class CreateGroupScreen extends StatefulWidget {
   const CreateGroupScreen({super.key});
@@ -17,12 +19,18 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   final _descriptionController = TextEditingController();
   final _phoneController = TextEditingController();
   final ChatService _service = ChatService();
+  final ApiClient _apiClient = ApiClient();
   
   List<String> _phoneNumbers = [];
   List<Friend> _friends = [];
   Set<String> _selectedFriendIds = {}; // Selected friend residentIds
   bool _isLoading = false;
   bool _isLoadingFriends = false;
+  
+  // Phone autocomplete
+  List<Map<String, dynamic>> _phoneSuggestions = [];
+  bool _isSearchingPhone = false;
+  Timer? _phoneSearchDebounce;
 
   @override
   void initState() {
@@ -35,7 +43,81 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     _nameController.dispose();
     _descriptionController.dispose();
     _phoneController.dispose();
+    _phoneSearchDebounce?.cancel();
     super.dispose();
+  }
+  
+  Future<void> _searchResidentsByPhone(String phonePrefix) async {
+    // Cancel previous debounce
+    _phoneSearchDebounce?.cancel();
+    
+    // Normalize phone: remove all non-digit characters
+    final normalizedPhone = phonePrefix.replaceAll(RegExp(r'[^0-9]'), '');
+    
+    // Only search if at least 3 digits
+    if (normalizedPhone.length < 3) {
+      setState(() {
+        _phoneSuggestions = [];
+        _isSearchingPhone = false;
+      });
+      return;
+    }
+    
+    // Debounce: wait 500ms before searching
+    _phoneSearchDebounce = Timer(const Duration(milliseconds: 500), () async {
+      setState(() {
+        _isSearchingPhone = true;
+      });
+      
+      try {
+        final response = await _apiClient.dio.get(
+          '/residents/search-by-phone',
+          queryParameters: {'prefix': normalizedPhone},
+        );
+        
+        if (mounted) {
+          final List<dynamic> data = response.data ?? [];
+          setState(() {
+            _phoneSuggestions = data.map((item) => {
+              'id': item['id']?.toString() ?? '',
+              'fullName': item['fullName']?.toString() ?? '',
+              'phone': item['phone']?.toString() ?? '',
+            }).toList();
+            _isSearchingPhone = false;
+          });
+        }
+      } catch (e) {
+        debugPrint('⚠️ [CreateGroupScreen] Error searching residents by phone: $e');
+        if (mounted) {
+          setState(() {
+            _phoneSuggestions = [];
+            _isSearchingPhone = false;
+          });
+        }
+      }
+    });
+  }
+  
+  void _selectPhoneSuggestion(Map<String, dynamic> resident) {
+    final phone = resident['phone']?.toString() ?? '';
+    if (phone.isEmpty) return;
+    
+    // Normalize phone
+    final normalizedPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    
+    // Check if already added
+    if (_phoneNumbers.contains(normalizedPhone)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Số điện thoại đã được thêm')),
+      );
+      return;
+    }
+    
+    setState(() {
+      _phoneNumbers.add(normalizedPhone);
+      _phoneController.clear();
+      _phoneSuggestions = [];
+    });
   }
 
   Future<void> _loadFriends() async {
@@ -312,31 +394,97 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            Row(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: _phoneController,
-                    decoration: const InputDecoration(
-                      labelText: 'Số điện thoại',
-                      hintText: '0123456789',
-                      border: OutlineInputBorder(),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _phoneController,
+                        decoration: InputDecoration(
+                          labelText: 'Số điện thoại',
+                          hintText: '0123456789',
+                          border: const OutlineInputBorder(),
+                          suffixIcon: _isSearchingPhone
+                              ? const Padding(
+                                  padding: EdgeInsets.all(12.0),
+                                  child: SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  ),
+                                )
+                              : null,
+                        ),
+                        keyboardType: TextInputType.phone,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(10),
+                        ],
+                        onChanged: (value) {
+                          _searchResidentsByPhone(value);
+                        },
+                      ),
                     ),
-                    keyboardType: TextInputType.phone,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(10),
-                    ],
-                  ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(CupertinoIcons.add_circled),
+                      onPressed: _addPhoneNumber,
+                      style: IconButton.styleFrom(
+                        backgroundColor: theme.colorScheme.primaryContainer,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(CupertinoIcons.add_circled),
-                  onPressed: _addPhoneNumber,
-                  style: IconButton.styleFrom(
-                    backgroundColor: theme.colorScheme.primaryContainer,
+                // Phone suggestions dropdown
+                if (_phoneSuggestions.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 200),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surface,
+                      border: Border.all(
+                        color: theme.colorScheme.outline.withValues(alpha: 0.2),
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _phoneSuggestions.length,
+                      itemBuilder: (context, index) {
+                        final resident = _phoneSuggestions[index];
+                        final fullName = resident['fullName']?.toString() ?? '';
+                        final phone = resident['phone']?.toString() ?? '';
+                        return ListTile(
+                          dense: true,
+                          title: Text(
+                            fullName.isNotEmpty ? fullName : 'Không có tên',
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                          subtitle: Text(
+                            phone,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                            ),
+                          ),
+                          leading: Icon(
+                            CupertinoIcons.person_circle,
+                            color: theme.colorScheme.primary,
+                          ),
+                          onTap: () => _selectPhoneSuggestion(resident),
+                        );
+                      },
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
             if (_phoneNumbers.isNotEmpty) ...[
