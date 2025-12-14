@@ -23,7 +23,7 @@ class ContractDto {
   final String? renewalStatus; // PENDING, REMINDED, DECLINED
   final int? reminderCount; // 1, 2, or 3
   final bool? isFinalReminder; // true if reminderCount == 3
-  final bool? needsRenewal; // true if contract is within 1 month before expiration (28-32 days, same as reminder 1)
+  final bool? needsRenewal; // true if contract is within 1 month before expiration (29-31 days, same as reminder 1)
   final double? totalRent; // Calculated total rent
   final String? renewedContractId; // ID of the new contract created when this contract is renewed successfully
   final List<ContractFileDto> files;

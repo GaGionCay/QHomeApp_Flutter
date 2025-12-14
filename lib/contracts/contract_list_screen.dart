@@ -1059,7 +1059,7 @@ class _ContractListScreenState extends State<ContractListScreen>
   }
 
   /// Check if contract needs renewal
-  /// Sử dụng field needsRenewal từ backend (chỉ true khi trong vòng 1 tháng trước hết hạn - 28-32 ngày)
+  /// Sử dụng field needsRenewal từ backend (chỉ true khi trong vòng 1 tháng trước hết hạn - 29-31 ngày)
   /// Nếu không có field này, fallback về logic cũ
   bool _needsRenewal(ContractDto contract) {
     // Chỉ hợp đồng RENTAL và ACTIVE mới cần gia hạn
@@ -1068,7 +1068,7 @@ class _ContractListScreenState extends State<ContractListScreen>
     }
     
     // Ưu tiên sử dụng field needsRenewal từ backend
-    // Field này chỉ true khi trong vòng 1 tháng trước hết hạn (28-32 ngày, cùng thời điểm reminder lần 1)
+    // Field này chỉ true khi trong vòng 1 tháng trước hết hạn (29-31 ngày, cùng thời điểm reminder lần 1)
     if (contract.needsRenewal == true) {
       return true;
     }
