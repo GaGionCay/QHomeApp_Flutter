@@ -10,6 +10,11 @@ class InvoiceLineResponseDto {
   final double lineTotal;
   final String serviceCode;
   final String status;
+  
+  // Permission fields
+  final bool? isOwner; // true if current user is OWNER or TENANT of the unit
+  final bool? canPay; // true if user can pay this invoice
+  final String? permissionMessage; // Message to display if user doesn't have permission
 
   InvoiceLineResponseDto({
     required this.payerUnitId,
@@ -23,6 +28,9 @@ class InvoiceLineResponseDto {
     required this.lineTotal,
     required this.serviceCode,
     required this.status,
+    this.isOwner,
+    this.canPay,
+    this.permissionMessage,
   });
 
   factory InvoiceLineResponseDto.fromJson(Map<String, dynamic> json) {
@@ -38,6 +46,9 @@ class InvoiceLineResponseDto {
       lineTotal: (json['lineTotal'] is num) ? json['lineTotal'].toDouble() : 0.0,
       serviceCode: json['serviceCode'] ?? '',
       status: json['status'] ?? '',
+      isOwner: json['isOwner'] == true,
+      canPay: json['canPay'] == true,
+      permissionMessage: json['permissionMessage']?.toString(),
     );
   }
 
@@ -53,6 +64,9 @@ class InvoiceLineResponseDto {
         'lineTotal': lineTotal,
         'serviceCode': serviceCode,
         'status': status,
+        'isOwner': isOwner,
+        'canPay': canPay,
+        'permissionMessage': permissionMessage,
       };
 
   bool get isPaid => status.toUpperCase() == 'PAID';

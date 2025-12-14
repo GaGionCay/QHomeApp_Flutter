@@ -744,6 +744,21 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
   }
 
   Future<void> _handlePayInvoice(InvoiceLineResponseDto invoice) async {
+    // Check permission before showing dialog
+    if (invoice.isOwner == false) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            invoice.permissionMessage ?? 
+                'Bạn không được phép thanh toán hóa đơn này',
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+    
     if (invoice.isPaid) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1222,6 +1237,38 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
             const SizedBox(height: 18),
             Divider(color: secondary.withValues(alpha: 0.12), height: 1),
             const SizedBox(height: 12),
+            // Permission message (nếu user không phải OWNER/TENANT)
+            if (invoice.permissionMessage != null && invoice.permissionMessage!.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.orange.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      color: Colors.orange[700],
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        invoice.permissionMessage!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: Colors.orange[900],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             Row(
               children: [
                 Flexible(
@@ -1239,11 +1286,19 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                 if (!isPaid)
                   Flexible(
                     child: FilledButton.icon(
-                      onPressed: () => _handlePayInvoice(invoice),
+                      onPressed: (invoice.isOwner == true && invoice.canPay == true)
+                          ? () => _handlePayInvoice(invoice)
+                          : null,
                       icon: const Icon(Icons.payment_rounded, size: 18),
                       label: const Text('Thanh toán ngay'),
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        backgroundColor: (invoice.isOwner == true && invoice.canPay == true)
+                            ? null
+                            : theme.colorScheme.surfaceContainerHighest,
+                        foregroundColor: (invoice.isOwner == true && invoice.canPay == true)
+                            ? null
+                            : theme.colorScheme.onSurface.withValues(alpha: 0.38),
                       ),
                     ),
                   )
