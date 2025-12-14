@@ -28,6 +28,7 @@ import '../marketplace/post_detail_screen.dart';
 import '../marketplace/marketplace_service.dart';
 import 'linkable_text_widget.dart';
 import '../widgets/animations/smooth_animations.dart';
+import '../core/event_bus.dart';
 import 'package:dio/dio.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -63,6 +64,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final service = ChatService();
     _viewModel = ChatMessageViewModel(service);
     _viewModel.initialize(widget.groupId);
+    
+    // Notify that user is viewing this group chat (to prevent notification banners)
+    AppEventBus().emit('viewing_group_chat', widget.groupId);
     
     // Add scroll listener for manual scroll detection (no auto-load on scroll)
     _scrollController.addListener(_onScroll);
@@ -165,6 +169,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    // Notify that user is no longer viewing this group chat
+    AppEventBus().emit('not_viewing_group_chat', widget.groupId);
+    
     // Cancel timers first
     _scrollEndTimer?.cancel();
     _recordingTimer?.cancel();
@@ -896,6 +903,96 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _showMuteOptions(BuildContext context, ChatMessageViewModel viewModel, bool isMuted) async {
+    final chatService = ChatService();
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isMuted)
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell),
+                title: const Text('Bật thông báo'),
+                onTap: () => Navigator.pop(context, 'unmute'),
+              )
+            else ...[
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text(
+                  'Tắt thông báo',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell_slash),
+                title: const Text('Tắt thông báo trong 1 giờ'),
+                onTap: () => Navigator.pop(context, 'mute_1h'),
+              ),
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell_slash),
+                title: const Text('Tắt thông báo trong 2 giờ'),
+                onTap: () => Navigator.pop(context, 'mute_2h'),
+              ),
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell_slash),
+                title: const Text('Tắt thông báo trong 24 giờ'),
+                onTap: () => Navigator.pop(context, 'mute_24h'),
+              ),
+              ListTile(
+                leading: const Icon(CupertinoIcons.bell_slash),
+                title: const Text('Tắt thông báo cho đến khi mở lại'),
+                onTap: () => Navigator.pop(context, 'mute_indefinite'),
+              ),
+            ],
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null && mounted) {
+      try {
+        if (result == 'unmute') {
+          await chatService.unmuteGroupChat(widget.groupId);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('✅ Đã bật lại thông báo')),
+          );
+        } else if (result.startsWith('mute_')) {
+          int? durationHours;
+          if (result == 'mute_1h') {
+            durationHours = 1;
+          } else if (result == 'mute_2h') {
+            durationHours = 2;
+          } else if (result == 'mute_24h') {
+            durationHours = 24;
+          } else if (result == 'mute_indefinite') {
+            durationHours = null;
+          }
+          await chatService.muteGroupChat(
+            groupId: widget.groupId,
+            durationHours: durationHours,
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('✅ Đã tắt thông báo${durationHours != null ? ' trong $durationHours giờ' : ''}')),
+          );
+        }
+        
+        // Reload group info to update mute status
+        if (mounted) {
+          await viewModel.loadGroupInfo();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Lỗi: ${e.toString()}'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _showDeleteConfirmation(BuildContext context, ChatMessageViewModel viewModel) async {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
@@ -950,9 +1047,29 @@ class _ChatScreenState extends State<ChatScreen> {
               if (viewModel.isLoading && viewModel.groupName == null) {
                 return const Text('Đang tải...');
               }
-              return Text(
-                viewModel.groupName ?? 'Nhóm chat',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+              final isMuted = viewModel.group?.isMuted == true || 
+                  (viewModel.group?.muteUntil != null && 
+                   viewModel.group!.muteUntil!.isAfter(DateTime.now()));
+              
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      viewModel.groupName ?? 'Nhóm chat',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (isMuted) ...[
+                    const SizedBox(width: 8),
+                    Icon(
+                      CupertinoIcons.bell_slash,
+                      size: 18,
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ],
+                ],
               );
             },
           ),
@@ -993,6 +1110,10 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             Consumer<ChatMessageViewModel>(
               builder: (context, viewModel, child) {
+                final isMuted = viewModel.group?.isMuted == true || 
+                    (viewModel.group?.muteUntil != null && 
+                     viewModel.group!.muteUntil!.isAfter(DateTime.now()));
+                
                 return PopupMenuButton<String>(
                   icon: const Icon(CupertinoIcons.ellipsis),
                   onSelected: (value) async {
@@ -1005,55 +1126,76 @@ class _ChatScreenState extends State<ChatScreen> {
                       );
                     } else if (value == 'rename') {
                       await _showRenameDialog(context, viewModel);
+                    } else if (value == 'mute' || value == 'unmute') {
+                      await _showMuteOptions(context, viewModel, isMuted);
                     } else if (value == 'leave') {
                       await _showLeaveConfirmation(context, viewModel);
                     } else if (value == 'delete') {
                       await _showDeleteConfirmation(context, viewModel);
                     }
                   },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'members',
-                      child: Row(
-                        children: [
-                          Icon(CupertinoIcons.person_2, size: 20),
-                          SizedBox(width: 8),
-                          Text('Xem thành viên'),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'rename',
-                      child: Row(
-                        children: [
-                          Icon(CupertinoIcons.pencil, size: 20),
-                          SizedBox(width: 8),
-                          Text('Đổi tên nhóm'),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'leave',
-                      child: Row(
-                        children: [
-                          Icon(CupertinoIcons.arrow_right_square, size: 20),
-                          SizedBox(width: 8),
-                          Text('Rời nhóm'),
-                        ],
-                      ),
-                    ),
-                    if (viewModel.isCreator)
+                  itemBuilder: (context) {
+                    final isMuted = viewModel.group?.isMuted == true || 
+                        (viewModel.group?.muteUntil != null && 
+                         viewModel.group!.muteUntil!.isAfter(DateTime.now()));
+                    
+                    return [
                       const PopupMenuItem(
-                        value: 'delete',
+                        value: 'members',
                         child: Row(
                           children: [
-                            Icon(CupertinoIcons.delete, size: 20, color: Colors.red),
+                            Icon(CupertinoIcons.person_2, size: 20),
                             SizedBox(width: 8),
-                            Text('Xóa nhóm', style: TextStyle(color: Colors.red)),
+                            Text('Xem thành viên'),
                           ],
                         ),
                       ),
-                  ],
+                      const PopupMenuItem(
+                        value: 'rename',
+                        child: Row(
+                          children: [
+                            Icon(CupertinoIcons.pencil, size: 20),
+                            SizedBox(width: 8),
+                            Text('Đổi tên nhóm'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: isMuted ? 'unmute' : 'mute',
+                        child: Row(
+                          children: [
+                            Icon(
+                              isMuted ? CupertinoIcons.bell : CupertinoIcons.bell_slash,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(isMuted ? 'Bật thông báo' : 'Tắt thông báo'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'leave',
+                        child: Row(
+                          children: [
+                            Icon(CupertinoIcons.arrow_right_square, size: 20),
+                            SizedBox(width: 8),
+                            Text('Rời nhóm'),
+                          ],
+                        ),
+                      ),
+                      if (viewModel.isCreator)
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(CupertinoIcons.delete, size: 20, color: Colors.red),
+                              SizedBox(width: 8),
+                              Text('Xóa nhóm', style: TextStyle(color: Colors.red)),
+                            ],
+                          ),
+                        ),
+                    ];
+                  },
                 );
               },
             ),

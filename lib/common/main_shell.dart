@@ -34,6 +34,8 @@ import '../chat/chat_service.dart';
 import '../chat/direct_chat_websocket_service.dart';
 import '../models/chat/direct_message.dart';
 import '../models/chat/conversation.dart';
+import '../models/chat/message.dart';
+import '../models/chat/group.dart';
 import '../notifications/realtime_notification_banner.dart';
 import '../widgets/animations/smooth_animations.dart';
 
@@ -61,6 +63,11 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   Set<String> _userBuildingIds = <String>{};
   String? _userResidentId;
   StreamSubscription<RemoteMessage>? _pushSubscription;
+  final Set<String> _subscribedConversations = <String>{}; // Track subscribed conversations
+  bool _hasDirectChatListener = false; // Track if listener is already registered
+  final Set<String> _subscribedGroups = <String>{}; // Track subscribed group chats
+  bool _hasGroupChatListener = false; // Track if group chat listener is already registered
+  String? _currentViewingGroupId; // Track which group chat screen is currently being viewed
 
   @override
   void initState() {
@@ -174,6 +181,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
     _subscribeToMarketplaceTopics();
     _setupMarketplaceEventListeners();
     _subscribeToDirectChatConversations();
+    _subscribeToGroupChatConversations();
   }
 
   /// Subscribe to all direct chat conversations for realtime notifications
@@ -195,8 +203,24 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
 
       debugPrint('📡 [MainShell] Subscribing to ${conversations.length} direct chat conversations');
 
-      // Subscribe to each conversation topic
+      // Track new conversations to subscribe
+      final newConversationIds = conversations.map((c) => c.id).toSet();
+      
+      // Unsubscribe from conversations that no longer exist
+      final toUnsubscribe = _subscribedConversations.difference(newConversationIds);
+      for (final conversationId in toUnsubscribe) {
+        // Note: StompClient doesn't have direct unsubscribe method, but we can track it
+        _subscribedConversations.remove(conversationId);
+        debugPrint('🔄 [MainShell] Conversation $conversationId no longer exists, will be unsubscribed on reconnect');
+      }
+
+      // Subscribe to each conversation topic (only if not already subscribed)
       for (final conversation in conversations) {
+        if (_subscribedConversations.contains(conversation.id)) {
+          debugPrint('ℹ️ [MainShell] Already subscribed to conversation ${conversation.id}, skipping');
+          continue;
+        }
+
         final destination = '/topic/direct-chat/${conversation.id}';
         
         _stompClient?.subscribe(
@@ -212,9 +236,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
                 final messageJson = jsonData['directMessage'] as Map<String, dynamic>;
                 final message = DirectMessage.fromJson(messageJson);
                 
-                // Only show notification if user is not in this chat screen
-                // (We'll check this by seeing if there's a handler in DirectChatWebSocketService)
-                // For now, always show notification when on home screen
+                // Handle incoming message - will show notification if user is not in chat screen
                 _handleDirectChatMessage(message);
               }
             } catch (e) {
@@ -223,28 +245,36 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
           },
         );
         
+        _subscribedConversations.add(conversation.id);
         debugPrint('✅ [MainShell] Subscribed to $destination');
       }
 
       // Listen for conversation updates (new conversations added)
-      AppEventBus().on('direct_chat_activity_updated', (_) {
-        // Reload conversations and update subscriptions after a delay
-        Future.delayed(const Duration(seconds: 1), () {
-          _subscribeToDirectChatConversations();
+      // Only register listener once to avoid multiple listeners
+      if (!_hasDirectChatListener) {
+        AppEventBus().on('direct_chat_activity_updated', (_) {
+          // Reload conversations and update subscriptions after a delay
+          Future.delayed(const Duration(seconds: 1), () {
+            if (mounted) {
+              _subscribeToDirectChatConversations();
+            }
+          });
         });
-      });
+        _hasDirectChatListener = true;
+      }
     } catch (e) {
       debugPrint('❌ [MainShell] Error subscribing to direct chat conversations: $e');
     }
   }
 
   /// Handle incoming direct chat message and show notification banner
-  /// Only shows notification if user is NOT currently in the chat screen for this conversation
+  /// Shows notification banner on ALL screens EXCEPT when user is currently in the direct chat screen for this conversation
+  /// This means notification will appear on: homescreen, marketplace, services, menu, or any other screen
   void _handleDirectChatMessage(DirectMessage message) {
     if (!mounted) return;
 
     // Check if user is currently viewing this conversation in DirectChatScreen
-    // If user is in chat screen, DirectChatScreen will handle the message display
+    // If user is in the direct chat screen, DirectChatScreen will handle the message display
     // and we don't need to show notification banner
     if (directChatWebSocketService.isViewingConversation(message.conversationId)) {
       debugPrint('ℹ️ [MainShell] User is viewing conversation ${message.conversationId}, skipping notification banner');
@@ -253,18 +283,36 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
       return;
     }
 
-    // User is NOT in chat screen - show notification banner
-    // Find conversation to get other participant name
-    _getConversationName(message.conversationId).then((participantName) {
+    // User is NOT in the direct chat screen - check mute status and show notification banner on current screen (could be any screen)
+    // Get conversation info to check mute status
+    _getConversationInfo(message.conversationId).then((conversation) {
       if (!mounted) return;
 
+      // Check if conversation is muted
+      final isMuted = conversation?.isMuted == true || 
+          (conversation?.muteUntil != null && 
+           conversation!.muteUntil!.isAfter(DateTime.now()));
+
+      if (isMuted) {
+        debugPrint('ℹ️ [MainShell] Conversation ${message.conversationId} is muted, skipping notification banner');
+        // Still emit event to update conversation list (for unread count)
+        AppEventBus().emit('direct_chat_activity_updated');
+        return;
+      }
+
+      // Conversation is not muted - show notification banner
+      final participantName = conversation?.getOtherParticipantName(_userResidentId ?? '') ?? 
+                             conversation?.participant1Name ?? 
+                             conversation?.participant2Name ?? 
+                             'Người dùng';
+      
       // Get message preview
       String messagePreview = _getMessagePreview(message);
 
       // Show realtime notification banner
       RealtimeNotificationBanner.show(
         context: context,
-        title: participantName ?? 'Tin nhắn mới',
+        title: participantName,
         subtitle: 'Chat trực tiếp',
         body: messagePreview,
         leading: const Icon(
@@ -274,7 +322,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
         displayDuration: const Duration(seconds: 4),
         onTap: () {
           // Navigate to direct chat screen
-          _navigateToDirectChat(message.conversationId, participantName ?? 'Người dùng');
+          _navigateToDirectChat(message.conversationId, participantName);
         },
       );
 
@@ -283,8 +331,8 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
     });
   }
 
-  /// Get conversation participant name
-  Future<String?> _getConversationName(String conversationId) async {
+  /// Get conversation info (including mute status)
+  Future<Conversation?> _getConversationInfo(String conversationId) async {
     try {
       final chatService = ChatService();
       final conversations = await chatService.getConversations();
@@ -292,19 +340,9 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
         (c) => c.id == conversationId,
         orElse: () => throw Exception('Conversation not found'),
       );
-      
-      if (_userResidentId != null) {
-        return conversation.getOtherParticipantName(_userResidentId!) ?? 
-               conversation.participant1Name ?? 
-               conversation.participant2Name ?? 
-               'Người dùng';
-      }
-      
-      return conversation.participant1Name ?? 
-             conversation.participant2Name ?? 
-             'Người dùng';
+      return conversation;
     } catch (e) {
-      debugPrint('⚠️ [MainShell] Error getting conversation name: $e');
+      debugPrint('⚠️ [MainShell] Error getting conversation info: $e');
       return null;
     }
   }
@@ -351,6 +389,222 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
         ),
       ),
     );
+  }
+
+  /// Subscribe to all group chat conversations for realtime notifications
+  Future<void> _subscribeToGroupChatConversations() async {
+    try {
+      if (_stompClient == null) {
+        debugPrint('⚠️ [MainShell] StompClient not connected, cannot subscribe to group chat');
+        return;
+      }
+
+      // Load all groups
+      final chatService = ChatService();
+      final groupsResponse = await chatService.getMyGroups(page: 0, size: 100);
+      final groups = groupsResponse.content;
+      
+      if (groups.isEmpty) {
+        debugPrint('ℹ️ [MainShell] No group chats to subscribe to');
+        return;
+      }
+
+      debugPrint('📡 [MainShell] Subscribing to ${groups.length} group chat conversations');
+
+      // Track new groups to subscribe
+      final newGroupIds = groups.map((g) => g.id).toSet();
+      
+      // Unsubscribe from groups that no longer exist
+      final toUnsubscribe = _subscribedGroups.difference(newGroupIds);
+      for (final groupId in toUnsubscribe) {
+        _subscribedGroups.remove(groupId);
+        debugPrint('🔄 [MainShell] Group $groupId no longer exists, will be unsubscribed on reconnect');
+      }
+
+      // Subscribe to each group topic (only if not already subscribed)
+      for (final group in groups) {
+        if (_subscribedGroups.contains(group.id)) {
+          debugPrint('ℹ️ [MainShell] Already subscribed to group ${group.id}, skipping');
+          continue;
+        }
+
+        final destination = '/topic/chat/${group.id}';
+        
+        _stompClient?.subscribe(
+          destination: destination,
+          headers: {'id': 'group-chat-${group.id}'},
+          callback: (frame) {
+            if (frame.body == null) return;
+            try {
+              final jsonData = json.decode(frame.body!);
+              final type = jsonData['type'] as String?;
+              
+              if (type == 'NEW_MESSAGE' && jsonData['message'] != null) {
+                final messageJson = jsonData['message'] as Map<String, dynamic>;
+                final message = ChatMessage.fromJson(messageJson);
+                
+                // Handle incoming message - will show notification if user is not in chat screen
+                _handleGroupChatMessage(message);
+              }
+            } catch (e) {
+              debugPrint('❌ [MainShell] Error parsing group chat message: $e');
+            }
+          },
+        );
+        
+        _subscribedGroups.add(group.id);
+        debugPrint('✅ [MainShell] Subscribed to $destination');
+      }
+
+      // Listen for group updates (new groups added)
+      // Only register listener once to avoid multiple listeners
+      if (!_hasGroupChatListener) {
+        AppEventBus().on('group_chat_activity_updated', (_) {
+          // Reload groups and update subscriptions after a delay
+          Future.delayed(const Duration(seconds: 1), () {
+            if (mounted) {
+              _subscribeToGroupChatConversations();
+            }
+          });
+        });
+        
+        // Listen for when user is viewing a group chat screen
+        AppEventBus().on('viewing_group_chat', (groupId) {
+          if (groupId is String) {
+            _currentViewingGroupId = groupId;
+            debugPrint('📱 [MainShell] User is viewing group chat: $groupId');
+          }
+        });
+        
+        // Listen for when user is no longer viewing a group chat screen
+        AppEventBus().on('not_viewing_group_chat', (groupId) {
+          if (groupId is String && _currentViewingGroupId == groupId) {
+            _currentViewingGroupId = null;
+            debugPrint('📱 [MainShell] User is no longer viewing group chat: $groupId');
+          }
+        });
+        
+        _hasGroupChatListener = true;
+      }
+    } catch (e) {
+      debugPrint('❌ [MainShell] Error subscribing to group chat conversations: $e');
+    }
+  }
+
+  /// Handle incoming group chat message and show notification banner
+  /// Shows notification banner on ALL screens EXCEPT when user is currently in the group chat screen for this group
+  /// This means notification will appear on: homescreen, marketplace, services, menu, or any other screen
+  /// Only shows if the group is NOT muted
+  void _handleGroupChatMessage(ChatMessage message) {
+    if (!mounted) return;
+
+    // Check if user is currently viewing this group chat in ChatScreen
+    // If user is in the group chat screen, ChatScreen will handle the message display
+    // and we don't need to show notification banner
+    if (_currentViewingGroupId == message.groupId) {
+      debugPrint('ℹ️ [MainShell] User is viewing group ${message.groupId}, skipping notification banner');
+      // Still emit event to update group list
+      AppEventBus().emit('group_chat_activity_updated');
+      return;
+    }
+
+    // User is NOT in the group chat screen - check mute status and show notification banner on current screen (could be any screen)
+    // Get group info to check mute status
+    _getGroupInfo(message.groupId).then((group) {
+      if (!mounted) return;
+
+      // Check if group is muted
+      final isMuted = group?.isMuted == true || 
+          (group?.muteUntil != null && 
+           group!.muteUntil!.isAfter(DateTime.now()));
+
+      if (isMuted) {
+        debugPrint('ℹ️ [MainShell] Group ${message.groupId} is muted, skipping notification banner');
+        // Still emit event to update group list (for unread count)
+        AppEventBus().emit('group_chat_activity_updated');
+        return;
+      }
+
+      // Group is not muted - show notification banner
+      final groupName = group?.name ?? 'Nhóm chat';
+      String messagePreview = _getGroupMessagePreview(message);
+
+      // Show realtime notification banner
+      RealtimeNotificationBanner.show(
+        context: context,
+        title: groupName,
+        subtitle: 'Chat nhóm',
+        body: messagePreview,
+        leading: const Icon(Icons.group, color: Colors.green),
+        displayDuration: const Duration(seconds: 4),
+        onTap: () {
+          // Navigate to group chat screen
+          _navigateToGroupChat(message.groupId, groupName);
+        },
+      );
+
+      // Emit event to update group list (for unread count badge)
+      AppEventBus().emit('group_chat_activity_updated');
+    });
+  }
+
+  /// Get group info (including mute status)
+  Future<ChatGroup?> _getGroupInfo(String groupId) async {
+    try {
+      final chatService = ChatService();
+      final group = await chatService.getGroupById(groupId);
+      return group;
+    } catch (e) {
+      debugPrint('⚠️ [MainShell] Error getting group info: $e');
+      return null;
+    }
+  }
+
+  /// Get message preview text for group chat
+  String _getGroupMessagePreview(ChatMessage message) {
+    if (message.isDeleted == true) {
+      return 'Tin nhắn đã bị xóa';
+    }
+    
+    if (message.messageType == 'IMAGE') {
+      return '📷 Đã gửi một hình ảnh';
+    }
+    
+    if (message.messageType == 'FILE') {
+      return '📎 Đã gửi một tệp';
+    }
+
+    if (message.messageType == 'AUDIO') {
+      return '🎤 Đã gửi một tin nhắn thoại';
+    }
+    
+    if (message.content != null && message.content!.isNotEmpty) {
+      final content = message.content!;
+      if (content.length > 100) {
+        return content.substring(0, 100) + '...';
+      }
+      return content;
+    }
+    
+    return 'Tin nhắn mới';
+  }
+
+  /// Navigate to group chat screen
+  void _navigateToGroupChat(String groupId, String groupName) {
+    if (!mounted) return;
+    
+    // Set current viewing group ID
+    _currentViewingGroupId = groupId;
+    
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(groupId: groupId),
+      ),
+    ).then((_) {
+      // Clear current viewing group ID when user navigates away
+      _currentViewingGroupId = null;
+    });
   }
 
   void _setupMarketplaceEventListeners() {
