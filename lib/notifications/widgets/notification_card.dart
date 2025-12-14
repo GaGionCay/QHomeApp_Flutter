@@ -207,7 +207,8 @@ class _NotificationCardState extends State<NotificationCard>
                                       fontSize: 13.2,
                                       height: 1.35,
                                     ),
-                                    maxLines: 2,
+                                    // Allow more lines for group invitation messages to show full group name
+                                    maxLines: notification.type == 'GROUP_INVITATION' ? 5 : 2,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   const SizedBox(height: 10),
