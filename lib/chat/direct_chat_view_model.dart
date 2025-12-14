@@ -212,9 +212,13 @@ class DirectChatViewModel extends ChangeNotifier {
   }
 
   void addIncomingMessage(DirectMessage message) {
+    // Check if message already exists (avoid duplicates)
     if (!_messages.any((m) => m.id == message.id)) {
       _messages.add(message);
       notifyListeners();
+      
+      // Emit event to update conversation list (for unread count badge)
+      AppEventBus().emit('direct_chat_activity_updated');
     }
   }
 

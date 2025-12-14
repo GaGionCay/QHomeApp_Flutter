@@ -31,6 +31,10 @@ import '../models/marketplace_post.dart';
 import '../chat/chat_screen.dart';
 import '../chat/direct_chat_screen.dart';
 import '../chat/chat_service.dart';
+import '../chat/direct_chat_websocket_service.dart';
+import '../models/chat/direct_message.dart';
+import '../models/chat/conversation.dart';
+import '../notifications/realtime_notification_banner.dart';
 import '../widgets/animations/smooth_animations.dart';
 
 class MainShell extends StatefulWidget {
@@ -169,6 +173,184 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
     _subscribeToNotificationTopics();
     _subscribeToMarketplaceTopics();
     _setupMarketplaceEventListeners();
+    _subscribeToDirectChatConversations();
+  }
+
+  /// Subscribe to all direct chat conversations for realtime notifications
+  Future<void> _subscribeToDirectChatConversations() async {
+    try {
+      if (_stompClient == null) {
+        debugPrint('⚠️ [MainShell] StompClient not connected, cannot subscribe to direct chat');
+        return;
+      }
+
+      // Load all conversations
+      final chatService = ChatService();
+      final conversations = await chatService.getConversations();
+      
+      if (conversations.isEmpty) {
+        debugPrint('ℹ️ [MainShell] No conversations to subscribe to');
+        return;
+      }
+
+      debugPrint('📡 [MainShell] Subscribing to ${conversations.length} direct chat conversations');
+
+      // Subscribe to each conversation topic
+      for (final conversation in conversations) {
+        final destination = '/topic/direct-chat/${conversation.id}';
+        
+        _stompClient?.subscribe(
+          destination: destination,
+          headers: {'id': 'direct-chat-${conversation.id}'},
+          callback: (frame) {
+            if (frame.body == null) return;
+            try {
+              final jsonData = json.decode(frame.body!);
+              final type = jsonData['type'] as String?;
+              
+              if (type == 'DIRECT_MESSAGE' && jsonData['directMessage'] != null) {
+                final messageJson = jsonData['directMessage'] as Map<String, dynamic>;
+                final message = DirectMessage.fromJson(messageJson);
+                
+                // Only show notification if user is not in this chat screen
+                // (We'll check this by seeing if there's a handler in DirectChatWebSocketService)
+                // For now, always show notification when on home screen
+                _handleDirectChatMessage(message);
+              }
+            } catch (e) {
+              debugPrint('❌ [MainShell] Error parsing direct chat message: $e');
+            }
+          },
+        );
+        
+        debugPrint('✅ [MainShell] Subscribed to $destination');
+      }
+
+      // Listen for conversation updates (new conversations added)
+      AppEventBus().on('direct_chat_activity_updated', (_) {
+        // Reload conversations and update subscriptions after a delay
+        Future.delayed(const Duration(seconds: 1), () {
+          _subscribeToDirectChatConversations();
+        });
+      });
+    } catch (e) {
+      debugPrint('❌ [MainShell] Error subscribing to direct chat conversations: $e');
+    }
+  }
+
+  /// Handle incoming direct chat message and show notification banner
+  /// Only shows notification if user is NOT currently in the chat screen for this conversation
+  void _handleDirectChatMessage(DirectMessage message) {
+    if (!mounted) return;
+
+    // Check if user is currently viewing this conversation in DirectChatScreen
+    // If user is in chat screen, DirectChatScreen will handle the message display
+    // and we don't need to show notification banner
+    if (directChatWebSocketService.isViewingConversation(message.conversationId)) {
+      debugPrint('ℹ️ [MainShell] User is viewing conversation ${message.conversationId}, skipping notification banner');
+      // Still emit event to update conversation list
+      AppEventBus().emit('direct_chat_activity_updated');
+      return;
+    }
+
+    // User is NOT in chat screen - show notification banner
+    // Find conversation to get other participant name
+    _getConversationName(message.conversationId).then((participantName) {
+      if (!mounted) return;
+
+      // Get message preview
+      String messagePreview = _getMessagePreview(message);
+
+      // Show realtime notification banner
+      RealtimeNotificationBanner.show(
+        context: context,
+        title: participantName ?? 'Tin nhắn mới',
+        subtitle: 'Chat trực tiếp',
+        body: messagePreview,
+        leading: const Icon(
+          Icons.chat_bubble_outline,
+          color: Colors.blue,
+        ),
+        displayDuration: const Duration(seconds: 4),
+        onTap: () {
+          // Navigate to direct chat screen
+          _navigateToDirectChat(message.conversationId, participantName ?? 'Người dùng');
+        },
+      );
+
+      // Emit event to update conversation list (for unread count badge)
+      AppEventBus().emit('direct_chat_activity_updated');
+    });
+  }
+
+  /// Get conversation participant name
+  Future<String?> _getConversationName(String conversationId) async {
+    try {
+      final chatService = ChatService();
+      final conversations = await chatService.getConversations();
+      final conversation = conversations.firstWhere(
+        (c) => c.id == conversationId,
+        orElse: () => throw Exception('Conversation not found'),
+      );
+      
+      if (_userResidentId != null) {
+        return conversation.getOtherParticipantName(_userResidentId!) ?? 
+               conversation.participant1Name ?? 
+               conversation.participant2Name ?? 
+               'Người dùng';
+      }
+      
+      return conversation.participant1Name ?? 
+             conversation.participant2Name ?? 
+             'Người dùng';
+    } catch (e) {
+      debugPrint('⚠️ [MainShell] Error getting conversation name: $e');
+      return null;
+    }
+  }
+
+  /// Get message preview text
+  String _getMessagePreview(DirectMessage message) {
+    if (message.isDeleted == true) {
+      return 'Tin nhắn đã bị xóa';
+    }
+    
+    if (message.messageType == 'IMAGE') {
+      return '📷 Đã gửi một hình ảnh';
+    }
+    
+    if (message.messageType == 'FILE') {
+      return '📎 Đã gửi một tệp';
+    }
+
+    if (message.messageType == 'AUDIO') {
+      return '🎤 Đã gửi một tin nhắn thoại';
+    }
+    
+    if (message.content != null && message.content!.isNotEmpty) {
+      final content = message.content!;
+      if (content.length > 100) {
+        return content.substring(0, 100) + '...';
+      }
+      return content;
+    }
+    
+    return 'Tin nhắn mới';
+  }
+
+  /// Navigate to direct chat screen
+  void _navigateToDirectChat(String conversationId, String participantName) {
+    if (!mounted) return;
+    
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DirectChatScreen(
+          conversationId: conversationId,
+          otherParticipantName: participantName,
+        ),
+      ),
+    );
   }
 
   void _setupMarketplaceEventListeners() {
@@ -661,6 +843,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   @override
   void dispose() {
     _stompClient?.deactivate();
+    directChatWebSocketService.disconnect();
     RealtimeNotificationBanner.dismiss();
     AppEventBus().clear();
     _pushSubscription?.cancel();

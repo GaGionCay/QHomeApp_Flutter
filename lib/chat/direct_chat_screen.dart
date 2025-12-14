@@ -20,6 +20,7 @@ import '../auth/token_storage.dart';
 import '../core/event_bus.dart';
 import 'chat_service.dart';
 import 'direct_chat_view_model.dart';
+import 'direct_chat_websocket_service.dart';
 import 'public_file_storage_service.dart';
 import 'message_local_path_service.dart';
 import 'direct_files_screen.dart';
@@ -78,11 +79,57 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
     
     _scrollController.addListener(_onScroll);
     
+    // Subscribe to WebSocket for real-time notifications
+    _subscribeToWebSocket();
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _lastMessageCount = _viewModel.messages.length;
       }
     });
+  }
+  
+  Future<void> _subscribeToWebSocket() async {
+    try {
+      final token = await _tokenStorage.getAccessToken();
+      final userId = await ApiClient().storage.readUserId();
+      
+      if (token != null && userId != null) {
+        await directChatWebSocketService.subscribeToConversation(
+          conversationId: widget.conversationId,
+          token: token,
+          userId: userId,
+          onMessage: (message) {
+            // Handle incoming message from WebSocket
+            if (mounted) {
+              _viewModel.addIncomingMessage(message);
+              // Scroll to bottom if user is at bottom
+              if (_scrollController.hasClients) {
+                final maxScroll = _scrollController.position.maxScrollExtent;
+                final currentScroll = _scrollController.position.pixels;
+                // If user is near bottom (within 100px), auto-scroll
+                if (maxScroll - currentScroll < 100) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted && _scrollController.hasClients) {
+                      _scrollController.animateTo(
+                        _scrollController.position.maxScrollExtent,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOut,
+                      );
+                    }
+                  });
+                }
+              }
+            }
+          },
+        );
+        print('✅ [DirectChatScreen] Subscribed to WebSocket for conversation: ${widget.conversationId}');
+      } else {
+        print('⚠️ [DirectChatScreen] Cannot subscribe to WebSocket - missing token or userId');
+      }
+    } catch (e) {
+      print('❌ [DirectChatScreen] Error subscribing to WebSocket: $e');
+    }
   }
 
   void _onViewModelChanged() {
@@ -106,6 +153,10 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
 
   @override
   void dispose() {
+    // Unsubscribe from WebSocket
+    directChatWebSocketService.unsubscribeFromConversation(widget.conversationId);
+    print('✅ [DirectChatScreen] Unsubscribed from WebSocket for conversation: ${widget.conversationId}');
+    
     _viewModel.removeListener(_onViewModelChanged);
     _scrollController.removeListener(_onScroll);
     _scrollEndTimer?.cancel();
