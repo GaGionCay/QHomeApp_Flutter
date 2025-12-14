@@ -9,6 +9,9 @@ import 'notification_detail_screen.dart';
 import '../contracts/contract_list_screen.dart';
 import '../contracts/contract_detail_screen.dart';
 import '../service_registration/service_requests_overview_screen.dart';
+import '../marketplace/post_detail_screen.dart';
+import '../marketplace/marketplace_service.dart';
+import '../models/marketplace_post.dart';
 
 /// Service để điều hướng đến các screen tương ứng dựa trên notification type
 class NotificationRouter {
@@ -161,6 +164,51 @@ class NotificationRouter {
               residentId: residentId,
             ),
           ));
+        }
+        return;
+
+      case 'MARKETPLACE_COMMENT':
+        // Notification về comment trong marketplace post
+        // Navigate to post detail screen và scroll đến comment
+        final navigator = Navigator.of(context);
+        try {
+          // Get postId từ notification referenceId (đã được set từ main_shell.dart)
+          final postId = notification.referenceId;
+          
+          if (postId == null || postId.isEmpty) {
+            debugPrint('⚠️ Không có postId trong notification, mở notification detail');
+            _navigateToDetail(context, notification, residentId);
+            return;
+          }
+
+          // Fetch post từ API
+          final marketplaceService = MarketplaceService();
+          try {
+            final post = await marketplaceService.getPostById(postId);
+            
+            // Get commentId từ notification actionUrl
+            // FCM push notification sẽ có commentId trong data payload, được parse trong main_shell
+            String? commentId;
+            if (notification.actionUrl != null && notification.actionUrl!.contains('commentId=')) {
+              commentId = notification.actionUrl!.split('commentId=')[1].split('&')[0];
+            }
+            
+            // Navigate to post detail screen với commentId để scroll đến comment
+            navigator.push(
+              MaterialPageRoute(
+                builder: (_) => PostDetailScreen(
+                  post: post,
+                  scrollToCommentId: commentId, // Pass commentId để scroll đến comment
+                ),
+              ),
+            );
+          } catch (e) {
+            debugPrint('⚠️ Lỗi khi fetch post hoặc navigate: $e');
+            _navigateToDetail(context, notification, residentId);
+          }
+        } catch (e) {
+          debugPrint('⚠️ Lỗi khi điều hướng đến PostDetailScreen: $e');
+          _navigateToDetail(context, notification, residentId);
         }
         return;
 

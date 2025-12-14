@@ -25,6 +25,9 @@ import 'service_category_screen.dart';
 import '../theme/app_colors.dart';
 import 'menu_screen.dart';
 import '../marketplace/marketplace_screen.dart';
+import '../marketplace/post_detail_screen.dart';
+import '../marketplace/marketplace_service.dart';
+import '../models/marketplace_post.dart';
 import '../chat/chat_screen.dart';
 import '../chat/direct_chat_screen.dart';
 import '../chat/chat_service.dart';
@@ -255,18 +258,58 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
       final decoded = json.decode(frame.body!);
       final type = decoded['type'] as String?;
       final postId = decoded['postId'] as String?;
+      final action = decoded['action'] as String?;
       
-      debugPrint('🔔 [Marketplace WebSocket] Received: type=$type, postId=$postId');
+      debugPrint('🔔 [Marketplace WebSocket] Received: type=$type, postId=$postId, action=$action');
       
       // Emit event to update marketplace screen
       AppEventBus().emit('marketplace_update', decoded);
       
       // Also emit for comment updates
       if (type == 'NEW_COMMENT') {
-        AppEventBus().emit('new_comment', {'postId': postId, 'data': decoded});
+        // Emit with full data including action for navigation
+        AppEventBus().emit('new_comment', {
+          'postId': postId,
+          'data': decoded, // Include full decoded data with action, commentId, parentCommentId, etc.
+        });
       }
     } catch (e) {
       debugPrint('⚠️ [Marketplace WebSocket] Error parsing frame: $e');
+    }
+  }
+  
+  Future<void> _handleMarketplaceCommentNotificationTap(Map<String, dynamic> data) async {
+    try {
+      final postId = data['postId']?.toString();
+      final commentId = data['commentId']?.toString();
+      
+      if (postId == null || postId.isEmpty) {
+        debugPrint('⚠️ [MainShell] No postId in marketplace comment notification');
+        return;
+      }
+      
+      debugPrint('🔔 [MainShell] Handling marketplace comment notification: postId=$postId, commentId=$commentId');
+      
+      // Fetch post from API
+      final marketplaceService = MarketplaceService();
+      final post = await marketplaceService.getPostById(postId);
+      
+      if (!mounted) return;
+      
+      // Navigate to post detail screen với commentId để scroll đến comment
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PostDetailScreen(
+            post: post,
+            scrollToCommentId: commentId, // Pass commentId để scroll đến comment
+          ),
+        ),
+      );
+      
+      debugPrint('✅ [MainShell] Navigated to post detail screen with commentId: $commentId');
+    } catch (e) {
+      debugPrint('⚠️ [MainShell] Error handling marketplace comment notification: $e');
     }
   }
 
@@ -450,6 +493,12 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
       return;
     }
 
+    // Handle marketplace comment notifications
+    if (type == 'MARKETPLACE_COMMENT') {
+      await _handleMarketplaceCommentNotificationTap(data);
+      return;
+    }
+
     // Kiểm tra nếu là news notification
     final newsId = data['newsUuid'] ?? data['newsId'];
     if (newsId != null) {
@@ -484,9 +533,25 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
                         DateTime.now().toUtc().toIso8601String();
       final updatedAt = data['updatedAt']?.toString() ?? createdAt;
 
+      // For MARKETPLACE_COMMENT, postId is in data['postId'], not referenceId
+      final notificationType = (data['notificationType'] ?? data['type'] ?? 'SYSTEM').toString();
+      String? referenceId = data['referenceId']?.toString();
+      
+      // If type is MARKETPLACE_COMMENT, use postId from data as referenceId
+      // và commentId vào actionUrl để NotificationRouter có thể sử dụng
+      String? actionUrl = data['actionUrl']?.toString();
+      if (notificationType == 'MARKETPLACE_COMMENT' && data['postId'] != null) {
+        referenceId = data['postId']?.toString();
+        // Build actionUrl với commentId nếu có
+        final commentId = data['commentId']?.toString();
+        if (commentId != null && commentId.isNotEmpty) {
+          actionUrl = 'commentId=$commentId';
+        }
+      }
+
       final notification = ResidentNotification(
         id: notificationId,
-        type: (data['notificationType'] ?? data['type'] ?? 'SYSTEM').toString(),
+        type: notificationType,
         title: data['title']?.toString() ?? 'Thông báo',
         message: data['message']?.toString() ?? 
                  data['body']?.toString() ?? 
@@ -494,9 +559,9 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
         scope: (data['scope'] ?? 'EXTERNAL').toString(),
         targetRole: data['targetRole']?.toString(),
         targetBuildingId: data['targetBuildingId']?.toString(),
-        referenceId: data['referenceId']?.toString(),
+        referenceId: referenceId,
         referenceType: data['referenceType']?.toString(),
-        actionUrl: data['actionUrl']?.toString(),
+        actionUrl: actionUrl,
         iconUrl: data['iconUrl']?.toString(),
         createdAt: DateTime.parse(createdAt),
         updatedAt: DateTime.parse(updatedAt),

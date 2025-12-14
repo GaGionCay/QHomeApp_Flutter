@@ -34,10 +34,12 @@ import '../widgets/animations/smooth_animations.dart';
 
 class PostDetailScreen extends StatefulWidget {
   final MarketplacePost post;
+  final String? scrollToCommentId; // Comment ID để scroll đến khi mở screen
 
   const PostDetailScreen({
     super.key,
     required this.post,
+    this.scrollToCommentId,
   });
 
   @override
@@ -73,6 +75,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   final ImagePicker _imagePicker = ImagePicker();
   XFile? _selectedImage; // Selected image for comment
   XFile? _selectedVideo; // Selected video for comment
+  final Map<String, GlobalKey> _commentKeys = {}; // Keys để scroll đến comment cụ thể
 
   /// Count nested replies recursively
   int _countNestedReplies(MarketplaceComment comment) {
@@ -389,8 +392,61 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         // After comments are loaded, reload post to update with calculated count
         // This ensures comment count is accurate
         _reloadPost();
+        
+        // If scrollToCommentId was provided, scroll to that comment
+        if (widget.scrollToCommentId != null && widget.scrollToCommentId!.isNotEmpty) {
+          Future.delayed(const Duration(milliseconds: 500), () {
+            _scrollToComment(widget.scrollToCommentId!);
+          });
+        }
       });
     }
+  }
+  
+  /// Scroll to a specific comment by ID
+  void _scrollToComment(String commentId) {
+    if (!mounted) return;
+    
+    // Find the comment key
+    final commentKey = _commentKeys[commentId];
+    if (commentKey == null || !commentKey.currentContext.mounted) {
+      debugPrint('⚠️ [PostDetailScreen] Comment key not found for commentId: $commentId');
+      return;
+    }
+    
+    // Get the RenderBox of the comment
+    final renderBox = commentKey.currentContext.findRenderObject() as RenderBox?;
+    if (renderBox == null) {
+      debugPrint('⚠️ [PostDetailScreen] RenderBox not found for commentId: $commentId');
+      return;
+    }
+    
+    // Calculate scroll position
+    final position = renderBox.localToGlobal(Offset.zero);
+    final scrollPosition = _scrollController.offset + position.dy;
+    
+    // Scroll to comment with some padding from top
+    _scrollController.animateTo(
+      scrollPosition - 100, // 100px padding from top
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeInOut,
+    );
+    
+    // Highlight the comment briefly
+    setState(() {
+      _newCommentIds.add(commentId);
+    });
+    
+    // Remove highlight after animation
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        setState(() {
+          _newCommentIds.remove(commentId);
+        });
+      }
+    });
+    
+    debugPrint('✅ [PostDetailScreen] Scrolled to comment: $commentId');
   }
 
   /// Check if two image lists are equal
@@ -684,10 +740,26 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     AppEventBus().on('new_comment', (data) {
       if (data is Map<String, dynamic>) {
         final postId = data['postId'] as String?;
+        final commentData = data['data'] as Map<String, dynamic>?;
+        
         if (postId == widget.post.id && mounted) {
-          // Reload comments when new comment is added (from other users)
-          // Note: If comment was added by current user, it's already in local state
-          _loadComments();
+          // Check if this is a navigation action (from notification tap)
+          final action = commentData?['action'] as String?;
+          final commentId = commentData?['commentId'] as String?;
+          
+          if (action == 'navigate_to_comment' && commentId != null) {
+            // This is a navigation request - scroll to the comment after loading
+            _loadComments().then((_) {
+              // Wait a bit for UI to render, then scroll to comment
+              Future.delayed(const Duration(milliseconds: 500), () {
+                _scrollToComment(commentId);
+              });
+            });
+          } else {
+            // Normal comment update - just reload
+            _loadComments();
+          }
+          
           // Reload post to get updated comment count from backend
           // This ensures we have the correct count if multiple users are commenting
           // Emit event to update marketplace screen
@@ -2152,6 +2224,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     final isNew = _newCommentIds.contains(comment.id);
     final isMoved = _movedCommentIds.contains(comment.id);
     
+    // Get or create GlobalKey for this comment
+    if (!_commentKeys.containsKey(comment.id)) {
+      _commentKeys[comment.id] = GlobalKey();
+    }
+    final commentKey = _commentKeys[comment.id]!;
+    
     return AnimatedSize(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
@@ -2176,6 +2254,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
+          key: commentKey, // Add key để có thể scroll đến comment này
           margin: EdgeInsets.only(
             bottom: 12,
             left: isReply ? 32.0 : 0, // Indent cho replies
