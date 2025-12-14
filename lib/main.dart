@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'dart:io' show Platform;
 
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,31 +9,45 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:provider/provider.dart';
 
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+
 import 'auth/api_client.dart';
 import 'auth/auth_provider.dart';
+import 'auth/token_storage.dart';
 import 'core/app_router.dart';
 import 'core/push_notification_service.dart';
-import 'auth/token_storage.dart';
 import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
-import 'package:go_router/go_router.dart';
+
+/// ==========================
+/// CONFIG
+/// ==========================
+
+/// ❗ Firebase chỉ bật cho mobile
+final bool enableFirebase = !Platform.isWindows;
+
+/// ==========================
+/// FIREBASE BACKGROUND HANDLER
+/// ==========================
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  if (!enableFirebase) return;
+
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
   await FirebaseMessaging.instance.setAutoInitEnabled(true);
-  
-  // Background message received - handled silently in production
 
   final FlutterLocalNotificationsPlugin localNotifications =
       FlutterLocalNotificationsPlugin();
-  
+
   const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
   const initializationSettings = InitializationSettings(android: androidInit);
-  
+
   await localNotifications.initialize(initializationSettings);
 
   const channel = AndroidNotificationChannel(
@@ -51,29 +63,10 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(channel);
 
-  // Handle chat notifications
-  final type = message.data['type']?.toString();
-  if (type == 'groupMessage' || type == 'directMessage') {
-    try {
-      final chatId = message.data['chatId']?.toString();
-      
-      if (chatId != null) {
-        // Extract unread count (though it won't be used in background handler)
-        
-        // Emit event to update chat unreadCount (if AppEventBus is available)
-        // Note: Background handler runs in isolate, so we can't use AppEventBus directly
-        // The event will be handled when app comes to foreground
-        // Chat notification handled
-      }
-    } catch (e) {
-      // Error handled silently
-    }
-  }
-
   final notification = message.notification;
+  final payload = jsonEncode(message.data);
+
   if (notification != null) {
-    final payload = jsonEncode(message.data);
-    
     await localNotifications.show(
       notification.hashCode,
       notification.title ?? 'Thông báo mới',
@@ -85,62 +78,47 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           channelDescription: channel.description,
           importance: Importance.high,
           priority: Priority.high,
-          ticker: 'Thông báo QHome',
           icon: '@mipmap/ic_launcher',
         ),
       ),
       payload: payload,
     );
-    
-    // Notification displayed
-  } else if (message.data.isNotEmpty) {
-    final title = message.data['title']?.toString() ?? 'Thông báo mới';
-    final body = message.data['body']?.toString() ?? 
-                 message.data['message']?.toString() ?? 
-                 'Có thông báo mới';
-    final payload = jsonEncode(message.data);
-    
-    await localNotifications.show(
-      message.hashCode,
-      title,
-      body,
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          channel.id,
-          channel.name,
-          channelDescription: channel.description,
-          importance: Importance.high,
-          priority: Priority.high,
-          ticker: 'Thông báo QHome',
-          icon: '@mipmap/ic_launcher',
-        ),
-      ),
-      payload: payload,
-    );
-    
-    // Notification displayed (data payload)
   }
 }
 
+/// ==========================
+/// MAIN
+/// ==========================
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-  
+
+  /// Firebase (Mobile only)
+  if (enableFirebase) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+
+    FirebaseMessaging.onBackgroundMessage(
+      firebaseMessagingBackgroundHandler,
+    );
+  }
+
   await ApiClient.ensureInitialized();
   await _configurePreferredRefreshRate();
+
   final tokenStorage = TokenStorage();
 
-  await PushNotificationService.instance.initialize(
-    onNotificationTap: _handleNotificationTap,
-    residentIdProvider: tokenStorage.readResidentId,
-    buildingIdProvider: tokenStorage.readBuildingId,
-    roleProvider: tokenStorage.readRole,
-  );
-  await PushNotificationService.instance.requestPermissions();
+  if (enableFirebase) {
+    // await PushNotificationService.instance.initialize(
+    //   onNotificationTap: _handleNotificationTap,
+    //   residentIdProvider: tokenStorage.readResidentId,
+    //   buildingIdProvider: tokenStorage.readBuildingId,
+    //   roleProvider: tokenStorage.readRole,
+    // );
+
+    //await PushNotificationService.instance.requestPermissions();
+  }
 
   runApp(
     MultiProvider(
@@ -153,9 +131,17 @@ void main() async {
   );
 }
 
+/// ==========================
+/// NOTIFICATION TAP
+/// ==========================
+
 void _handleNotificationTap(RemoteMessage message) {
-  // Notification tapped - handled by router
+  // Điều hướng đã được xử lý trong router
 }
+
+/// ==========================
+/// REFRESH RATE (ANDROID ONLY)
+/// ==========================
 
 Future<void> _configurePreferredRefreshRate() async {
   if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
@@ -163,46 +149,23 @@ Future<void> _configurePreferredRefreshRate() async {
   }
 
   try {
-    // Lấy danh sách các refresh rate có sẵn
     final modes = await FlutterDisplayMode.supported;
-    if (modes.isEmpty) {
-      // No refresh rate supported
-      return;
-    }
+    if (modes.isEmpty) return;
 
-    // Sắp xếp theo refresh rate giảm dần
     modes.sort((a, b) => b.refreshRate.compareTo(a.refreshRate));
-    
-    // Tìm refresh rate cao nhất (thường là 90Hz, 120Hz, hoặc 144Hz)
-    // Ưu tiên 120Hz hoặc 90Hz nếu có, nếu không thì lấy cao nhất
-    DisplayMode? preferredMode;
-    
-    // Ưu tiên 120Hz
-    preferredMode = modes.firstWhere(
-      (mode) => mode.refreshRate == 120,
-      orElse: () => modes.first,
-    );
-    
-    // Nếu không có 120Hz, thử 90Hz
-    if (preferredMode.refreshRate != 120) {
-      preferredMode = modes.firstWhere(
-        (mode) => mode.refreshRate == 90,
-        orElse: () => modes.first,
-      );
-    }
-    
-    // Set refresh rate đã chọn
-    await FlutterDisplayMode.setPreferredMode(preferredMode);
-    // Refresh rate set successfully
-  } catch (e) {
-    // Error setting refresh rate - trying fallback
+    final preferred = modes.first;
+
+    await FlutterDisplayMode.setPreferredMode(preferred);
+  } catch (_) {
     try {
       await FlutterDisplayMode.setHighRefreshRate();
-    } catch (fallbackError) {
-      // Fallback failed - handled silently
-    }
+    } catch (_) {}
   }
 }
+
+/// ==========================
+/// APP ROOT
+/// ==========================
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -228,71 +191,54 @@ class MyApp extends StatelessWidget {
         Locale('vi', 'VN'),
       ],
       locale: const Locale('vi', 'VN'),
-      // Tối ưu performance
-      builder: (context, child) {
-        // Wrap với MediaQuery để đảm bảo text scaling không ảnh hưởng performance
-        return MediaQuery(
-          // Giữ nguyên text scaling nhưng tối ưu
-          data: MediaQuery.of(context).copyWith(
-            // Giảm text scaling factor nếu quá lớn để tránh lag
-            textScaler: MediaQuery.of(context).textScaler.clamp(
-              minScaleFactor: 0.8,
-              maxScaleFactor: 1.2,
-            ),
-          ),
-          child: ExitConfirmationWrapper(child: child!),
-        );
-      },
     );
   }
-}
 
-/// Widget wrapper để xác nhận trước khi thoát app trên Android
-class ExitConfirmationWrapper extends StatefulWidget {
-  final Widget child;
-
-  const ExitConfirmationWrapper({
-    super.key,
-    required this.child,
-  });
-
-  @override
-  State<ExitConfirmationWrapper> createState() => _ExitConfirmationWrapperState();
-}
-
-class _ExitConfirmationWrapperState extends State<ExitConfirmationWrapper> {
-  @override
-  Widget build(BuildContext context) {
-    // Chỉ áp dụng cho Android
-    if (!Platform.isAndroid) {
-      return widget.child;
+  Future<void> _configurePreferredRefreshRate() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return;
     }
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (bool didPop, dynamic result) async {
-        if (didPop) {
-          return;
-        }
+    try {
+      // Lấy danh sách các refresh rate có sẵn
+      final modes = await FlutterDisplayMode.supported;
+      if (modes.isEmpty) {
+        // No refresh rate supported
+        return;
+      }
 
-        // Kiểm tra xem có thể pop không (tức là có màn hình trước đó)
-        // Sử dụng GoRouter để kiểm tra
-        final router = GoRouter.of(context);
-        if (router.canPop()) {
-          // Có màn hình trước đó, cho phép pop bình thường
-          router.pop();
-          return;
-        }
+      // Sắp xếp theo refresh rate giảm dần
+      modes.sort((a, b) => b.refreshRate.compareTo(a.refreshRate));
 
-        // Không thể pop (đang ở màn hình root), hiển thị dialog xác nhận ngay lập tức
-        final shouldExit = await _showExitConfirmationDialog(context);
-        if (shouldExit == true && mounted) {
-          // Thoát app
-          SystemNavigator.pop();
-        }
-      },
-      child: widget.child,
-    );
+      // Tìm refresh rate cao nhất (thường là 90Hz, 120Hz, hoặc 144Hz)
+      // Ưu tiên 120Hz hoặc 90Hz nếu có, nếu không thì lấy cao nhất
+      DisplayMode? preferredMode;
+
+      // Ưu tiên 120Hz
+      preferredMode = modes.firstWhere(
+        (mode) => mode.refreshRate == 120,
+        orElse: () => modes.first,
+      );
+
+      // Nếu không có 120Hz, thử 90Hz
+      if (preferredMode.refreshRate != 120) {
+        preferredMode = modes.firstWhere(
+          (mode) => mode.refreshRate == 90,
+          orElse: () => modes.first,
+        );
+      }
+
+      // Set refresh rate đã chọn
+      await FlutterDisplayMode.setPreferredMode(preferredMode);
+      // Refresh rate set successfully
+    } catch (e) {
+      // Error setting refresh rate - trying fallback
+      try {
+        await FlutterDisplayMode.setHighRefreshRate();
+      } catch (fallbackError) {
+        // Fallback failed - handled silently
+      }
+    }
   }
 
   /// Hiển thị dialog xác nhận thoát app
@@ -401,4 +347,3 @@ class _ExitConfirmationWrapperState extends State<ExitConfirmationWrapper> {
     );
   }
 }
-

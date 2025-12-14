@@ -33,14 +33,16 @@ class MarketplaceScreen extends StatefulWidget {
   State<MarketplaceScreen> createState() => _MarketplaceScreenState();
 }
 
-class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindingObserver {
+class _MarketplaceScreenState extends State<MarketplaceScreen>
+    with WidgetsBindingObserver {
   late final MarketplaceViewModel _viewModel;
   final ScrollController _scrollController = ScrollController();
   final TokenStorage _tokenStorage = TokenStorage();
   final ChatService _chatService = ChatService();
   String? _currentResidentId;
   Set<String> _blockedUserIds = {}; // Cache blocked user IDs
-  final Map<String, String> _residentIdToUserIdCache = {}; // Cache residentId -> userId mapping
+  final Map<String, String> _residentIdToUserIdCache =
+      {}; // Cache residentId -> userId mapping
   bool _hasInitialized = false;
 
   @override
@@ -55,12 +57,12 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
     _loadCurrentUser();
     _loadBlockedUsers();
     _setupBlockedUsersListener();
-    
+
     // Ensure listener is setup for realtime updates
     // This is already done in initialize(), but we ensure it's set up here too
-    print('✅ [MarketplaceScreen] MarketplaceViewModel initialized with listener setup');
+    print(
+        '✅ [MarketplaceScreen] MarketplaceViewModel initialized with listener setup');
   }
-
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -104,34 +106,39 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
 
   void _setupBlockedUsersListener() {
     AppEventBus().on('blocked_users_updated', (_) async {
-      print('🔄 [MarketplaceScreen] blocked_users_updated event received, reloading blocked users...');
+      print(
+          '🔄 [MarketplaceScreen] blocked_users_updated event received, reloading blocked users...');
       await _loadBlockedUsers();
       // Refresh posts to show/hide posts from unblocked users
       // setState will trigger rebuild and re-filter posts based on updated _blockedUserIds
       if (mounted) {
         setState(() {
           // Trigger rebuild to refresh filtered posts
-          print('✅ [MarketplaceScreen] Blocked users reloaded, refreshing UI. Blocked count: ${_blockedUserIds.length}');
+          print(
+              '✅ [MarketplaceScreen] Blocked users reloaded, refreshing UI. Blocked count: ${_blockedUserIds.length}');
         });
       }
     });
   }
 
-  Future<void> _showUserOptions(BuildContext context, MarketplacePost post) async {
+  Future<void> _showUserOptions(
+      BuildContext context, MarketplacePost post) async {
     // Don't show options if user is viewing their own post
     if (_currentResidentId != null && post.residentId == _currentResidentId) {
       return;
     }
 
     // Get author userId from residentId (check cache first)
-    String? authorUserId = post.author?.userId ?? _residentIdToUserIdCache[post.residentId];
-    
+    String? authorUserId =
+        post.author?.userId ?? _residentIdToUserIdCache[post.residentId];
+
     if (authorUserId == null) {
       try {
         final apiClient = ApiClient();
-        final response = await apiClient.dio.get('/residents/${post.residentId}');
+        final response =
+            await apiClient.dio.get('/residents/${post.residentId}');
         authorUserId = response.data['userId']?.toString();
-        
+
         // Cache it for future use
         if (authorUserId != null) {
           _residentIdToUserIdCache[post.residentId] = authorUserId;
@@ -142,8 +149,9 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
     }
 
     // Check if user is blocked
-    final isBlocked = authorUserId != null && _blockedUserIds.contains(authorUserId);
-    
+    final isBlocked =
+        authorUserId != null && _blockedUserIds.contains(authorUserId);
+
     // If blocked, show message that user is not found
     if (isBlocked) {
       if (context.mounted) {
@@ -174,10 +182,10 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
       print('⚠️ [MarketplaceScreen] Error getting friends: $e');
     }
 
-    final hasActiveConversation = friend != null && 
-                                   friend.friendId == post.residentId && 
-                                   friend.hasActiveConversation && 
-                                   friend.conversationId != null;
+    final hasActiveConversation = friend != null &&
+        friend.friendId == post.residentId &&
+        friend.hasActiveConversation &&
+        friend.conversationId != null;
 
     // Show options menu
     final result = await showSmoothBottomSheet<String>(
@@ -192,7 +200,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
             ListTile(
               leading: const Icon(CupertinoIcons.chat_bubble),
               title: Text(hasActiveConversation ? 'Mở chat' : 'Gửi tin nhắn'),
-              onTap: () => Navigator.pop(context, hasActiveConversation ? 'open_chat' : 'message'),
+              onTap: () => Navigator.pop(
+                  context, hasActiveConversation ? 'open_chat' : 'message'),
             ),
             ListTile(
               leading: const Icon(CupertinoIcons.group),
@@ -200,7 +209,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
               onTap: () => Navigator.pop(context, 'invite_group'),
             ),
             ListTile(
-              leading: const Icon(CupertinoIcons.person_crop_circle_badge_xmark, color: Colors.red),
+              leading: const Icon(CupertinoIcons.person_crop_circle_badge_xmark,
+                  color: Colors.red),
               title: const Text('Chặn người dùng'),
               onTap: () => Navigator.pop(context, 'block'),
             ),
@@ -210,27 +220,32 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
       ),
     );
 
-    if (result == 'open_chat' && context.mounted && friend != null && friend.conversationId != null) {
+    if (result == 'open_chat' &&
+        context.mounted &&
+        friend != null &&
+        friend.conversationId != null) {
       // Navigate directly to direct chat if already friends
-      Navigator.push(
-        context,
-        SmoothPageRoute(
-          page: DirectChatScreen(
-            conversationId: friend.conversationId!,
-            otherParticipantName: friend.friendName.isNotEmpty ? friend.friendName : (post.author?.name ?? 'Người dùng'),
-          ),
-        ),
-      );
+      // Navigator.push(
+      //   context,
+      //   SmoothPageRoute(
+      //     page: DirectChatScreen(
+      //       conversationId: friend.conversationId!,
+      //       otherParticipantName: friend.friendName.isNotEmpty ? friend.friendName : (post.author?.name ?? 'Người dùng'),
+      //     ),
+      //   ),
+      // );
     } else if (result == 'message' && context.mounted) {
       await _showDirectChatPopup(context, post);
     } else if (result == 'invite_group' && context.mounted) {
       await _inviteToGroup(context, post);
     } else if (result == 'block' && context.mounted && authorUserId != null) {
-      await _blockUser(context, authorUserId, post.author?.name ?? 'Người dùng');
+      await _blockUser(
+          context, authorUserId, post.author?.name ?? 'Người dùng');
     }
   }
 
-  Future<void> _showDirectChatPopup(BuildContext context, MarketplacePost post) async {
+  Future<void> _showDirectChatPopup(
+      BuildContext context, MarketplacePost post) async {
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -278,16 +293,18 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           // Extract error message - remove "Exception: " prefix if present
           String errorMessage = e.toString().replaceFirst('Exception: ', '');
-          
+
           // Check if this is an informational message (not an error)
-          bool isInfoMessage = errorMessage.contains('Bạn đã gửi lời mời rồi') || 
-                               errorMessage.contains('đã gửi lời mời cho bạn rồi');
-          
+          bool isInfoMessage =
+              errorMessage.contains('Bạn đã gửi lời mời rồi') ||
+                  errorMessage.contains('đã gửi lời mời cho bạn rồi');
+
           // If error message already contains the full message, use it directly
-          if (!errorMessage.startsWith('Lỗi') && !errorMessage.contains('đã gửi lời mời')) {
+          if (!errorMessage.startsWith('Lỗi') &&
+              !errorMessage.contains('đã gửi lời mời')) {
             errorMessage = 'Lỗi: $errorMessage';
           }
-          
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(errorMessage),
@@ -300,13 +317,15 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
     }
   }
 
-  Future<void> _inviteToGroup(BuildContext context, MarketplacePost post) async {
+  Future<void> _inviteToGroup(
+      BuildContext context, MarketplacePost post) async {
     try {
       // Get phone number from residentId first
       String? phoneNumber;
       try {
         final apiClient = ApiClient();
-        final response = await apiClient.dio.get('/residents/${post.residentId}');
+        final response =
+            await apiClient.dio.get('/residents/${post.residentId}');
         phoneNumber = response.data['phone']?.toString();
       } catch (e) {
         print('⚠️ [MarketplaceScreen] Error getting phone number: $e');
@@ -320,7 +339,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
         }
         return;
       }
-      
+
       if (phoneNumber == null || phoneNumber.isEmpty) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -332,11 +351,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
         }
         return;
       }
-      
+
       // Get user's groups
       final groupsResponse = await _chatService.getMyGroups(page: 0, size: 100);
       List<ChatGroup> groups = groupsResponse.content;
-      
+
       // Load full group data with members for each group to check membership
       final groupsWithMembers = <ChatGroup>[];
       for (var group in groups) {
@@ -350,9 +369,9 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
         }
       }
       groups = groupsWithMembers;
-      
+
       ChatGroup? selectedGroup;
-      
+
       if (groups.isEmpty) {
         // No groups, create a new one
         final groupData = await showDialog<Map<String, String?>>(
@@ -361,25 +380,25 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
             defaultName: 'Nhóm với ${post.author?.name ?? 'người dùng'}',
           ),
         );
-        
+
         if (groupData == null || !context.mounted) {
           return;
         }
-        
+
         // Show loading
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Đang tạo nhóm...')),
           );
         }
-        
+
         // Create new group
         try {
           selectedGroup = await _chatService.createGroup(
             name: groupData['name']!,
             description: groupData['description'],
           );
-          
+
           if (context.mounted) {
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
             ScaffoldMessenger.of(context).showSnackBar(
@@ -408,11 +427,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
             currentResidentId: _currentResidentId,
           ),
         );
-        
+
         if (result == null || !context.mounted) {
           return;
         }
-        
+
         if (result == 'create_new') {
           // User wants to create a new group
           final groupData = await showDialog<Map<String, String?>>(
@@ -421,25 +440,25 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
               defaultName: 'Nhóm với ${post.author?.name ?? 'người dùng'}',
             ),
           );
-          
+
           if (groupData == null || !context.mounted) {
             return;
           }
-          
+
           // Show loading
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Đang tạo nhóm...')),
             );
           }
-          
+
           // Create new group
           try {
             selectedGroup = await _chatService.createGroup(
               name: groupData['name']!,
               description: groupData['description'],
             );
-            
+
             if (context.mounted) {
               ScaffoldMessenger.of(context).hideCurrentSnackBar();
               ScaffoldMessenger.of(context).showSnackBar(
@@ -460,7 +479,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
           }
         } else if (result is ChatGroup) {
           selectedGroup = result;
-          
+
           // Show loading
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -471,7 +490,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
           return;
         }
       }
-      
+
       // Check if target user is already in the group
       // Refresh group data to get full members list
       try {
@@ -480,13 +499,14 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
             fullGroupData.members!.any(
               (member) => member.residentId == post.residentId,
             );
-        
+
         if (targetUserInGroup) {
           if (context.mounted) {
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Người dùng đã ở trong nhóm "${selectedGroup.name}"'),
+                content:
+                    Text('Người dùng đã ở trong nhóm "${selectedGroup.name}"'),
                 backgroundColor: Colors.orange,
               ),
             );
@@ -497,30 +517,39 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
         print('⚠️ [MarketplaceScreen] Error checking group members: $e');
         // Continue with invite if check fails
       }
-      
+
       // Invite to group
-      print('📨 [MarketplaceScreen] Inviting user to group - groupId: ${selectedGroup.id}, phoneNumber: $phoneNumber, targetResidentId: ${post.residentId}');
+      print(
+          '📨 [MarketplaceScreen] Inviting user to group - groupId: ${selectedGroup.id}, phoneNumber: $phoneNumber, targetResidentId: ${post.residentId}');
       final inviteResult = await _chatService.inviteMembersByPhone(
         groupId: selectedGroup.id,
         phoneNumbers: [phoneNumber],
       );
-      
-      print('📨 [MarketplaceScreen] Invite result - successful: ${inviteResult.successfulInvitations?.length ?? 0}, invalid: ${inviteResult.invalidPhones?.length ?? 0}, skipped: ${inviteResult.skippedPhones?.length ?? 0}');
-      if (inviteResult.successfulInvitations != null && inviteResult.successfulInvitations!.isNotEmpty) {
+
+      print(
+          '📨 [MarketplaceScreen] Invite result - successful: ${inviteResult.successfulInvitations?.length ?? 0}, invalid: ${inviteResult.invalidPhones?.length ?? 0}, skipped: ${inviteResult.skippedPhones?.length ?? 0}');
+      if (inviteResult.successfulInvitations != null &&
+          inviteResult.successfulInvitations!.isNotEmpty) {
         for (var inv in inviteResult.successfulInvitations!) {
-          print('📨 [MarketplaceScreen]   Successful invitation - ID: ${inv.id}, InviteeResidentId: ${inv.inviteeResidentId}, InviteePhone: ${inv.inviteePhone}');
+          print(
+              '📨 [MarketplaceScreen]   Successful invitation - ID: ${inv.id}, InviteeResidentId: ${inv.inviteeResidentId}, InviteePhone: ${inv.inviteePhone}');
         }
       }
-      if (inviteResult.invalidPhones != null && inviteResult.invalidPhones!.isNotEmpty) {
-        print('📨 [MarketplaceScreen]   Invalid phones: ${inviteResult.invalidPhones}');
+      if (inviteResult.invalidPhones != null &&
+          inviteResult.invalidPhones!.isNotEmpty) {
+        print(
+            '📨 [MarketplaceScreen]   Invalid phones: ${inviteResult.invalidPhones}');
       }
-      if (inviteResult.skippedPhones != null && inviteResult.skippedPhones!.isNotEmpty) {
-        print('📨 [MarketplaceScreen]   Skipped phones: ${inviteResult.skippedPhones}');
+      if (inviteResult.skippedPhones != null &&
+          inviteResult.skippedPhones!.isNotEmpty) {
+        print(
+            '📨 [MarketplaceScreen]   Skipped phones: ${inviteResult.skippedPhones}');
       }
-      
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        if (inviteResult.successfulInvitations != null && inviteResult.successfulInvitations!.isNotEmpty) {
+        if (inviteResult.successfulInvitations != null &&
+            inviteResult.successfulInvitations!.isNotEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Đã gửi lời mời vào nhóm "${selectedGroup.name}"'),
@@ -530,7 +559,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Không thể gửi lời mời: ${inviteResult.invalidPhones?.join(", ") ?? inviteResult.skippedPhones?.join(", ") ?? "Lỗi không xác định"}'),
+              content: Text(
+                  'Không thể gửi lời mời: ${inviteResult.invalidPhones?.join(", ") ?? inviteResult.skippedPhones?.join(", ") ?? "Lỗi không xác định"}'),
               backgroundColor: Colors.orange,
             ),
           );
@@ -541,16 +571,17 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         // Extract error message - remove "Exception: " prefix if present
         String errorMessage = e.toString().replaceFirst('Exception: ', '');
-        
+
         // Check if this is an informational message (not an error)
-        bool isInfoMessage = errorMessage.contains('Bạn đã gửi lời mời rồi') || 
-                             errorMessage.contains('đã gửi lời mời cho bạn rồi');
-        
+        bool isInfoMessage = errorMessage.contains('Bạn đã gửi lời mời rồi') ||
+            errorMessage.contains('đã gửi lời mời cho bạn rồi');
+
         // If error message already contains the full message, use it directly
-        if (!errorMessage.startsWith('Lỗi') && !errorMessage.contains('đã gửi lời mời')) {
+        if (!errorMessage.startsWith('Lỗi') &&
+            !errorMessage.contains('đã gửi lời mời')) {
           errorMessage = 'Lỗi: $errorMessage';
         }
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMessage),
@@ -562,7 +593,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
     }
   }
 
-  Future<void> _blockUser(BuildContext context, String userId, String userName) async {
+  Future<void> _blockUser(
+      BuildContext context, String userId, String userName) async {
     // Show confirmation dialog
     final confirmed = await showDialog<bool>(
       context: context,
@@ -609,7 +641,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
 
         // Reload blocked users list
         await _loadBlockedUsers();
-        
+
         // Emit event to refresh marketplace
         AppEventBus().emit('blocked_users_updated');
       }
@@ -627,10 +659,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
     }
   }
 
-  Future<void> _showShareBottomSheet(BuildContext context, MarketplacePost post) async {
+  Future<void> _showShareBottomSheet(
+      BuildContext context, MarketplacePost post) async {
     final theme = Theme.of(context);
     final deepLink = 'app://marketplace/post/${post.id}';
-    
+
     showSmoothBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -686,9 +719,10 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
     );
   }
 
-  Future<void> _navigateToChatSelection(BuildContext context, MarketplacePost post) async {
+  Future<void> _navigateToChatSelection(
+      BuildContext context, MarketplacePost post) async {
     final theme = Theme.of(context);
-    
+
     showSmoothBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -794,7 +828,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                     page: const CreatePostScreen(),
                   ),
                 );
-                
+
                 // Refresh posts if a new post was created
                 if (result != null && mounted) {
                   _viewModel.refresh();
@@ -813,7 +847,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                         color: theme.colorScheme.onSurface,
                       ),
                       // Badge to show active filters
-                      if (viewModel.selectedCategory != null || viewModel.sortBy != null)
+                      if (viewModel.selectedCategory != null ||
+                          viewModel.sortBy != null)
                         Positioned(
                           right: 0,
                           top: 0,
@@ -835,19 +870,22 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
             ),
           ],
           bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(96), // Increased for filter badges
+            preferredSize:
+                const Size.fromHeight(96), // Increased for filter badges
             child: Column(
               children: [
                 Consumer<MarketplaceViewModel>(
                   builder: (context, viewModel, child) {
                     return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
                       child: SegmentedButton<bool>(
                         segments: const [
                           ButtonSegment<bool>(
                             value: false,
                             label: Text('Building của tôi'),
-                            icon: Icon(CupertinoIcons.building_2_fill, size: 16),
+                            icon:
+                                Icon(CupertinoIcons.building_2_fill, size: 16),
                           ),
                           ButtonSegment<bool>(
                             value: true,
@@ -862,7 +900,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                           }
                         },
                         style: SegmentedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
                         ),
                       ),
                     );
@@ -871,7 +910,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                 // Filter badges
                 Consumer<MarketplaceViewModel>(
                   builder: (context, viewModel, child) {
-                    if (viewModel.selectedCategory == null && viewModel.sortBy == null) {
+                    if (viewModel.selectedCategory == null &&
+                        viewModel.sortBy == null) {
                       return const SizedBox.shrink();
                     }
                     return Container(
@@ -884,7 +924,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                             _buildFilterChip(
                               context,
                               theme,
-                              _getCategoryName(viewModel.selectedCategory!, viewModel.categories),
+                              _getCategoryName(viewModel.selectedCategory!,
+                                  viewModel.categories),
                               () => viewModel.setCategoryFilter(null),
                             ),
                           if (viewModel.sortBy != null)
@@ -911,9 +952,9 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
             if (previous.length != next.length) {
               return true;
             }
-            
+
             // Check if any post's commentCount or viewCount changed
-            // Since we create a new list instance in MarketplaceViewModel, 
+            // Since we create a new list instance in MarketplaceViewModel,
             // Selector should detect the change, but we also check content
             for (int i = 0; i < previous.length && i < next.length; i++) {
               if (previous[i].id == next[i].id) {
@@ -926,18 +967,19 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                 return true;
               }
             }
-            
+
             // If list reference changed (new instance), rebuild
             // This handles the case where we create a new list in MarketplaceViewModel
             if (previous != next) {
               return true;
             }
-            
+
             return false;
           },
           builder: (context, posts, child) {
-            final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
-            
+            final viewModel =
+                Provider.of<MarketplaceViewModel>(context, listen: false);
+
             // Ensure listener is setup when Consumer rebuilds
             // This is critical to ensure listener is active when returning to screen
             // Use postFrameCallback to avoid setup during build phase
@@ -948,7 +990,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                 viewModel.setupRealtimeUpdates();
               }
             });
-            
+
             if (viewModel.isLoading && posts.isEmpty) {
               return const Center(child: CircularProgressIndicator());
             }
@@ -993,7 +1035,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                     Text(
                       'Chưa có bài đăng nào',
                       style: theme.textTheme.titleMedium?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        color:
+                            theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                   ],
@@ -1008,10 +1051,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                 padding: const EdgeInsets.all(16),
                 // Use key to preserve scroll position when items are added
                 key: const PageStorageKey<String>('marketplace_posts_list'),
-                cacheExtent: 500, // Cache items outside viewport for smoother scrolling
-                itemCount: posts.length + 
-                          (viewModel.isLoadingMore ? 1 : 0) + 
-                          (!viewModel.hasMore && posts.isNotEmpty ? 1 : 0),
+                cacheExtent:
+                    500, // Cache items outside viewport for smoother scrolling
+                itemCount: posts.length +
+                    (viewModel.isLoadingMore ? 1 : 0) +
+                    (!viewModel.hasMore && posts.isNotEmpty ? 1 : 0),
                 itemBuilder: (context, index) {
                   // Show loading indicator at the end when loading more
                   if (index == posts.length && viewModel.isLoadingMore) {
@@ -1022,7 +1066,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                       ),
                     );
                   }
-                  
+
                   // Show "No more posts" indicator
                   if (index == posts.length && !viewModel.hasMore) {
                     return Padding(
@@ -1031,7 +1075,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                         child: Text(
                           'Không còn bài viết nào nữa',
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.6),
                           ),
                         ),
                       ),
@@ -1039,50 +1084,52 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                   }
 
                   final post = posts[index];
-                  
+
                   // Debug log to verify post is updated
-                  debugPrint('📋 [MarketplaceScreen] Building post card for post ${post.id}, commentCount: ${post.commentCount}');
-                  
+                  debugPrint(
+                      '📋 [MarketplaceScreen] Building post card for post ${post.id}, commentCount: ${post.commentCount}');
+
                   // Filter out posts from blocked users
                   String? authorUserId = post.author?.userId;
-                  
+
                   // If userId not in author, try to get from cache or fetch
                   if (authorUserId == null && post.residentId.isNotEmpty) {
                     authorUserId = _residentIdToUserIdCache[post.residentId];
-                    
+
                     // If not in cache, fetch it (async, but we'll skip for now and fetch later)
                     if (authorUserId == null) {
                       // Will be fetched when user clicks on author
                       // For now, show the post
                     }
                   }
-                  
+
                   // If author is blocked, skip this post
-                  if (authorUserId != null && _blockedUserIds.contains(authorUserId)) {
+                  if (authorUserId != null &&
+                      _blockedUserIds.contains(authorUserId)) {
                     return const SizedBox.shrink();
                   }
-                  
+
                   // Use key that includes commentCount to ensure rebuild when count changes
                   return SmoothAnimations.staggeredItem(
                     index: index,
                     child: _PostCard(
-                    key: ValueKey('${post.id}_${post.commentCount}'),
-                    post: post,
-                    currentResidentId: _currentResidentId,
-                    categories: viewModel.categories,
-                    onTap: () {
-                      Navigator.push(
-                        context,
+                      key: ValueKey('${post.id}_${post.commentCount}'),
+                      post: post,
+                      currentResidentId: _currentResidentId,
+                      categories: viewModel.categories,
+                      onTap: () {
+                        Navigator.push(
+                          context,
                           SmoothPageRoute(
                             page: ChangeNotifierProvider.value(
-                            value: viewModel,
-                            child: PostDetailScreen(post: post),
+                              value: viewModel,
+                              child: PostDetailScreen(post: post),
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                    onAuthorTap: () => _showUserOptions(context, post),
-                    onShareTap: () => _showShareBottomSheet(context, post),
+                        );
+                      },
+                      onAuthorTap: () => _showUserOptions(context, post),
+                      onShareTap: () => _showShareBottomSheet(context, post),
                     ),
                   );
                 },
@@ -1094,7 +1141,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
     );
   }
 
-  void _showFilterBottomSheet(BuildContext context, MarketplaceViewModel viewModel) {
+  void _showFilterBottomSheet(
+      BuildContext context, MarketplaceViewModel viewModel) {
     final theme = Theme.of(context);
     String? selectedCategory = viewModel.selectedCategory;
     String? selectedSortBy = viewModel.sortBy;
@@ -1143,7 +1191,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                   ],
                 ),
                 const SizedBox(height: 24),
-                
+
                 // Category Filter
                 Text(
                   'Danh mục',
@@ -1175,15 +1223,17 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                               selected: selectedCategory == category.code,
                               onSelected: (selected) {
                                 setState(() {
-                                  selectedCategory = selected ? category.code : null;
+                                  selectedCategory =
+                                      selected ? category.code : null;
                                 });
-                                viewModel.setCategoryFilter(selected ? category.code : null);
+                                viewModel.setCategoryFilter(
+                                    selected ? category.code : null);
                               },
                             )),
                   ],
                 ),
                 const SizedBox(height: 24),
-                
+
                 // Price Sort
                 Text(
                   'Sắp xếp theo giá',
@@ -1237,7 +1287,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
     );
   }
 
-  Widget _buildFilterChip(BuildContext context, ThemeData theme, String label, VoidCallback onRemove) {
+  Widget _buildFilterChip(BuildContext context, ThemeData theme, String label,
+      VoidCallback onRemove) {
     return Container(
       margin: const EdgeInsets.only(right: 8),
       child: Chip(
@@ -1253,7 +1304,8 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
     );
   }
 
-  String _getCategoryName(String categoryCode, List<MarketplaceCategory> categories) {
+  String _getCategoryName(
+      String categoryCode, List<MarketplaceCategory> categories) {
     try {
       final category = categories.firstWhere(
         (cat) => cat.code == categoryCode,
@@ -1360,7 +1412,7 @@ class _PostCard extends StatelessWidget {
                               style: theme.textTheme.titleLarge?.copyWith(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 16,
-                                color: (currentResidentId != null && 
+                                color: (currentResidentId != null &&
                                         post.residentId == currentResidentId)
                                     ? theme.colorScheme.primary
                                     : theme.colorScheme.onSurface,
@@ -1368,43 +1420,51 @@ class _PostCard extends StatelessWidget {
                               overflow: TextOverflow.visible,
                               softWrap: true,
                             ),
-                          const SizedBox(height: 4),
-                          if (post.author?.unitNumber != null || post.author?.buildingName != null)
-                            Row(
-                              children: [
-                                Icon(
-                                  CupertinoIcons.home,
-                                  size: 14,
-                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                                ),
-                                const SizedBox(width: 4),
-                                if (post.author?.buildingName != null) ...[
-                                  Text(
-                                    post.author!.buildingName!,
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                                      fontWeight: FontWeight.w500,
-                                    ),
+                            const SizedBox(height: 4),
+                            if (post.author?.unitNumber != null ||
+                                post.author?.buildingName != null)
+                              Row(
+                                children: [
+                                  Icon(
+                                    CupertinoIcons.home,
+                                    size: 14,
+                                    color: theme.colorScheme.onSurface
+                                        .withValues(alpha: 0.6),
                                   ),
-                                  if (post.author?.unitNumber != null) ...[
+                                  const SizedBox(width: 4),
+                                  if (post.author?.buildingName != null) ...[
                                     Text(
-                                      ' - ',
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                                      post.author!.buildingName!,
+                                      style:
+                                          theme.textTheme.bodySmall?.copyWith(
+                                        color: theme.colorScheme.onSurface
+                                            .withValues(alpha: 0.7),
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
+                                    if (post.author?.unitNumber != null) ...[
+                                      Text(
+                                        ' - ',
+                                        style:
+                                            theme.textTheme.bodySmall?.copyWith(
+                                          color: theme.colorScheme.onSurface
+                                              .withValues(alpha: 0.5),
+                                        ),
+                                      ),
+                                    ],
                                   ],
-                                ],
-                                if (post.author?.unitNumber != null)
-                                  Text(
-                                    post.author!.unitNumber!,
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                                      fontWeight: FontWeight.w500,
+                                  if (post.author?.unitNumber != null)
+                                    Text(
+                                      post.author!.unitNumber!,
+                                      style:
+                                          theme.textTheme.bodySmall?.copyWith(
+                                        color: theme.colorScheme.onSurface
+                                            .withValues(alpha: 0.7),
+                                        fontWeight: FontWeight.w500,
+                                      ),
                                     ),
-                                  ),
-                              ],
-                            ),
+                                ],
+                              ),
                           ],
                         ),
                       ),
@@ -1415,7 +1475,8 @@ class _PostCard extends StatelessWidget {
                         Text(
                           _formatDate(post.createdAt),
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.5),
                           ),
                         ),
                       ],
@@ -1539,9 +1600,13 @@ class _PostCard extends StatelessWidget {
                   ],
                 ),
                 // Contact Info (if visible)
-                if (post.contactInfo != null && 
-                    ((post.contactInfo!.showPhone && post.contactInfo!.phone != null && post.contactInfo!.phone!.isNotEmpty) ||
-                     (post.contactInfo!.showEmail && post.contactInfo!.email != null && post.contactInfo!.email!.isNotEmpty))) ...[
+                if (post.contactInfo != null &&
+                    ((post.contactInfo!.showPhone &&
+                            post.contactInfo!.phone != null &&
+                            post.contactInfo!.phone!.isNotEmpty) ||
+                        (post.contactInfo!.showEmail &&
+                            post.contactInfo!.email != null &&
+                            post.contactInfo!.email!.isNotEmpty))) ...[
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -1551,34 +1616,44 @@ class _PostCard extends StatelessWidget {
                         color: theme.colorScheme.primary,
                       ),
                       const SizedBox(width: 6),
-                      if (post.contactInfo!.showPhone && post.contactInfo!.phone != null && post.contactInfo!.phone!.isNotEmpty) ...[
+                      if (post.contactInfo!.showPhone &&
+                          post.contactInfo!.phone != null &&
+                          post.contactInfo!.phone!.isNotEmpty) ...[
                         Icon(
                           CupertinoIcons.phone,
                           size: 12,
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.6),
                         ),
                         const SizedBox(width: 4),
                         Text(
                           post.contactInfo!.phone!,
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.7),
                           ),
                         ),
-                        if (post.contactInfo!.showEmail && post.contactInfo!.email != null && post.contactInfo!.email!.isNotEmpty)
+                        if (post.contactInfo!.showEmail &&
+                            post.contactInfo!.email != null &&
+                            post.contactInfo!.email!.isNotEmpty)
                           const SizedBox(width: 12),
                       ],
-                      if (post.contactInfo!.showEmail && post.contactInfo!.email != null && post.contactInfo!.email!.isNotEmpty) ...[
+                      if (post.contactInfo!.showEmail &&
+                          post.contactInfo!.email != null &&
+                          post.contactInfo!.email!.isNotEmpty) ...[
                         Icon(
                           CupertinoIcons.mail,
                           size: 12,
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.6),
                         ),
                         const SizedBox(width: 4),
                         Flexible(
                           child: Text(
                             post.contactInfo!.email!,
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                              color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.7),
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1594,29 +1669,29 @@ class _PostCard extends StatelessWidget {
                     final allMedia = post.images;
                     final images = <MarketplacePostImage>[];
                     MarketplacePostImage? video;
-                    
+
                     for (var media in allMedia) {
                       final url = media.imageUrl.toLowerCase();
-                      final isVideo = url.contains('.mp4') || 
-                                     url.contains('.mov') || 
-                                     url.contains('.avi') || 
-                                     url.contains('.webm') ||
-                                     url.contains('.mkv') ||
-                                     url.contains('video/') ||
-                                     (media.thumbnailUrl == null && 
-                                      !url.contains('.jpg') && 
-                                      !url.contains('.jpeg') && 
-                                      !url.contains('.png') && 
-                                      !url.contains('.webp') &&
-                                      !url.contains('.gif'));
-                      
+                      final isVideo = url.contains('.mp4') ||
+                          url.contains('.mov') ||
+                          url.contains('.avi') ||
+                          url.contains('.webm') ||
+                          url.contains('.mkv') ||
+                          url.contains('video/') ||
+                          (media.thumbnailUrl == null &&
+                              !url.contains('.jpg') &&
+                              !url.contains('.jpeg') &&
+                              !url.contains('.png') &&
+                              !url.contains('.webp') &&
+                              !url.contains('.gif'));
+
                       if (isVideo) {
                         video = media;
                       } else {
                         images.add(media);
                       }
                     }
-                    
+
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1640,7 +1715,7 @@ class _PostCard extends StatelessWidget {
                             },
                           ),
                         ],
-                        
+
                         // Images - Only show first 3 images, click to view all
                         if (images.isNotEmpty) ...[
                           SizedBox(height: video != null ? 12 : 0),
@@ -1651,7 +1726,8 @@ class _PostCard extends StatelessWidget {
                               itemCount: images.length > 3 ? 3 : images.length,
                               itemBuilder: (context, index) {
                                 final image = images[index];
-                                final isLastVisible = index == 2 && images.length > 3;
+                                final isLastVisible =
+                                    index == 2 && images.length > 3;
                                 return GestureDetector(
                                   onTap: () {
                                     // Open image viewer with only images (not video)
@@ -1670,56 +1746,80 @@ class _PostCard extends StatelessWidget {
                                       Container(
                                         width: 200,
                                         margin: EdgeInsets.only(
-                                          right: index < (images.length > 3 ? 2 : images.length - 1) ? 8 : 0,
+                                          right: index <
+                                                  (images.length > 3
+                                                      ? 2
+                                                      : images.length - 1)
+                                              ? 8
+                                              : 0,
                                         ),
                                         decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(12),
-                                          color: theme.colorScheme.surfaceContainerHighest,
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          color: theme.colorScheme
+                                              .surfaceContainerHighest,
                                           boxShadow: [
                                             BoxShadow(
-                                              color: Colors.black.withValues(alpha: 0.08),
+                                              color: Colors.black
+                                                  .withValues(alpha: 0.08),
                                               blurRadius: 6,
                                               offset: const Offset(0, 2),
                                             ),
                                           ],
                                         ),
                                         child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
                                           child: image.imageUrl.isNotEmpty
                                               ? CachedNetworkImage(
                                                   imageUrl: image.imageUrl,
                                                   fit: BoxFit.cover,
                                                   httpHeaders: {
-                                                    'ngrok-skip-browser-warning': 'true',
+                                                    'ngrok-skip-browser-warning':
+                                                        'true',
                                                   },
-                                                  placeholder: (context, url) => Container(
-                                                    color: theme.colorScheme.surfaceContainerHighest,
+                                                  placeholder: (context, url) =>
+                                                      Container(
+                                                    color: theme.colorScheme
+                                                        .surfaceContainerHighest,
                                                     child: Center(
                                                       child: SizedBox(
                                                         width: 24,
                                                         height: 24,
-                                                        child: CircularProgressIndicator(
+                                                        child:
+                                                            CircularProgressIndicator(
                                                           strokeWidth: 2,
-                                                          color: theme.colorScheme.primary,
+                                                          color: theme
+                                                              .colorScheme
+                                                              .primary,
                                                         ),
                                                       ),
                                                     ),
                                                   ),
-                                                  errorWidget: (context, url, error) => Container(
-                                                    color: theme.colorScheme.surfaceContainerHighest,
+                                                  errorWidget:
+                                                      (context, url, error) =>
+                                                          Container(
+                                                    color: theme.colorScheme
+                                                        .surfaceContainerHighest,
                                                     child: Icon(
                                                       CupertinoIcons.photo,
                                                       size: 48,
-                                                      color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                                                      color: theme
+                                                          .colorScheme.onSurface
+                                                          .withValues(
+                                                              alpha: 0.3),
                                                     ),
                                                   ),
                                                 )
                                               : Container(
-                                                  color: theme.colorScheme.surfaceContainerHighest,
+                                                  color: theme.colorScheme
+                                                      .surfaceContainerHighest,
                                                   child: Icon(
                                                     CupertinoIcons.photo,
                                                     size: 48,
-                                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                                                    color: theme
+                                                        .colorScheme.onSurface
+                                                        .withValues(alpha: 0.3),
                                                   ),
                                                 ),
                                         ),
@@ -1729,13 +1829,17 @@ class _PostCard extends StatelessWidget {
                                         Positioned.fill(
                                           child: Container(
                                             decoration: BoxDecoration(
-                                              borderRadius: BorderRadius.circular(12),
-                                              color: Colors.black.withValues(alpha: 0.5),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              color: Colors.black
+                                                  .withValues(alpha: 0.5),
                                             ),
                                             child: Center(
                                               child: Text(
                                                 '+${images.length - 3}',
-                                                style: theme.textTheme.titleLarge?.copyWith(
+                                                style: theme
+                                                    .textTheme.titleLarge
+                                                    ?.copyWith(
                                                   color: Colors.white,
                                                   fontWeight: FontWeight.bold,
                                                 ),
@@ -1766,7 +1870,8 @@ class _PostCard extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(
                       '${post.commentCount}',
-                      key: ValueKey('comment_count_${post.id}_${post.commentCount}'),
+                      key: ValueKey(
+                          'comment_count_${post.id}_${post.commentCount}'),
                       style: theme.textTheme.bodySmall,
                     ),
                     if (onShareTap != null) ...[
@@ -1780,7 +1885,8 @@ class _PostCard extends StatelessWidget {
                         child: Icon(
                           CupertinoIcons.share,
                           size: 20,
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.6),
                         ),
                       ),
                     ],
@@ -1827,16 +1933,15 @@ class _PostCard extends StatelessWidget {
         return category.name;
       } catch (e) {
         // Nếu không tìm thấy category, kiểm tra categoryName
-        if (post.categoryName.isNotEmpty && post.categoryName != post.category) {
+        if (post.categoryName.isNotEmpty &&
+            post.categoryName != post.category) {
           return post.categoryName;
         }
         // Fallback về code
         return post.category;
       }
     }
-    
+
     return '';
   }
 }
-
-

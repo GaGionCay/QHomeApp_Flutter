@@ -60,16 +60,21 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   bool _isPostingComment = false;
   String? _currentResidentId;
   String? _replyingToCommentId; // ID của comment đang được reply
-  MarketplaceComment? _replyingToComment; // Comment đang được reply (để hiển thị tên)
-  Set<String> _deletingCommentIds = {}; // Track comments being deleted for animation
+  MarketplaceComment?
+      _replyingToComment; // Comment đang được reply (để hiển thị tên)
+  Set<String> _deletingCommentIds =
+      {}; // Track comments being deleted for animation
   Set<String> _newCommentIds = {}; // Track new comments for animation
-  Set<String> _movedCommentIds = {}; // Track comments that were moved (to prevent slide animation)
+  Set<String> _movedCommentIds =
+      {}; // Track comments that were moved (to prevent slide animation)
   int _currentPage = 0;
   int _pageSize = 10;
   bool _hasMoreComments = true;
-  Map<String, bool> _expandedComments = {}; // Track expanded state for read more
+  Map<String, bool> _expandedComments =
+      {}; // Track expanded state for read more
   Set<String> _blockedUserIds = {}; // Cache blocked user IDs
-  final Map<String, String> _residentIdToUserIdCache = {}; // Cache residentId -> userId mapping
+  final Map<String, String> _residentIdToUserIdCache =
+      {}; // Cache residentId -> userId mapping
   final ImagePicker _imagePicker = ImagePicker();
   XFile? _selectedImage; // Selected image for comment
   XFile? _selectedVideo; // Selected video for comment
@@ -85,7 +90,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
     return count;
   }
-  
+
   /// Calculate total comment count from loaded comments
   /// This is more accurate than trusting API count which might be stale
   int _calculateCommentCount() {
@@ -113,22 +118,23 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   /// - Current user is the comment owner
   bool _canDeleteComment(MarketplaceComment comment) {
     if (_currentResidentId == null) return false;
-    
+
     // Post owner can delete any comment
     if (widget.post.residentId == _currentResidentId) {
       return true;
     }
-    
+
     // Comment owner can delete their own comment
     if (comment.residentId == _currentResidentId) {
       return true;
     }
-    
+
     return false;
   }
 
   /// Show delete comment confirmation dialog
-  Future<void> _showDeleteCommentDialog(BuildContext context, MarketplaceComment comment) async {
+  Future<void> _showDeleteCommentDialog(
+      BuildContext context, MarketplaceComment comment) async {
     final isRootComment = comment.parentCommentId == null;
     final confirmed = await showSmoothDialog<bool>(
       context: context,
@@ -158,11 +164,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
-
-
-
   /// Insert reply into comment tree
-  bool _insertReplyIntoTree(MarketplaceComment comment, String parentId, MarketplaceComment newReply) {
+  bool _insertReplyIntoTree(MarketplaceComment comment, String parentId,
+      MarketplaceComment newReply) {
     if (comment.id == parentId) {
       // Found parent, add reply
       comment.replies.add(newReply);
@@ -178,9 +182,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   /// Edit a comment
-  Future<void> _editComment(BuildContext context, MarketplaceComment comment) async {
+  Future<void> _editComment(
+      BuildContext context, MarketplaceComment comment) async {
     final textController = TextEditingController(text: comment.content);
-    
+
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -214,11 +219,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
     if (result != null && result.isNotEmpty && context.mounted) {
       try {
-        await _marketplaceService.updateComment(widget.post.id, comment.id, result);
+        await _marketplaceService.updateComment(
+            widget.post.id, comment.id, result);
         if (context.mounted) {
           // Update comment in local state without reloading
           _updateCommentInTree(comment.id, result);
-          
+
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Đã chỉnh sửa bình luận'),
@@ -244,26 +250,26 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   Future<void> _deleteComment(MarketplaceComment comment) async {
     try {
       // Save scroll position
-      final scrollPosition = _scrollController.hasClients 
-          ? _scrollController.position.pixels 
+      final scrollPosition = _scrollController.hasClients
+          ? _scrollController.position.pixels
           : 0.0;
-      
+
       final isRootComment = comment.parentCommentId == null;
-      
+
       // Start deletion animation
       setState(() {
         _deletingCommentIds.add(comment.id);
       });
-      
+
       // Wait for animation to start
       await Future.delayed(const Duration(milliseconds: 300));
-      
+
       // Call API to delete
       await _marketplaceService.deleteComment(widget.post.id, comment.id);
-      
+
       // Get current post state before updating
       final currentPost = _currentPost ?? widget.post;
-      
+
       if (mounted) {
         // Remove comment from local list first
         setState(() {
@@ -273,16 +279,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           } else {
             // Remove child comment from tree and move its replies to parent
             _comments = _comments.map((rootComment) {
-              return _removeCommentFromTreeAndMoveReplies(rootComment, comment.id);
+              return _removeCommentFromTreeAndMoveReplies(
+                  rootComment, comment.id);
             }).toList();
           }
-          
+
           // Calculate count from loaded comments after deletion (more accurate)
           // This ensures count is accurate even if comments were loaded from backend
-          final calculatedCount = _comments.isNotEmpty ? _calculateCommentCount() : 0;
+          final calculatedCount =
+              _comments.isNotEmpty ? _calculateCommentCount() : 0;
           final newCommentCount = calculatedCount;
-          
-          
+
           // Update comment count immediately
           _currentPost = MarketplacePost(
             id: currentPost.id,
@@ -303,17 +310,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             createdAt: currentPost.createdAt,
             updatedAt: currentPost.updatedAt,
           );
-          
-          
+
           _deletingCommentIds.remove(comment.id);
         });
-        
+
         // Emit event IMMEDIATELY after removing comment from list and calculating count
         // This ensures marketplace screen gets updated even if widget unmounts
         // Use calculated count from loaded comments (more accurate)
         final updatedCommentCount = _currentPost?.commentCount;
         if (updatedCommentCount != null) {
-          print('📡 [PostDetailScreen] Emitting immediate event after deletion: commentCount=$updatedCommentCount, postId=${widget.post.id}');
+          print(
+              '📡 [PostDetailScreen] Emitting immediate event after deletion: commentCount=$updatedCommentCount, postId=${widget.post.id}');
           AppEventBus().emit('marketplace_update', {
             'type': 'POST_STATS_UPDATE',
             'postId': widget.post.id,
@@ -321,7 +328,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             'viewCount': currentPost.viewCount,
           });
         }
-        
+
         // Remove moved flags after animation completes
         Future.delayed(const Duration(milliseconds: 500), () {
           if (mounted) {
@@ -330,14 +337,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             });
           }
         });
-        
+
         // Reload from backend to verify accuracy and emit again if different
         // This ensures we have the correct count from backend
         Future.delayed(const Duration(milliseconds: 800), () {
           // Don't check mounted here - _reloadPostAfterDeletion handles it
           _reloadPostAfterDeletion();
         });
-        
+
         // Restore scroll position
         if (_scrollController.hasClients) {
           Future.delayed(const Duration(milliseconds: 100), () {
@@ -346,7 +353,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             }
           });
         }
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('✅ Đã xóa bình luận'),
@@ -394,10 +401,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   /// Check if two image lists are equal
-  bool _areImagesEqual(List<MarketplacePostImage> images1, List<MarketplacePostImage> images2) {
+  bool _areImagesEqual(
+      List<MarketplacePostImage> images1, List<MarketplacePostImage> images2) {
     if (images1.length != images2.length) return false;
     for (int i = 0; i < images1.length; i++) {
-      if (images1[i].id != images2[i].id || images1[i].imageUrl != images2[i].imageUrl) {
+      if (images1[i].id != images2[i].id ||
+          images1[i].imageUrl != images2[i].imageUrl) {
         return false;
       }
     }
@@ -407,34 +416,36 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   /// Reload post to get latest data (comment count, view count, images, etc.)
   /// Only updates if data changed to avoid unnecessary rebuilds
   /// Optionally emits event to update marketplace screen
-  Future<void> _reloadPost({bool emitEvent = false, bool forceUpdateImages = false}) async {
+  Future<void> _reloadPost(
+      {bool emitEvent = false, bool forceUpdateImages = false}) async {
     try {
       final updatedPost = await _marketplaceService.getPostById(widget.post.id);
       if (mounted) {
         setState(() {
           final currentPost = _currentPost ?? widget.post;
-          
+
           // Calculate comment count from loaded comments if available
           // This is more accurate than trusting API count which might be stale
-          final calculatedCount = _comments.isNotEmpty ? _calculateCommentCount() : null;
+          final calculatedCount =
+              _comments.isNotEmpty ? _calculateCommentCount() : null;
           final commentCountToUse = calculatedCount ?? updatedPost.commentCount;
-          
+
           // Check if images changed
-          final imagesChanged = forceUpdateImages || 
+          final imagesChanged = forceUpdateImages ||
               updatedPost.images.length != currentPost.images.length ||
               !_areImagesEqual(updatedPost.images, currentPost.images);
-          
+
           // Only update if comment count, view count, or images changed
           // Use calculated count if available, otherwise use API count
           final shouldUpdate = commentCountToUse != currentPost.commentCount ||
-                              updatedPost.viewCount != currentPost.viewCount ||
-                              imagesChanged ||
-                              updatedPost.title != currentPost.title ||
-                              updatedPost.description != currentPost.description ||
-                              updatedPost.price != currentPost.price ||
-                              updatedPost.category != currentPost.category ||
-                              updatedPost.location != currentPost.location;
-          
+              updatedPost.viewCount != currentPost.viewCount ||
+              imagesChanged ||
+              updatedPost.title != currentPost.title ||
+              updatedPost.description != currentPost.description ||
+              updatedPost.price != currentPost.price ||
+              updatedPost.category != currentPost.category ||
+              updatedPost.location != currentPost.location;
+
           if (shouldUpdate) {
             // Create updated post with calculated count if available
             final postToUse = calculatedCount != null
@@ -458,13 +469,15 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                     updatedAt: updatedPost.updatedAt,
                   )
                 : updatedPost; // Use API post if no comments loaded yet
-            
+
             _currentPost = postToUse;
-            print('🔄 [PostDetailScreen] Updated post - commentCount: ${currentPost.commentCount} -> ${postToUse.commentCount}, images: ${currentPost.images.length} -> ${postToUse.images.length}');
-            
+            print(
+                '🔄 [PostDetailScreen] Updated post - commentCount: ${currentPost.commentCount} -> ${postToUse.commentCount}, images: ${currentPost.images.length} -> ${postToUse.images.length}');
+
             // Always emit event when comment count changes, even if not explicitly requested
             // This ensures marketplace screen gets updated when post is reloaded from backend
-            final commentCountChanged = commentCountToUse != currentPost.commentCount;
+            final commentCountChanged =
+                commentCountToUse != currentPost.commentCount;
             if (emitEvent || commentCountChanged || imagesChanged) {
               // Use a small delay to ensure setState completes before emitting
               Future.delayed(const Duration(milliseconds: 50), () {
@@ -476,15 +489,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 });
               });
             }
-          } else {
-          }
+          } else {}
         });
       }
     } catch (e) {
       // Error handled silently in production
     }
   }
-  
+
   /// Reload post after deletion - always updates comment count from backend
   /// This ensures comment count is accurate after deletion
   /// Emits event with accurate count to update marketplace screen (only if different from current)
@@ -492,10 +504,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   Future<void> _reloadPostAfterDeletion() async {
     try {
       final updatedPost = await _marketplaceService.getPostById(widget.post.id);
-      final currentCount = _currentPost?.commentCount ?? widget.post.commentCount;
+      final currentCount =
+          _currentPost?.commentCount ?? widget.post.commentCount;
       final updatedCount = updatedPost.commentCount;
-      
-      
+
       // Only update and emit if backend count differs from current count
       // This prevents unnecessary updates if the immediate event was already correct
       if (updatedCount != currentCount) {
@@ -504,7 +516,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             _currentPost = updatedPost;
           });
         }
-        
+
         // Emit event with accurate comment count from backend
         // This ensures marketplace screen gets the correct count if our calculation was wrong
         // Emit even if widget unmounted to ensure marketplace screen gets updated
@@ -577,7 +589,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     } catch (e) {
       // No provider available - edit will still work but won't refresh marketplace
     }
-    
+
     final navigator = Navigator.of(context);
     // Navigate to edit post screen
     final result = await navigator.push(
@@ -587,7 +599,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           onPostUpdated: () async {
             // Refresh marketplace view model if available
             try {
-              final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+              final viewModel =
+                  Provider.of<MarketplaceViewModel>(context, listen: false);
               await viewModel.refresh();
             } catch (e) {
               // No provider available
@@ -596,19 +609,19 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         ),
       ),
     );
-    
+
     // If post was updated, refresh the screen
     if (result == true && mounted) {
       // Reload post data if viewModel is available
       if (viewModel != null) {
         await viewModel.refresh();
       }
-      
+
       // Reload post detail once to get updated data (images are now uploaded sync, so they should be available immediately)
       if (mounted) {
         await _reloadPost(emitEvent: true, forceUpdateImages: true);
       }
-      
+
       // Only pop if still mounted and Navigator is still valid
       // Use post-frame callback to ensure widget tree is stable
       if (mounted) {
@@ -629,7 +642,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     } catch (e) {
       // No provider available - use service directly
     }
-    
+
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     // Show confirmation dialog
@@ -637,7 +650,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Xác nhận xóa'),
-        content: const Text('Bạn có chắc chắn muốn xóa bài đăng này? Hành động này không thể hoàn tác.'),
+        content: const Text(
+            'Bạn có chắc chắn muốn xóa bài đăng này? Hành động này không thể hoàn tác.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -662,7 +676,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           // Use service directly if no viewModel
           await _marketplaceService.deletePost(post.id);
         }
-        
+
         if (mounted) {
           messenger.showSnackBar(
             const SnackBar(content: Text('Đã xóa bài đăng')),
@@ -695,22 +709,24 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         }
       }
     });
-    
+
     // Listen for marketplace updates to update comment count
     AppEventBus().on('marketplace_update', (data) {
       if (data is Map<String, dynamic>) {
         final type = data['type'] as String?;
         final postId = data['postId'] as String?;
-        if (postId == widget.post.id && type == 'POST_STATS_UPDATE' && mounted) {
+        if (postId == widget.post.id &&
+            type == 'POST_STATS_UPDATE' &&
+            mounted) {
           // Update comment count from event data immediately
           final commentCount = (data['commentCount'] as num?)?.toInt();
           final viewCount = (data['viewCount'] as num?)?.toInt();
-          
+
           if (commentCount != null || viewCount != null) {
             setState(() {
               // Always update _currentPost, even if it's null (use widget.post as base)
               final currentPost = _currentPost ?? widget.post;
-              
+
               _currentPost = MarketplacePost(
                 id: currentPost.id,
                 residentId: currentPost.residentId,
@@ -732,7 +748,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               );
             });
           }
-          
+
           // Don't reload post immediately - use event data instead
           // Only reload if event data is missing
           if (commentCount == null || viewCount == null) {
@@ -759,10 +775,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
     try {
       CommentPagedResponse pagedResponse;
-      
+
       // Try to use MarketplaceViewModel if available, otherwise use MarketplaceService directly
       try {
-        final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+        final viewModel =
+            Provider.of<MarketplaceViewModel>(context, listen: false);
         pagedResponse = await viewModel.getCommentsPaged(
           widget.post.id,
           page: _currentPage,
@@ -776,12 +793,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           size: _pageSize,
         );
       }
-      
+
       if (mounted) {
         setState(() {
           // Filter out deleted comments (backend should already filter, but defensive check)
-          final filteredComments = pagedResponse.content.where((comment) => !comment.isDeleted).toList();
-          
+          final filteredComments = pagedResponse.content
+              .where((comment) => !comment.isDeleted)
+              .toList();
+
           if (loadMore) {
             _comments.addAll(filteredComments);
           } else {
@@ -791,15 +810,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           _hasMoreComments = pagedResponse.hasNext;
           _isLoadingComments = false;
           _isLoadingMoreComments = false;
-          
+
           // Update comment count from loaded comments IMMEDIATELY
           // This ensures count is accurate even if API count is stale
           // Emit event immediately to update marketplace screen before any refresh happens
           if (_comments.isNotEmpty) {
             final calculatedCount = _calculateCommentCount();
             final currentPost = _currentPost ?? widget.post;
-            
-            
+
             // Always update and emit event if calculated count differs from current
             // This ensures marketplace screen gets accurate count immediately
             if (calculatedCount != currentPost.commentCount) {
@@ -822,7 +840,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 createdAt: currentPost.createdAt,
                 updatedAt: currentPost.updatedAt,
               );
-              
+
               // Emit event IMMEDIATELY to update marketplace screen
               // Don't delay - we want marketplace screen to get accurate count ASAP
               AppEventBus().emit('marketplace_update', {
@@ -833,10 +851,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               });
               print('✅ [PostDetailScreen] Event emitted successfully');
             } else {
-              print('ℹ️ [PostDetailScreen] Calculated count matches current count ($calculatedCount), no update needed');
+              print(
+                  'ℹ️ [PostDetailScreen] Calculated count matches current count ($calculatedCount), no update needed');
             }
           } else {
-            print('ℹ️ [PostDetailScreen] No comments loaded yet, skipping count calculation');
+            print(
+                'ℹ️ [PostDetailScreen] No comments loaded yet, skipping count calculation');
           }
         });
       }
@@ -864,13 +884,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   Future<void> _postComment() async {
     final content = _commentController.text.trim();
-    if (content.isEmpty && _selectedImage == null && _selectedVideo == null) return;
+    if (content.isEmpty && _selectedImage == null && _selectedVideo == null)
+      return;
 
     setState(() => _isPostingComment = true);
     try {
       String? imageUrl;
       String? videoUrl;
-      
+
       // Upload image if selected to ImageKit
       if (_selectedImage != null) {
         try {
@@ -887,34 +908,38 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           return;
         }
       }
-      
+
       // Upload video if selected to data-docs-service (not ImageKit)
       if (_selectedVideo != null) {
         try {
           // Lấy userId từ storage
           final userId = await ApiClient().storage.readUserId();
           if (userId == null) {
-            throw Exception('Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.');
+            throw Exception(
+                'Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.');
           }
-          
+
           // Nén video trước khi upload
-          final compressedFile = await VideoCompressionService.instance.compressVideo(
+          final compressedFile =
+              await VideoCompressionService.instance.compressVideo(
             videoPath: _selectedVideo!.path,
             onProgress: (message) {
               print('Video compression: $message');
             },
           );
-          
-          final videoFileToUpload = compressedFile ?? File(_selectedVideo!.path);
-          
+
+          final videoFileToUpload =
+              compressedFile ?? File(_selectedVideo!.path);
+
           // Lấy video metadata nếu có thể
           String? resolution;
           int? durationSeconds;
           int? width;
           int? height;
-          
+
           try {
-            final mediaInfo = await VideoCompress.getMediaInfo(videoFileToUpload.path);
+            final mediaInfo =
+                await VideoCompress.getMediaInfo(videoFileToUpload.path);
             if (mediaInfo != null) {
               if (mediaInfo.width != null && mediaInfo.height != null) {
                 width = mediaInfo.width;
@@ -936,7 +961,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           } catch (e) {
             print('⚠️ Không thể lấy video metadata: $e');
           }
-          
+
           // Upload video lên data-docs-service
           final videoData = await _imageKitService.uploadVideo(
             file: videoFileToUpload,
@@ -948,12 +973,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             width: width,
             height: height,
           );
-          
+
           videoUrl = videoData['fileUrl'] as String;
-          print('✅ [PostDetailScreen] Video comment uploaded to backend: $videoUrl');
-          
+          print(
+              '✅ [PostDetailScreen] Video comment uploaded to backend: $videoUrl');
+
           // Xóa file nén nếu khác file gốc
-          if (compressedFile != null && compressedFile.path != _selectedVideo!.path) {
+          if (compressedFile != null &&
+              compressedFile.path != _selectedVideo!.path) {
             try {
               await compressedFile.delete();
             } catch (e) {
@@ -969,15 +996,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           return;
         }
       }
-      
+
       MarketplaceComment? newComment;
-      
+
       // Try to use MarketplaceViewModel if available, otherwise use MarketplaceService directly
       try {
-        final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+        final viewModel =
+            Provider.of<MarketplaceViewModel>(context, listen: false);
         newComment = await viewModel.addComment(
-          widget.post.id, 
-          content.trim(), // Send trimmed content (can be empty if image/video is provided)
+          widget.post.id,
+          content
+              .trim(), // Send trimmed content (can be empty if image/video is provided)
           parentCommentId: _replyingToCommentId,
           imageUrl: imageUrl,
           videoUrl: videoUrl,
@@ -986,13 +1015,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         // No provider available, use service directly
         newComment = await _marketplaceService.addComment(
           postId: widget.post.id,
-          content: content.trim(), // Send trimmed content (can be empty if image/video is provided)
+          content: content
+              .trim(), // Send trimmed content (can be empty if image/video is provided)
           parentCommentId: _replyingToCommentId,
           imageUrl: imageUrl,
           videoUrl: videoUrl,
         );
       }
-      
+
       if (newComment != null && mounted) {
         _commentController.clear();
         final wasReplying = _replyingToCommentId != null;
@@ -1000,21 +1030,22 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         _replyingToComment = null;
         _selectedImage = null;
         _selectedVideo = null;
-        
+
         // Save scroll position
-        final scrollPosition = _scrollController.hasClients 
-            ? _scrollController.position.pixels 
+        final scrollPosition = _scrollController.hasClients
+            ? _scrollController.position.pixels
             : 0.0;
-        
+
         // Insert comment into local list with animation
         setState(() {
           if (newComment != null) {
             _newCommentIds.add(newComment.id);
-            
+
             if (wasReplying && newComment.parentCommentId != null) {
               // Insert as reply to parent comment
               for (var rootComment in _comments) {
-                if (_insertReplyIntoTree(rootComment, newComment.parentCommentId!, newComment)) {
+                if (_insertReplyIntoTree(
+                    rootComment, newComment.parentCommentId!, newComment)) {
                   break;
                 }
               }
@@ -1024,16 +1055,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             }
           }
         });
-        
+
         // Update comment count from loaded comments (more accurate than +1)
         // This ensures count is accurate even if comments were loaded from backend
         setState(() {
           final currentPost = _currentPost ?? widget.post;
           // Calculate count from loaded comments if available, otherwise use +1
-          final calculatedCount = _comments.isNotEmpty ? _calculateCommentCount() : null;
-          final newCommentCount = calculatedCount ?? (currentPost.commentCount + 1);
-          
-          
+          final calculatedCount =
+              _comments.isNotEmpty ? _calculateCommentCount() : null;
+          final newCommentCount =
+              calculatedCount ?? (currentPost.commentCount + 1);
+
           _currentPost = MarketplacePost(
             id: currentPost.id,
             residentId: currentPost.residentId,
@@ -1054,7 +1086,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             updatedAt: currentPost.updatedAt,
           );
         });
-        
+
         // Emit event IMMEDIATELY to update marketplace screen (realtime update)
         // Use calculated count if available, otherwise use updated _currentPost count
         final updatedCommentCount = _currentPost?.commentCount;
@@ -1066,7 +1098,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             'viewCount': (_currentPost ?? widget.post).viewCount,
           });
         }
-        
+
         // Restore scroll position after a brief delay to allow animation
         if (_scrollController.hasClients) {
           Future.delayed(const Duration(milliseconds: 100), () {
@@ -1085,7 +1117,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             }
           });
         }
-        
+
         // Remove animation flag after animation completes
         final commentId = newComment.id;
         Future.delayed(const Duration(milliseconds: 500), () {
@@ -1125,12 +1157,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
-
   String _getCategoryDisplayName(MarketplacePost post) {
     // Backend có thể trả về categoryName = category code, nên luôn map từ danh sách categories
     if (post.category.isNotEmpty) {
       try {
-        final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+        final viewModel =
+            Provider.of<MarketplaceViewModel>(context, listen: false);
         final category = viewModel.categories.firstWhere(
           (cat) => cat.code == post.category,
         );
@@ -1138,14 +1170,15 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         return category.name;
       } catch (e) {
         // Nếu không tìm thấy category, kiểm tra categoryName
-        if (post.categoryName.isNotEmpty && post.categoryName != post.category) {
+        if (post.categoryName.isNotEmpty &&
+            post.categoryName != post.category) {
           return post.categoryName;
         }
         // Fallback về code
         return post.category;
       }
     }
-    
+
     return '';
   }
 
@@ -1153,10 +1186,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    
+
     // Read _currentPost here to ensure rebuild when it changes
     final currentPostForBuild = _currentPost;
-    
+
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
@@ -1165,7 +1198,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         elevation: 0,
         actions: [
           // Show edit/delete buttons only if current user is the post owner
-          if (_currentResidentId != null && widget.post.residentId == _currentResidentId)
+          if (_currentResidentId != null &&
+              widget.post.residentId == _currentResidentId)
             PopupMenuButton<String>(
               icon: Icon(
                 CupertinoIcons.ellipsis,
@@ -1183,7 +1217,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                   value: 'edit',
                   child: Row(
                     children: [
-                      Icon(CupertinoIcons.pencil, size: 20, color: theme.colorScheme.onSurface),
+                      Icon(CupertinoIcons.pencil,
+                          size: 20, color: theme.colorScheme.onSurface),
                       const SizedBox(width: 12),
                       const Text('Chỉnh sửa'),
                     ],
@@ -1193,9 +1228,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                   value: 'delete',
                   child: Row(
                     children: [
-                      Icon(CupertinoIcons.delete, size: 20, color: theme.colorScheme.error),
+                      Icon(CupertinoIcons.delete,
+                          size: 20, color: theme.colorScheme.error),
                       const SizedBox(width: 12),
-                      Text('Xóa', style: TextStyle(color: theme.colorScheme.error)),
+                      Text('Xóa',
+                          style: TextStyle(color: theme.colorScheme.error)),
                     ],
                   ),
                 ),
@@ -1206,16 +1243,18 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       body: Builder(
         // Use key based on _currentPost to force rebuild when it changes
         // Read _currentPost directly in build method to ensure rebuild
-        key: ValueKey('post_detail_body_${currentPostForBuild?.commentCount ?? widget.post.commentCount}'),
+        key: ValueKey(
+            'post_detail_body_${currentPostForBuild?.commentCount ?? widget.post.commentCount}'),
         builder: (context) {
           // Try to get updated post from viewModel if available
           // But prioritize _currentPost which is updated immediately on comment add/delete
           // IMPORTANT: Read _currentPost directly here (not from outer scope) to ensure rebuild
           final currentPost = _currentPost;
           MarketplacePost updatedPost = currentPost ?? widget.post;
-          
+
           try {
-            final viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+            final viewModel =
+                Provider.of<MarketplaceViewModel>(context, listen: false);
             final vmPost = viewModel.posts.firstWhere(
               (p) => p.id == widget.post.id,
               orElse: () => updatedPost,
@@ -1243,17 +1282,20 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                         builder: (context) {
                           MarketplaceViewModel? viewModel;
                           try {
-                            viewModel = Provider.of<MarketplaceViewModel>(context, listen: false);
+                            viewModel = Provider.of<MarketplaceViewModel>(
+                                context,
+                                listen: false);
                           } catch (e) {
                             // No provider available
                             viewModel = null;
                           }
-                          return _buildPostCard(context, theme, isDark, updatedPost, viewModel);
+                          return _buildPostCard(
+                              context, theme, isDark, updatedPost, viewModel);
                         },
                       ),
-                      
+
                       const SizedBox(height: 24),
-                      
+
                       // Comments Section
                       Row(
                         children: [
@@ -1267,31 +1309,38 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                           // Use key to force rebuild when comment count changes
                           // IMPORTANT: Read _currentPost directly here, not from outer Builder's updatedPost
                           Builder(
-                            key: ValueKey('comment_count_${_currentPost?.commentCount ?? updatedPost.commentCount}'),
+                            key: ValueKey(
+                                'comment_count_${_currentPost?.commentCount ?? updatedPost.commentCount}'),
                             builder: (context) {
                               // Always read _currentPost directly from state, not from outer Builder's updatedPost
                               // This ensures the count updates immediately when _currentPost changes
                               final currentPostFromState = _currentPost;
-                              
+
                               // Priority: _currentPost > updatedPost > viewModel post
                               // _currentPost is always the most up-to-date because it's updated realtime in this screen
-                              MarketplacePost postToUse = currentPostFromState ?? updatedPost;
-                              
+                              MarketplacePost postToUse =
+                                  currentPostFromState ?? updatedPost;
+
                               // Check viewModel for realtime updates from other screens
                               // But only use it if _currentPost is null (fallback)
                               try {
-                                final viewModel = Provider.of<MarketplaceViewModel>(context, listen: true);
+                                final viewModel =
+                                    Provider.of<MarketplaceViewModel>(context,
+                                        listen: true);
                                 final vmPost = viewModel.posts.firstWhere(
                                   (p) => p.id == widget.post.id,
                                   orElse: () => postToUse,
                                 );
-                                
+
                                 // Only use viewModel post if _currentPost is null
                                 // Otherwise, _currentPost is the source of truth for this screen
-                                if (currentPostFromState == null && vmPost.commentCount != postToUse.commentCount) {
+                                if (currentPostFromState == null &&
+                                    vmPost.commentCount !=
+                                        postToUse.commentCount) {
                                   return Text(
                                     'Bình luận (${vmPost.commentCount})',
-                                    style: theme.textTheme.titleMedium?.copyWith(
+                                    style:
+                                        theme.textTheme.titleMedium?.copyWith(
                                       fontWeight: FontWeight.w600,
                                     ),
                                   );
@@ -1299,7 +1348,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                               } catch (e) {
                                 // ViewModel not available, use _currentPost or updatedPost
                               }
-                              
+
                               return Text(
                                 'Bình luận (${postToUse.commentCount})',
                                 style: theme.textTheme.titleMedium?.copyWith(
@@ -1311,7 +1360,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      
+
                       // Comments List
                       if (_isLoadingComments)
                         _buildCommentSkeleton(theme)
@@ -1324,13 +1373,15 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                 Icon(
                                   CupertinoIcons.chat_bubble,
                                   size: 48,
-                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                                  color: theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.3),
                                 ),
                                 const SizedBox(height: 16),
                                 Text(
                                   'Chưa có bình luận nào',
                                   style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                    color: theme.colorScheme.onSurface
+                                        .withValues(alpha: 0.6),
                                   ),
                                 ),
                               ],
@@ -1361,24 +1412,28 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                   ? const CircularProgressIndicator()
                                   : SmoothAnimations.fadeIn(
                                       child: FilledButton.icon(
-                                      onPressed: () => _loadComments(loadMore: true),
-                                        icon: const Icon(CupertinoIcons.arrow_down, size: 16),
+                                        onPressed: () =>
+                                            _loadComments(loadMore: true),
+                                        icon: const Icon(
+                                            CupertinoIcons.arrow_down,
+                                            size: 16),
                                         label: const Text('Hiển thị thêm'),
                                         style: FilledButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 20, vertical: 12),
                                         ),
                                       ),
                                     ),
                             ),
                           ),
                       ],
-                      
+
                       const SizedBox(height: 80), // Space for input field
                     ],
                   ),
                 ),
               ),
-              
+
               // Comment Input
               Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1388,34 +1443,34 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                     SmoothAnimations.slideIn(
                       slideOffset: const Offset(0, -20),
                       child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
                           vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
+                        ),
+                        decoration: BoxDecoration(
                           color: theme.colorScheme.primaryContainer,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         margin: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        children: [
-                          Icon(
+                        child: Row(
+                          children: [
+                            Icon(
                               CupertinoIcons.reply,
-                            size: 16,
-                            color: theme.colorScheme.onPrimaryContainer,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                                'Đang trả lời ${_replyingToComment!.author?.name ?? 'Người dùng'}',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onPrimaryContainer,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              overflow: TextOverflow.ellipsis,
+                              size: 16,
+                              color: theme.colorScheme.onPrimaryContainer,
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Đang trả lời ${_replyingToComment!.author?.name ?? 'Người dùng'}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onPrimaryContainer,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
                             GestureDetector(
                               onTap: () {
                                 setState(() {
@@ -1424,14 +1479,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                 });
                               },
                               child: Icon(
-                              CupertinoIcons.xmark_circle_fill,
-                              size: 20,
-                              color: theme.colorScheme.onPrimaryContainer,
+                                CupertinoIcons.xmark_circle_fill,
+                                size: 20,
+                                color: theme.colorScheme.onPrimaryContainer,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
                     ),
                   // Comment input container
                   Container(
@@ -1441,7 +1496,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                           : theme.colorScheme.surface,
                       border: Border(
                         top: BorderSide(
-                          color: theme.colorScheme.outline.withValues(alpha: 0.12),
+                          color:
+                              theme.colorScheme.outline.withValues(alpha: 0.12),
                         ),
                       ),
                     ),
@@ -1466,7 +1522,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                     Stack(
                                       children: [
                                         ClipRRect(
-                                          borderRadius: BorderRadius.circular(8),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
                                           child: Image.file(
                                             File(_selectedImage!.path),
                                             width: 100,
@@ -1478,7 +1535,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                           top: 4,
                                           right: 4,
                                           child: IconButton(
-                                            icon: const Icon(CupertinoIcons.xmark_circle_fill, color: Colors.red),
+                                            icon: const Icon(
+                                                CupertinoIcons
+                                                    .xmark_circle_fill,
+                                                color: Colors.red),
                                             onPressed: () {
                                               setState(() {
                                                 _selectedImage = null;
@@ -1494,7 +1554,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                     Stack(
                                       children: [
                                         ClipRRect(
-                                          borderRadius: BorderRadius.circular(8),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
                                           child: Container(
                                             width: 100,
                                             height: 100,
@@ -1510,7 +1571,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                           top: 4,
                                           right: 4,
                                           child: IconButton(
-                                            icon: const Icon(CupertinoIcons.xmark_circle_fill, color: Colors.red),
+                                            icon: const Icon(
+                                                CupertinoIcons
+                                                    .xmark_circle_fill,
+                                                color: Colors.red),
                                             onPressed: () {
                                               setState(() {
                                                 _selectedVideo = null;
@@ -1549,7 +1613,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                               ),
                               // Image/Video picker button
                               IconButton(
-                                onPressed: _isPostingComment ? null : _showMediaPicker,
+                                onPressed:
+                                    _isPostingComment ? null : _showMediaPicker,
                                 icon: Icon(
                                   CupertinoIcons.photo_camera,
                                   color: theme.colorScheme.primary,
@@ -1558,12 +1623,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                               const SizedBox(width: 4),
                               // Send button
                               IconButton(
-                                onPressed: _isPostingComment ? null : _postComment,
+                                onPressed:
+                                    _isPostingComment ? null : _postComment,
                                 icon: _isPostingComment
                                     ? const SizedBox(
                                         width: 24,
                                         height: 24,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2),
                                       )
                                     : Icon(
                                         CupertinoIcons.paperplane_fill,
@@ -1733,20 +1800,23 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      if (post.author?.unitNumber != null || post.author?.buildingName != null)
+                      if (post.author?.unitNumber != null ||
+                          post.author?.buildingName != null)
                         Row(
                           children: [
                             Icon(
                               CupertinoIcons.home,
                               size: 16,
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                              color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.6),
                             ),
                             const SizedBox(width: 6),
                             if (post.author?.buildingName != null) ...[
                               Text(
                                 post.author!.buildingName!,
                                 style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                                  color: theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.7),
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -1754,7 +1824,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                 Text(
                                   ' - ',
                                   style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                                    color: theme.colorScheme.onSurface
+                                        .withValues(alpha: 0.5),
                                   ),
                                 ),
                               ],
@@ -1763,7 +1834,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                               Text(
                                 post.author!.unitNumber!,
                                 style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                                  color: theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.7),
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -1778,7 +1850,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                     Text(
                       _formatDate(post.createdAt),
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                        color:
+                            theme.colorScheme.onSurface.withValues(alpha: 0.5),
                       ),
                     ),
                   ],
@@ -1786,7 +1859,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            
+
             // Title
             Text(
               post.title,
@@ -1801,36 +1874,36 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 style: theme.textTheme.bodyLarge,
               ),
             ],
-            
+
             // Separate images and video
             Builder(
               builder: (context) {
                 final allMedia = post.images;
                 final images = <MarketplacePostImage>[];
                 MarketplacePostImage? video;
-                
+
                 for (var media in allMedia) {
                   final url = media.imageUrl.toLowerCase();
-                  final isVideo = url.contains('.mp4') || 
-                                 url.contains('.mov') || 
-                                 url.contains('.avi') || 
-                                 url.contains('.webm') ||
-                                 url.contains('.mkv') ||
-                                 url.contains('video/') ||
-                                 (media.thumbnailUrl == null && 
-                                  !url.contains('.jpg') && 
-                                  !url.contains('.jpeg') && 
-                                  !url.contains('.png') && 
-                                  !url.contains('.webp') &&
-                                  !url.contains('.gif'));
-                  
+                  final isVideo = url.contains('.mp4') ||
+                      url.contains('.mov') ||
+                      url.contains('.avi') ||
+                      url.contains('.webm') ||
+                      url.contains('.mkv') ||
+                      url.contains('video/') ||
+                      (media.thumbnailUrl == null &&
+                          !url.contains('.jpg') &&
+                          !url.contains('.jpeg') &&
+                          !url.contains('.png') &&
+                          !url.contains('.webp') &&
+                          !url.contains('.gif'));
+
                   if (isVideo) {
                     video = media;
                   } else {
                     images.add(media);
                   }
                 }
-                
+
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1853,7 +1926,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                         },
                       ),
                     ],
-                    
+
                     // Images
                     if (images.isNotEmpty) ...[
                       SizedBox(height: video != null ? 16 : 0),
@@ -1883,10 +1956,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                 ),
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(12),
-                                  color: theme.colorScheme.surfaceContainerHighest,
+                                  color:
+                                      theme.colorScheme.surfaceContainerHighest,
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.1),
+                                      color:
+                                          Colors.black.withValues(alpha: 0.1),
                                       blurRadius: 8,
                                       offset: const Offset(0, 2),
                                     ),
@@ -1899,36 +1974,45 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                           imageUrl: image.imageUrl,
                                           fit: BoxFit.cover,
                                           httpHeaders: {
-                                            'ngrok-skip-browser-warning': 'true',
+                                            'ngrok-skip-browser-warning':
+                                                'true',
                                           },
                                           placeholder: (context, url) {
                                             return Container(
-                                              color: theme.colorScheme.surfaceContainerHighest,
+                                              color: theme.colorScheme
+                                                  .surfaceContainerHighest,
                                               child: Center(
-                                                child: CircularProgressIndicator(
+                                                child:
+                                                    CircularProgressIndicator(
                                                   strokeWidth: 2,
-                                                  color: theme.colorScheme.primary,
+                                                  color:
+                                                      theme.colorScheme.primary,
                                                 ),
                                               ),
                                             );
                                           },
                                           errorWidget: (context, url, error) {
                                             return Container(
-                                              color: theme.colorScheme.surfaceContainerHighest,
+                                              color: theme.colorScheme
+                                                  .surfaceContainerHighest,
                                               child: Icon(
                                                 CupertinoIcons.photo,
                                                 size: 48,
-                                                color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                                                color: theme
+                                                    .colorScheme.onSurface
+                                                    .withValues(alpha: 0.3),
                                               ),
                                             );
                                           },
                                         )
                                       : Container(
-                                          color: theme.colorScheme.surfaceContainerHighest,
+                                          color: theme.colorScheme
+                                              .surfaceContainerHighest,
                                           child: Icon(
                                             CupertinoIcons.photo,
                                             size: 48,
-                                            color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                                            color: theme.colorScheme.onSurface
+                                                .withValues(alpha: 0.3),
                                           ),
                                         ),
                                 ),
@@ -1942,9 +2026,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 );
               },
             ),
-            
+
             const SizedBox(height: 12),
-            
+
             // Price, Category, Location
             Wrap(
               spacing: 8,
@@ -2041,15 +2125,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                   ),
               ],
             ),
-            
+
             // Contact Info - Always show phone and email if available
             Builder(
               builder: (context) {
                 // Debug logging
-                
-                if (post.contactInfo != null && 
-                    ((post.contactInfo!.phone != null && post.contactInfo!.phone!.isNotEmpty) ||
-                     (post.contactInfo!.email != null && post.contactInfo!.email!.isNotEmpty))) {
+
+                if (post.contactInfo != null &&
+                    ((post.contactInfo!.phone != null &&
+                            post.contactInfo!.phone!.isNotEmpty) ||
+                        (post.contactInfo!.email != null &&
+                            post.contactInfo!.email!.isNotEmpty))) {
                   return Column(
                     children: [
                       const SizedBox(height: 16),
@@ -2059,7 +2145,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                           color: theme.colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: theme.colorScheme.outline.withValues(alpha: 0.12),
+                            color: theme.colorScheme.outline
+                                .withValues(alpha: 0.12),
                           ),
                         ),
                         child: Column(
@@ -2082,13 +2169,15 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                               ],
                             ),
                             const SizedBox(height: 12),
-                            if (post.contactInfo!.phone != null && post.contactInfo!.phone!.isNotEmpty) ...[
+                            if (post.contactInfo!.phone != null &&
+                                post.contactInfo!.phone!.isNotEmpty) ...[
                               Row(
                                 children: [
                                   Icon(
                                     CupertinoIcons.phone,
                                     size: 16,
-                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                                    color: theme.colorScheme.onSurface
+                                        .withValues(alpha: 0.7),
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
@@ -2099,16 +2188,19 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                   ),
                                 ],
                               ),
-                              if (post.contactInfo!.email != null && post.contactInfo!.email!.isNotEmpty)
+                              if (post.contactInfo!.email != null &&
+                                  post.contactInfo!.email!.isNotEmpty)
                                 const SizedBox(height: 12),
                             ],
-                            if (post.contactInfo!.email != null && post.contactInfo!.email!.isNotEmpty)
+                            if (post.contactInfo!.email != null &&
+                                post.contactInfo!.email!.isNotEmpty)
                               Row(
                                 children: [
                                   Icon(
                                     CupertinoIcons.mail,
                                     size: 16,
-                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                                    color: theme.colorScheme.onSurface
+                                        .withValues(alpha: 0.7),
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
@@ -2129,7 +2221,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 }
               },
             ),
-            
+
             // Removed Actions section (comment icon) since we have a dedicated Comments Section below
             // The comment count is displayed in the Comments Section header instead
           ],
@@ -2146,12 +2238,13 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }) {
     final isReply = depth > 0;
     // Filter out deleted replies
-    final activeReplies = comment.replies.where((reply) => !reply.isDeleted).toList();
-    
+    final activeReplies =
+        comment.replies.where((reply) => !reply.isDeleted).toList();
+
     final isDeleting = _deletingCommentIds.contains(comment.id);
     final isNew = _newCommentIds.contains(comment.id);
     final isMoved = _movedCommentIds.contains(comment.id);
-    
+
     return AnimatedSize(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
@@ -2176,164 +2269,177 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-          margin: EdgeInsets.only(
-            bottom: 12,
-            left: isReply ? 32.0 : 0, // Indent cho replies
-          ),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(12),
-            border: isReply 
-                ? Border(
-                    left: BorderSide(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                      width: 3,
-                    ),
-                  )
-                : null,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              GestureDetector(
-                onTap: () => _showCommentAuthorOptions(context, comment),
-                child: CircleAvatar(
-                  radius: isReply ? 14 : 16,
-                  backgroundColor: theme.colorScheme.primaryContainer,
-                  child: Icon(
-                    CupertinoIcons.person_fill,
-                    size: isReply ? 14 : 16,
-                    color: theme.colorScheme.onPrimaryContainer,
-                  ),
+                margin: EdgeInsets.only(
+                  bottom: 12,
+                  left: isReply ? 32.0 : 0, // Indent cho replies
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest
+                      .withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                  border: isReply
+                      ? Border(
+                          left: BorderSide(
+                            color: theme.colorScheme.primary
+                                .withValues(alpha: 0.3),
+                            width: 3,
+                          ),
+                        )
+                      : null,
+                ),
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: GestureDetector(
-                            onTap: () => _showCommentAuthorOptions(context, comment),
-                            child: Text(
-                              comment.author?.name ?? 'Người dùng',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
+                    GestureDetector(
+                      onTap: () => _showCommentAuthorOptions(context, comment),
+                      child: CircleAvatar(
+                        radius: isReply ? 14 : 16,
+                        backgroundColor: theme.colorScheme.primaryContainer,
+                        child: Icon(
+                          CupertinoIcons.person_fill,
+                          size: isReply ? 14 : 16,
+                          color: theme.colorScheme.onPrimaryContainer,
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _formatDate(comment.createdAt),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                        const SizedBox(height: 4),
-                        _buildCommentContent(context, theme, comment),
-                        const SizedBox(height: 8),
-                    // Action buttons (Reply and Delete)
-                    Row(
-                      children: [
-                        // Reply button
-                        InkWell(
-                          onTap: () => _startReply(comment),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
                             children: [
-                              Icon(
-                                CupertinoIcons.arrow_turn_down_right,
-                                size: 16,
-                                color: theme.colorScheme.primary,
+                              Flexible(
+                                child: GestureDetector(
+                                  onTap: () => _showCommentAuthorOptions(
+                                      context, comment),
+                                  child: Text(
+                                    comment.author?.name ?? 'Người dùng',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: 8),
                               Text(
-                                'Trả lời',
+                                _formatDate(comment.createdAt),
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.primary,
-                                  fontWeight: FontWeight.w500,
+                                  color: theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.5),
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                        // Menu 3 chấm (only show if user is post owner or comment owner)
-                        if (_canDeleteComment(comment) || _canEditComment(comment)) ...[
-                          const SizedBox(width: 16),
-                          PopupMenuButton<String>(
-                            icon: Icon(
-                              CupertinoIcons.ellipsis,
-                              size: 16,
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                            ),
-                            onSelected: (value) async {
-                              if (value == 'edit') {
-                                await _editComment(context, comment);
-                              } else if (value == 'delete') {
-                                await _showDeleteCommentDialog(context, comment);
-                              }
-                            },
-                            itemBuilder: (context) {
-                              final items = <PopupMenuEntry<String>>[];
-                              if (_canEditComment(comment)) {
-                                items.add(
-                                  const PopupMenuItem(
-                                    value: 'edit',
-                            child: Row(
-                              children: [
-                                        Icon(CupertinoIcons.pencil, size: 18, color: Colors.blue),
-                                        SizedBox(width: 8),
-                                        Text('Chỉnh sửa'),
-                                      ],
+                          const SizedBox(height: 4),
+                          _buildCommentContent(context, theme, comment),
+                          const SizedBox(height: 8),
+                          // Action buttons (Reply and Delete)
+                          Row(
+                            children: [
+                              // Reply button
+                              InkWell(
+                                onTap: () => _startReply(comment),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      CupertinoIcons.arrow_turn_down_right,
+                                      size: 16,
+                                      color: theme.colorScheme.primary,
                                     ),
-                                  ),
-                                );
-                              }
-                              if (_canEditComment(comment) && _canDeleteComment(comment)) {
-                                items.add(const PopupMenuDivider());
-                              }
-                              if (_canDeleteComment(comment)) {
-                                items.add(
-                                  const PopupMenuItem(
-                                    value: 'delete',
-                                    child: Row(
-                                      children: [
-                                        Icon(CupertinoIcons.delete, size: 18, color: Colors.red),
-                                        SizedBox(width: 8),
-                                        Text('Xóa', style: TextStyle(color: Colors.red)),
-                                      ],
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Trả lời',
+                                      style:
+                                          theme.textTheme.bodySmall?.copyWith(
+                                        color: theme.colorScheme.primary,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
                                 ),
+                              ),
+                              // Menu 3 chấm (only show if user is post owner or comment owner)
+                              if (_canDeleteComment(comment) ||
+                                  _canEditComment(comment)) ...[
+                                const SizedBox(width: 16),
+                                PopupMenuButton<String>(
+                                  icon: Icon(
+                                    CupertinoIcons.ellipsis,
+                                    size: 16,
+                                    color: theme.colorScheme.onSurface
+                                        .withValues(alpha: 0.6),
                                   ),
-                                );
-                              }
-                              return items;
-                            },
+                                  onSelected: (value) async {
+                                    if (value == 'edit') {
+                                      await _editComment(context, comment);
+                                    } else if (value == 'delete') {
+                                      await _showDeleteCommentDialog(
+                                          context, comment);
+                                    }
+                                  },
+                                  itemBuilder: (context) {
+                                    final items = <PopupMenuEntry<String>>[];
+                                    if (_canEditComment(comment)) {
+                                      items.add(
+                                        const PopupMenuItem(
+                                          value: 'edit',
+                                          child: Row(
+                                            children: [
+                                              Icon(CupertinoIcons.pencil,
+                                                  size: 18, color: Colors.blue),
+                                              SizedBox(width: 8),
+                                              Text('Chỉnh sửa'),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                    if (_canEditComment(comment) &&
+                                        _canDeleteComment(comment)) {
+                                      items.add(const PopupMenuDivider());
+                                    }
+                                    if (_canDeleteComment(comment)) {
+                                      items.add(
+                                        const PopupMenuItem(
+                                          value: 'delete',
+                                          child: Row(
+                                            children: [
+                                              Icon(CupertinoIcons.delete,
+                                                  size: 18, color: Colors.red),
+                                              SizedBox(width: 8),
+                                              Text('Xóa',
+                                                  style: TextStyle(
+                                                      color: Colors.red)),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                    return items;
+                                  },
+                                ),
+                              ],
+                            ],
                           ),
                         ],
-                      ],
+                      ),
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
-        ),
               // Hiển thị replies nếu có (filter out deleted replies)
               if (activeReplies.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 ...activeReplies.map((reply) => _buildCommentCard(
-                  context,
-                  theme,
-                  reply,
-                  depth: depth + 1,
-                )),
+                      context,
+                      theme,
+                      reply,
+                      depth: depth + 1,
+                    )),
               ],
             ],
           ),
@@ -2347,14 +2453,15 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     final updatedComments = _comments.map((comment) {
       return _updateCommentInTreeRecursive(comment, commentId, newContent);
     }).toList();
-    
+
     setState(() {
       _comments = updatedComments;
     });
   }
-  
+
   /// Recursively update comment in tree
-  MarketplaceComment _updateCommentInTreeRecursive(MarketplaceComment comment, String commentId, String newContent) {
+  MarketplaceComment _updateCommentInTreeRecursive(
+      MarketplaceComment comment, String commentId, String newContent) {
     if (comment.id == commentId) {
       // Found the comment to update
       return MarketplaceComment(
@@ -2377,7 +2484,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       final updatedReplies = comment.replies.map((reply) {
         return _updateCommentInTreeRecursive(reply, commentId, newContent);
       }).toList();
-      
+
       return MarketplaceComment(
         id: comment.id,
         postId: comment.postId,
@@ -2398,10 +2505,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   /// Remove comment from tree recursively and move its replies to parent
   /// Returns a new comment tree with the comment removed and replies moved
-  MarketplaceComment _removeCommentFromTreeAndMoveReplies(MarketplaceComment comment, String commentIdToDelete) {
+  MarketplaceComment _removeCommentFromTreeAndMoveReplies(
+      MarketplaceComment comment, String commentIdToDelete) {
     // Check if any reply matches
     final updatedReplies = <MarketplaceComment>[];
-    
+
     for (var reply in comment.replies) {
       if (reply.id == commentIdToDelete) {
         // Found the comment to delete - skip it but keep its replies
@@ -2427,17 +2535,18 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               videoUrl: childReply.videoUrl,
             );
           }).toList();
-          
+
           // Add moved replies to current comment's replies
           updatedReplies.addAll(movedReplies);
         }
       } else {
         // Recursively process this reply
-        final updatedReply = _removeCommentFromTreeAndMoveReplies(reply, commentIdToDelete);
+        final updatedReply =
+            _removeCommentFromTreeAndMoveReplies(reply, commentIdToDelete);
         updatedReplies.add(updatedReply);
       }
     }
-    
+
     // Return updated comment with new replies list
     return MarketplaceComment(
       id: comment.id,
@@ -2456,20 +2565,23 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     );
   }
 
-  Future<void> _showPostAuthorOptions(BuildContext context, MarketplacePost post) async {
+  Future<void> _showPostAuthorOptions(
+      BuildContext context, MarketplacePost post) async {
     // Don't show options if user is viewing their own post
     if (_currentResidentId != null && post.residentId == _currentResidentId) {
       return;
     }
 
     // Get author userId from residentId (check cache first)
-    String? authorUserId = post.author?.userId ?? _residentIdToUserIdCache[post.residentId];
-    
+    String? authorUserId =
+        post.author?.userId ?? _residentIdToUserIdCache[post.residentId];
+
     if (authorUserId == null) {
       try {
-        final response = await _apiClient.dio.get('/residents/${post.residentId}');
+        final response =
+            await _apiClient.dio.get('/residents/${post.residentId}');
         authorUserId = response.data['userId']?.toString();
-        
+
         // Cache it for future use
         if (authorUserId != null) {
           _residentIdToUserIdCache[post.residentId] = authorUserId;
@@ -2480,8 +2592,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
 
     // Check if user is blocked
-    final isBlocked = authorUserId != null && _blockedUserIds.contains(authorUserId);
-    
+    final isBlocked =
+        authorUserId != null && _blockedUserIds.contains(authorUserId);
+
     // If blocked, show message that user is not found
     if (isBlocked) {
       if (context.mounted) {
@@ -2512,10 +2625,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       print('⚠️ [PostDetailScreen] Error getting friends: $e');
     }
 
-    final hasActiveConversation = friend != null && 
-                                   friend.friendId == post.residentId && 
-                                   friend.hasActiveConversation && 
-                                   friend.conversationId != null;
+    final hasActiveConversation = friend != null &&
+        friend.friendId == post.residentId &&
+        friend.hasActiveConversation &&
+        friend.conversationId != null;
 
     // Show options menu
     final result = await showSmoothBottomSheet<String>(
@@ -2530,7 +2643,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             ListTile(
               leading: const Icon(CupertinoIcons.chat_bubble),
               title: Text(hasActiveConversation ? 'Mở chat' : 'Gửi tin nhắn'),
-              onTap: () => Navigator.pop(context, hasActiveConversation ? 'open_chat' : 'message'),
+              onTap: () => Navigator.pop(
+                  context, hasActiveConversation ? 'open_chat' : 'message'),
             ),
             ListTile(
               leading: const Icon(CupertinoIcons.group),
@@ -2538,7 +2652,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               onTap: () => Navigator.pop(context, 'invite_group'),
             ),
             ListTile(
-              leading: const Icon(CupertinoIcons.person_crop_circle_badge_xmark, color: Colors.red),
+              leading: const Icon(CupertinoIcons.person_crop_circle_badge_xmark,
+                  color: Colors.red),
               title: const Text('Chặn người dùng'),
               onTap: () => Navigator.pop(context, 'block'),
             ),
@@ -2548,29 +2663,34 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       ),
     );
 
-    if (result == 'open_chat' && context.mounted && friend != null && friend.conversationId != null) {
+    if (result == 'open_chat' &&
+        context.mounted &&
+        friend != null &&
+        friend.conversationId != null) {
       // Navigate directly to direct chat
       final friendData = friend;
       final conversationId = friendData.conversationId!;
-      Navigator.push(
-        context,
-        SmoothPageRoute(
-          page: DirectChatScreen(
-            conversationId: conversationId,
-            otherParticipantName: friendData.friendName.isNotEmpty ? friendData.friendName : (post.author?.name ?? 'Người dùng'),
-          ),
-        ),
-      );
+      // Navigator.push(
+      //   context,
+      //   SmoothPageRoute(
+      //     page: DirectChatScreen(
+      //       conversationId: conversationId,
+      //       otherParticipantName: friendData.friendName.isNotEmpty ? friendData.friendName : (post.author?.name ?? 'Người dùng'),
+      //     ),
+      //   ),
+      // );
     } else if (result == 'message' && context.mounted && authorUserId != null) {
       await _showDirectChatFromPost(context, post, authorUserId);
     } else if (result == 'invite_group' && context.mounted) {
       await _inviteToGroupFromPost(context, post);
     } else if (result == 'block' && context.mounted && authorUserId != null) {
-      await _blockUserFromPost(context, authorUserId, post.author?.name ?? 'Người dùng');
+      await _blockUserFromPost(
+          context, authorUserId, post.author?.name ?? 'Người dùng');
     }
   }
 
-  Future<void> _showDirectChatFromPost(BuildContext context, MarketplacePost post, String userId) async {
+  Future<void> _showDirectChatFromPost(
+      BuildContext context, MarketplacePost post, String userId) async {
     final result = await showSmoothDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -2616,16 +2736,18 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           // Extract error message - remove "Exception: " prefix if present
           String errorMessage = e.toString().replaceFirst('Exception: ', '');
-          
+
           // Check if this is an informational message (not an error)
-          bool isInfoMessage = errorMessage.contains('Bạn đã gửi lời mời rồi') || 
-                               errorMessage.contains('đã gửi lời mời cho bạn rồi');
-          
+          bool isInfoMessage =
+              errorMessage.contains('Bạn đã gửi lời mời rồi') ||
+                  errorMessage.contains('đã gửi lời mời cho bạn rồi');
+
           // If error message already contains the full message, use it directly
-          if (!errorMessage.startsWith('Lỗi') && !errorMessage.contains('đã gửi lời mời')) {
+          if (!errorMessage.startsWith('Lỗi') &&
+              !errorMessage.contains('đã gửi lời mời')) {
             errorMessage = 'Lỗi: $errorMessage';
           }
-          
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(errorMessage),
@@ -2638,12 +2760,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
-  Future<void> _inviteToGroupFromPost(BuildContext context, MarketplacePost post) async {
+  Future<void> _inviteToGroupFromPost(
+      BuildContext context, MarketplacePost post) async {
     try {
       // Get phone number from residentId first
       String? phoneNumber;
       try {
-        final response = await _apiClient.dio.get('/residents/${post.residentId}');
+        final response =
+            await _apiClient.dio.get('/residents/${post.residentId}');
         phoneNumber = response.data['phone']?.toString();
       } catch (e) {
         print('⚠️ [PostDetailScreen] Error getting phone number: $e');
@@ -2657,7 +2781,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         }
         return;
       }
-      
+
       if (phoneNumber == null || phoneNumber.isEmpty) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -2669,14 +2793,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         }
         return;
       }
-      
+
       // Get user's groups
       final groupsResponse = await _chatService.getMyGroups(page: 0, size: 100);
       final groups = groupsResponse.content;
-      
+
       ChatGroup? selectedGroup;
       bool createNewGroup = false;
-      
+
       if (groups.isEmpty) {
         // No groups, create a new one
         final groupData = await showSmoothDialog<Map<String, String?>>(
@@ -2685,27 +2809,27 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             defaultName: 'Nhóm với ${post.author?.name ?? 'người dùng'}',
           ),
         );
-        
+
         if (groupData == null || !context.mounted) {
           return;
         }
-        
+
         createNewGroup = true;
-        
+
         // Show loading
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Đang tạo nhóm...')),
           );
         }
-        
+
         // Create new group
         try {
           selectedGroup = await _chatService.createGroup(
             name: groupData['name']!,
             description: groupData['description'],
           );
-          
+
           if (context.mounted) {
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
             ScaffoldMessenger.of(context).showSnackBar(
@@ -2734,11 +2858,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             currentResidentId: _currentResidentId,
           ),
         );
-        
+
         if (result == null || !context.mounted) {
           return;
         }
-        
+
         if (result == 'create_new') {
           // User wants to create a new group
           final groupData = await showSmoothDialog<Map<String, String?>>(
@@ -2747,27 +2871,27 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               defaultName: 'Nhóm với ${post.author?.name ?? 'người dùng'}',
             ),
           );
-          
+
           if (groupData == null || !context.mounted) {
             return;
           }
-          
+
           createNewGroup = true;
-          
+
           // Show loading
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Đang tạo nhóm...')),
             );
           }
-          
+
           // Create new group
           try {
             selectedGroup = await _chatService.createGroup(
               name: groupData['name']!,
               description: groupData['description'],
             );
-            
+
             if (context.mounted) {
               ScaffoldMessenger.of(context).hideCurrentSnackBar();
               ScaffoldMessenger.of(context).showSnackBar(
@@ -2788,18 +2912,19 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           }
         } else if (result is ChatGroup) {
           selectedGroup = result;
-          
+
           // Check if user is already in the group
           if (selectedGroup.members != null) {
             final isAlreadyMember = selectedGroup.members!.any(
               (member) => member.residentId == post.residentId,
             );
-            
+
             if (isAlreadyMember) {
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('${post.author?.name ?? 'Người dùng'} đã ở trong nhóm "${selectedGroup.name}"'),
+                    content: Text(
+                        '${post.author?.name ?? 'Người dùng'} đã ở trong nhóm "${selectedGroup.name}"'),
                     backgroundColor: Colors.orange,
                   ),
                 );
@@ -2807,7 +2932,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               return;
             }
           }
-          
+
           // Show loading
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -2818,18 +2943,18 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           return;
         }
       }
-      
+
       // Invite to group
       await _chatService.inviteMembersByPhone(
         groupId: selectedGroup.id,
         phoneNumbers: [phoneNumber],
       );
-      
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(createNewGroup 
+            content: Text(createNewGroup
                 ? 'Đã tạo nhóm "${selectedGroup.name}" và gửi lời mời'
                 : 'Đã gửi lời mời vào nhóm "${selectedGroup.name}"'),
             backgroundColor: Colors.green,
@@ -2841,16 +2966,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         // Extract error message - remove "Exception: " prefix if present
         String errorMessage = e.toString().replaceFirst('Exception: ', '');
-        
+
         // Check if this is an informational message (not an error)
-        bool isInfoMessage = errorMessage.contains('Bạn đã gửi lời mời rồi') || 
-                             errorMessage.contains('đã gửi lời mời cho bạn rồi');
-        
+        bool isInfoMessage = errorMessage.contains('Bạn đã gửi lời mời rồi') ||
+            errorMessage.contains('đã gửi lời mời cho bạn rồi');
+
         // If error message already contains the full message, use it directly
-        if (!errorMessage.startsWith('Lỗi') && !errorMessage.contains('đã gửi lời mời')) {
+        if (!errorMessage.startsWith('Lỗi') &&
+            !errorMessage.contains('đã gửi lời mời')) {
           errorMessage = 'Lỗi: $errorMessage';
         }
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMessage),
@@ -2862,7 +2988,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
-  Future<void> _blockUserFromPost(BuildContext context, String userId, String userName) async {
+  Future<void> _blockUserFromPost(
+      BuildContext context, String userId, String userName) async {
     // Show confirmation dialog
     final confirmed = await showSmoothDialog<bool>(
       context: context,
@@ -2909,7 +3036,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         // Reload blocked users list and refresh comments
         await _loadBlockedUsers();
         await _loadComments();
-        
+
         // Emit event
         AppEventBus().emit('blocked_users_updated');
       }
@@ -2927,20 +3054,24 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
-  Future<void> _showCommentAuthorOptions(BuildContext context, MarketplaceComment comment) async {
+  Future<void> _showCommentAuthorOptions(
+      BuildContext context, MarketplaceComment comment) async {
     // Don't show options if user is viewing their own comment
-    if (_currentResidentId != null && comment.residentId == _currentResidentId) {
+    if (_currentResidentId != null &&
+        comment.residentId == _currentResidentId) {
       return;
     }
 
     // Get author userId from residentId (check cache first)
-    String? authorUserId = comment.author?.userId ?? _residentIdToUserIdCache[comment.residentId];
-    
+    String? authorUserId =
+        comment.author?.userId ?? _residentIdToUserIdCache[comment.residentId];
+
     if (authorUserId == null) {
       try {
-        final response = await _apiClient.dio.get('/residents/${comment.residentId}');
+        final response =
+            await _apiClient.dio.get('/residents/${comment.residentId}');
         authorUserId = response.data['userId']?.toString();
-        
+
         // Cache it for future use
         if (authorUserId != null) {
           _residentIdToUserIdCache[comment.residentId] = authorUserId;
@@ -2951,8 +3082,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
 
     // Check if user is blocked
-    final isBlocked = authorUserId != null && _blockedUserIds.contains(authorUserId);
-    
+    final isBlocked =
+        authorUserId != null && _blockedUserIds.contains(authorUserId);
+
     // If blocked, show message that user is not found
     if (isBlocked) {
       if (context.mounted) {
@@ -2983,10 +3115,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       print('⚠️ [PostDetailScreen] Error getting friends: $e');
     }
 
-    final hasActiveConversation = friend != null && 
-                                   friend.friendId == comment.residentId && 
-                                   friend.hasActiveConversation && 
-                                   friend.conversationId != null;
+    final hasActiveConversation = friend != null &&
+        friend.friendId == comment.residentId &&
+        friend.hasActiveConversation &&
+        friend.conversationId != null;
 
     // Show options menu
     final result = await showSmoothBottomSheet<String>(
@@ -3001,7 +3133,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             ListTile(
               leading: const Icon(CupertinoIcons.chat_bubble),
               title: Text(hasActiveConversation ? 'Mở chat' : 'Gửi tin nhắn'),
-              onTap: () => Navigator.pop(context, hasActiveConversation ? 'open_chat' : 'message'),
+              onTap: () => Navigator.pop(
+                  context, hasActiveConversation ? 'open_chat' : 'message'),
             ),
             ListTile(
               leading: const Icon(CupertinoIcons.group),
@@ -3009,7 +3142,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               onTap: () => Navigator.pop(context, 'invite_group'),
             ),
             ListTile(
-              leading: const Icon(CupertinoIcons.person_crop_circle_badge_xmark, color: Colors.red),
+              leading: const Icon(CupertinoIcons.person_crop_circle_badge_xmark,
+                  color: Colors.red),
               title: const Text('Chặn người dùng'),
               onTap: () => Navigator.pop(context, 'block'),
             ),
@@ -3019,29 +3153,36 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       ),
     );
 
-    if (result == 'open_chat' && context.mounted && friend != null && friend.conversationId != null) {
+    if (result == 'open_chat' &&
+        context.mounted &&
+        friend != null &&
+        friend.conversationId != null) {
       // Navigate directly to direct chat
       final friendData = friend;
       final conversationId = friendData.conversationId!;
-      Navigator.push(
-        context,
-        SmoothPageRoute(
-          page: DirectChatScreen(
-            conversationId: conversationId,
-            otherParticipantName: friendData.friendName.isNotEmpty ? friendData.friendName : (comment.author?.name ?? 'Người dùng'),
-          ),
-        ),
-      );
+      // Navigator.push(
+      //   context,
+      //   SmoothPageRoute(
+      //     page: DirectChatScreen(
+      //       conversationId: conversationId,
+      //       otherParticipantName: friendData.friendName.isNotEmpty
+      //           ? friendData.friendName
+      //           : (comment.author?.name ?? 'Người dùng'),
+      //     ),
+      //   ),
+      // );
     } else if (result == 'message' && context.mounted && authorUserId != null) {
       await _showDirectChatFromComment(context, comment, authorUserId);
     } else if (result == 'invite_group' && context.mounted) {
       await _inviteToGroupFromComment(context, comment);
     } else if (result == 'block' && context.mounted && authorUserId != null) {
-      await _blockUserFromComment(context, authorUserId, comment.author?.name ?? 'Người dùng');
+      await _blockUserFromComment(
+          context, authorUserId, comment.author?.name ?? 'Người dùng');
     }
   }
 
-  Future<void> _showDirectChatFromComment(BuildContext context, MarketplaceComment comment, String userId) async {
+  Future<void> _showDirectChatFromComment(
+      BuildContext context, MarketplaceComment comment, String userId) async {
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -3087,16 +3228,18 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
           // Extract error message - remove "Exception: " prefix if present
           String errorMessage = e.toString().replaceFirst('Exception: ', '');
-          
+
           // Check if this is an informational message (not an error)
-          bool isInfoMessage = errorMessage.contains('Bạn đã gửi lời mời rồi') || 
-                               errorMessage.contains('đã gửi lời mời cho bạn rồi');
-          
+          bool isInfoMessage =
+              errorMessage.contains('Bạn đã gửi lời mời rồi') ||
+                  errorMessage.contains('đã gửi lời mời cho bạn rồi');
+
           // If error message already contains the full message, use it directly
-          if (!errorMessage.startsWith('Lỗi') && !errorMessage.contains('đã gửi lời mời')) {
+          if (!errorMessage.startsWith('Lỗi') &&
+              !errorMessage.contains('đã gửi lời mời')) {
             errorMessage = 'Lỗi: $errorMessage';
           }
-          
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(errorMessage),
@@ -3109,12 +3252,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
-  Future<void> _inviteToGroupFromComment(BuildContext context, MarketplaceComment comment) async {
+  Future<void> _inviteToGroupFromComment(
+      BuildContext context, MarketplaceComment comment) async {
     try {
       // Get phone number from residentId first
       String? phoneNumber;
       try {
-        final response = await _apiClient.dio.get('/residents/${comment.residentId}');
+        final response =
+            await _apiClient.dio.get('/residents/${comment.residentId}');
         phoneNumber = response.data['phone']?.toString();
       } catch (e) {
         print('⚠️ [PostDetailScreen] Error getting phone number: $e');
@@ -3128,7 +3273,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         }
         return;
       }
-      
+
       if (phoneNumber == null || phoneNumber.isEmpty) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -3140,14 +3285,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         }
         return;
       }
-      
+
       // Get user's groups
       final groupsResponse = await _chatService.getMyGroups(page: 0, size: 100);
       final groups = groupsResponse.content;
-      
+
       ChatGroup? selectedGroup;
       bool createNewGroup = false;
-      
+
       if (groups.isEmpty) {
         // No groups, create a new one
         final groupData = await showSmoothDialog<Map<String, String?>>(
@@ -3156,27 +3301,27 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             defaultName: 'Nhóm với ${comment.author?.name ?? 'người dùng'}',
           ),
         );
-        
+
         if (groupData == null || !context.mounted) {
           return;
         }
-        
+
         createNewGroup = true;
-        
+
         // Show loading
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Đang tạo nhóm...')),
           );
         }
-        
+
         // Create new group
         try {
           selectedGroup = await _chatService.createGroup(
             name: groupData['name']!,
             description: groupData['description'],
           );
-          
+
           if (context.mounted) {
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
             ScaffoldMessenger.of(context).showSnackBar(
@@ -3205,11 +3350,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             currentResidentId: _currentResidentId,
           ),
         );
-        
+
         if (result == null || !context.mounted) {
           return;
         }
-        
+
         if (result == 'create_new') {
           // User wants to create a new group
           final groupData = await showSmoothDialog<Map<String, String?>>(
@@ -3218,27 +3363,27 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               defaultName: 'Nhóm với ${comment.author?.name ?? 'người dùng'}',
             ),
           );
-          
+
           if (groupData == null || !context.mounted) {
             return;
           }
-          
+
           createNewGroup = true;
-          
+
           // Show loading
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Đang tạo nhóm...')),
             );
           }
-          
+
           // Create new group
           try {
             selectedGroup = await _chatService.createGroup(
               name: groupData['name']!,
               description: groupData['description'],
             );
-            
+
             if (context.mounted) {
               ScaffoldMessenger.of(context).hideCurrentSnackBar();
               ScaffoldMessenger.of(context).showSnackBar(
@@ -3259,18 +3404,19 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           }
         } else if (result is ChatGroup) {
           selectedGroup = result;
-          
+
           // Check if user is already in the group
           if (selectedGroup.members != null) {
             final isAlreadyMember = selectedGroup.members!.any(
               (member) => member.residentId == comment.residentId,
             );
-            
+
             if (isAlreadyMember) {
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('${comment.author?.name ?? 'Người dùng'} đã ở trong nhóm "${selectedGroup.name}"'),
+                    content: Text(
+                        '${comment.author?.name ?? 'Người dùng'} đã ở trong nhóm "${selectedGroup.name}"'),
                     backgroundColor: Colors.orange,
                   ),
                 );
@@ -3278,7 +3424,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               return;
             }
           }
-          
+
           // Show loading
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -3289,26 +3435,28 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           return;
         }
       }
-      
+
       // Invite to group
       final inviteResult = await _chatService.inviteMembersByPhone(
         groupId: selectedGroup.id,
         phoneNumbers: [phoneNumber],
       );
-      
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         // Check if there are successful invitations
-        if (inviteResult.successfulInvitations != null && inviteResult.successfulInvitations!.isNotEmpty) {
+        if (inviteResult.successfulInvitations != null &&
+            inviteResult.successfulInvitations!.isNotEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(createNewGroup 
+              content: Text(createNewGroup
                   ? 'Đã tạo nhóm "${selectedGroup.name}" và gửi lời mời'
                   : 'Đã gửi lời mời vào nhóm "${selectedGroup.name}"'),
               backgroundColor: Colors.green,
             ),
           );
-        } else if (inviteResult.skippedPhones != null && inviteResult.skippedPhones!.isNotEmpty) {
+        } else if (inviteResult.skippedPhones != null &&
+            inviteResult.skippedPhones!.isNotEmpty) {
           // If only skipped phones (e.g., already sent invitation), show message from skippedPhones
           String skippedMessage = inviteResult.skippedPhones!.first;
           // Extract message from format: "phone (message)"
@@ -3339,16 +3487,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         // Extract error message - remove "Exception: " prefix if present
         String errorMessage = e.toString().replaceFirst('Exception: ', '');
-        
+
         // Check if this is an informational message (not an error)
-        bool isInfoMessage = errorMessage.contains('Bạn đã gửi lời mời rồi') || 
-                             errorMessage.contains('đã gửi lời mời cho bạn rồi');
-        
+        bool isInfoMessage = errorMessage.contains('Bạn đã gửi lời mời rồi') ||
+            errorMessage.contains('đã gửi lời mời cho bạn rồi');
+
         // If error message already contains the full message, use it directly
-        if (!errorMessage.startsWith('Lỗi') && !errorMessage.contains('đã gửi lời mời')) {
+        if (!errorMessage.startsWith('Lỗi') &&
+            !errorMessage.contains('đã gửi lời mời')) {
           errorMessage = 'Lỗi: $errorMessage';
         }
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMessage),
@@ -3360,7 +3509,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
-  Future<void> _blockUserFromComment(BuildContext context, String userId, String userName) async {
+  Future<void> _blockUserFromComment(
+      BuildContext context, String userId, String userName) async {
     // Show confirmation dialog
     final confirmed = await showSmoothDialog<bool>(
       context: context,
@@ -3407,7 +3557,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         // Reload blocked users list and refresh comments
         await _loadBlockedUsers();
         await _loadComments();
-        
+
         // Emit event
         AppEventBus().emit('blocked_users_updated');
       }
@@ -3434,13 +3584,16 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         return Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Shimmer.fromColors(
-            baseColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-            highlightColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.1),
+            baseColor: theme.colorScheme.surfaceContainerHighest
+                .withValues(alpha: 0.4),
+            highlightColor: theme.colorScheme.surfaceContainerHighest
+                .withValues(alpha: 0.1),
             period: const Duration(milliseconds: 1200),
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                color: theme.colorScheme.surfaceContainerHighest
+                    .withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -3496,11 +3649,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     );
   }
 
-  Widget _buildCommentContent(BuildContext context, ThemeData theme, MarketplaceComment comment) {
+  Widget _buildCommentContent(
+      BuildContext context, ThemeData theme, MarketplaceComment comment) {
     const int maxLines = 3;
     final bool isExpanded = _expandedComments[comment.id] ?? false;
     final textStyle = theme.textTheme.bodyMedium;
-    
+
     // Check if text needs read more
     final textPainter = TextPainter(
       text: TextSpan(text: comment.content, style: textStyle),
@@ -3650,7 +3804,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   Future<void> _openCommentVideo(BuildContext context, String videoUrl) async {
     try {
       if (!context.mounted) return;
-      
+
       // Show loading dialog
       showSmoothDialog(
         context: context,
@@ -3659,44 +3813,47 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           child: CircularProgressIndicator(),
         ),
       );
-      
+
       VideoPlayerController controller;
-      
+
       try {
         // Check if video URL is from ImageKit (old videos) - skip if ImageKit is blocked
-        if (videoUrl.contains('ik.imagekit.io') || videoUrl.contains('imagekit.io')) {
+        if (videoUrl.contains('ik.imagekit.io') ||
+            videoUrl.contains('imagekit.io')) {
           if (context.mounted) {
             Navigator.of(context).pop(); // Close loading dialog
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Video này đang được lưu trữ trên ImageKit và hiện không khả dụng. Vui lòng thử lại sau.'),
+                content: Text(
+                    'Video này đang được lưu trữ trên ImageKit và hiện không khả dụng. Vui lòng thử lại sau.'),
                 duration: Duration(seconds: 3),
               ),
             );
           }
           return;
         }
-        
+
         // Use network URL directly (videoUrl is already absolute URL from model)
-        final fullUrl = videoUrl.startsWith('http://') || videoUrl.startsWith('https://')
-            ? videoUrl
-            : ApiClient.fileUrl(videoUrl);
-        
+        final fullUrl =
+            videoUrl.startsWith('http://') || videoUrl.startsWith('https://')
+                ? videoUrl
+                : ApiClient.fileUrl(videoUrl);
+
         debugPrint('🎬 [PostDetailScreen] Loading video from URL: $fullUrl');
-        
+
         controller = VideoPlayerController.networkUrl(Uri.parse(fullUrl));
-        
+
         // Initialize video player
         await controller.initialize();
-        
+
         if (!context.mounted) {
           controller.dispose();
           return;
         }
-        
+
         // Close loading dialog
         Navigator.of(context).pop();
-        
+
         // Show video player dialog
         await showSmoothDialog(
           context: context,
@@ -3706,17 +3863,20 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             videoUrl: videoUrl,
           ),
         );
-        
+
         // Dispose controller when dialog is closed
         controller.dispose();
       } catch (e) {
         if (context.mounted) {
           Navigator.of(context).pop(); // Close loading dialog
           String errorMessage = 'Không thể tải video';
-          if (e.toString().contains('403') || e.toString().contains('Forbidden')) {
+          if (e.toString().contains('403') ||
+              e.toString().contains('Forbidden')) {
             errorMessage = 'Video không khả dụng. Vui lòng thử lại sau.';
-          } else if (e.toString().contains('imagekit') || e.toString().contains('ImageKit')) {
-            errorMessage = 'Video này đang được lưu trữ trên ImageKit và hiện không khả dụng.';
+          } else if (e.toString().contains('imagekit') ||
+              e.toString().contains('ImageKit')) {
+            errorMessage =
+                'Video này đang được lưu trữ trên ImageKit và hiện không khả dụng.';
           }
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -3749,7 +3909,8 @@ class _CommentVideoPlayerDialog extends StatefulWidget {
   });
 
   @override
-  State<_CommentVideoPlayerDialog> createState() => _CommentVideoPlayerDialogState();
+  State<_CommentVideoPlayerDialog> createState() =>
+      _CommentVideoPlayerDialogState();
 }
 
 class _CommentVideoPlayerDialogState extends State<_CommentVideoPlayerDialog> {
@@ -3825,7 +3986,7 @@ class _CommentVideoPlayerDialogState extends State<_CommentVideoPlayerDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Dialog(
       backgroundColor: Colors.black,
       insetPadding: EdgeInsets.zero,
@@ -3848,7 +4009,7 @@ class _CommentVideoPlayerDialogState extends State<_CommentVideoPlayerDialog> {
               ),
             ),
           ),
-          
+
           // Controls overlay
           if (_showControls)
             Positioned.fill(
@@ -3865,14 +4026,15 @@ class _CommentVideoPlayerDialogState extends State<_CommentVideoPlayerDialog> {
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             IconButton(
-                              icon: const Icon(Icons.close, color: Colors.white),
+                              icon:
+                                  const Icon(Icons.close, color: Colors.white),
                               onPressed: () => Navigator.of(context).pop(),
                             ),
                           ],
                         ),
                       ),
                     ),
-                    
+
                     // Bottom controls
                     SafeArea(
                       child: Padding(
@@ -3890,7 +4052,7 @@ class _CommentVideoPlayerDialogState extends State<_CommentVideoPlayerDialog> {
                               ),
                             ),
                             const SizedBox(height: 8),
-                            
+
                             // Play/pause and time
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3926,5 +4088,3 @@ class _CommentVideoPlayerDialogState extends State<_CommentVideoPlayerDialog> {
     );
   }
 }
-
-

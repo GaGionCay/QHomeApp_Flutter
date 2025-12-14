@@ -33,7 +33,8 @@ class AuthProvider extends ChangeNotifier {
 
   /// Setup listener for token expired events
   void _setupTokenExpiredListener() {
-    _tokenExpiredSubscription = AppEventBus().on('auth_token_expired', (data) async {
+    _tokenExpiredSubscription =
+        AppEventBus().on('auth_token_expired', (data) async {
       debugPrint('🔔 [AuthProvider] Received auth_token_expired event: $data');
       await _handleTokenExpired();
     });
@@ -47,20 +48,20 @@ class AuthProvider extends ChangeNotifier {
     }
 
     debugPrint('🔐 [AuthProvider] Token expired, logging out...');
-    
+
     try {
       // Unregister push token
       try {
-        await PushNotificationService.instance.unregisterToken();
+        // await PushNotificationService.instance.unregisterToken();
       } catch (e) {
         debugPrint('⚠️ Unregister token error: $e');
       }
-      
+
       // Delete session data (keep biometric credentials)
       await storage.deleteSessionData();
       _isAuthenticated = false;
       notifyListeners();
-      
+
       // Navigate to login using GoRouter (no context needed)
       try {
         debugPrint('🔐 [AuthProvider] Navigating to login screen...');
@@ -145,13 +146,14 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> isBiometricLoginEnabled() => storage.readBiometricEnabled();
 
-  Future<({String username, String password})?> getBiometricCredentials() async {
+  Future<({String username, String password})?>
+      getBiometricCredentials() async {
     // Check if any biometric is enabled (fingerprint or legacy)
     final fingerprintEnabled = await storage.readFingerprintEnabled();
     final legacyEnabled = await storage.readBiometricEnabled();
 
     if (!fingerprintEnabled && !legacyEnabled) return null;
-    
+
     final username = await storage.readBiometricUsername();
     final password = await storage.readBiometricPassword();
     if (username == null || password == null) {
@@ -216,30 +218,30 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-Future<void> logout(BuildContext context) async {
-  try {
-    await authService.logout();
-  } catch (e) {
-    debugPrint('⚠️ Logout API error: $e');
-  } finally {
+  Future<void> logout(BuildContext context) async {
     try {
-      await PushNotificationService.instance.unregisterToken();
+      await authService.logout();
     } catch (e) {
-      debugPrint('⚠️ Unregister token error: $e');
-    }
-    
-    // Only delete session data, keep fingerprint credentials
-    // This allows users to use fingerprint login after logout
-    await storage.deleteSessionData();
-    _isAuthenticated = false;
-    notifyListeners();
+      debugPrint('⚠️ Logout API error: $e');
+    } finally {
+      try {
+        //await PushNotificationService.instance.unregisterToken();
+      } catch (e) {
+        debugPrint('⚠️ Unregister token error: $e');
+      }
 
-    if (context.mounted) {
-      // Use go_router to navigate to login screen
-      context.go(AppRoute.login.path);
+      // Only delete session data, keep fingerprint credentials
+      // This allows users to use fingerprint login after logout
+      await storage.deleteSessionData();
+      _isAuthenticated = false;
+      notifyListeners();
+
+      if (context.mounted) {
+        // Use go_router to navigate to login screen
+        context.go(AppRoute.login.path);
+      }
     }
   }
-}
 
   Future<void> _syncPushContext() async {
     try {
@@ -275,14 +277,15 @@ Future<void> logout(BuildContext context) async {
       }
       await storage.writeBuildingId(buildingId);
 
-      await PushNotificationService.instance.refreshRegistration();
+      //await PushNotificationService.instance.refreshRegistration();
     } catch (e) {
       debugPrint('⚠️ Unable to sync push context: $e');
     }
   }
 
   Future<void> requestReset(String email) => authService.requestReset(email);
-  Future<void> verifyOtp(String email, String otp) => authService.verifyOtp(email, otp);
+  Future<void> verifyOtp(String email, String otp) =>
+      authService.verifyOtp(email, otp);
   Future<void> confirmReset(String email, String otp, String newPassword) =>
       authService.confirmReset(email, otp, newPassword);
 
@@ -290,4 +293,3 @@ Future<void> logout(BuildContext context) async {
     return IamApiClient.createPublicDio();
   }
 }
-

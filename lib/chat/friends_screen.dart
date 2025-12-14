@@ -20,7 +20,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
   List<Friend> _friends = [];
   bool _isLoading = true;
   String? _error;
-  
+
   // Phone autocomplete for direct invitation
   final _phoneController = TextEditingController();
   List<Map<String, dynamic>> _phoneSuggestions = [];
@@ -32,21 +32,22 @@ class _FriendsScreenState extends State<FriendsScreen> {
     super.initState();
     _loadFriends();
   }
-  
+
   @override
   void dispose() {
     _phoneController.dispose();
     _phoneSearchDebounce?.cancel();
     super.dispose();
   }
-  
-  Future<void> _searchResidentsByPhone(String phonePrefix, {VoidCallback? onUpdate}) async {
+
+  Future<void> _searchResidentsByPhone(String phonePrefix,
+      {VoidCallback? onUpdate}) async {
     // Cancel previous debounce
     _phoneSearchDebounce?.cancel();
-    
+
     // Normalize phone: remove all non-digit characters
     final normalizedPhone = phonePrefix.replaceAll(RegExp(r'[^0-9]'), '');
-    
+
     // Only search if at least 3 digits
     if (normalizedPhone.length < 3) {
       setState(() {
@@ -56,28 +57,30 @@ class _FriendsScreenState extends State<FriendsScreen> {
       onUpdate?.call();
       return;
     }
-    
+
     // Debounce: wait 500ms before searching
     _phoneSearchDebounce = Timer(const Duration(milliseconds: 500), () async {
       setState(() {
         _isSearchingPhone = true;
       });
       onUpdate?.call();
-      
+
       try {
         final response = await _apiClient.dio.get(
           '/residents/search-by-phone',
           queryParameters: {'prefix': normalizedPhone},
         );
-        
+
         if (mounted) {
           final List<dynamic> data = response.data ?? [];
           setState(() {
-            _phoneSuggestions = data.map((item) => {
-              'id': item['id']?.toString() ?? '',
-              'fullName': item['fullName']?.toString() ?? '',
-              'phone': item['phone']?.toString() ?? '',
-            }).toList();
+            _phoneSuggestions = data
+                .map((item) => {
+                      'id': item['id']?.toString() ?? '',
+                      'fullName': item['fullName']?.toString() ?? '',
+                      'phone': item['phone']?.toString() ?? '',
+                    })
+                .toList();
             _isSearchingPhone = false;
           });
           onUpdate?.call();
@@ -94,14 +97,14 @@ class _FriendsScreenState extends State<FriendsScreen> {
       }
     });
   }
-  
+
   Future<void> _sendDirectInvitationByPhone(String phoneNumber) async {
     try {
       final invitation = await _service.createDirectInvitation(
         phoneNumber: phoneNumber,
         initialMessage: null,
       );
-      
+
       if (mounted) {
         Navigator.pop(context); // Close dialog
         ScaffoldMessenger.of(context).showSnackBar(
@@ -115,16 +118,17 @@ class _FriendsScreenState extends State<FriendsScreen> {
       if (mounted) {
         // Extract error message
         String errorMessage = e.toString().replaceFirst('Exception: ', '');
-        
+
         // Check if this is an informational message
-        bool isInfoMessage = errorMessage.contains('Bạn đã gửi lời mời rồi') || 
-                             errorMessage.contains('đã gửi lời mời cho bạn rồi') ||
-                             errorMessage.contains('Vui lòng đợi phản hồi');
-        
-        if (!errorMessage.startsWith('Lỗi khi') && !errorMessage.contains('đã gửi lời mời')) {
+        bool isInfoMessage = errorMessage.contains('Bạn đã gửi lời mời rồi') ||
+            errorMessage.contains('đã gửi lời mời cho bạn rồi') ||
+            errorMessage.contains('Vui lòng đợi phản hồi');
+
+        if (!errorMessage.startsWith('Lỗi khi') &&
+            !errorMessage.contains('đã gửi lời mời')) {
           errorMessage = 'Lỗi khi gửi lời mời: $errorMessage';
         }
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMessage),
@@ -135,14 +139,14 @@ class _FriendsScreenState extends State<FriendsScreen> {
       }
     }
   }
-  
+
   void _showInviteByPhoneDialog() {
     _phoneController.clear();
     setState(() {
       _phoneSuggestions = [];
       _isSearchingPhone = false;
     });
-    
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -167,7 +171,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
                               child: SizedBox(
                                 width: 20,
                                 height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
                               ),
                             )
                           : null,
@@ -179,7 +184,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
                     ],
                     onChanged: (value) {
                       _searchResidentsByPhone(value, onUpdate: () {
-                        setDialogState(() {}); // Update dialog state to show suggestions
+                        setDialogState(
+                            () {}); // Update dialog state to show suggestions
                       });
                     },
                   ),
@@ -191,7 +197,10 @@ class _FriendsScreenState extends State<FriendsScreen> {
                       decoration: BoxDecoration(
                         color: Theme.of(context).colorScheme.surface,
                         border: Border.all(
-                          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
+                          color: Theme.of(context)
+                              .colorScheme
+                              .outline
+                              .withValues(alpha: 0.2),
                         ),
                         borderRadius: BorderRadius.circular(8),
                         boxShadow: [
@@ -207,7 +216,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
                         itemCount: _phoneSuggestions.length,
                         itemBuilder: (context, index) {
                           final resident = _phoneSuggestions[index];
-                          final fullName = resident['fullName']?.toString() ?? '';
+                          final fullName =
+                              resident['fullName']?.toString() ?? '';
                           final phone = resident['phone']?.toString() ?? '';
                           return ListTile(
                             dense: true,
@@ -217,16 +227,23 @@ class _FriendsScreenState extends State<FriendsScreen> {
                             ),
                             subtitle: Text(
                               phone,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withValues(alpha: 0.6),
+                                  ),
                             ),
                             leading: Icon(
                               CupertinoIcons.person_circle,
                               color: Theme.of(context).colorScheme.primary,
                             ),
                             onTap: () {
-                              final normalizedPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
+                              final normalizedPhone =
+                                  phone.replaceAll(RegExp(r'[^0-9]'), '');
                               _sendDirectInvitationByPhone(normalizedPhone);
                             },
                           );
@@ -244,16 +261,20 @@ class _FriendsScreenState extends State<FriendsScreen> {
               ),
               FilledButton(
                 onPressed: () {
-                  final phone = _phoneController.text.trim().replaceAll(RegExp(r'[^0-9]'), '');
+                  final phone = _phoneController.text
+                      .trim()
+                      .replaceAll(RegExp(r'[^0-9]'), '');
                   if (phone.isEmpty) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Vui lòng nhập số điện thoại')),
+                      const SnackBar(
+                          content: Text('Vui lòng nhập số điện thoại')),
                     );
                     return;
                   }
                   if (phone.length != 10) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Số điện thoại phải có 10 chữ số')),
+                      const SnackBar(
+                          content: Text('Số điện thoại phải có 10 chữ số')),
                     );
                     return;
                   }
@@ -295,17 +316,17 @@ class _FriendsScreenState extends State<FriendsScreen> {
   Future<void> _navigateToChat(Friend friend) async {
     if (friend.hasActiveConversation && friend.conversationId != null) {
       // Navigate to existing conversation
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => DirectChatScreen(
-              conversationId: friend.conversationId!,
-              otherParticipantName: friend.friendName,
-            ),
-          ),
-        );
-      }
+      // if (mounted) {
+      //   Navigator.push(
+      //     context,
+      //     MaterialPageRoute(
+      //       builder: (context) => DirectChatScreen(
+      //         conversationId: friend.conversationId!,
+      //         otherParticipantName: friend.friendName,
+      //       ),
+      //     ),
+      //   );
+      // }
     } else {
       // Create new invitation to start conversation
       try {
@@ -318,9 +339,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
           // If status is PENDING and invitation was created more than 1 second ago, it's an existing invitation
           final now = DateTime.now();
           final createdAt = invitation.createdAt;
-          final isExistingInvitation = createdAt != null && 
-              now.difference(createdAt).inSeconds > 1;
-          
+          final isExistingInvitation =
+              createdAt != null && now.difference(createdAt).inSeconds > 1;
+
           if (invitation.status == 'PENDING' && isExistingInvitation) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -341,24 +362,26 @@ class _FriendsScreenState extends State<FriendsScreen> {
       } catch (e) {
         if (mounted) {
           print('❌ [FriendsScreen] Error creating invitation: $e');
-          
+
           // Extract error message - remove "Exception: " prefix if present
           String errorMessage = e.toString().replaceFirst('Exception: ', '');
           print('   📋 Extracted error message: $errorMessage');
-          
+
           // Check if this is an informational message (not an error)
-          bool isInfoMessage = errorMessage.contains('Bạn đã gửi lời mời rồi') || 
-                               errorMessage.contains('đã gửi lời mời cho bạn rồi') ||
-                               errorMessage.contains('Vui lòng đợi phản hồi');
-          
+          bool isInfoMessage =
+              errorMessage.contains('Bạn đã gửi lời mời rồi') ||
+                  errorMessage.contains('đã gửi lời mời cho bạn rồi') ||
+                  errorMessage.contains('Vui lòng đợi phản hồi');
+
           print('   📋 Is info message: $isInfoMessage');
-          
+
           // If error message already contains the full message, use it directly
           // Otherwise, prepend "Lỗi khi gửi lời mời: "
-          if (!errorMessage.startsWith('Lỗi khi') && !errorMessage.contains('đã gửi lời mời')) {
+          if (!errorMessage.startsWith('Lỗi khi') &&
+              !errorMessage.contains('đã gửi lời mời')) {
             errorMessage = 'Lỗi khi gửi lời mời: $errorMessage';
           }
-          
+
           print('   🚀 Showing SnackBar with message: $errorMessage');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -375,7 +398,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Bạn bè'),
@@ -427,20 +450,23 @@ class _FriendsScreenState extends State<FriendsScreen> {
                             Icon(
                               CupertinoIcons.person_2,
                               size: 64,
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                              color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.3),
                             ),
                             const SizedBox(height: 16),
                             Text(
                               'Chưa có bạn bè nào',
                               style: theme.textTheme.titleMedium?.copyWith(
-                                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.6),
                               ),
                             ),
                             const SizedBox(height: 8),
                             Text(
                               'Chấp nhận lời mời chat để thêm bạn bè',
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                                color: theme.colorScheme.onSurface
+                                    .withValues(alpha: 0.5),
                               ),
                             ),
                           ],
@@ -452,7 +478,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
                           final friend = _friends[index];
                           return ListTile(
                             leading: CircleAvatar(
-                              backgroundColor: theme.colorScheme.primaryContainer,
+                              backgroundColor:
+                                  theme.colorScheme.primaryContainer,
                               child: Text(
                                 friend.friendName.isNotEmpty
                                     ? friend.friendName[0].toUpperCase()
@@ -474,7 +501,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
                                   )
                                 : Icon(
                                     CupertinoIcons.chat_bubble,
-                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                                    color: theme.colorScheme.onSurface
+                                        .withValues(alpha: 0.5),
                                   ),
                             onTap: () => _navigateToChat(friend),
                           );
@@ -484,6 +512,3 @@ class _FriendsScreenState extends State<FriendsScreen> {
     );
   }
 }
-
-
-

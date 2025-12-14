@@ -74,14 +74,14 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
         ),
       );
     });
-    _pushSubscription =
-        PushNotificationService.instance.notificationClicks.listen(
-      (message) {
-        if (!mounted) return;
-        final data = Map<String, dynamic>.from(message.data);
-        _handleNotificationTap(data);
-      },
-    );
+    // _pushSubscription =
+    //     PushNotificationService.instance.notificationClicks.listen(
+    //   (message) {
+    //     if (!mounted) return;
+    //     final data = Map<String, dynamic>.from(message.data);
+    //     _handleNotificationTap(data);
+    //   },
+    // );
 
     _pages = [
       HomeScreen(onNavigateToTab: _onItemTapped),
@@ -219,9 +219,11 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
         headers: {'id': 'notifications-resident-$_userResidentId'},
         callback: _handleNotificationFrame,
       );
-      debugPrint('✅ Subscribed to /topic/notifications/resident/$_userResidentId');
+      debugPrint(
+          '✅ Subscribed to /topic/notifications/resident/$_userResidentId');
     } else {
-      debugPrint('⚠️ Không có residentId, bỏ qua subscribe đến /topic/notifications/resident/{residentId}');
+      debugPrint(
+          '⚠️ Không có residentId, bỏ qua subscribe đến /topic/notifications/resident/{residentId}');
     }
   }
 
@@ -233,9 +235,10 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
         headers: {'id': 'marketplace-building-$buildingId'},
         callback: _handleMarketplaceFrame,
       );
-      debugPrint('✅ Subscribed to /topic/marketplace/building/$buildingId/posts');
+      debugPrint(
+          '✅ Subscribed to /topic/marketplace/building/$buildingId/posts');
     }
-    
+
     // Subscribe to post stats updates for all visible posts
     // This will be done dynamically when posts are loaded
   }
@@ -255,12 +258,13 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
       final decoded = json.decode(frame.body!);
       final type = decoded['type'] as String?;
       final postId = decoded['postId'] as String?;
-      
-      debugPrint('🔔 [Marketplace WebSocket] Received: type=$type, postId=$postId');
-      
+
+      debugPrint(
+          '🔔 [Marketplace WebSocket] Received: type=$type, postId=$postId');
+
       // Emit event to update marketplace screen
       AppEventBus().emit('marketplace_update', decoded);
-      
+
       // Also emit for comment updates
       if (type == 'NEW_COMMENT') {
         AppEventBus().emit('new_comment', {'postId': postId, 'data': decoded});
@@ -296,41 +300,47 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   }
 
   void _handleNotificationFrame(StompFrame frame) {
-    debugPrint('🔔 [WebSocket] Received frame, body length: ${frame.body?.length ?? 0}');
+    debugPrint(
+        '🔔 [WebSocket] Received frame, body length: ${frame.body?.length ?? 0}');
     if (frame.body == null) {
       debugPrint('⚠️ [WebSocket] Frame body is null');
       return;
     }
-    
+
     debugPrint('🔔 [WebSocket] Raw frame body: ${frame.body}');
-    
+
     try {
       final decoded = json.decode(frame.body!);
       debugPrint('🔔 [WebSocket] Decoded data type: ${decoded.runtimeType}');
       debugPrint('🔔 [WebSocket] Decoded data: $decoded');
-      
+
       if (decoded is Map<String, dynamic>) {
         final data = Map<String, dynamic>.from(decoded);
         final dedupeKeySource = _asString(data['notificationId']) ??
             _asString(data['id']) ??
             frame.headers['message-id']?.toString() ??
             frame.body.hashCode.toString();
-        final eventType = _asString(data['eventType']) ?? _asString(data['action']) ?? 'NOTIFICATION_CREATED';
+        final eventType = _asString(data['eventType']) ??
+            _asString(data['action']) ??
+            'NOTIFICATION_CREATED';
         final dedupeKey = 'notification:$eventType:$dedupeKeySource';
-        
-        debugPrint('🔔 [WebSocket] Parsed: eventType=$eventType, id=$dedupeKeySource');
+
+        debugPrint(
+            '🔔 [WebSocket] Parsed: eventType=$eventType, id=$dedupeKeySource');
         debugPrint('🔔 [WebSocket] Full data keys: ${data.keys.toList()}');
-        
+
         if (!_markRealtimeKey(dedupeKey)) {
           debugPrint('ℹ️ Notification đã nhận trước đó, bỏ qua: $dedupeKey');
           return;
         }
 
-        debugPrint('🔔 Received notification via WebSocket: eventType=$eventType, id=$dedupeKeySource');
+        debugPrint(
+            '🔔 Received notification via WebSocket: eventType=$eventType, id=$dedupeKeySource');
 
         final shouldDisplay = _shouldDisplayNotification(data);
-        debugPrint('🔔 [WebSocket] Should display: $shouldDisplay, scope: ${data['scope']}, targetBuildingId: ${data['targetBuildingId']}');
-        
+        debugPrint(
+            '🔔 [WebSocket] Should display: $shouldDisplay, scope: ${data['scope']}, targetBuildingId: ${data['targetBuildingId']}');
+
         if (!shouldDisplay) {
           debugPrint(
               'ℹ️ Bỏ qua thông báo không liên quan tới căn hộ của user.');
@@ -363,7 +373,8 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
         } else {
           // For any other event type, still emit notifications_incoming to update count
           AppEventBus().emit('notifications_incoming', data);
-          debugPrint('✅ Emitted notifications_incoming event for eventType: $eventType');
+          debugPrint(
+              '✅ Emitted notifications_incoming event for eventType: $eventType');
         }
       }
     } catch (e) {
@@ -374,17 +385,20 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
 
   bool _shouldDisplayNotification(Map<String, dynamic> data) {
     final scope = _asString(data['scope'])?.toUpperCase();
-    debugPrint('🔔 [WebSocket] Checking display: scope=$scope, userBuildingIds=${_userBuildingIds.toList()}');
-    
+    debugPrint(
+        '🔔 [WebSocket] Checking display: scope=$scope, userBuildingIds=${_userBuildingIds.toList()}');
+
     if (scope == 'EXTERNAL') {
       final target = _asString(data['targetBuildingId']);
-      debugPrint('🔔 [WebSocket] EXTERNAL notification, targetBuildingId=$target');
+      debugPrint(
+          '🔔 [WebSocket] EXTERNAL notification, targetBuildingId=$target');
       if (target == null || target.isEmpty) {
         debugPrint('🔔 [WebSocket] No targetBuildingId, should display: true');
         return true;
       }
       final shouldDisplay = _userBuildingIds.contains(target.toLowerCase());
-      debugPrint('🔔 [WebSocket] Target building match: $shouldDisplay (target: $target, userBuildings: ${_userBuildingIds.toList()})');
+      debugPrint(
+          '🔔 [WebSocket] Target building match: $shouldDisplay (target: $target, userBuildings: ${_userBuildingIds.toList()})');
       return shouldDisplay;
     }
     debugPrint('🔔 [WebSocket] Scope is not EXTERNAL, should display: true');
@@ -464,10 +478,10 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
 
     // Parse notification từ data
     try {
-      final notificationId = data['notificationId']?.toString() ?? 
-                             data['id']?.toString() ?? 
-                             data['notification_id']?.toString();
-      
+      final notificationId = data['notificationId']?.toString() ??
+          data['id']?.toString() ??
+          data['notification_id']?.toString();
+
       if (notificationId == null || notificationId.isEmpty) {
         // Nếu không có notification ID, mở notification screen
         Navigator.push(
@@ -480,17 +494,15 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
       }
 
       // Tạo ResidentNotification từ data
-      final createdAt = data['createdAt']?.toString() ?? 
-                        DateTime.now().toUtc().toIso8601String();
+      final createdAt = data['createdAt']?.toString() ??
+          DateTime.now().toUtc().toIso8601String();
       final updatedAt = data['updatedAt']?.toString() ?? createdAt;
 
       final notification = ResidentNotification(
         id: notificationId,
         type: (data['notificationType'] ?? data['type'] ?? 'SYSTEM').toString(),
         title: data['title']?.toString() ?? 'Thông báo',
-        message: data['message']?.toString() ?? 
-                 data['body']?.toString() ?? 
-                 '',
+        message: data['message']?.toString() ?? data['body']?.toString() ?? '',
         scope: (data['scope'] ?? 'EXTERNAL').toString(),
         targetRole: data['targetRole']?.toString(),
         targetBuildingId: data['targetBuildingId']?.toString(),
@@ -530,19 +542,19 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
       final chatId = data['chatId']?.toString();
       final groupId = data['groupId']?.toString();
       final conversationId = data['conversationId']?.toString();
-      
+
       if (chatId == null) return;
-      
+
       if (type == 'groupMessage' && groupId != null) {
         // Navigate to group chat
-        if (mounted) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ChatScreen(groupId: groupId),
-            ),
-          );
-        }
+        // if (mounted) {
+        //   Navigator.push(
+        //     context,
+        //     MaterialPageRoute(
+        //       builder: (_) => ChatScreen(groupId: groupId),
+        //     ),
+        //   );
+        // }
       } else if (type == 'directMessage' && conversationId != null) {
         // Get conversation details to get other participant name
         try {
@@ -552,36 +564,40 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
             (c) => c.id == conversationId,
             orElse: () => throw Exception('Conversation not found'),
           );
-          
+
           final otherParticipantName = _userResidentId != null
-              ? (conversation.getOtherParticipantName(_userResidentId!) ?? 'Người dùng')
-              : (conversation.participant1Name ?? conversation.participant2Name ?? 'Người dùng');
-          
-          if (mounted) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => DirectChatScreen(
-                  conversationId: conversationId,
-                  otherParticipantName: otherParticipantName,
-                ),
-              ),
-            );
-          }
+              ? (conversation.getOtherParticipantName(_userResidentId!) ??
+                  'Người dùng')
+              : (conversation.participant1Name ??
+                  conversation.participant2Name ??
+                  'Người dùng');
+
+          // if (mounted) {
+          //   Navigator.push(
+          //     context,
+          //     MaterialPageRoute(
+          //       builder: (_) => DirectChatScreen(
+          //         conversationId: conversationId,
+          //         otherParticipantName: otherParticipantName,
+          //       ),
+          //     ),
+          //   );
+          // }
         } catch (e) {
           debugPrint('⚠️ Error getting conversation details: $e');
           // Fallback: navigate with default name
-          if (mounted) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => DirectChatScreen(
-                  conversationId: conversationId,
-                  otherParticipantName: data['senderName']?.toString() ?? 'Người dùng',
-                ),
-              ),
-            );
-          }
+          // if (mounted) {
+          //   Navigator.push(
+          //     context,
+          //     MaterialPageRoute(
+          //       builder: (_) => DirectChatScreen(
+          //         conversationId: conversationId,
+          //         otherParticipantName:
+          //             data['senderName']?.toString() ?? 'Người dùng',
+          //       ),
+          //     ),
+          //   );
+          // }
         }
       }
     } catch (e) {
@@ -605,7 +621,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     final scaffold = Scaffold(
       extendBody: true,
       backgroundColor: theme.colorScheme.surface,
@@ -673,7 +689,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
         ),
       ),
     );
-    
+
     // Only wrap with PopScope on Android to handle back button
     if (Platform.isAndroid) {
       return PopScope(
@@ -682,7 +698,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
           if (didPop) {
             return;
           }
-          
+
           // Check if there are any screens in the navigation stack
           final navigator = Navigator.of(context, rootNavigator: false);
           if (navigator.canPop()) {
@@ -690,7 +706,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
             navigator.pop();
             return;
           }
-          
+
           // No screens to pop (at root - HomeScreen), show exit confirmation
           final shouldExit = await _showExitConfirmationDialog(context);
           if (shouldExit == true && mounted) {
@@ -700,7 +716,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
         child: scaffold,
       );
     }
-    
+
     return scaffold;
   }
 
@@ -811,4 +827,3 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
     );
   }
 }
-
