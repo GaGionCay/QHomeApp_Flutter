@@ -409,13 +409,13 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     
     // Find the comment key
     final commentKey = _commentKeys[commentId];
-    if (commentKey == null || !commentKey.currentContext.mounted) {
+    if (commentKey == null || commentKey.currentContext == null || !commentKey.currentContext!.mounted) {
       debugPrint('⚠️ [PostDetailScreen] Comment key not found for commentId: $commentId');
       return;
     }
     
     // Get the RenderBox of the comment
-    final renderBox = commentKey.currentContext.findRenderObject() as RenderBox?;
+    final renderBox = commentKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) {
       debugPrint('⚠️ [PostDetailScreen] RenderBox not found for commentId: $commentId');
       return;

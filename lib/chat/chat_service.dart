@@ -326,6 +326,38 @@ class ChatService {
     }
   }
 
+  /// Get all invitations for a specific group (PENDING and ACCEPTED)
+  /// Includes invitations sent by current user (as inviter) and received by current user (as invitee)
+  Future<List<GroupInvitationResponse>> getGroupInvitations(String groupId) async {
+    try {
+      print('📋 [ChatService] ========== getGroupInvitations START ==========');
+      print('📋 [ChatService] Calling API: /groups/$groupId/invitations');
+      final response = await _apiClient.dio.get('/groups/$groupId/invitations');
+      print('📋 [ChatService] API Response received: Status Code: ${response.statusCode}');
+      if (response.data is List) {
+        final rawInvitations = response.data as List;
+        print('📋 [ChatService]   Raw Invitations Count: ${rawInvitations.length}');
+        for (var i = 0; i < rawInvitations.length; i++) {
+          final inv = rawInvitations[i];
+          print('📋 [ChatService]   [$i] Invitation:');
+          print('📋 [ChatService]      id: ${inv['id']}');
+          print('📋 [ChatService]      groupId: ${inv['groupId']}');
+          print('📋 [ChatService]      inviteePhone: ${inv['inviteePhone']}');
+          print('📋 [ChatService]      status: ${inv['status']}');
+        }
+      }
+      final result = (response.data as List<dynamic>)
+          .map((json) => GroupInvitationResponse.fromJson(json))
+          .toList();
+      print('📋 [ChatService] Parsed ${result.length} GroupInvitationResponse objects');
+      print('📋 [ChatService] ========== getGroupInvitations END ==========');
+      return result;
+    } catch (e) {
+      print('❌ [ChatService] Error in getGroupInvitations: $e');
+      throw Exception('Lỗi khi lấy lời mời của nhóm: ${e.toString()}');
+    }
+  }
+
   /// Accept invitation
   Future<void> acceptInvitation(String invitationId) async {
     try {

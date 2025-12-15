@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -226,6 +227,13 @@ class PushNotificationService {
             defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android',
       );
       debugPrint('✅ FCM token registered with backend');
+    } on DioException catch (e) {
+      // Handle 401 (Unauthorized) gracefully - this is expected before login
+      if (e.response?.statusCode == 401) {
+        debugPrint('ℹ️ FCM token registration skipped (user not authenticated yet). Will retry after login.');
+      } else {
+        debugPrint('⚠️ Không thể đăng ký FCM token: $e');
+      }
     } catch (e, stack) {
       debugPrint('⚠️ Không thể đăng ký FCM token: $e');
       debugPrint('$stack');

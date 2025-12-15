@@ -734,6 +734,17 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
     return '${formatter.format(amount)} VNĐ';
   }
 
+  String _getUnpaidWarningMessage(String serviceCode) {
+    final code = serviceCode.toUpperCase();
+    if (code == 'ELECTRIC' || code == 'ELECTRICITY') {
+      return 'Hóa đơn này đã quá hạn thanh toán sau nhiều lần nhắc nhở. Dịch vụ điện có thể bị cắt nếu không thanh toán ngay.';
+    } else if (code == 'WATER') {
+      return 'Hóa đơn này đã quá hạn thanh toán sau nhiều lần nhắc nhở. Dịch vụ nước có thể bị cắt nếu không thanh toán ngay.';
+    } else {
+      return 'Hóa đơn này đã quá hạn thanh toán sau nhiều lần nhắc nhở. Vui lòng thanh toán ngay để tránh gián đoạn dịch vụ.';
+    }
+  }
+
   String _formatDate(String dateStr) {
     try {
       final date = DateTime.parse(dateStr);
@@ -1184,28 +1195,44 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.red.withValues(alpha: 0.1),
+                            color: Colors.red.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: Colors.red.withValues(alpha: 0.3),
-                              width: 1,
+                              color: Colors.red.withValues(alpha: 0.4),
+                              width: 1.5,
                             ),
                           ),
                           child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Icon(
                                 Icons.warning_amber_rounded,
-                                color: Colors.red,
-                                size: 20,
+                                color: Colors.red.shade700,
+                                size: 22,
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: 10),
                               Expanded(
-                                child: Text(
-                                  'Hóa đơn này chưa được thanh toán sau nhiều lần nhắc nhở. Vui lòng thanh toán ngay để tránh gián đoạn dịch vụ.',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: Colors.red.shade700,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'CẢNH BÁO: Chưa thanh toán',
+                                      style: theme.textTheme.bodyMedium?.copyWith(
+                                        color: Colors.red.shade700,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13.5,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _getUnpaidWarningMessage(invoice.serviceCode),
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: Colors.red.shade800,
+                                        fontWeight: FontWeight.w500,
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],

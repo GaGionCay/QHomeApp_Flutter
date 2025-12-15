@@ -91,7 +91,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
   
   Future<void> _subscribeToWebSocket() async {
     try {
-      final token = await _tokenStorage.getAccessToken();
+      final token = await _tokenStorage.readAccessToken();
       final userId = await ApiClient().storage.readUserId();
       
       if (token != null && userId != null) {
@@ -1480,7 +1480,7 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Đã bỏ chặn người dùng. Tin nhắn đã gửi trong lúc chặn sẽ được hiển thị.'),
+            content: Text('Đã bỏ chặn người dùng'),
             duration: Duration(seconds: 3),
           ),
         );
@@ -1534,7 +1534,9 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                     }
                   },
                   itemBuilder: (context) {
-                    final isBlocked = _viewModel.conversation?.status == 'BLOCKED';
+                    // Check if current user has blocked the other participant
+                    // Use isBlockedByMe instead of status == 'BLOCKED' to accurately detect if A has blocked B
+                    final isBlockedByMe = _viewModel.conversation?.isBlockedByMe == true;
                     return [
                       const PopupMenuItem(
                         value: 'files',
@@ -1547,14 +1549,14 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                         ),
                       ),
                       const PopupMenuDivider(),
-                      if (isBlocked)
+                      if (isBlockedByMe)
                         const PopupMenuItem(
                           value: 'unblock',
                           child: Row(
                             children: [
-                              Icon(CupertinoIcons.check_mark_circled, size: 20),
+                              Icon(CupertinoIcons.check_mark_circled, size: 20, color: Colors.green),
                               SizedBox(width: 8),
-                              Text('Bỏ chặn'),
+                              Text('Bỏ chặn người dùng', style: TextStyle(color: Colors.green)),
                             ],
                           ),
                         )

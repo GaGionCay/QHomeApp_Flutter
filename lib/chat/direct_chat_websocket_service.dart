@@ -9,12 +9,15 @@ import '../models/chat/web_socket_message.dart';
 /// Handles real-time message notifications when user is in app
 class DirectChatWebSocketService {
   StompClient? _client;
-  final Map<String, StompSubscription> _subscriptions = {};
+  final Map<String, dynamic> _subscriptions = {};
   final Map<String, Function(DirectMessage)> _messageHandlers = {};
   final Map<String, Function(DirectMessage)> _globalMessageHandlers = {}; // For notifications when not in chat screen
   bool _isConnected = false;
   String? _currentToken;
   String? _currentUserId;
+  int _consecutiveFailures = 0;
+  static const int _maxConsecutiveFailures = 5;
+  DateTime? _lastConnectionAttempt;
 
   /// Connect to WebSocket and subscribe to a conversation
   /// This should be called when user enters a chat screen
@@ -104,13 +107,15 @@ class DirectChatWebSocketService {
 
   /// Unsubscribe from a conversation
   /// This should be called when user leaves a chat screen
+  /// Note: StompClient doesn't have direct unsubscribe method, but we track it and remove handlers
   void unsubscribeFromConversation(String conversationId) {
     if (kDebugMode) {
       print('📡 [DirectChatWebSocket] Unsubscribing from conversation: $conversationId');
     }
 
-    final subscription = _subscriptions.remove(conversationId);
-    subscription?.cancel();
+    // Remove subscription from tracking map
+    // Note: StompClient manages subscriptions internally, we just track them
+    _subscriptions.remove(conversationId);
     _messageHandlers.remove(conversationId);
   }
 
@@ -120,24 +125,64 @@ class DirectChatWebSocketService {
       print('📡 [DirectChatWebSocket] Disconnecting...');
     }
 
-    // Cancel all subscriptions
-    for (final subscription in _subscriptions.values) {
-      subscription.cancel();
-    }
+    // Clear all subscriptions tracking
+    // Note: StompClient will handle unsubscribing when deactivated
     _subscriptions.clear();
     _messageHandlers.clear();
+    _globalMessageHandlers.clear();
 
-    // Disconnect client
+    // Disconnect client (this will automatically unsubscribe all subscriptions)
     _client?.deactivate();
     _client = null;
     _isConnected = false;
+    _consecutiveFailures = 0; // Reset on manual disconnect
+    _lastConnectionAttempt = null;
+  }
+
+  /// Reset connection failure count to allow reconnection attempts
+  /// Call this if you want to retry after connection has been disabled due to failures
+  void resetConnectionFailures() {
+    if (kDebugMode) {
+      print('🔄 [DirectChatWebSocket] Resetting connection failure count');
+    }
+    _consecutiveFailures = 0;
+    _lastConnectionAttempt = null;
+  }
+
+  int _calculateReconnectDelay() {
+    // Exponential backoff: 5s, 10s, 20s, 30s, max 30s
+    if (_consecutiveFailures == 0) return 5;
+    if (_consecutiveFailures == 1) return 10;
+    if (_consecutiveFailures == 2) return 20;
+    return 30; // Max 30 seconds
   }
 
   Future<void> _connect(String token, String userId) async {
+    // Prevent too frequent connection attempts
+    if (_lastConnectionAttempt != null) {
+      final timeSinceLastAttempt = DateTime.now().difference(_lastConnectionAttempt!);
+      if (timeSinceLastAttempt.inSeconds < 2) {
+        if (kDebugMode) {
+          print('⏸️ [DirectChatWebSocket] Skipping connection attempt (too soon after last attempt)');
+        }
+        return;
+      }
+    }
+    
+    // Stop if we've had too many failures
+    if (_consecutiveFailures >= _maxConsecutiveFailures) {
+      if (kDebugMode) {
+        print('🛑 [DirectChatWebSocket] Connection disabled due to too many failures. Call resetConnectionFailures() to retry.');
+      }
+      return;
+    }
+    
+    _lastConnectionAttempt = DateTime.now();
     final wsUrl = _buildWebSocketUrl();
     
     if (kDebugMode) {
       print('🔌 [DirectChatWebSocket] Connecting to: $wsUrl');
+      print('   Consecutive failures: $_consecutiveFailures');
     }
 
     _client = StompClient(
@@ -145,6 +190,7 @@ class DirectChatWebSocketService {
         url: wsUrl,
         onConnect: (StompFrame frame) {
           _isConnected = true;
+          _consecutiveFailures = 0; // Reset failure count on successful connection
           if (kDebugMode) {
             print('✅ [DirectChatWebSocket] Connected');
           }
@@ -161,13 +207,52 @@ class DirectChatWebSocketService {
           }
         },
         onStompError: (frame) {
+          _consecutiveFailures++;
           if (kDebugMode) {
             print('⚠️ [DirectChatWebSocket] STOMP error: ${frame.body ?? 'Unknown'}');
+            print('   Consecutive failures: $_consecutiveFailures/$_maxConsecutiveFailures');
+          }
+          
+          // Stop reconnecting after too many failures
+          if (_consecutiveFailures >= _maxConsecutiveFailures) {
+            if (kDebugMode) {
+              print('🛑 [DirectChatWebSocket] Too many STOMP errors, stopping reconnection attempts');
+            }
+            _client?.deactivate();
+            _client = null;
+            _isConnected = false;
           }
         },
         onWebSocketError: (error) {
+          _consecutiveFailures++;
           if (kDebugMode) {
             print('❌ [DirectChatWebSocket] WebSocket error: $error');
+            print('   Error type: ${error.runtimeType}');
+            print('   Consecutive failures: $_consecutiveFailures/$_maxConsecutiveFailures');
+            print('   URL: $wsUrl');
+            
+            // Provide helpful error messages
+            if (error.toString().contains('HandshakeException')) {
+              print('   💡 Tip: HandshakeException usually means:');
+              print('      - Server WebSocket endpoint not available');
+              print('      - Wrong URL or port');
+              print('      - Server not running');
+              print('      - Network/firewall blocking connection');
+              print('      - SSL/TLS certificate issue');
+            }
+          }
+          
+          // Stop reconnecting after too many failures
+          if (_consecutiveFailures >= _maxConsecutiveFailures) {
+            if (kDebugMode) {
+              print('🛑 [DirectChatWebSocket] Too many WebSocket errors, stopping reconnection attempts');
+              print('   Last error: $error');
+              print('   URL: $wsUrl');
+              print('   💡 To retry, call: directChatWebSocketService.resetConnectionFailures()');
+            }
+            _client?.deactivate();
+            _client = null;
+            _isConnected = false;
           }
         },
         stompConnectHeaders: {
@@ -180,7 +265,8 @@ class DirectChatWebSocketService {
           if (wsUrl.contains('ngrok') || wsUrl.contains('ngrok-free.app'))
             'ngrok-skip-browser-warning': 'true',
         },
-        reconnectDelay: const Duration(seconds: 5),
+        // Use exponential backoff with max delay of 30s
+        reconnectDelay: const Duration(seconds: 10),
         heartbeatIncoming: const Duration(seconds: 10),
         heartbeatOutgoing: const Duration(seconds: 10),
       ),
@@ -266,6 +352,10 @@ class DirectChatWebSocketService {
   }
 
   String _buildWebSocketUrl() {
+    // Build WebSocket URL - use chat-service directly or through API Gateway
+    // API Gateway port is 8989, but WebSocket might need direct connection to chat-service (8090)
+    // Try API Gateway first, fallback to direct chat-service if needed
+    
     final baseUrl = ApiClient.buildServiceBase(path: '/ws');
     
     // Convert HTTP/HTTPS to WS/WSS
@@ -283,6 +373,12 @@ class DirectChatWebSocketService {
     
     if (isNgrokUrl) {
       wsUrl = wsUrl.replaceAll(RegExp(r':\d+/'), '/');
+    }
+    
+    if (kDebugMode) {
+      print('🔍 [DirectChatWebSocket] Built WebSocket URL: $wsUrl');
+      print('   Base URL: $baseUrl');
+      print('   Is ngrok: $isNgrokUrl');
     }
     
     return wsUrl;

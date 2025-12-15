@@ -477,7 +477,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
-                                              // Dòng 1: Tên nhóm - wrap text, max 2 dòng, ưu tiên xuống dòng
+                                              // Dòng 1: Tên nhóm - wrap text, allow multiple lines to show full name
                                               Text(
                                                 invitation.groupName ?? 'Nhóm chat',
                                                 style: theme.textTheme.titleLarge?.copyWith(
@@ -486,7 +486,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
                                                   letterSpacing: -0.2,
                                                   height: 1.4,
                                                 ),
-                                                maxLines: 2,
+                                                maxLines: 5, // Increased to show full group names
                                                 overflow: TextOverflow.ellipsis,
                                                 softWrap: true,
                                               ),
