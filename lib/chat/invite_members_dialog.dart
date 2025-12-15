@@ -6,6 +6,7 @@ import 'chat_service.dart';
 import '../auth/api_client.dart';
 import '../auth/token_storage.dart';
 import '../models/chat/invitation.dart';
+import '../models/chat/friend.dart';
 import '../profile/profile_service.dart';
 
 class InviteMembersDialog extends StatefulWidget {
@@ -17,7 +18,7 @@ class InviteMembersDialog extends StatefulWidget {
   State<InviteMembersDialog> createState() => _InviteMembersDialogState();
 }
 
-class _InviteMembersDialogState extends State<InviteMembersDialog> {
+class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTickerProviderStateMixin {
   final _phoneController = TextEditingController();
   final ChatService _service = ChatService();
   final ApiClient _apiClient = ApiClient();
@@ -41,10 +42,28 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> {
   
   // Current user phone number (normalized) - to identify "me" in suggestions
   String? _currentUserPhoneNormalized;
+  
+  // Tab management
+  late final TabController _tabController;
+  
+  // Friends list for "Chọn từ bạn bè" tab
+  List<Friend> _friends = [];
+  Set<String> _selectedFriendIds = {}; // Selected friend residentIds
+  bool _isLoadingFriends = false;
+  final _friendSearchController = TextEditingController();
+  List<Friend> _filteredFriends = [];
 
   @override
   void initState() {
     super.initState();
+    // Initialize TabController immediately
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging && _tabController.index == 1 && _friends.isEmpty) {
+        // Load friends when switching to friends tab
+        _loadFriends();
+      }
+    });
     _loadCurrentUserPhone();
     _loadInvitations();
     _loadGroupMembers();
@@ -53,6 +72,8 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> {
   @override
   void dispose() {
     _phoneController.dispose();
+    _friendSearchController.dispose();
+    _tabController.dispose();
     _phoneSearchDebounce?.cancel();
     super.dispose();
   }
@@ -370,6 +391,102 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> {
     }
     return Colors.grey;
   }
+  
+  /// Load friends list
+  Future<void> _loadFriends() async {
+    if (_friends.isNotEmpty) {
+      // Already loaded, just filter
+      _filterFriends();
+      return;
+    }
+    
+    if (mounted) {
+      setState(() {
+        _isLoadingFriends = true;
+      });
+    }
+    
+    try {
+      final friends = await _service.getFriends();
+      if (mounted) {
+        setState(() {
+          _friends = friends;
+          _isLoadingFriends = false;
+        });
+        _filterFriends();
+      }
+    } catch (e) {
+      debugPrint('⚠️ [InviteMembersDialog] Error loading friends: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingFriends = false;
+        });
+      }
+    }
+  }
+  
+  /// Filter friends based on search query
+  void _filterFriends() {
+    final query = _friendSearchController.text.toLowerCase().trim();
+    if (query.isEmpty) {
+      setState(() {
+        _filteredFriends = List.from(_friends);
+      });
+    } else {
+      setState(() {
+        _filteredFriends = _friends.where((friend) {
+          final name = friend.friendName.toLowerCase();
+          final phone = friend.friendPhone.toLowerCase();
+          return name.contains(query) || phone.contains(query);
+        }).toList();
+      });
+    }
+  }
+  
+  /// Toggle friend selection
+  void _toggleFriendSelection(String friendId, String friendPhone) {
+    // Check if should disable
+    if (_isAlreadyMember(friendId) || _hasInvitation(friendPhone) || _isCurrentUser(friendPhone)) {
+      return; // Don't allow selection
+    }
+    
+    setState(() {
+      if (_selectedFriendIds.contains(friendId)) {
+        _selectedFriendIds.remove(friendId);
+      } else {
+        _selectedFriendIds.add(friendId);
+      }
+    });
+  }
+  
+  /// Check if friend should be disabled
+  bool _shouldDisableFriend(Friend friend) {
+    return _isAlreadyMember(friend.friendId) || 
+           _hasInvitation(friend.friendPhone) || 
+           _isCurrentUser(friend.friendPhone);
+  }
+  
+  /// Get status text for friend
+  String? _getFriendStatusText(Friend friend) {
+    if (_isCurrentUser(friend.friendPhone)) {
+      return null; // Will show "(tôi)" in name
+    }
+    if (_isAlreadyMember(friend.friendId)) {
+      return 'Đã tham gia';
+    }
+    if (_hasInvitation(friend.friendPhone)) {
+      return 'Đã gửi lời mời';
+    }
+    return null;
+  }
+  
+  /// Get display name for friend (with "(tôi)" if current user)
+  String _getFriendDisplayName(Friend friend) {
+    if (_isCurrentUser(friend.friendPhone)) {
+      return '${friend.friendName} (tôi)';
+    }
+    return friend.friendName;
+  }
 
 
   void _removePhoneNumber(String phone) {
@@ -379,28 +496,65 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> {
   }
 
   Future<void> _inviteMembers() async {
-    if (_phoneNumbers.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng thêm ít nhất một số điện thoại')),
-      );
-      return;
-    }
-
-    // Filter out phones that already have invitations or are current user
+    // Collect phone numbers from both tabs
     final phonesToInvite = <String>[];
-    final skippedPhones = <String>[];
     
-    for (final phone in _phoneNumbers) {
-      // Skip if current user (cannot invite yourself)
-      if (_currentUserPhoneNormalized != null && _normalizePhone(phone) == _currentUserPhoneNormalized) {
-        skippedPhones.add(phone);
-        continue;
+    // From phone input tab
+    if (_tabController.index == 0) {
+      if (_phoneNumbers.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Vui lòng thêm ít nhất một số điện thoại')),
+        );
+        return;
       }
-      // Skip if already has invitation
-      if (_hasInvitation(phone)) {
-        skippedPhones.add(phone);
-      } else {
-        phonesToInvite.add(phone);
+      
+      // Filter out phones that already have invitations or are current user
+      for (final phone in _phoneNumbers) {
+        // Skip if current user (cannot invite yourself)
+        if (_currentUserPhoneNormalized != null && _normalizePhone(phone) == _currentUserPhoneNormalized) {
+          continue;
+        }
+        // Skip if already has invitation
+        if (!_hasInvitation(phone)) {
+          phonesToInvite.add(phone);
+        }
+      }
+    } 
+    // From friends tab
+    else {
+      if (_selectedFriendIds.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Vui lòng chọn ít nhất một bạn bè')),
+        );
+        return;
+      }
+      
+      // Convert selected friends to phone numbers
+      for (final friendId in _selectedFriendIds) {
+        final friend = _friends.firstWhere(
+          (f) => f.friendId == friendId,
+          orElse: () => Friend(
+            friendId: '',
+            friendName: '',
+            friendPhone: '',
+            hasActiveConversation: false,
+          ),
+        );
+        
+        if (friend.friendId.isEmpty || friend.friendPhone.isEmpty) continue;
+        
+        // Skip if current user
+        if (_isCurrentUser(friend.friendPhone)) {
+          continue;
+        }
+        // Skip if already has invitation or is member
+        if (!_hasInvitation(friend.friendPhone) && !_isAlreadyMember(friendId)) {
+          // Normalize phone: remove non-digits
+          final phone = friend.friendPhone.replaceAll(RegExp(r'[^0-9]'), '');
+          if (phone.isNotEmpty) {
+            phonesToInvite.add(phone);
+          }
+        }
       }
     }
     
@@ -507,182 +661,30 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> {
       title: const Text('Mời thành viên'),
       content: SizedBox(
         width: double.maxFinite,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Nhập số điện thoại của cư dân để mời họ tham gia nhóm',
-                style: theme.textTheme.bodySmall,
-              ),
-              const SizedBox(height: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Tab bar
+            TabBar(
+              controller: _tabController,
+              tabs: const [
+                Tab(text: 'Nhập số điện thoại'),
+                Tab(text: 'Chọn từ bạn bè'),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Tab content
+            SizedBox(
+              height: 400,
+              child: TabBarView(
+                controller: _tabController,
                 children: [
-                  TextField(
-                    controller: _phoneController,
-                    decoration: InputDecoration(
-                      labelText: 'Số điện thoại',
-                      hintText: 'Nhập số điện thoại để tìm cư dân',
-                      border: const OutlineInputBorder(),
-                      suffixIcon: _isSearchingPhone
-                          ? const Padding(
-                              padding: EdgeInsets.all(12.0),
-                              child: SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ),
-                            )
-                          : null,
-                    ),
-                    keyboardType: TextInputType.phone,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(10),
-                    ],
-                    onChanged: (value) {
-                      _searchResidentsByPhone(value);
-                    },
-                  ),
-                  // Phone suggestions dropdown
-                  if (_phoneSuggestions.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      constraints: const BoxConstraints(maxHeight: 200),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surface,
-                        border: Border.all(
-                          color: theme.colorScheme.outline.withValues(alpha: 0.2),
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: _phoneSuggestions.length,
-                        itemBuilder: (context, index) {
-                          final resident = _phoneSuggestions[index];
-                          final fullName = resident['fullName']?.toString() ?? '';
-                          final phone = resident['phone']?.toString() ?? '';
-                          final residentId = resident['id']?.toString() ?? '';
-                          final normalizedPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
-                          final shouldDisable = _shouldDisableResident(residentId, phone);
-                          final statusText = _getResidentStatusText(residentId, phone);
-                          final statusIcon = _getResidentStatusIcon(residentId, phone);
-                          final statusColor = _getResidentStatusColor(residentId, phone);
-                          final displayName = _getDisplayName(fullName, phone);
-                          final isCurrentUser = _isCurrentUser(phone);
-                          
-                          return AbsorbPointer(
-                            absorbing: shouldDisable,
-                            child: Opacity(
-                              opacity: shouldDisable ? 0.4 : 1.0,
-                              child: ListTile(
-                                dense: true,
-                                enabled: !shouldDisable,
-                                title: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        displayName.isNotEmpty ? displayName : 'Không có tên',
-                                        style: theme.textTheme.bodyMedium?.copyWith(
-                                          color: shouldDisable
-                                              ? theme.colorScheme.onSurface.withValues(alpha: 0.7)
-                                              : null,
-                                          fontWeight: isCurrentUser ? FontWeight.w500 : null,
-                                        ),
-                                      ),
-                                    ),
-                                    if (shouldDisable && statusIcon != null)
-                                      Padding(
-                                        padding: const EdgeInsets.only(left: 8.0),
-                                        child: Icon(
-                                          statusIcon,
-                                          size: 16,
-                                          color: statusColor,
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      phone,
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                                      ),
-                                    ),
-                                    if (shouldDisable && statusText != null)
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 4.0),
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              CupertinoIcons.info_circle,
-                                              size: 12,
-                                              color: statusColor,
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              statusText,
-                                              style: theme.textTheme.bodySmall?.copyWith(
-                                                color: statusColor,
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                leading: Icon(
-                                  CupertinoIcons.person_circle,
-                                  color: shouldDisable
-                                      ? theme.colorScheme.onSurface.withValues(alpha: 0.5)
-                                      : theme.colorScheme.primary,
-                                ),
-                                onTap: () {
-                                  // Double check - should never reach here if shouldDisable is true
-                                  // due to AbsorbPointer, but add check for safety
-                                  if (!shouldDisable) {
-                                    _selectPhoneSuggestion(resident);
-                                  }
-                                },
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
+                  _buildPhoneInputTab(theme),
+                  _buildFriendsTab(theme),
                 ],
               ),
-              if (_phoneNumbers.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _phoneNumbers.map((phone) {
-                    return Chip(
-                      label: Text(phone),
-                      onDeleted: () => _removePhoneNumber(phone),
-                      deleteIcon: const Icon(CupertinoIcons.xmark_circle_fill, size: 18),
-                    );
-                  }).toList(),
-                ),
-              ],
-            ],
-          ),
+            ),
+          ],
         ),
       ),
       actions: [
@@ -700,6 +702,323 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> {
                 )
               : const Text('Gửi lời mời'),
         ),
+      ],
+    );
+  }
+  
+  /// Build phone input tab
+  Widget _buildPhoneInputTab(ThemeData theme) {
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Nhập số điện thoại của cư dân để mời họ tham gia nhóm',
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _phoneController,
+                decoration: InputDecoration(
+                  labelText: 'Số điện thoại',
+                  hintText: 'Nhập số điện thoại để tìm cư dân',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: _isSearchingPhone
+                      ? const Padding(
+                          padding: EdgeInsets.all(12.0),
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : null,
+                ),
+                keyboardType: TextInputType.phone,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(10),
+                ],
+                onChanged: (value) {
+                  _searchResidentsByPhone(value);
+                },
+              ),
+              // Phone suggestions dropdown
+              if (_phoneSuggestions.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 200),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    border: Border.all(
+                      color: theme.colorScheme.outline.withValues(alpha: 0.2),
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _phoneSuggestions.length,
+                    itemBuilder: (context, index) {
+                      final resident = _phoneSuggestions[index];
+                      final fullName = resident['fullName']?.toString() ?? '';
+                      final phone = resident['phone']?.toString() ?? '';
+                      final residentId = resident['id']?.toString() ?? '';
+                      final normalizedPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
+                      final shouldDisable = _shouldDisableResident(residentId, phone);
+                      final statusText = _getResidentStatusText(residentId, phone);
+                      final statusIcon = _getResidentStatusIcon(residentId, phone);
+                      final statusColor = _getResidentStatusColor(residentId, phone);
+                      final displayName = _getDisplayName(fullName, phone);
+                      final isCurrentUser = _isCurrentUser(phone);
+                      
+                      return AbsorbPointer(
+                        absorbing: shouldDisable,
+                        child: Opacity(
+                          opacity: shouldDisable ? 0.4 : 1.0,
+                          child: ListTile(
+                            dense: true,
+                            enabled: !shouldDisable,
+                            title: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    displayName.isNotEmpty ? displayName : 'Không có tên',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: shouldDisable
+                                          ? theme.colorScheme.onSurface.withValues(alpha: 0.7)
+                                          : null,
+                                      fontWeight: isCurrentUser ? FontWeight.w500 : null,
+                                    ),
+                                  ),
+                                ),
+                                if (shouldDisable && statusIcon != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 8.0),
+                                    child: Icon(
+                                      statusIcon,
+                                      size: 16,
+                                      color: statusColor,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  phone,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                  ),
+                                ),
+                                if (shouldDisable && statusText != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4.0),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          CupertinoIcons.info_circle,
+                                          size: 12,
+                                          color: statusColor,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          statusText,
+                                          style: theme.textTheme.bodySmall?.copyWith(
+                                            color: statusColor,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            leading: Icon(
+                              CupertinoIcons.person_circle,
+                              color: shouldDisable
+                                  ? theme.colorScheme.onSurface.withValues(alpha: 0.5)
+                                  : theme.colorScheme.primary,
+                            ),
+                            onTap: () {
+                              if (!shouldDisable) {
+                                _selectPhoneSuggestion(resident);
+                              }
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (_phoneNumbers.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _phoneNumbers.map((phone) {
+                return Chip(
+                  label: Text(phone),
+                  onDeleted: () => _removePhoneNumber(phone),
+                  deleteIcon: const Icon(CupertinoIcons.xmark_circle_fill, size: 18),
+                );
+              }).toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+  
+  /// Build friends tab
+  Widget _buildFriendsTab(ThemeData theme) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Chọn bạn bè từ danh sách để mời vào nhóm',
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 16),
+        // Search field
+        TextField(
+          controller: _friendSearchController,
+          decoration: InputDecoration(
+            labelText: 'Tìm kiếm',
+            hintText: 'Tìm theo tên hoặc số điện thoại',
+            border: const OutlineInputBorder(),
+            prefixIcon: const Icon(CupertinoIcons.search),
+          ),
+          onChanged: (_) => _filterFriends(),
+        ),
+        const SizedBox(height: 16),
+        // Friends list
+        if (_isLoadingFriends)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(16.0),
+              child: CircularProgressIndicator(),
+            ),
+          )
+        else if (_filteredFriends.isEmpty)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                _friends.isEmpty ? 'Chưa có bạn bè nào' : 'Không tìm thấy bạn bè',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+            ),
+          )
+        else
+          Container(
+            constraints: const BoxConstraints(maxHeight: 300),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: _filteredFriends.length,
+              itemBuilder: (context, index) {
+                final friend = _filteredFriends[index];
+                final shouldDisable = _shouldDisableFriend(friend);
+                final statusText = _getFriendStatusText(friend);
+                final displayName = _getFriendDisplayName(friend);
+                final isSelected = _selectedFriendIds.contains(friend.friendId);
+                final isCurrentUser = _isCurrentUser(friend.friendPhone);
+                
+                return AbsorbPointer(
+                  absorbing: shouldDisable,
+                  child: Opacity(
+                    opacity: shouldDisable ? 0.4 : 1.0,
+                    child: CheckboxListTile(
+                      value: isSelected,
+                      enabled: !shouldDisable,
+                      title: Text(
+                        displayName,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: shouldDisable
+                              ? theme.colorScheme.onSurface.withValues(alpha: 0.7)
+                              : null,
+                          fontWeight: isCurrentUser ? FontWeight.w500 : null,
+                        ),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            friend.friendPhone,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                            ),
+                          ),
+                          if (shouldDisable && statusText != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4.0),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    CupertinoIcons.info_circle,
+                                    size: 12,
+                                    color: _isAlreadyMember(friend.friendId)
+                                        ? Colors.blue
+                                        : Colors.orange,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    statusText,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: _isAlreadyMember(friend.friendId)
+                                          ? Colors.blue
+                                          : Colors.orange,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                      onChanged: shouldDisable
+                          ? null
+                          : (value) => _toggleFriendSelection(friend.friendId, friend.friendPhone),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        if (_selectedFriendIds.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _selectedFriendIds.map((friendId) {
+              final friend = _friends.firstWhere((f) => f.friendId == friendId);
+              return Chip(
+                label: Text(friend.friendName),
+                onDeleted: () => _toggleFriendSelection(friendId, friend.friendPhone),
+                deleteIcon: const Icon(CupertinoIcons.xmark_circle_fill, size: 18),
+              );
+            }).toList(),
+          ),
+        ],
       ],
     );
   }
