@@ -1185,78 +1185,139 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                           : colorScheme.outline.withValues(alpha: 0.1),
                     ),
                   ),
-                  child: CheckboxListTile(
-                    value: isSelected,
-                    title: Text(
-                      option['name']?.toString() ?? 'Tùy chọn',
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white : AppColors.textPrimary,
-                          ) ??
-                          TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white : AppColors.textPrimary,
-                          ),
-                    ),
-                    subtitle: Text(
-                      '${_formatCurrency((option['price'] as num?) ?? 0)} đ',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: colorScheme.primary,
-                          ) ??
-                          TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: colorScheme.primary,
-                            fontSize: 14,
-                          ),
-                    ),
-                    controlAffinity: ListTileControlAffinity.leading,
-                    onChanged: (checked) {
-                      setState(() {
-                        if (checked == true) {
-                          _selectedOptions[optionId] = max(1, quantity);
-                        } else {
-                          _selectedOptions.remove(optionId);
-                        }
-                      });
-                    },
-                    secondary: isSelected
-                        ? Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.remove_circle_outline),
-                                onPressed: quantity > 1
-                                    ? () {
-                                        setState(() {
-                                          _selectedOptions[optionId] =
-                                              quantity - 1;
-                                        });
-                                      }
-                                    : null,
-                              ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Checkbox(
+                        value: isSelected,
+                        onChanged: (checked) {
+                          setState(() {
+                            if (checked == true) {
+                              _selectedOptions[optionId] = max(1, quantity);
+                            } else {
+                              _selectedOptions.remove(optionId);
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Option name
+                            Text(
+                              option['name']?.toString() ?? 'Tùy chọn',
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: isDark ? Colors.white : AppColors.textPrimary,
+                                  ) ??
+                                  TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: isDark ? Colors.white : AppColors.textPrimary,
+                                  ),
+                            ),
+                            const SizedBox(height: 4),
+                            // Description (nếu có)
+                            if (option['description'] != null &&
+                                option['description'].toString().isNotEmpty) ...[
                               Text(
-                                '$quantity',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                      color: isDark ? Colors.white : AppColors.textPrimary,
+                                option['description'].toString(),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                      color: isDark
+                                          ? Colors.white70
+                                          : AppColors.textSecondary,
+                                      height: 1.4,
                                     ) ??
                                     TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: isDark ? Colors.white : AppColors.textPrimary,
+                                      color: isDark
+                                          ? Colors.white70
+                                          : AppColors.textSecondary,
+                                      fontSize: 12,
+                                      height: 1.4,
                                     ),
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.add_circle_outline),
-                                onPressed: () {
-                                  setState(() {
-                                    _selectedOptions[optionId] = quantity + 1;
-                                  });
-                                },
-                              ),
+                              const SizedBox(height: 4),
                             ],
-                          )
-                        : null,
+                            // Unit và Price
+                            Wrap(
+                              spacing: 12,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                // Unit (nếu có)
+                                if (option['unit'] != null &&
+                                    option['unit'].toString().isNotEmpty)
+                                  Text(
+                                    'Đơn vị: ${option['unit']}',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                          color: isDark
+                                              ? Colors.white70
+                                              : AppColors.textSecondary,
+                                        ) ??
+                                        TextStyle(
+                                          color: isDark
+                                              ? Colors.white70
+                                              : AppColors.textSecondary,
+                                          fontSize: 12,
+                                        ),
+                                  ),
+                                // Price
+                                Text(
+                                  '${_formatCurrency((option['price'] as num?) ?? 0)} đ',
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        color: colorScheme.primary,
+                                      ) ??
+                                      TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: colorScheme.primary,
+                                        fontSize: 14,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Quantity controls (nếu đã chọn)
+                      if (isSelected)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.remove_circle_outline),
+                              onPressed: quantity > 1
+                                  ? () {
+                                      setState(() {
+                                        _selectedOptions[optionId] = quantity - 1;
+                                      });
+                                    }
+                                  : null,
+                            ),
+                            Text(
+                              '$quantity',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: isDark ? Colors.white : AppColors.textPrimary,
+                                  ) ??
+                                  TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: isDark ? Colors.white : AppColors.textPrimary,
+                                  ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.add_circle_outline),
+                              onPressed: () {
+                                setState(() {
+                                  _selectedOptions[optionId] = quantity + 1;
+                                });
+                              },
+                            ),
+                          ],
+                        ),
+                    ],
                   ),
                 ),
               );
