@@ -13,6 +13,8 @@ import 'package:provider/provider.dart';
 
 import 'auth/api_client.dart';
 import 'auth/auth_provider.dart';
+import 'auth/backend_discovery_service.dart';
+import 'core/app_config.dart';
 import 'core/app_router.dart';
 import 'core/push_notification_service.dart';
 import 'auth/token_storage.dart';
@@ -131,6 +133,31 @@ void main() async {
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   
   await ApiClient.ensureInitialized();
+  
+  // DEBUG: Uncomment to clear tokens and force login (useful if token expired)
+  // final tokenStorage = TokenStorage();
+  // await tokenStorage.deleteSessionData();
+  // print('🗑️ Cleared all session data - user will need to login again');
+  
+  // If manual ngrok URL is set in config, use it immediately
+  if (AppConfig.manualNgrokUrl != null && AppConfig.manualNgrokUrl!.isNotEmpty) {
+    try {
+      final discoveryService = ApiClient.discoveryService;
+      if (discoveryService != null) {
+        final success = await discoveryService.setManualBackendUrl(AppConfig.manualNgrokUrl!);
+        if (success) {
+          print('✅ Using manual ngrok URL from config: ${AppConfig.manualNgrokUrl}');
+          // Force refresh to use new URL
+          ApiClient.forceRefreshDiscovery();
+        } else {
+          print('⚠️ Failed to set manual ngrok URL from config');
+        }
+      }
+    } catch (e) {
+      print('⚠️ Error setting manual ngrok URL: $e');
+    }
+  }
+  
   await _configurePreferredRefreshRate();
   final tokenStorage = TokenStorage();
 

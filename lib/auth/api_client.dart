@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:io' show Platform, HttpClient, X509Certificate;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
@@ -774,34 +774,98 @@ class ApiClient {
           // Not using ngrok - check if ngrok URL is available from backend
           // Try to get ngrok URL from backend discovery endpoint
           // Use the current active host (IP address) to reach backend
-          final discoveryUrl = '$_activeScheme://$_activeHostIp:$apiPort/api/discovery/info';
+          // Try multiple discovery URLs (localhost variants for different platforms)
+          final discoveryUrls = <String>[];
           
-          final dio = Dio();
-          dio.options.connectTimeout = const Duration(seconds: 2);
-          dio.options.receiveTimeout = const Duration(seconds: 2);
+          // Add current active host first
+          discoveryUrls.add('$_activeScheme://$_activeHostIp:$apiPort/api/discovery/info');
           
-          final response = await dio.get(discoveryUrl).timeout(const Duration(seconds: 2));
+          // Add platform-specific fallbacks
+          if (Platform.isAndroid) {
+            discoveryUrls.add('http://10.0.2.2:$apiPort/api/discovery/info'); // Android emulator
+          }
+          discoveryUrls.add('http://localhost:$apiPort/api/discovery/info'); // Desktop/web
           
-          if (response.statusCode == 200 && response.data != null) {
-            final publicUrl = response.data['publicUrl'] as String?;
-            
-            if (publicUrl != null && publicUrl.isNotEmpty) {
-              final ngrokUri = Uri.tryParse(publicUrl);
-              if (ngrokUri != null && _isNgrokUrl(ngrokUri.host)) {
+          String? ngrokUrl;
+          for (final discoveryUrl in discoveryUrls) {
+            try {
+              final dio = Dio();
+              dio.options.connectTimeout = const Duration(seconds: 5); // Increased timeout
+              dio.options.receiveTimeout = const Duration(seconds: 5);
+              
+              if (kDebugMode) {
+                print('🔍 Trying discovery endpoint: $discoveryUrl');
+              }
+              
+              final response = await dio.get(discoveryUrl).timeout(const Duration(seconds: 5));
+          
+              if (response.statusCode == 200 && response.data != null) {
+                if (kDebugMode) {
+                  print('✅ Discovery endpoint responded: ${response.data}');
+                }
+                
+                // Parse response - handle both Map and dynamic types
+                final data = response.data;
+                String? publicUrl;
+                String? httpUrl;
+                String? httpsUrl;
+                
+                if (data is Map) {
+                  publicUrl = data['publicUrl']?.toString();
+                  httpUrl = data['httpUrl']?.toString();
+                  httpsUrl = data['httpsUrl']?.toString();
+                } else if (data is Map<String, dynamic>) {
+                  publicUrl = data['publicUrl']?.toString();
+                  httpUrl = data['httpUrl']?.toString();
+                  httpsUrl = data['httpsUrl']?.toString();
+                }
+                
+                // Prefer HTTP URL to avoid ngrok warning page, then HTTPS, then publicUrl
+                if (httpUrl != null && httpUrl.isNotEmpty && !httpUrl.contains('your-ngrok-url')) {
+                  ngrokUrl = httpUrl;
+                } else if (httpsUrl != null && httpsUrl.isNotEmpty && !httpsUrl.contains('your-ngrok-url')) {
+                  ngrokUrl = httpsUrl;
+                } else if (publicUrl != null && publicUrl.isNotEmpty && !publicUrl.contains('your-ngrok-url')) {
+                  ngrokUrl = publicUrl;
+                }
+                
+                // Remove trailing slash
+                if (ngrokUrl != null && ngrokUrl.endsWith('/')) {
+                  ngrokUrl = ngrokUrl.substring(0, ngrokUrl.length - 1);
+                }
+                
+                // Found ngrok URL - break loop
+                if (ngrokUrl != null && ngrokUrl.isNotEmpty) {
+                  break; // Success, exit loop
+                }
+              }
+            } catch (e) {
+              if (kDebugMode) {
+                print('⚠️ Discovery failed for $discoveryUrl: $e');
+              }
+              // Continue to next URL
+              continue;
+            }
+          }
+          
+          // If we found ngrok URL, use it
+          if (ngrokUrl != null && ngrokUrl.isNotEmpty) {
+            final ngrokUri = Uri.tryParse(ngrokUrl);
+            if (ngrokUri != null && _isNgrokUrl(ngrokUri.host)) {
               // Found ngrok URL - verify it's reachable before switching
               try {
                 final ngrokDio = Dio();
-                ngrokDio.options.connectTimeout = const Duration(seconds: 3);
-                ngrokDio.options.receiveTimeout = const Duration(seconds: 3);
+                ngrokDio.options.connectTimeout = const Duration(seconds: 5);
+                ngrokDio.options.receiveTimeout = const Duration(seconds: 5);
                 ngrokDio.options.headers['ngrok-skip-browser-warning'] = 'true';
                 
-                final ngrokHealthUrl = '$publicUrl/api/health';
-                final ngrokResponse = await ngrokDio.get(ngrokHealthUrl).timeout(const Duration(seconds: 3));
+                final ngrokHealthUrl = '$ngrokUrl/api/health';
+                final ngrokResponse = await ngrokDio.get(ngrokHealthUrl).timeout(const Duration(seconds: 5));
                 
                 if (ngrokResponse.statusCode == 200) {
                   // Ngrok URL is reachable - switch to it immediately
                   print('🔄 Auto-discovered ngrok URL, switching from IP to ngrok...');
-                  print('   Ngrok URL: $publicUrl');
+                  print('   Ngrok URL: $ngrokUrl');
                   
                   // Parse ngrok URL to extract hostname
                   final ngrokHostname = ngrokUri.host;
@@ -817,17 +881,31 @@ class ApiClient {
                   
                   // Also save this ngrok URL to preferences for future use
                   try {
-                    await _discoveryService.setManualBackendUrl(publicUrl);
+                    await _discoveryService.setManualBackendUrl(ngrokUrl);
                     print('💾 Saved ngrok URL to preferences');
                   } catch (e) {
                     print('⚠️ Failed to save ngrok URL: $e');
                   }
+                } else {
+                  if (kDebugMode) {
+                    print('⚠️ Ngrok URL health check returned status ${ngrokResponse.statusCode}');
+                  }
                 }
               } catch (e) {
+                if (kDebugMode) {
+                  print('⚠️ Ngrok URL not reachable: $e');
+                }
                 // Ngrok URL not reachable - keep using IP address
               }
+            } else {
+              if (kDebugMode) {
+                print('⚠️ Invalid ngrok URL format: $ngrokUrl');
+              }
             }
-          }
+          } else {
+            if (kDebugMode) {
+              print('⚠️ No valid ngrok URL found from any discovery endpoint');
+            }
           }
         }
       } catch (e) {

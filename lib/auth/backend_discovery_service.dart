@@ -54,38 +54,43 @@ class BackendDiscoveryService {
 
     // Priority 1: Manual URL (ngrok/public IP) - highest priority
     // This works even when device has no network or different network
-    // Prefer ngrok URLs over IP addresses, but verify reachability
+    // For ngrok URLs: Use immediately without reachability check (works from internet)
+    // For IP addresses: Verify reachability first
     final savedManualUrl = _prefs.getString(_cacheKeyManualBackendUrl);
     if (savedManualUrl != null && savedManualUrl.isNotEmpty) {
       final parsedInfo = _parseUrl(savedManualUrl);
       if (parsedInfo != null) {
         // Check if it's an ngrok URL
-        final isNgrokUrl = savedManualUrl.contains('ngrok') || savedManualUrl.contains('ngrok-free.app');
+        final isNgrokUrl = savedManualUrl.contains('ngrok') || 
+                          savedManualUrl.contains('ngrok-free.app') ||
+                          savedManualUrl.contains('ngrok-free.dev');
         
-        // Always check reachability - if not reachable, don't use it
-        final isReachable = await _isBackendReachable(parsedInfo);
-        
-        if (isReachable) {
+        if (isNgrokUrl) {
+          // For ngrok URLs: Use immediately without reachability check
+          // Ngrok URLs work from internet, so they don't need local network access
+          // Reachability check might fail from emulator even if ngrok is working
           if (kDebugMode) {
-            if (isNgrokUrl) {
-              print('✅ Using saved ngrok URL (verified): $savedManualUrl');
-            } else {
-              print('✅ Using saved manual URL: $savedManualUrl');
-            }
+            print('✅ Using saved ngrok URL (no local network required): $savedManualUrl');
           }
           return parsedInfo;
         } else {
-          // Not reachable - clear it and try other methods
-          if (kDebugMode) {
-            if (isNgrokUrl) {
-              print('⚠️ Saved ngrok URL not reachable (ngrok may have stopped), will try other methods');
-            } else {
+          // For IP addresses: Check reachability first
+          final isReachable = await _isBackendReachable(parsedInfo);
+          
+          if (isReachable) {
+            if (kDebugMode) {
+              print('✅ Using saved manual URL (verified): $savedManualUrl');
+            }
+            return parsedInfo;
+          } else {
+            // Not reachable - clear it and try other methods
+            if (kDebugMode) {
               print('⚠️ Saved manual URL not reachable, will try other methods');
             }
+            // Clear unreachable URL to force re-discovery
+            await _prefs.remove(_cacheKeyManualBackendUrl);
+            // Continue to check for new ngrok URL or IP address
           }
-          // Clear unreachable URL to force re-discovery
-          await _prefs.remove(_cacheKeyManualBackendUrl);
-          // Continue to check for new ngrok URL or IP address
         }
       }
     }
@@ -106,7 +111,7 @@ class BackendDiscoveryService {
     // This works if we can reach backend via local network first
     // Backend will expose its ngrok URL via /api/discovery/info
     // Try this BEFORE mDNS/local scan to get ngrok URL quickly
-    // ALWAYS prefer ngrok URL over IP address if available and reachable
+    // For ngrok URLs: Use immediately without reachability check (works from internet)
     if (kDebugMode) {
       print('🔍 Trying to get ngrok URL from backend discovery endpoint...');
     }
@@ -114,22 +119,35 @@ class BackendDiscoveryService {
     if (discoveryUrl != null && discoveryUrl.isNotEmpty) {
       final parsedInfo = _parseUrl(discoveryUrl);
       if (parsedInfo != null) {
-        // Check reachability - only use ngrok URL if it's actually reachable
-        // If ngrok stopped, the URL won't be reachable, so we'll fall back to IP address
-        final isReachable = await _isBackendReachable(parsedInfo);
-        if (isReachable) {
+        // For ngrok URLs: Use immediately without reachability check
+        // Ngrok URLs work from internet, so they don't need local network access
+        // Reachability check might fail from emulator even if ngrok is working
+        final isNgrokUrl = discoveryUrl.contains('ngrok') || 
+                          discoveryUrl.contains('ngrok-free.app') ||
+                          discoveryUrl.contains('ngrok-free.dev');
+        
+        if (isNgrokUrl) {
           if (kDebugMode) {
-            print('✅ Got ngrok URL from backend discovery (verified): $discoveryUrl');
+            print('✅ Got ngrok URL from backend discovery: $discoveryUrl');
+            print('   Using ngrok URL immediately (works from internet, no local network required)');
           }
-          // Save and use ngrok URL (it's reachable)
+          // Save and use ngrok URL immediately
           await _saveManualUrl(discoveryUrl);
           return parsedInfo;
         } else {
-          if (kDebugMode) {
-            print('⚠️ Got ngrok URL from backend but not reachable (ngrok may have stopped)');
-            print('   Will try IP address instead');
+          // For non-ngrok URLs: Check reachability first
+          final isReachable = await _isBackendReachable(parsedInfo);
+          if (isReachable) {
+            if (kDebugMode) {
+              print('✅ Got URL from backend discovery (verified): $discoveryUrl');
+            }
+            await _saveManualUrl(discoveryUrl);
+            return parsedInfo;
+          } else {
+            if (kDebugMode) {
+              print('⚠️ Got URL from backend but not reachable, will try other methods');
+            }
           }
-          // Don't use unreachable ngrok URL - continue to try IP address
         }
       }
     }
@@ -250,27 +268,32 @@ class BackendDiscoveryService {
     // In ngrok-only architecture, we don't scan local networks
     // All communication goes through ngrok public URL
 
-    // Priority 8: If we have saved manual URL but it wasn't reachable,
-    // try it again as last resort (might be temporary network issue)
-    // BUT: Don't use ngrok URLs as last resort if they're offline (they won't come back)
+    // Priority 8: If we have saved manual URL, try it again as last resort
+    // For ngrok URLs: Use even if not verified (might work from internet)
+    // For IP addresses: Only use if reachable
     if (savedManualUrl != null && savedManualUrl.isNotEmpty) {
-      final isSavedNgrokUrl = savedManualUrl.contains('ngrok') || savedManualUrl.contains('ngrok-free.app');
+      final isSavedNgrokUrl = savedManualUrl.contains('ngrok') || 
+                             savedManualUrl.contains('ngrok-free.app') ||
+                             savedManualUrl.contains('ngrok-free.dev');
       
-      // If it's an ngrok URL and we already checked it's not reachable, don't use it
-      // (ngrok URLs don't come back - they're permanently offline if not reachable)
-      if (isSavedNgrokUrl) {
-        if (kDebugMode) {
-          print('⚠️ Saved ngrok URL was not reachable, skipping as last resort (ngrok URLs don\'t recover)');
-        }
-        // Don't use offline ngrok URL - continue to fallback
-      } else {
-        // For non-ngrok URLs (IP addresses), try as last resort (might be temporary network issue)
-        final parsedInfo = _parseUrl(savedManualUrl);
-        if (parsedInfo != null) {
+      final parsedInfo = _parseUrl(savedManualUrl);
+      if (parsedInfo != null) {
+        if (isSavedNgrokUrl) {
+          // For ngrok URLs: Use as last resort even without verification
+          // Ngrok URLs work from internet, so they might work even if local discovery failed
           if (kDebugMode) {
-            print('⚠️ Using saved manual URL (IP address) as last resort: $savedManualUrl');
+            print('⚠️ Using saved ngrok URL as last resort (discovery failed, but ngrok may work from internet): $savedManualUrl');
           }
           return parsedInfo;
+        } else {
+          // For non-ngrok URLs (IP addresses), verify reachability first
+          final isReachable = await _isBackendReachable(parsedInfo);
+          if (isReachable) {
+            if (kDebugMode) {
+              print('⚠️ Using saved manual URL (IP address) as last resort: $savedManualUrl');
+            }
+            return parsedInfo;
+          }
         }
       }
     }
@@ -284,6 +307,9 @@ class BackendDiscoveryService {
       print('1. Backend is running with ngrok tunnel active');
       print('2. VNPAY_BASE_URL environment variable is set to ngrok URL');
       print('3. Or manually set ngrok URL in app settings');
+      print('');
+      print('💡 TIP: If backend is running with ngrok, you can manually set the URL:');
+      print('   BackendDiscoveryService.instance.setManualBackendUrl(\'https://your-ngrok-url.ngrok-free.dev\')');
     }
     
     // Return placeholder URL - app will start but API calls will fail gracefully
@@ -1346,33 +1372,66 @@ class BackendDiscoveryService {
         final batch = potentialBackends.skip(i).take(batchSize).toList();
         
         final futures = batch.map((backend) async {
-          try {
-            final dio = Dio();
-            dio.options.connectTimeout = const Duration(seconds: 1);
-            dio.options.receiveTimeout = const Duration(seconds: 1);
-            
-            // Try discovery endpoint
-            final discoveryUrl = '${backend.baseUrl}/discovery/info';
-            
-            if (kDebugMode && i == 0) {
-              // Only log first batch to avoid spam
-              print('  Trying: $discoveryUrl');
-            }
-            
-            final response = await dio.get(discoveryUrl).timeout(
-              const Duration(seconds: 1),
-            );
+          // Retry logic for discovery endpoint (more reliable)
+          const maxRetries = 2;
+          for (int retry = 0; retry <= maxRetries; retry++) {
+            try {
+              final dio = Dio();
+              // Increase timeout for discovery (backend might be slow to respond)
+              dio.options.connectTimeout = const Duration(seconds: 5);
+              dio.options.receiveTimeout = const Duration(seconds: 5);
+              
+              // Try discovery endpoint - backend.baseUrl already includes /api
+              final discoveryUrl = '${backend.baseUrl}/discovery/info';
+              
+              if (kDebugMode) {
+                if (retry == 0) {
+                  print('  Trying: $discoveryUrl');
+                } else {
+                  print('  Retrying ($retry/$maxRetries): $discoveryUrl');
+                }
+              }
+              
+              final response = await dio.get(discoveryUrl).timeout(
+                const Duration(seconds: 5),
+              );
             
             if (response.statusCode == 200 && response.data != null) {
-              // Prefer HTTP URL to avoid ngrok warning page
-              final httpUrl = response.data['httpUrl'] as String?;
-              final httpsUrl = response.data['httpsUrl'] as String?;
-              final publicUrl = response.data['publicUrl'] as String?;
+              if (kDebugMode) {
+                print('✅ Discovery endpoint responded: ${response.data}');
+              }
+              
+              // Parse response data (handle both Map and dynamic types)
+              final data = response.data;
+              String? httpUrl;
+              String? httpsUrl;
+              String? publicUrl;
+              
+              if (data is Map) {
+                httpUrl = data['httpUrl']?.toString();
+                httpsUrl = data['httpsUrl']?.toString();
+                publicUrl = data['publicUrl']?.toString();
+              } else if (data is Map<String, dynamic>) {
+                httpUrl = data['httpUrl']?.toString();
+                httpsUrl = data['httpsUrl']?.toString();
+                publicUrl = data['publicUrl']?.toString();
+              }
+              
+              // Clean up URLs (remove null, empty, or placeholder values)
+              if (httpUrl != null && (httpUrl.isEmpty || httpUrl.contains('your-ngrok-url'))) {
+                httpUrl = null;
+              }
+              if (httpsUrl != null && (httpsUrl.isEmpty || httpsUrl.contains('your-ngrok-url'))) {
+                httpsUrl = null;
+              }
+              if (publicUrl != null && (publicUrl.isEmpty || publicUrl.contains('your-ngrok-url'))) {
+                publicUrl = null;
+              }
               
               String? ngrokUrl;
               
               // Priority 1: Use HTTP URL if available (avoids ngrok warning page)
-              if (httpUrl != null && httpUrl.isNotEmpty && !httpUrl.contains('your-ngrok-url')) {
+              if (httpUrl != null && httpUrl.isNotEmpty) {
                 ngrokUrl = httpUrl.endsWith('/') 
                     ? httpUrl.substring(0, httpUrl.length - 1) 
                     : httpUrl;
@@ -1382,7 +1441,7 @@ class BackendDiscoveryService {
                 }
               }
               // Priority 2: Use HTTPS URL if HTTP not available
-              else if (httpsUrl != null && httpsUrl.isNotEmpty && !httpsUrl.contains('your-ngrok-url')) {
+              else if (httpsUrl != null && httpsUrl.isNotEmpty) {
                 ngrokUrl = httpsUrl.endsWith('/') 
                     ? httpsUrl.substring(0, httpsUrl.length - 1) 
                     : httpsUrl;
@@ -1392,13 +1451,20 @@ class BackendDiscoveryService {
                 }
               }
               // Priority 3: Fallback to publicUrl
-              else if (publicUrl != null && publicUrl.isNotEmpty && !publicUrl.contains('your-ngrok-url')) {
+              else if (publicUrl != null && publicUrl.isNotEmpty) {
                 ngrokUrl = publicUrl.endsWith('/') 
                     ? publicUrl.substring(0, publicUrl.length - 1) 
                     : publicUrl;
                 if (kDebugMode) {
                   print('✅ Backend found at ${backend.hostname}:${backend.port}');
                   print('✅ Backend exposed ngrok URL: $ngrokUrl');
+                }
+              } else {
+                if (kDebugMode) {
+                  print('⚠️ Discovery endpoint returned but no valid ngrok URL found');
+                  print('   httpUrl: $httpUrl');
+                  print('   httpsUrl: $httpsUrl');
+                  print('   publicUrl: $publicUrl');
                 }
               }
               
@@ -1407,9 +1473,26 @@ class BackendDiscoveryService {
                 await _cacheBackendInfo(backend);
                 return ngrokUrl;
               }
+            } else {
+              if (kDebugMode) {
+                print('⚠️ Discovery endpoint returned status ${response.statusCode} or null data');
+              }
             }
-          } catch (e) {
-            // Silently continue - this backend is not available
+            } catch (e) {
+              // If this is not the last retry, wait a bit and retry
+              if (retry < maxRetries) {
+                if (kDebugMode) {
+                  print('⚠️ Discovery failed (attempt ${retry + 1}/${maxRetries + 1}), retrying...');
+                }
+                await Future.delayed(Duration(milliseconds: 500 * (retry + 1))); // Exponential backoff
+                continue; // Retry
+              } else {
+                // Last retry failed
+                if (kDebugMode) {
+                  print('⚠️ Discovery failed for ${backend.hostname}:${backend.port} after ${maxRetries + 1} attempts: $e');
+                }
+              }
+            }
           }
           return null;
         });
