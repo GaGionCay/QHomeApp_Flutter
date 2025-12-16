@@ -1056,8 +1056,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 children: [
                   Flexible(
                     child: Text(
-                      viewModel.groupName ?? 'Nhóm chat',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                viewModel.groupName ?? 'Nhóm chat',
+                style: const TextStyle(fontWeight: FontWeight.bold),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -1140,26 +1140,26 @@ class _ChatScreenState extends State<ChatScreen> {
                          viewModel.group!.muteUntil!.isAfter(DateTime.now()));
                     
                     return [
-                      const PopupMenuItem(
-                        value: 'members',
-                        child: Row(
-                          children: [
-                            Icon(CupertinoIcons.person_2, size: 20),
-                            SizedBox(width: 8),
-                            Text('Xem thành viên'),
-                          ],
-                        ),
+                    const PopupMenuItem(
+                      value: 'members',
+                      child: Row(
+                        children: [
+                          Icon(CupertinoIcons.person_2, size: 20),
+                          SizedBox(width: 8),
+                          Text('Xem thành viên'),
+                        ],
                       ),
-                      const PopupMenuItem(
-                        value: 'rename',
-                        child: Row(
-                          children: [
-                            Icon(CupertinoIcons.pencil, size: 20),
-                            SizedBox(width: 8),
-                            Text('Đổi tên nhóm'),
-                          ],
-                        ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'rename',
+                      child: Row(
+                        children: [
+                          Icon(CupertinoIcons.pencil, size: 20),
+                          SizedBox(width: 8),
+                          Text('Đổi tên nhóm'),
+                        ],
                       ),
+                    ),
                       PopupMenuItem(
                         value: isMuted ? 'unmute' : 'mute',
                         child: Row(
@@ -1173,27 +1173,27 @@ class _ChatScreenState extends State<ChatScreen> {
                           ],
                         ),
                       ),
+                    const PopupMenuItem(
+                      value: 'leave',
+                      child: Row(
+                        children: [
+                          Icon(CupertinoIcons.arrow_right_square, size: 20),
+                          SizedBox(width: 8),
+                          Text('Rời nhóm'),
+                        ],
+                      ),
+                    ),
+                    if (viewModel.isCreator)
                       const PopupMenuItem(
-                        value: 'leave',
+                        value: 'delete',
                         child: Row(
                           children: [
-                            Icon(CupertinoIcons.arrow_right_square, size: 20),
+                            Icon(CupertinoIcons.delete, size: 20, color: Colors.red),
                             SizedBox(width: 8),
-                            Text('Rời nhóm'),
+                            Text('Xóa nhóm', style: TextStyle(color: Colors.red)),
                           ],
                         ),
                       ),
-                      if (viewModel.isCreator)
-                        const PopupMenuItem(
-                          value: 'delete',
-                          child: Row(
-                            children: [
-                              Icon(CupertinoIcons.delete, size: 20, color: Colors.red),
-                              SizedBox(width: 8),
-                              Text('Xóa nhóm', style: TextStyle(color: Colors.red)),
-                            ],
-                          ),
-                        ),
                     ];
                   },
                 );

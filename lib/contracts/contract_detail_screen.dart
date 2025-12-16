@@ -611,8 +611,14 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
             const SizedBox(height: 20),
           ],
 
-          // Permission message (nếu user không phải OWNER/TENANT)
-          if (contract.permissionMessage != null && contract.permissionMessage!.isNotEmpty) ...[
+          // Permission message (chỉ hiển thị khi hợp đồng cần gia hạn và user không phải OWNER)
+          // Điều kiện: RENTAL + ACTIVE + không phải owner + có thể gia hạn/hủy
+          if (contract.contractType == 'RENTAL' &&
+              contract.status == 'ACTIVE' &&
+              contract.isOwner == false &&
+              (contract.canRenew == true || contract.canCancel == true) &&
+              contract.permissionMessage != null &&
+              contract.permissionMessage!.isNotEmpty) ...[
             _DetailGlassCard(
               child: Padding(
                 padding: const EdgeInsets.all(24),

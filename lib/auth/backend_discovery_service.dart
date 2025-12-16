@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/app_config.dart';
+
 /// Service for discovering backend server on the local network
 /// Supports multiple strategies:
 /// 1. mDNS/Bonjour service discovery (e.g., qhome-api.local)
@@ -170,6 +172,74 @@ class BackendDiscoveryService {
     } catch (e) {
       // Silently skip - this is expected on mobile devices
       // ngrok API is not accessible from mobile devices
+    }
+
+    // Priority 4.5: Fallback - Try saved ngrok URL or AppConfig.manualNgrokUrl directly from internet
+    // This handles the case where discovery failed but we have a saved ngrok URL
+    // Ngrok URLs work from internet, so we can try them directly without local network access
+    final fallbackUrls = <String>[];
+    
+    // Add saved URL first
+    try {
+      final savedUrl = _prefs.getString(_cacheKeyManualBackendUrl);
+      if (savedUrl != null && savedUrl.isNotEmpty) {
+        fallbackUrls.add(savedUrl);
+      }
+    } catch (e) {
+      // Ignore
+    }
+    
+    // Add AppConfig.manualNgrokUrl if set
+    try {
+      final manualUrl = AppConfig.manualNgrokUrl;
+      if (manualUrl != null && manualUrl.isNotEmpty && !fallbackUrls.contains(manualUrl)) {
+        fallbackUrls.add(manualUrl);
+      }
+    } catch (e) {
+      // Ignore
+    }
+    
+    // Try each fallback URL
+    for (final fallbackUrl in fallbackUrls) {
+      final isNgrokUrl = fallbackUrl.contains('ngrok') || 
+                        fallbackUrl.contains('ngrok-free.app') ||
+                        fallbackUrl.contains('ngrok-free.dev');
+      
+      if (isNgrokUrl) {
+        if (kDebugMode) {
+          print('🔍 Discovery failed, trying ngrok URL directly from internet: $fallbackUrl');
+        }
+        
+        // Try ngrok URL directly from internet (no local network needed)
+        final dio = Dio();
+        dio.options.connectTimeout = const Duration(seconds: 5);
+        dio.options.receiveTimeout = const Duration(seconds: 5);
+        dio.options.headers['ngrok-skip-browser-warning'] = 'true';
+        
+        try {
+          final healthUrl = '$fallbackUrl/api/health';
+          final response = await dio.get(healthUrl).timeout(const Duration(seconds: 5));
+          
+          if (response.statusCode == 200) {
+            // Ngrok URL is working!
+            final parsedInfo = _parseUrl(fallbackUrl);
+            if (parsedInfo != null) {
+              if (kDebugMode) {
+                print('✅ Ngrok URL is working from internet: $fallbackUrl');
+              }
+              // Save for future use
+              await _saveManualUrl(fallbackUrl);
+              return parsedInfo;
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ Ngrok URL $fallbackUrl not reachable: $e');
+          }
+          // Continue to next URL
+          continue;
+        }
+      }
     }
 
     // Priority 4: Manual hostname:port provided
@@ -1313,9 +1383,146 @@ class BackendDiscoveryService {
         potentialBackends.add(cachedInfo);
       }
       
-      // 2. REMOVED - Local network IP scanning
-      // In ngrok-only architecture, we don't scan local network IPs
-      // Only use localhost/10.0.2.2 for emulator/web bootstrap
+      // 2. Scan local network IPs to find backend
+      // This works for both WiFi and mobile hotspot scenarios
+      // Strategy: Get device IP, scan subnet, try discovery endpoint on each IP
+      try {
+        String? deviceIp;
+        
+        // Get device IP from network interfaces
+        final interfaces = await NetworkInterface.list(
+          includeLinkLocal: false,
+          type: InternetAddressType.IPv4,
+        );
+        
+        for (final interface in interfaces) {
+          // Skip loopback interfaces by checking addresses
+          bool isLoopback = false;
+          for (final addr in interface.addresses) {
+            if (addr.isLoopback) {
+              isLoopback = true;
+              break;
+            }
+          }
+          if (isLoopback) continue;
+          
+          for (final addr in interface.addresses) {
+            final ip = addr.address;
+            // Check if private IP (10.x.x.x, 192.168.x.x, 172.16-31.x.x)
+            if (_isPrivateIpAddress(ip)) {
+              deviceIp = ip;
+              break;
+            }
+          }
+          if (deviceIp != null) break;
+        }
+        
+        // Fallback to network_info_plus
+        if (deviceIp == null) {
+          try {
+            deviceIp = await _networkInfo.getWifiIP();
+          } catch (e) {
+            // Ignore
+          }
+        }
+        
+        // If we have device IP, scan subnet
+        if (deviceIp != null && deviceIp.isNotEmpty) {
+          if (kDebugMode) {
+            print('  Found device IP: $deviceIp, scanning subnet for backend...');
+          }
+          
+          // Parse subnet (e.g., 192.168.1.x -> scan 192.168.1.1-254)
+          final parts = deviceIp.split('.');
+          if (parts.length == 4) {
+            final subnet = '${parts[0]}.${parts[1]}.${parts[2]}';
+            
+            // Scan common IPs in subnet (prioritize most likely IPs first)
+            // Strategy: Scan fewer IPs but smarter - prioritize router and IPs near device
+            final commonIps = <String>[];
+            
+            // Priority 1: Router IPs (most common)
+            commonIps.add('$subnet.1');  // Router
+            commonIps.add('$subnet.254'); // Router alternative
+            
+            // Priority 1.5: Common backend laptop IPs (often assigned by DHCP)
+            // These are frequently used IPs that laptops get assigned
+            commonIps.add('$subnet.33');  // Common DHCP assignment
+            commonIps.add('$subnet.34');
+            commonIps.add('$subnet.35');
+            
+            // Priority 2: IPs around device IP (backend laptop likely near phone)
+            final deviceLastOctet = int.tryParse(parts[3]);
+            if (deviceLastOctet != null) {
+              // Scan ±20 IPs around device IP (covers more hotspot scenarios)
+              // This ensures we find backend even if IPs are far apart
+              for (int offset = 1; offset <= 20; offset++) {
+                if (deviceLastOctet + offset <= 254) {
+                  commonIps.add('$subnet.${deviceLastOctet + offset}');
+                }
+                if (deviceLastOctet - offset >= 1) {
+                  commonIps.add('$subnet.${deviceLastOctet - offset}');
+                }
+              }
+            }
+            
+            // Priority 3: Common laptop/server IPs (expand search range)
+            // Add more common IPs that laptops often get assigned
+            // These are DHCP-assigned IPs that laptops commonly receive
+            // Only add if not already in list (to avoid duplicates)
+            final commonLaptopIps = [
+              '$subnet.2',   // Often router assigns .2 to first device
+              '$subnet.3',   // Second device
+              '$subnet.10',  // Common DHCP range start
+              '$subnet.11',
+              '$subnet.20',
+              '$subnet.21',
+              '$subnet.50',  // Mid-range
+              '$subnet.51',
+              '$subnet.100', // Common DHCP range
+              '$subnet.101',
+              '$subnet.200', // Higher range
+              '$subnet.201',
+            ];
+            
+            for (final ip in commonLaptopIps) {
+              if (!commonIps.contains(ip)) {
+                commonIps.add(ip);
+              }
+            }
+            
+            // Limit total IPs to scan (max 50 IPs to avoid too long discovery)
+            if (commonIps.length > 50) {
+              // Keep first 50 IPs (most prioritized)
+              commonIps.removeRange(50, commonIps.length);
+            }
+            
+            // Add device IP itself (in case backend is on same device)
+            if (!commonIps.contains(deviceIp)) {
+              commonIps.insert(0, deviceIp); // Add at beginning for priority
+            }
+            
+            // Remove duplicates and add to potential backends
+            final uniqueIps = commonIps.toSet().toList();
+            for (final ip in uniqueIps) {
+              potentialBackends.add(BackendInfo(
+                hostname: ip,
+                ip: ip,
+                port: _defaultBackendPort,
+                discoveryMethod: 'subnet_scan',
+              ));
+            }
+            
+            if (kDebugMode) {
+              print('  Added ${uniqueIps.length} IPs from subnet $subnet.x to scan list');
+            }
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('  ⚠️ Failed to scan local network: $e');
+        }
+      }
       
       // 3. Try localhost variants (works on web/desktop/emulator)
       // Android emulator uses 10.0.2.2 to access host machine's localhost
@@ -1367,34 +1574,28 @@ class BackendDiscoveryService {
       
       // Try each potential backend to get ngrok URL (with parallel requests for speed)
       // But limit concurrent requests to avoid overwhelming the network
-      const batchSize = 10;
+      // Smaller batch size for faster discovery (less waiting)
+      const batchSize = 5;
       for (int i = 0; i < potentialBackends.length; i += batchSize) {
         final batch = potentialBackends.skip(i).take(batchSize).toList();
         
         final futures = batch.map((backend) async {
-          // Retry logic for discovery endpoint (more reliable)
-          const maxRetries = 2;
-          for (int retry = 0; retry <= maxRetries; retry++) {
-            try {
-              final dio = Dio();
-              // Increase timeout for discovery (backend might be slow to respond)
-              dio.options.connectTimeout = const Duration(seconds: 5);
-              dio.options.receiveTimeout = const Duration(seconds: 5);
-              
-              // Try discovery endpoint - backend.baseUrl already includes /api
-              final discoveryUrl = '${backend.baseUrl}/discovery/info';
-              
-              if (kDebugMode) {
-                if (retry == 0) {
-                  print('  Trying: $discoveryUrl');
-                } else {
-                  print('  Retrying ($retry/$maxRetries): $discoveryUrl');
-                }
-              }
-              
-              final response = await dio.get(discoveryUrl).timeout(
-                const Duration(seconds: 5),
-              );
+          try {
+            final dio = Dio();
+            // Shorter timeout for faster scanning (2 seconds)
+            dio.options.connectTimeout = const Duration(seconds: 2);
+            dio.options.receiveTimeout = const Duration(seconds: 2);
+            
+            // Try discovery endpoint - backend.baseUrl already includes /api
+            final discoveryUrl = '${backend.baseUrl}/discovery/info';
+            
+            if (kDebugMode) {
+              print('  Trying: $discoveryUrl');
+            }
+            
+            final response = await dio.get(discoveryUrl).timeout(
+              const Duration(seconds: 2),
+            );
             
             if (response.statusCode == 200 && response.data != null) {
               if (kDebugMode) {
@@ -1478,23 +1679,27 @@ class BackendDiscoveryService {
                 print('⚠️ Discovery endpoint returned status ${response.statusCode} or null data');
               }
             }
-            } catch (e) {
-              // If this is not the last retry, wait a bit and retry
-              if (retry < maxRetries) {
-                if (kDebugMode) {
-                  print('⚠️ Discovery failed (attempt ${retry + 1}/${maxRetries + 1}), retrying...');
-                }
-                await Future.delayed(Duration(milliseconds: 500 * (retry + 1))); // Exponential backoff
-                continue; // Retry
-              } else {
-                // Last retry failed
-                if (kDebugMode) {
-                  print('⚠️ Discovery failed for ${backend.hostname}:${backend.port} after ${maxRetries + 1} attempts: $e');
-                }
-              }
+          } catch (e) {
+            // Check error type - skip retry for connection refused/no route errors
+            final errorStr = e.toString().toLowerCase();
+            final isConnectionRefused = errorStr.contains('connection refused') ||
+                                       errorStr.contains('errno = 111');
+            final isNoRoute = errorStr.contains('no route to host') ||
+                             errorStr.contains('errno = 113');
+            
+            // Don't log or retry for connection refused/no route - just skip silently
+            // These are expected when scanning subnet (most IPs won't have backend)
+            if (isConnectionRefused || isNoRoute) {
+              // Skip silently - this is normal when scanning subnet
+              return null;
             }
+            
+            // For other errors (timeout, network), log but don't retry
+            if (kDebugMode) {
+              print('⚠️ Discovery failed for ${backend.hostname}:${backend.port}: $e');
+            }
+            return null;
           }
-          return null;
         });
         
         // Wait for first successful response in this batch
@@ -1516,6 +1721,24 @@ class BackendDiscoveryService {
       }
     }
     return null;
+  }
+
+  /// Helper method to check if IP address is private (local network)
+  bool _isPrivateIpAddress(String ip) {
+    final parts = ip.split('.');
+    if (parts.length != 4) return false;
+    final first = int.tryParse(parts[0]);
+    final second = int.tryParse(parts[1]);
+    if (first == null || second == null) return false;
+    
+    // Private IP ranges:
+    // 10.0.0.0/8 (10.0.0.0 - 10.255.255.255)
+    // 172.16.0.0/12 (172.16.0.0 - 172.31.255.255)
+    // 192.168.0.0/16 (192.168.0.0 - 192.168.255.255)
+    if (first == 10) return true;
+    if (first == 172 && second >= 16 && second <= 31) return true;
+    if (first == 192 && second == 168) return true;
+    return false;
   }
 
   /// Try to auto-detect ngrok URL from ngrok API

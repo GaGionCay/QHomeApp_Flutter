@@ -267,61 +267,61 @@ class _ContractReminderPopupState extends State<ContractReminderPopup>
                         // Nếu là HOUSEHOLD member thì chỉ hiển thị nút "Đóng" (view-only)
                         if (widget.contract.isOwner == true)
                           // User là OWNER/TENANT - hiển thị action buttons
-                          if (isFinalReminder)
-                            // Final reminder: Only 2 buttons
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _buildCancelButton(
-                                    context,
-                                    theme,
-                                    isDark,
-                                  ),
+                        if (isFinalReminder)
+                          // Final reminder: Only 2 buttons
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildCancelButton(
+                                  context,
+                                  theme,
+                                  isDark,
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  flex: 2,
-                                  child: _buildRenewButton(
-                                    context,
-                                    theme,
-                                    isDark,
-                                  ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                flex: 2,
+                                child: _buildRenewButton(
+                                  context,
+                                  theme,
+                                  isDark,
                                 ),
-                              ],
-                            )
-                          else
-                            // Normal reminder: 3 buttons
-                            Column(
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _buildDismissButton(
-                                        context,
-                                        theme,
-                                        isDark,
-                                      ),
+                              ),
+                            ],
+                          )
+                        else
+                          // Normal reminder: 3 buttons
+                          Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildDismissButton(
+                                      context,
+                                      theme,
+                                      isDark,
                                     ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: _buildCancelButton(
-                                        context,
-                                        theme,
-                                        isDark,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: _buildRenewButton(
-                                    context,
-                                    theme,
-                                    isDark,
                                   ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: _buildCancelButton(
+                                      context,
+                                      theme,
+                                      isDark,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: _buildRenewButton(
+                                  context,
+                                  theme,
+                                  isDark,
                                 ),
-                              ],
+                              ),
+                            ],
                             )
                         else
                           // User là HOUSEHOLD member - chỉ hiển thị nút "Đóng" (view-only)

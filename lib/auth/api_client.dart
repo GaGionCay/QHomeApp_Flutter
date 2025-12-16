@@ -27,7 +27,7 @@ class ApiClient {
   
   // Track last discovery check time to avoid checking too frequently
   static DateTime? _lastDiscoveryCheck;
-  static const Duration _discoveryCheckInterval = Duration(seconds: 10); // Check every 10 seconds (after initial discovery)
+  static const Duration _discoveryCheckInterval = Duration(seconds: 5); // Check every 5 seconds (faster detection of disconnects)
   static const Duration _initialDiscoveryCheckInterval = Duration(seconds: 3); // Check every 3 seconds during initial startup
   static Timer? _ngrokCheckTimer; // Periodic timer to check for ngrok URL
   static bool _hasFoundNgrokUrl = false; // Track if we've found ngrok URL at least once
@@ -750,24 +750,41 @@ class ApiClient {
         final isCurrentlyUsingNgrok = _isNgrokUrl(_activeHostIp);
         
         if (isCurrentlyUsingNgrok) {
-          // Check if ngrok URL is still reachable
-          try {
-            final dio = Dio();
-            dio.options.connectTimeout = const Duration(seconds: 3);
-            dio.options.receiveTimeout = const Duration(seconds: 3);
-            dio.options.headers['ngrok-skip-browser-warning'] = 'true';
-            
-            final healthUrl = '$_activeBaseUrl/health';
-            final response = await dio.get(healthUrl).timeout(const Duration(seconds: 3));
-            
-            if (response.statusCode != 200) {
-              // Ngrok URL not reachable - switch to IP address
-              print('⚠️ Ngrok URL not reachable, switching to IP address...');
-              await _switchToIpAddress();
+          // Check if ngrok URL is still reachable (with retry for transient failures)
+          bool isReachable = false;
+          const maxHealthCheckRetries = 2;
+          
+          for (int retry = 0; retry <= maxHealthCheckRetries; retry++) {
+            try {
+              final dio = Dio();
+              dio.options.connectTimeout = const Duration(seconds: 3);
+              dio.options.receiveTimeout = const Duration(seconds: 3);
+              dio.options.headers['ngrok-skip-browser-warning'] = 'true';
+              
+              final healthUrl = '$_activeBaseUrl/health';
+              final response = await dio.get(healthUrl).timeout(const Duration(seconds: 3));
+              
+              if (response.statusCode == 200) {
+                isReachable = true;
+                break; // Success, exit retry loop
+              }
+            } catch (e) {
+              // If not last retry, wait a bit and retry
+              if (retry < maxHealthCheckRetries) {
+                if (kDebugMode) {
+                  print('⚠️ Health check failed (attempt ${retry + 1}/${maxHealthCheckRetries + 1}), retrying...');
+                }
+                await Future.delayed(Duration(milliseconds: 500 * (retry + 1))); // Exponential backoff
+                continue;
+              }
             }
-          } catch (e) {
-            // Ngrok URL not reachable - switch to IP address
-            print('⚠️ Ngrok URL connection failed, switching to IP address...');
+          }
+          
+          if (!isReachable) {
+            // Ngrok URL not reachable after retries - switch to IP address
+            if (kDebugMode) {
+              print('⚠️ Ngrok URL not reachable after ${maxHealthCheckRetries + 1} attempts, switching to IP address...');
+            }
             await _switchToIpAddress();
           }
         } else {
@@ -1000,13 +1017,9 @@ class ApiClient {
         return;
       }
       
-      // Only check if not currently using ngrok
-      final isCurrentlyUsingNgrok = _isNgrokUrl(_activeHostIp);
-      
-      if (!isCurrentlyUsingNgrok) {
-        // Check for ngrok URL in background
-        _checkForNgrokUrlInBackground();
-      }
+      // Always check - both for health check (if using ngrok) and discovery (if not using ngrok)
+      // This ensures we detect disconnects quickly and reconnect automatically
+      _checkForNgrokUrlInBackground();
     });
     
     if (kDebugMode) {

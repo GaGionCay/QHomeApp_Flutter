@@ -276,7 +276,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
       );
       return;
     }
-    
+
     // Check if already a member
     if (_isAlreadyMember(residentId)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -287,7 +287,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
       );
       return;
     }
-    
+
     // Check if already has invitation (PENDING or ACCEPTED)
     if (_hasInvitation(phone)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -298,7 +298,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
       );
       return;
     }
-    
+
     // Store phone in original format (as user sees it) for display
     final displayPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
     setState(() {
@@ -501,9 +501,9 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
     
     // From phone input tab
     if (_tabController.index == 0) {
-      if (_phoneNumbers.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Vui lòng thêm ít nhất một số điện thoại')),
+    if (_phoneNumbers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng thêm ít nhất một số điện thoại')),
         );
         return;
       }
@@ -591,7 +591,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
               // Normalize phone before adding
               final normalizedPhone = _normalizePhone(phoneStr);
               newInvitedPhones.add(normalizedPhone);
-            }
+        }
           }
         }
         
@@ -609,18 +609,18 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
         // Reload invitations and members to update the list
         await _loadInvitations();
         await _loadGroupMembers();
-        
+
         Navigator.pop(context, true);
         
         // Only show success message if at least one invitation was sent successfully
         if (result.successfulInvitations.isNotEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Đã gửi lời mời thành công'),
               backgroundColor: Colors.green,
               duration: Duration(seconds: 3),
-            ),
-          );
+          ),
+        );
         }
         // Don't show "Không có lời mời nào được gửi" - this happens when all selected phones
         // already have invitations, which is expected behavior
@@ -709,22 +709,22 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
   /// Build phone input tab
   Widget _buildPhoneInputTab(ThemeData theme) {
     return SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Nhập số điện thoại của cư dân để mời họ tham gia nhóm',
-            style: theme.textTheme.bodySmall,
-          ),
-          const SizedBox(height: 16),
-          Column(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(
+                'Nhập số điện thoại của cư dân để mời họ tham gia nhóm',
+                style: theme.textTheme.bodySmall,
+              ),
+              const SizedBox(height: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
               TextField(
-                controller: _phoneController,
+                      controller: _phoneController,
                 decoration: InputDecoration(
-                  labelText: 'Số điện thoại',
+                        labelText: 'Số điện thoại',
                   hintText: 'Nhập số điện thoại để tìm cư dân',
                   border: const OutlineInputBorder(),
                   suffixIcon: _isSearchingPhone
@@ -737,16 +737,16 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
                           ),
                         )
                       : null,
-                ),
-                keyboardType: TextInputType.phone,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(10),
-                ],
+                      ),
+                      keyboardType: TextInputType.phone,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(10),
+                      ],
                 onChanged: (value) {
                   _searchResidentsByPhone(value);
                 },
-              ),
+                  ),
               // Phone suggestions dropdown
               if (_phoneSuggestions.isNotEmpty) ...[
                 const SizedBox(height: 8),
@@ -857,31 +857,31 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
                                 _selectPhoneSuggestion(resident);
                               }
                             },
-                          ),
-                        ),
+                    ),
+                  ),
                       );
                     },
                   ),
                 ),
               ],
+                ],
+              ),
+              if (_phoneNumbers.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _phoneNumbers.map((phone) {
+                    return Chip(
+                      label: Text(phone),
+                      onDeleted: () => _removePhoneNumber(phone),
+                      deleteIcon: const Icon(CupertinoIcons.xmark_circle_fill, size: 18),
+                    );
+                  }).toList(),
+                ),
+              ],
             ],
           ),
-          if (_phoneNumbers.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _phoneNumbers.map((phone) {
-                return Chip(
-                  label: Text(phone),
-                  onDeleted: () => _removePhoneNumber(phone),
-                  deleteIcon: const Icon(CupertinoIcons.xmark_circle_fill, size: 18),
-                );
-              }).toList(),
-            ),
-          ],
-        ],
-      ),
     );
   }
   
@@ -924,7 +924,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
                 _friends.isEmpty ? 'Chưa có bạn bè nào' : 'Không tìm thấy bạn bè',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
+        ),
               ),
             ),
           )

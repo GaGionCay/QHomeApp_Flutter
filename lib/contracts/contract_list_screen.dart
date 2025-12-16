@@ -908,8 +908,14 @@ class _ContractListScreenState extends State<ContractListScreen>
                   ),
                 ),
               ],
-              // Permission message (nếu user không phải OWNER/TENANT)
-              if (contract.permissionMessage != null && contract.permissionMessage!.isNotEmpty) ...[
+              // Permission message (chỉ hiển thị khi hợp đồng cần gia hạn và user không phải OWNER)
+              // Điều kiện: RENTAL + ACTIVE + không phải owner + có thể gia hạn/hủy
+              if (contract.contractType == 'RENTAL' &&
+                  contract.status == 'ACTIVE' &&
+                  contract.isOwner == false &&
+                  (contract.canRenew == true || contract.canCancel == true) &&
+                  contract.permissionMessage != null &&
+                  contract.permissionMessage!.isNotEmpty) ...[
                 const SizedBox(height: 20),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -1064,6 +1070,12 @@ class _ContractListScreenState extends State<ContractListScreen>
   bool _needsRenewal(ContractDto contract) {
     // Chỉ hợp đồng RENTAL và ACTIVE mới cần gia hạn
     if (contract.contractType != 'RENTAL' || contract.status != 'ACTIVE') {
+      return false;
+    }
+    
+    // Loại bỏ hợp đồng đã được gia hạn (có renewedContractId)
+    // Hợp đồng đã gia hạn không còn cần gia hạn nữa
+    if (contract.renewedContractId != null) {
       return false;
     }
     
