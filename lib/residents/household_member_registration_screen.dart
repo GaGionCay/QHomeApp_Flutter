@@ -60,12 +60,48 @@ class _HouseholdMemberRegistrationScreenState
     }
   }
 
+  String? _validateUsername(String username) {
+    final trimmed = username.trim();
+    
+    if (trimmed.isEmpty) {
+      return 'Username không được để trống.';
+    }
+    
+    if (trimmed.length < 3) {
+      return 'Username phải dài tối thiểu 3 ký tự.';
+    }
+    
+    if (trimmed.length > 20) {
+      return 'Username không được dài quá 20 ký tự.';
+    }
+    
+    // Check for consecutive spaces (more than 1 space) - không được có "  "
+    if (trimmed.contains('  ')) {
+      return 'Username không được có khoảng trắng cách quá 2 lần liên tiếp.';
+    }
+    
+    // Check total number of spaces - chỉ được có tối đa 1 khoảng trắng
+    final spaceCount = ' '.allMatches(trimmed).length;
+    if (spaceCount > 1) {
+      return 'Username chỉ được chứa tối đa 1 khoảng trắng.';
+    }
+    
+    // Check for special characters - only allow a-z, A-Z, 0-9, underscore, hyphen, and single space
+    final validPattern = RegExp(r'^[a-zA-Z0-9_ -]+$');
+    if (!validPattern.hasMatch(trimmed)) {
+      return 'Username chỉ được chứa chữ cái (a-z, A-Z), số (0-9), gạch dưới (_), gạch ngang (-) và khoảng trắng (chỉ 1 khoảng trắng).';
+    }
+    
+    return null;
+  }
+
   Future<void> _showCreateRequestDialog(ResidentWithoutAccount member) async {
     bool autoGenerate = true;
     final usernameCtrl = TextEditingController();
     final passwordCtrl = TextEditingController();
     bool submitting = false;
     String? errorText;
+    String? usernameError;
 
     await showDialog<void>(
       context: context,
@@ -73,15 +109,20 @@ class _HouseholdMemberRegistrationScreenState
         return StatefulBuilder(builder: (context, setStateDialog) {
           Future<void> submit() async {
             if (!autoGenerate) {
-              if (usernameCtrl.text.trim().length < 3) {
+              // Validate username
+              final usernameValidation = _validateUsername(usernameCtrl.text);
+              if (usernameValidation != null) {
                 setStateDialog(() {
-                  errorText = 'Username phải dài tối thiểu 3 ký tự.';
+                  errorText = usernameValidation;
+                  usernameError = usernameValidation;
                 });
                 return;
               }
+              
               if (passwordCtrl.text.trim().length < 6) {
                 setStateDialog(() {
                   errorText = 'Password phải dài tối thiểu 6 ký tự.';
+                  usernameError = null;
                 });
                 return;
               }
@@ -147,12 +188,24 @@ class _HouseholdMemberRegistrationScreenState
                   if (!autoGenerate) ...[
                     TextField(
                       controller: usernameCtrl,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Username',
                         hintText:
-                            'Nhập username (a-z, 0-9, gạch dưới, gạch ngang)',
+                            'Nhập username (a-z, 0-9, gạch dưới, gạch ngang, khoảng trắng)',
+                        errorText: usernameError,
+                        helperText: 'Tối thiểu 3 ký tự, tối đa 20 ký tự, chỉ 1 khoảng trắng',
                       ),
                       enabled: !submitting,
+                      onChanged: (value) {
+                        // Clear error when user starts typing
+                        if (usernameError != null) {
+                          setStateDialog(() {
+                            usernameError = null;
+                            errorText = null;
+                          });
+                        }
+                      },
+                      maxLength: 20,
                     ),
                     const SizedBox(height: 12),
                     TextField(

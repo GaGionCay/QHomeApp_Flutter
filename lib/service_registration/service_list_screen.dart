@@ -465,85 +465,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   ) {
     final List<Widget> priceWidgets = [];
 
-    // Base price
-    if (pricingType == 'FREE') {
-      priceWidgets.add(
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.green.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(CupertinoIcons.checkmark_circle_fill,
-                  size: 16, color: Colors.green.shade700),
-              const SizedBox(width: 6),
-              Text(
-                'Miễn phí cho cư dân',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: Colors.green.shade700,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    } else {
-      final pricePerHour = service['pricePerHour'] as num?;
-      final pricePerSession = service['pricePerSession'] as num?;
-
-      if (pricingType == 'SESSION' && pricePerSession != null) {
-        priceWidgets.add(
-          _buildPriceChip(
-            theme,
-            colorScheme,
-            '${_currencyFormatter.format(pricePerSession)} / lượt',
-            CupertinoIcons.ticket_fill,
-          ),
-        );
-      } else if (pricePerHour != null && pricePerHour > 0) {
-        priceWidgets.add(
-          _buildPriceChip(
-            theme,
-            colorScheme,
-            '${_currencyFormatter.format(pricePerHour)} / giờ',
-            CupertinoIcons.clock_fill,
-          ),
-        );
-      }
-    }
-
-    // Combos
-    final combos = _parseList(service['combos']);
-    if (combos.isNotEmpty) {
-      final comboPrices = combos
-          .map((c) => (c['price'] as num?) ?? 0)
-          .where((p) => p > 0)
-          .toList()
-        ..sort();
-      if (comboPrices.isNotEmpty) {
-        final minCombo = comboPrices.first;
-        final maxCombo = comboPrices.last;
-        final comboText = comboPrices.length == 1
-            ? '${_currencyFormatter.format(minCombo)} / combo'
-            : '${_currencyFormatter.format(minCombo)} - ${_currencyFormatter.format(maxCombo)} / combo';
-        priceWidgets.add(
-          _buildPriceChip(
-            theme,
-            colorScheme,
-            comboText,
-            CupertinoIcons.square_stack_3d_up_fill,
-            isHighlight: true,
-          ),
-        );
-      }
-    }
-
-    // Tickets
+    // Chỉ hiển thị Tickets - bỏ pricingType và pricePerHour
     final tickets = _parseList(service['tickets']);
     if (tickets.isNotEmpty) {
       final ticketPrices = tickets
@@ -564,31 +486,6 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
             ticketText,
             CupertinoIcons.ticket,
             isHighlight: true,
-          ),
-        );
-      }
-    }
-
-    // Options
-    final options = _parseList(service['options']);
-    if (options.isNotEmpty) {
-      final optionPrices = options
-          .map((o) => (o['price'] as num?) ?? 0)
-          .where((p) => p > 0)
-          .toList()
-        ..sort();
-      if (optionPrices.isNotEmpty) {
-        final minOption = optionPrices.first;
-        final maxOption = optionPrices.last;
-        final optionText = optionPrices.length == 1
-            ? 'Tùy chọn: ${_currencyFormatter.format(minOption)}'
-            : 'Tùy chọn: ${_currencyFormatter.format(minOption)} - ${_currencyFormatter.format(maxOption)}';
-        priceWidgets.add(
-          _buildPriceChip(
-            theme,
-            colorScheme,
-            optionText,
-            CupertinoIcons.add_circled,
           ),
         );
       }

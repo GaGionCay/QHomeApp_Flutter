@@ -50,20 +50,12 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
   List<Map<String, dynamic>> _combos = const [];
   List<Map<String, dynamic>> _tickets = const [];
   List<Map<String, dynamic>> _availabilities = const [];
-  Map<String, List<_BookedSlot>> _bookedSlotsByDate = {};
-  bool _bookedSlotsLoading = true;
-  String? _bookedSlotsError;
-  DateTime? _bookedSlotsStart;
-  DateTime? _bookedSlotsEnd;
+  // Bỏ các biến booked slots vì không cần chọn thời gian nữa
 
   final Map<String, int> _selectedOptions = {};
   String? _selectedComboId;
-  String? _selectedTicketId;
+  final Map<String, int> _selectedTickets = {}; // Map<ticketId, quantity> - Cho phép chọn nhiều loại vé
 
-  DateTime? _selectedDate;
-  TimeOfDay? _startTime;
-  TimeOfDay? _endTime;
-  int _numberOfPeople = 1;
   final TextEditingController _purposeController = TextEditingController();
 
   @override
@@ -95,21 +87,15 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
         _combos = _parseList(detail['combos']);
         _tickets = _parseList(detail['tickets']);
         _availabilities = _parseList(detail['availabilities']);
-        _applyDefaultSelections();
+        // Bỏ applyDefaultSelections vì không cần chọn thời gian nữa
         _loading = false;
-        _bookedSlotsByDate = {};
-        _bookedSlotsError = null;
-        _bookedSlotsLoading = true;
-        _bookedSlotsStart = null;
-        _bookedSlotsEnd = null;
+        // Bỏ reload booked slots vì không cần chọn thời gian nữa
       });
-      await _reloadBookedSlots(anchor: _selectedDate ?? DateTime.now());
+      // Bỏ reload booked slots vì không cần chọn thời gian nữa
     } catch (e) {
       setState(() {
         _error = e.toString();
         _loading = false;
-        _bookedSlotsLoading = false;
-        _bookedSlotsError = e.toString();
       });
     }
   }
@@ -218,88 +204,32 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
     return const [];
   }
 
-  void _applyDefaultSelections() {
-    final detail = _service;
-    if (detail == null) return;
+  // Bỏ các method liên quan đến date/time selection vì không cần nữa
 
-    final today = DateTime.now();
-    final lastDate = today.add(Duration(days: _advanceBookingDays(detail)));
-
-    DateTime? candidate = today;
-    for (int i = 0; i <= lastDate.difference(today).inDays; i++) {
-      final date = today.add(Duration(days: i));
-      if (_isDateAllowed(detail, date)) {
-        candidate = date;
-        break;
-      }
+  String get _bookingType {
+    // Tự động xác định booking type dựa trên tickets/combos/options
+    // Vì backend đã bỏ cột booking_type, ta xác định dựa trên dữ liệu có sẵn
+    final tickets = _parseList(_service?['tickets']);
+    final combos = _parseList(_service?['combos']);
+    final options = _parseList(_service?['options']);
+    
+    // Kiểm tra cả camelCase và snake_case
+    bool isActive(dynamic item) {
+      final active = item['isActive'] ?? item['is_active'];
+      return active == true || active == null; // null coi như true (default)
     }
-
-    _selectedDate = candidate ?? today;
-
-    final availability = _availabilityForDate(detail, _selectedDate!);
-    if (availability != null) {
-      _startTime = _parseTimeOfDay(availability['startTime']);
-      final availabilityEnd = _parseTimeOfDay(availability['endTime']);
-
-      final minDuration = detail['minDurationHours'] is num
-          ? (detail['minDurationHours'] as num).toDouble()
-          : 1.0;
-      _endTime = _addDuration(_startTime!, minDuration);
-      if (_endTime != null &&
-          availabilityEnd != null &&
-          !_isTimeRangeValid(_startTime!, _endTime!, availabilityEnd)) {
-        _endTime = availabilityEnd;
-      }
+    
+    if (tickets.isNotEmpty && tickets.any(isActive)) {
+      return 'TICKET_BASED';
     }
+    if (combos.isNotEmpty && combos.any(isActive)) {
+      return 'COMBO_BASED';
+    }
+    if (options.isNotEmpty && options.any(isActive)) {
+      return 'OPTION_BASED';
+    }
+    return 'STANDARD';
   }
-
-  bool _isDateAllowed(Map<String, dynamic> detail, DateTime date) {
-    final availability = _availabilityForDate(detail, date);
-    return availability != null;
-  }
-
-  Map<String, dynamic>? _availabilityForDate(
-      Map<String, dynamic> detail, DateTime date) {
-    if (!detail.containsKey('availabilities')) return null;
-    final dayOfWeek = date.weekday; // Monday = 1
-    final match = _availabilities.firstWhere(
-      (availability) => availability['dayOfWeek'] == dayOfWeek,
-      orElse: () => <String, dynamic>{},
-    );
-    return match.isEmpty ? null : match;
-  }
-
-  int _advanceBookingDays(Map<String, dynamic> detail) {
-    // Backend no longer has advanceBookingDays field, use default 30 days
-    return 30;
-  }
-
-  TimeOfDay? _parseTimeOfDay(dynamic value) {
-    if (value == null) return null;
-    final str = value.toString();
-    final parts = str.split(':');
-    if (parts.length < 2) return null;
-    final hour = int.tryParse(parts[0]) ?? 0;
-    final minute = int.tryParse(parts[1]) ?? 0;
-    return TimeOfDay(hour: hour, minute: minute);
-  }
-
-  TimeOfDay? _addDuration(TimeOfDay start, double hours) {
-    final totalMinutes = (hours * 60).round();
-    final dateTime = DateTime(2020, 1, 1, start.hour, start.minute)
-        .add(Duration(minutes: totalMinutes));
-    return TimeOfDay(hour: dateTime.hour, minute: dateTime.minute);
-  }
-
-  bool _isTimeRangeValid(TimeOfDay start, TimeOfDay end, TimeOfDay maxEnd) {
-    final startMinutes = start.hour * 60 + start.minute;
-    final endMinutes = end.hour * 60 + end.minute;
-    final maxMinutes = maxEnd.hour * 60 + maxEnd.minute;
-    return endMinutes <= maxMinutes && endMinutes > startMinutes;
-  }
-
-  String get _bookingType =>
-      (_service?['bookingType']?.toString().toUpperCase()) ?? 'STANDARD';
 
   int get _maxCapacity {
     final value = _service?['maxCapacity'];
@@ -308,38 +238,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
     return 10;
   }
 
-  double? _calculateDurationHours() {
-    if (_startTime == null || _endTime == null) return null;
-    final startMinutes = _startTime!.hour * 60 + _startTime!.minute;
-    final endMinutes = _endTime!.hour * 60 + _endTime!.minute;
-    final diff = endMinutes - startMinutes;
-    if (diff <= 0) return null;
-    return diff / 60.0;
-  }
-
-  void _validateTimeRange() {
-    if (_service == null || _startTime == null || _endTime == null) return;
-
-    final duration = _calculateDurationHours();
-    if (duration == null || duration <= 0) {
-      _showMessage('Khung giờ không hợp lệ.', isError: true);
-      return;
-    }
-
-    final minDuration = _service!['minDurationHours'] is num
-        ? (_service!['minDurationHours'] as num).toDouble()
-        : 1.0;
-
-    if (duration < minDuration) {
-      _showMessage(
-          'Thời lượng tối thiểu là ${minDuration.toStringAsFixed(1)} giờ. Vui lòng chọn lại khung giờ.',
-          isError: true);
-      setState(() {
-        // Auto-adjust end time to meet minimum duration
-        _endTime = _addDuration(_startTime!, minDuration);
-      });
-    }
-  }
+  // Bỏ các method tính duration và validate time range vì không cần nữa
 
   num _calculateBaseAmount() {
     final detail = _service;
@@ -350,19 +249,29 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
       final combo = _selectedCombo;
       if (combo == null) return 0;
       final price = (combo['price'] as num?) ?? 0;
-      return price * _numberOfPeople;
+      // Tính tổng số người từ các vé đã chọn hoặc mặc định 1
+      final totalPeople = _selectedTickets.values.fold<int>(0, (sum, qty) => sum + qty);
+      return price * (totalPeople > 0 ? totalPeople : 1);
     }
 
     if (bookingType == 'TICKET_BASED') {
-      final ticket = _selectedTicket;
-      if (ticket == null) return 0;
-      final price = (ticket['price'] as num?) ?? 0;
-      return price * _numberOfPeople;
+      // Tính tổng giá của tất cả các vé đã chọn
+      num total = 0;
+      _selectedTickets.forEach((ticketId, quantity) {
+        final ticket = _tickets.firstWhere(
+          (element) => element['id'].toString() == ticketId,
+          orElse: () => <String, dynamic>{},
+        );
+        if (ticket.isNotEmpty) {
+          final price = (ticket['price'] as num?) ?? 0;
+          total += price * quantity;
+        }
+      });
+      return total;
     }
 
-    final pricePerHour = (detail['pricePerHour'] as num?) ?? 0;
-    final duration = _calculateDurationHours() ?? 0;
-    return pricePerHour * duration;
+    // Fallback cho STANDARD (không dùng nữa nhưng giữ lại để tránh lỗi)
+    return 0;
   }
 
   num _calculateOptionsAmount() {
@@ -389,13 +298,6 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
     );
   }
 
-  Map<String, dynamic>? get _selectedTicket {
-    if (_selectedTicketId == null) return null;
-    return _tickets.firstWhere(
-      (element) => element['id'].toString() == _selectedTicketId,
-      orElse: () => <String, dynamic>{},
-    );
-  }
 
   List<Map<String, dynamic>> _buildBookingItems() {
     final items = <Map<String, dynamic>>[];
@@ -408,7 +310,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
             itemId: combo['id'].toString(),
             itemCode: combo['code']?.toString() ?? '',
             itemName: combo['name']?.toString() ?? 'Combo',
-            quantity: _numberOfPeople,
+            quantity: _selectedTickets.values.fold<int>(0, (sum, qty) => sum + qty),
             unitPrice: (combo['price'] as num?) ?? 0,
           ),
         );
@@ -416,19 +318,25 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
     }
 
     if (_bookingType == 'TICKET_BASED') {
-      final ticket = _selectedTicket;
-      if (ticket != null) {
-        items.add(
-          _bookingService.buildBookingItem(
-            itemType: 'TICKET',
-            itemId: ticket['id'].toString(),
-            itemCode: ticket['code']?.toString() ?? '',
-            itemName: ticket['name']?.toString() ?? 'Vé',
-            quantity: _numberOfPeople,
-            unitPrice: (ticket['price'] as num?) ?? 0,
-          ),
+      // Thêm tất cả các vé đã chọn vào items
+      _selectedTickets.forEach((ticketId, quantity) {
+        final ticket = _tickets.firstWhere(
+          (element) => element['id'].toString() == ticketId,
+          orElse: () => <String, dynamic>{},
         );
-      }
+        if (ticket.isNotEmpty && quantity > 0) {
+          items.add(
+            _bookingService.buildBookingItem(
+              itemType: 'TICKET',
+              itemId: ticket['id'].toString(),
+              itemCode: ticket['code']?.toString() ?? '',
+              itemName: ticket['name']?.toString() ?? 'Vé',
+              quantity: quantity,
+              unitPrice: (ticket['price'] as num?) ?? 0,
+            ),
+          );
+        }
+      });
     }
 
     _selectedOptions.forEach((optionId, quantity) {
@@ -453,58 +361,20 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
   Future<void> _submit() async {
     if (_service == null) return;
 
-    if (_selectedDate == null) {
-      _showMessage('Vui lòng chọn ngày đặt dịch vụ.');
-      return;
-    }
-    if (_startTime == null || _endTime == null) {
-      _showMessage('Vui lòng chọn khung giờ sử dụng.');
-      return;
-    }
-    // Validate time is not in the past
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final isToday = _selectedDate!.year == today.year &&
-        _selectedDate!.month == today.month &&
-        _selectedDate!.day == today.day;
-
-    if (isToday) {
-      final nowTime = TimeOfDay.fromDateTime(now);
-      final startMinutes = _startTime!.hour * 60 + _startTime!.minute;
-      final nowMinutes = nowTime.hour * 60 + nowTime.minute;
-      if (startMinutes <= nowMinutes) {
-        _showMessage('Thời gian bắt đầu phải sau thời gian hiện tại.', isError: true);
-        return;
-      }
-      final endMinutes = _endTime!.hour * 60 + _endTime!.minute;
-      if (endMinutes <= nowMinutes) {
-        _showMessage('Thời gian kết thúc phải sau thời gian hiện tại.', isError: true);
-        return;
-      }
-    }
-
-    final duration = _calculateDurationHours();
-    if (duration == null || duration <= 0) {
-      _showMessage('Khung giờ không hợp lệ.');
-      return;
-    }
-
-    // Validate min duration
-    final minDuration = _service!['minDurationHours'] is num
-        ? (_service!['minDurationHours'] as num).toDouble()
-        : 1.0;
-    if (duration < minDuration) {
-      _showMessage(
-          'Thời lượng tối thiểu là ${minDuration.toStringAsFixed(1)} giờ. Vui lòng chọn lại khung giờ.',
-          isError: true);
-      return;
-    }
+    // Validate tickets selection
     if (_bookingType == 'COMBO_BASED' && _selectedComboId == null) {
       _showMessage('Vui lòng chọn gói combo.');
       return;
     }
-    if (_bookingType == 'TICKET_BASED' && _selectedTicketId == null) {
-      _showMessage('Vui lòng chọn loại vé.');
+    if (_bookingType == 'TICKET_BASED' && _selectedTickets.isEmpty) {
+      _showMessage('Vui lòng chọn ít nhất một loại vé.');
+      return;
+    }
+
+    // Validate total quantity > 0
+    final totalQuantity = _selectedTickets.values.fold<int>(0, (sum, qty) => sum + qty);
+    if (_bookingType == 'TICKET_BASED' && totalQuantity <= 0) {
+      _showMessage('Vui lòng chọn số lượng vé.');
       return;
     }
 
@@ -519,13 +389,20 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
     });
 
     try {
+      // Tính tổng số người từ các vé đã chọn
+      final totalPeople = _selectedTickets.values.fold<int>(0, (sum, qty) => sum + qty);
+      
+      // Sử dụng ngày hiện tại và thời gian mặc định (không quan trọng vì chỉ tính theo vé)
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      
       final booking = await _bookingService.createBooking(
         serviceId: widget.serviceId,
-        bookingDate: _selectedDate!,
-        startTime: _formatTimeOfDay(_startTime!),
-        endTime: _formatTimeOfDay(_endTime!),
-        durationHours: duration,
-        numberOfPeople: _numberOfPeople,
+        bookingDate: today, // Ngày hiện tại
+        startTime: '08:00', // Thời gian mặc định
+        endTime: '10:00', // Thời gian mặc định
+        durationHours: 2.0, // Duration mặc định
+        numberOfPeople: totalPeople > 0 ? totalPeople : 1,
         totalAmount: totalAmount,
         purpose: _purposeController.text.trim().isEmpty
             ? null
@@ -738,18 +615,12 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                             children: [
                               _buildServiceInfoCard(),
                               const SizedBox(height: 16),
-                              _buildDateSelector(),
-                              const SizedBox(height: 16),
-                              _buildTimeSelector(),
-                              const SizedBox(height: 16),
                               if (_bookingType == 'COMBO_BASED') _buildCombosSection(),
                               if (_bookingType == 'TICKET_BASED')
                                 _buildTicketsSection(),
                               if (_bookingType == 'OPTION_BASED' ||
                                   _bookingType == 'STANDARD')
                                 _buildOptionsSection(),
-                              const SizedBox(height: 16),
-                              _buildPeopleSelector(),
                               const SizedBox(height: 16),
                               _buildPurposeField(),
                               const SizedBox(height: 16),
@@ -900,525 +771,11 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
     );
   }
 
-  Widget _buildDateSelector() {
-    final detail = _service;
-    if (detail == null) return const SizedBox.shrink();
+  // Đã xóa _buildDateSelector và _nextAllowedDate vì không cần chọn thời gian nữa
 
-    final today = DateTime.now();
-    final normalizedToday = DateTime(today.year, today.month, today.day);
-    final lastDate =
-        normalizedToday.add(Duration(days: _advanceBookingDays(detail)));
-    bool predicate(DateTime date) => _isDateAllowed(detail, date);
+  // Đã xóa _buildTimeSelector vì không cần chọn thời gian nữa
 
-    final firstSelectable =
-        _nextAllowedDate(detail, normalizedToday, lastDate, predicate);
-    if (firstSelectable == null) {
-      return _glassPanel(
-        child: _buildDetailRow(
-          icon: CupertinoIcons.calendar_today,
-          label: 'Ngày sử dụng',
-          value: 'Hiện không có ngày phù hợp để đặt lịch',
-        ),
-      );
-    }
-
-    DateTime initialCandidate =
-        (_selectedDate ?? normalizedToday).isBefore(firstSelectable)
-            ? firstSelectable
-            : _selectedDate ?? normalizedToday;
-
-    if (initialCandidate.isAfter(lastDate)) {
-      initialCandidate = firstSelectable;
-    }
-
-    if (!predicate(initialCandidate)) {
-      final fallback =
-          _nextAllowedDate(detail, initialCandidate, lastDate, predicate);
-      initialCandidate = fallback ?? firstSelectable;
-    }
-
-    return _glassPanel(
-      child: InkWell(
-        onTap: () async {
-          final picked = await showDatePicker(
-            context: context,
-            initialDate: initialCandidate,
-            firstDate: firstSelectable,
-            lastDate: lastDate,
-            selectableDayPredicate: predicate,
-          );
-          if (picked != null) {
-            setState(() {
-              _selectedDate = picked;
-            });
-            final availability = _availabilityForDate(detail, picked);
-            if (availability != null) {
-              setState(() {
-                _startTime = _parseTimeOfDay(availability['startTime']);
-                _endTime = _parseTimeOfDay(availability['endTime']);
-              });
-            }
-            if (!_isWithinLoadedRange(picked)) {
-              await _reloadBookedSlots(anchor: picked);
-            }
-          }
-        },
-        borderRadius: BorderRadius.circular(24),
-        child: _buildDetailRow(
-          icon: CupertinoIcons.calendar_today,
-          label: 'Ngày sử dụng',
-          value: _selectedDate != null
-              ? DateFormat('EEEE, dd/MM/yyyy', 'vi_VN').format(_selectedDate!)
-              : 'Chọn ngày',
-        ),
-      ),
-    );
-  }
-
-  DateTime? _nextAllowedDate(
-    Map<String, dynamic> detail,
-    DateTime start,
-    DateTime end,
-    bool Function(DateTime) predicate,
-  ) {
-    DateTime current =
-        DateTime(start.year, start.month, start.day); // normalize
-    while (!current.isAfter(end)) {
-      if (predicate(current)) {
-        return current;
-      }
-      current = current.add(const Duration(days: 1));
-    }
-    return null;
-  }
-
-  Widget _buildTimeSelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: _glassPanel(
-                child: InkWell(
-                  onTap: () async {
-                    final now = TimeOfDay.now();
-                    final today = DateTime.now();
-                    final isToday = _selectedDate != null &&
-                        _selectedDate!.year == today.year &&
-                        _selectedDate!.month == today.month &&
-                        _selectedDate!.day == today.day;
-
-                    final time = await showTimePicker(
-                      context: context,
-                      initialTime: _startTime ?? now,
-                    );
-                    if (time != null) {
-                      // Validate: if selected date is today, start time must be in the future
-                      if (isToday) {
-                        final timeMinutes = time.hour * 60 + time.minute;
-                        final nowMinutes = now.hour * 60 + now.minute;
-                        if (timeMinutes <= nowMinutes) {
-                          _showMessage('Thời gian bắt đầu phải sau thời gian hiện tại.', isError: true);
-                          return;
-                        }
-                      }
-
-                      setState(() {
-                        _startTime = time;
-                        // Reset end time if it's before new start time
-                        if (_endTime != null) {
-                          final startMinutes = time.hour * 60 + time.minute;
-                          final endMinutes = _endTime!.hour * 60 + _endTime!.minute;
-                          if (endMinutes <= startMinutes) {
-                            _endTime = null;
-                          }
-                        }
-                      });
-
-                      // Validate min duration if end time is set
-                      if (_endTime != null) {
-                        _validateTimeRange();
-                      }
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(24),
-                  child: _buildDetailRow(
-                    icon: CupertinoIcons.clock,
-                    label: 'Bắt đầu',
-                    value: _startTime != null
-                        ? _startTime!.format(context)
-                        : 'Chọn giờ',
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _glassPanel(
-                child: InkWell(
-                  onTap: () async {
-                    if (_startTime == null) {
-                      _showMessage('Vui lòng chọn thời gian bắt đầu trước.', isError: true);
-                      return;
-                    }
-
-                    final now = TimeOfDay.now();
-                    final today = DateTime.now();
-                    final isToday = _selectedDate != null &&
-                        _selectedDate!.year == today.year &&
-                        _selectedDate!.month == today.month &&
-                        _selectedDate!.day == today.day;
-
-                    final initialEndTime = _endTime ??
-                        (_addDuration(_startTime!, 1.0) ?? _startTime!);
-
-                    final time = await showTimePicker(
-                      context: context,
-                      initialTime: initialEndTime,
-                    );
-                    if (time != null) {
-                      // Validate: end time must be after start time
-                      final startMinutes = _startTime!.hour * 60 + _startTime!.minute;
-                      final endMinutes = time.hour * 60 + time.minute;
-                      if (endMinutes <= startMinutes) {
-                        _showMessage('Thời gian kết thúc phải sau thời gian bắt đầu.', isError: true);
-                        return;
-                      }
-
-                      // Validate: if selected date is today, end time must be in the future
-                      if (isToday) {
-                        final nowMinutes = now.hour * 60 + now.minute;
-                        if (endMinutes <= nowMinutes) {
-                          _showMessage('Thời gian kết thúc phải sau thời gian hiện tại.', isError: true);
-                          return;
-                        }
-                      }
-
-                      setState(() {
-                        _endTime = time;
-                      });
-
-                      // Validate min duration
-                      _validateTimeRange();
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(24),
-                  child: _buildDetailRow(
-                    icon: CupertinoIcons.timer,
-                    label: 'Kết thúc',
-                    value: _endTime != null
-                        ? _endTime!.format(context)
-                        : 'Chọn giờ',
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _buildBookedSlotsSection(),
-      ],
-    );
-  }
-
-  Widget _buildBookedSlotsSection() {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
-
-    // Loading state
-    if (_bookedSlotsLoading) {
-      return _glassPanel(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: colorScheme.primary,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  'Đang tải các khung giờ đã được đặt...',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.82)
-                            : AppColors.textPrimary,
-                      ) ??
-                      TextStyle(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.82)
-                            : AppColors.textPrimary,
-                      ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // Error state
-    if (_bookedSlotsError != null) {
-      return _glassPanel(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildDetailRow(
-                icon: Icons.error_outline,
-                label: 'Lỗi',
-                value: 'Không thể tải các khung giờ đã đặt',
-                isError: true,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                _bookedSlotsError!,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.75)
-                          : AppColors.textSecondary,
-                    ) ??
-                    TextStyle(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.75)
-                          : AppColors.textSecondary,
-                    ),
-              ),
-              const SizedBox(height: 20),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.icon(
-                  onPressed: () => _reloadBookedSlots(
-                      anchor: _selectedDate ?? DateTime.now()),
-                  icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text('Thử lại'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: colorScheme.primary,
-                    foregroundColor: colorScheme.onPrimary,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // Empty state
-    if (_bookedSlotsByDate.isEmpty) {
-      return _glassPanel(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: _buildDetailRow(
-            icon: CupertinoIcons.calendar,
-            label: 'Thông tin',
-            value: 'Chưa có khung giờ nào được đặt trong khoảng thời gian này.',
-          ),
-        ),
-      );
-    }
-
-    // Get all dates with booked slots
-    final allDates = _bookedSlotsByDate.keys.toList()..sort();
-    final selected = _selectedDate;
-    final selectedKey = selected != null
-        ? DateFormat('yyyy-MM-dd').format(selected)
-        : null;
-    final selectedSlots = selectedKey != null
-        ? (_bookedSlotsByDate[selectedKey] ?? const [])
-        : const <_BookedSlot>[];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Section header
-        const SizedBox(height: 28),
-        Text(
-          'Khung giờ đã được đặt',
-          style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: colorScheme.primary,
-              ) ??
-              TextStyle(
-                fontWeight: FontWeight.w700,
-                color: colorScheme.primary,
-                fontSize: 18,
-              ),
-        ),
-        const SizedBox(height: 18),
-
-        // Dates summary
-        if (allDates.isNotEmpty) ...[
-          _glassPanel(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildDetailRow(
-                    icon: CupertinoIcons.calendar_today,
-                    label: 'Các ngày đã có đặt chỗ',
-                    value: '${allDates.length} ngày có đặt chỗ',
-                  ),
-                  const SizedBox(height: 18),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: allDates.take(7).map((dateKey) {
-                      final date = DateTime.parse(dateKey);
-                      final slots = _bookedSlotsByDate[dateKey] ?? [];
-                      final isSelected = selectedKey == dateKey;
-
-                      return InkWell(
-                        onTap: () {
-                          setState(() {
-                            _selectedDate = date;
-                          });
-                          if (!_isWithinLoadedRange(date)) {
-                            _reloadBookedSlots(anchor: date);
-                          }
-                        },
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? colorScheme.primaryContainer.withValues(alpha: 0.3)
-                                : colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.3 : 0.5),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: isSelected
-                                  ? colorScheme.primary.withValues(alpha: 0.3)
-                                  : colorScheme.outline.withValues(alpha: 0.1),
-                            ),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                DateFormat('dd/MM', 'vi_VN').format(date),
-                                style: theme.textTheme.labelMedium?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                      color: isSelected
-                                          ? colorScheme.primary
-                                          : (isDark ? Colors.white : AppColors.textPrimary),
-                                    ) ??
-                                    TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: isSelected
-                                          ? colorScheme.primary
-                                          : (isDark ? Colors.white : AppColors.textPrimary),
-                                      fontSize: 12,
-                                    ),
-                              ),
-                              const SizedBox(height: 4),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    CupertinoIcons.clock,
-                                    size: 12,
-                                    color: isSelected
-                                        ? colorScheme.primary
-                                        : (isDark ? Colors.white70 : AppColors.textSecondary),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '${slots.length}',
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                          color: isSelected
-                                              ? colorScheme.primary
-                                              : (isDark
-                                                  ? Colors.white70
-                                                  : AppColors.textSecondary),
-                                        ) ??
-                                        TextStyle(
-                                          color: isSelected
-                                              ? colorScheme.primary
-                                              : (isDark
-                                                  ? Colors.white70
-                                                  : AppColors.textSecondary),
-                                          fontSize: 11,
-                                        ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-        ],
-
-        // Selected date slots
-        if (selected != null && selectedSlots.isNotEmpty) ...[
-          _glassPanel(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildDetailRow(
-                    icon: CupertinoIcons.lock_circle_fill,
-                    label: 'Khung giờ đã được đặt',
-                    value: DateFormat('EEEE, dd/MM/yyyy', 'vi_VN').format(selected),
-                  ),
-                  const SizedBox(height: 20),
-                  ...selectedSlots.map(
-                    (slot) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _buildBookedSlotItem(slot, theme, colorScheme, isDark),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ] else if (selected != null && selectedSlots.isEmpty) ...[
-          _glassPanel(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: _buildDetailRow(
-                icon: CupertinoIcons.calendar,
-                label: 'Thông tin',
-                value: 'Chưa có khung giờ nào được đặt trong ngày ${DateFormat('dd/MM/yyyy', 'vi_VN').format(selected)}.',
-              ),
-            ),
-          ),
-        ] else ...[
-          _glassPanel(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: _buildDetailRow(
-                icon: CupertinoIcons.calendar,
-                label: 'Hướng dẫn',
-                value: 'Chọn ngày để xem những khung giờ đã được đặt trước.',
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
+  // Đã xóa _buildBookedSlotsSection vì không cần chọn thời gian nữa
 
   Widget _glassPanel({
     required Widget child,
@@ -1526,235 +883,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
     );
   }
 
-  Widget _buildBookedSlotItem(
-    _BookedSlot slot,
-    ThemeData theme,
-    ColorScheme colorScheme,
-    bool isDark,
-  ) {
-    final statusColor = _getStatusColor(slot.status, colorScheme);
-    final statusLabel = _translateBookingStatus(slot.status);
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: statusColor.withValues(alpha: isDark ? 0.15 : 0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: statusColor.withValues(alpha: isDark ? 0.4 : 0.3),
-          width: 1.5,
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: isDark ? 0.22 : 0.12),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: statusColor.withValues(alpha: 0.2),
-                width: 1,
-              ),
-            ),
-            child: Icon(
-              CupertinoIcons.clock_fill,
-              size: 22,
-              color: statusColor,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Khung giờ',
-                  style: theme.textTheme.labelMedium?.copyWith(
-                        color: isDark
-                            ? Colors.white70
-                            : AppColors.textSecondary,
-                        fontSize: 13,
-                      ) ??
-                      TextStyle(
-                        color: isDark ? Colors.white70 : AppColors.textSecondary,
-                        fontSize: 13,
-                      ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${_formatDisplayTime(slot.start)} - ${_formatDisplayTime(slot.end)}',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.white : AppColors.textPrimary,
-                        fontSize: 16,
-                      ) ??
-                      TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.white : AppColors.textPrimary,
-                        fontSize: 16,
-                      ),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: isDark ? 0.28 : 0.16),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: statusColor.withValues(alpha: isDark ? 0.6 : 0.4),
-                    ),
-                  ),
-                  child: Text(
-                    statusLabel,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: statusColor,
-                        ) ??
-                        TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: statusColor,
-                          fontSize: 12,
-                        ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Color _getStatusColor(String status, ColorScheme colorScheme) {
-    switch (status.toUpperCase()) {
-      case 'PENDING':
-        return Colors.orange;
-      case 'APPROVED':
-        return Colors.blue;
-      case 'COMPLETED':
-        return Colors.green;
-      case 'PAID':
-        return Colors.teal;
-      default:
-        return colorScheme.primary;
-    }
-  }
-
-  Future<void> _reloadBookedSlots({DateTime? anchor}) async {
-    final base = anchor ?? DateTime.now();
-    final start = DateTime(base.year, base.month, base.day);
-    final end = start.add(const Duration(days: 30));
-
-    setState(() {
-      _bookedSlotsLoading = true;
-      _bookedSlotsError = null;
-      _bookedSlotsStart = start;
-      _bookedSlotsEnd = end;
-    });
-
-    try {
-      final slots = await _bookingService.getBookedSlots(
-        serviceId: widget.serviceId,
-        from: start,
-        to: end,
-      );
-      if (!mounted) return;
-      setState(() {
-        _bookedSlotsByDate = _groupSlots(slots);
-        _bookedSlotsLoading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _bookedSlotsByDate = {};
-        _bookedSlotsLoading = false;
-        _bookedSlotsError = e.toString().replaceFirst('Exception: ', '');
-      });
-    }
-  }
-
-  Map<String, List<_BookedSlot>> _groupSlots(List<Map<String, dynamic>> raw) {
-    final Map<String, List<_BookedSlot>> grouped = {};
-    for (final slot in raw) {
-      final dateStr = slot['slotDate']?.toString();
-      final startStr = slot['startTime']?.toString();
-      final endStr = slot['endTime']?.toString();
-      if (dateStr == null || startStr == null || endStr == null) {
-        continue;
-      }
-      DateTime date;
-      try {
-        date = DateTime.parse(dateStr);
-      } catch (_) {
-        continue;
-      }
-      final start = _parseSlotTime(startStr);
-      final end = _parseSlotTime(endStr);
-      if (start == null || end == null) {
-        continue;
-      }
-      final key = DateFormat('yyyy-MM-dd').format(date);
-      final status = slot['bookingStatus']?.toString() ?? '';
-      grouped.putIfAbsent(key, () => []);
-      grouped[key]!.add(
-        _BookedSlot(date: date, start: start, end: end, status: status),
-      );
-    }
-
-    for (final entry in grouped.values) {
-      entry.sort((a, b) {
-        final aMinutes = a.start.hour * 60 + a.start.minute;
-        final bMinutes = b.start.hour * 60 + b.start.minute;
-        return aMinutes.compareTo(bMinutes);
-      });
-    }
-
-    return grouped;
-  }
-
-  TimeOfDay? _parseSlotTime(String raw) {
-    final parts = raw.split(':');
-    if (parts.length < 2) {
-      return null;
-    }
-    final hour = int.tryParse(parts[0]);
-    final minute = int.tryParse(parts[1]);
-    if (hour == null || minute == null) {
-      return null;
-    }
-    return TimeOfDay(hour: hour, minute: minute);
-  }
-
-  bool _isWithinLoadedRange(DateTime date) {
-    if (_bookedSlotsStart == null || _bookedSlotsEnd == null) {
-      return false;
-    }
-    final day = DateTime(date.year, date.month, date.day);
-    return !day.isBefore(_bookedSlotsStart!) && !day.isAfter(_bookedSlotsEnd!);
-  }
-
-  String _formatDisplayTime(TimeOfDay time) {
-    final dt = DateTime(0, 1, 1, time.hour, time.minute);
-    return DateFormat('HH:mm').format(dt);
-  }
-
-  String _translateBookingStatus(String status) {
-    switch (status.toUpperCase()) {
-      case 'PAID':
-        return 'Đã thanh toán';
-      case 'PENDING':
-        return 'Chờ duyệt';
-      case 'APPROVED':
-        return 'Đã duyệt';
-      case 'COMPLETED':
-        return 'Hoàn tất';
-      default:
-        return status;
-    }
-  }
+  // Đã xóa tất cả các method liên quan đến booked slots vì không cần chọn thời gian nữa
 
   Widget _buildCombosSection() {
     final theme = Theme.of(context);
@@ -1883,43 +1012,120 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                   fontSize: 18,
                 ),
           ),
+          const SizedBox(height: 4),
+          Text(
+            'Bạn có thể chọn nhiều loại vé (ví dụ: vé người lớn và vé trẻ em)',
+            style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurface.withValues(alpha: 0.6),
+                ) ??
+                TextStyle(
+                  color: colorScheme.onSurface.withValues(alpha: 0.6),
+                  fontSize: 12,
+                ),
+          ),
           const SizedBox(height: 18),
           ..._tickets.map(
-            (ticket) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: RadioListTile<String>(
-                value: ticket['id'].toString(),
-                groupValue: _selectedTicketId, // ignore: deprecated_member_use
-                onChanged: (value) { // ignore: deprecated_member_use
-                  setState(() {
-                    _selectedTicketId = value;
-                  });
-                },
-                title: Text(
-                  ticket['name']?.toString() ?? 'Vé',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.white : AppColors.textPrimary,
-                      ) ??
-                      TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.white : AppColors.textPrimary,
+            (ticket) {
+              final ticketId = ticket['id'].toString();
+              final quantity = _selectedTickets[ticketId] ?? 0;
+              final price = (ticket['price'] as num?) ?? 0;
+              
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            ticket['name']?.toString() ?? 'Vé',
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? Colors.white : AppColors.textPrimary,
+                                ) ??
+                                TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? Colors.white : AppColors.textPrimary,
+                                ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${_formatCurrency(price)} đ / người',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: colorScheme.primary,
+                                ) ??
+                                TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: colorScheme.primary,
+                                  fontSize: 14,
+                                ),
+                          ),
+                        ],
                       ),
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.remove_circle_outline),
+                          onPressed: quantity > 0
+                              ? () {
+                                  setState(() {
+                                    if (quantity > 1) {
+                                      _selectedTickets[ticketId] = quantity - 1;
+                                    } else {
+                                      _selectedTickets.remove(ticketId);
+                                    }
+                                  });
+                                }
+                              : null,
+                          style: IconButton.styleFrom(
+                            foregroundColor: quantity > 0
+                                ? colorScheme.primary
+                                : (isDark ? Colors.white38 : Colors.grey),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: colorScheme.primary.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Text(
+                            '$quantity',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: colorScheme.primary,
+                                ) ??
+                                TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                  color: colorScheme.primary,
+                                ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add_circle_outline),
+                          onPressed: () {
+                            setState(() {
+                              _selectedTickets[ticketId] = (quantity) + 1;
+                            });
+                          },
+                          style: IconButton.styleFrom(
+                            foregroundColor: colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                subtitle: Text(
-                  '${_formatCurrency((ticket['price'] as num?) ?? 0)} đ / người',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: colorScheme.primary,
-                      ) ??
-                      TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: colorScheme.primary,
-                        fontSize: 14,
-                      ),
-                ),
-              ),
-            ),
+              );
+            },
           ),
         ],
       ),
@@ -2052,75 +1258,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
     );
   }
 
-  Widget _buildPeopleSelector() {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
-
-    return _glassPanel(
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: _buildDetailRow(
-              icon: CupertinoIcons.person_3_fill,
-              label: 'Số người tham gia',
-              value: '$_numberOfPeople người',
-            ),
-          ),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.remove_circle_outline),
-                onPressed: _numberOfPeople > 1
-                    ? () => setState(() => _numberOfPeople--)
-                    : null,
-                style: IconButton.styleFrom(
-                  foregroundColor: _numberOfPeople > 1
-                      ? colorScheme.primary
-                      : (isDark ? Colors.white38 : Colors.grey),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: colorScheme.primary.withValues(alpha: 0.3),
-                  ),
-                ),
-                child: Text(
-                  '$_numberOfPeople',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: colorScheme.primary,
-                      ) ??
-                      TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: colorScheme.primary,
-                      ),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.add_circle_outline),
-                onPressed: _numberOfPeople < _maxCapacity
-                    ? () => setState(() => _numberOfPeople++)
-                    : null,
-                style: IconButton.styleFrom(
-                  foregroundColor: _numberOfPeople < _maxCapacity
-                      ? colorScheme.primary
-                      : (isDark ? Colors.white38 : Colors.grey),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  // Đã xóa _buildPeopleSelector vì số người được tính từ vé đã chọn
 
   Widget _buildPurposeField() {
     final theme = Theme.of(context);
@@ -2312,17 +1450,5 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
   }
 }
 
-class _BookedSlot {
-  const _BookedSlot({
-    required this.date,
-    required this.start,
-    required this.end,
-    required this.status,
-  });
-
-  final DateTime date;
-  final TimeOfDay start;
-  final TimeOfDay end;
-  final String status;
-}
+// Đã xóa _BookedSlot class vì không cần chọn thời gian nữa
 

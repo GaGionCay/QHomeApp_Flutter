@@ -547,9 +547,9 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           ],
         ),
 
-        // Price Section
+        // Tickets Section - Chỉ hiển thị tickets, bỏ pricingType và pricePerHour
         const SizedBox(height: 24),
-        _buildPriceSection(service, pricingType, theme, colorScheme, isDark),
+        _buildTicketsSection(service, theme, colorScheme, isDark),
 
         if (description != null && description.isNotEmpty) ...[
           const SizedBox(height: 24),
@@ -756,131 +756,29 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     );
   }
 
-  Widget _buildPriceSection(
+  Widget _buildTicketsSection(
     Map<String, dynamic> service,
-    String pricingType,
     ThemeData theme,
     ColorScheme colorScheme,
     bool isDark,
   ) {
-    final List<Widget> priceWidgets = [];
     final NumberFormat currencyFormatter =
         NumberFormat.currency(locale: 'vi_VN', symbol: '₫');
-
-    // Base price
-    if (pricingType == 'FREE') {
-      priceWidgets.add(
-        _buildPriceCard(
-          theme,
-          colorScheme,
-          isDark,
-          'Miễn phí cho cư dân',
-          CupertinoIcons.checkmark_circle_fill,
-          Colors.green,
-          isHighlight: true,
-        ),
-      );
-    } else {
-      final pricePerHour = service['pricePerHour'] as num?;
-      final pricePerSession = service['pricePerSession'] as num?;
-
-      if (pricingType == 'SESSION' && pricePerSession != null) {
-        priceWidgets.add(
-          _buildPriceCard(
-            theme,
-            colorScheme,
-            isDark,
-            '${currencyFormatter.format(pricePerSession)} / lượt',
-            CupertinoIcons.ticket_fill,
-            colorScheme.primary,
-            isHighlight: true,
-          ),
-        );
-      } else if (pricePerHour != null && pricePerHour > 0) {
-        priceWidgets.add(
-          _buildPriceCard(
-            theme,
-            colorScheme,
-            isDark,
-            '${currencyFormatter.format(pricePerHour)} / giờ',
-            CupertinoIcons.clock_fill,
-            colorScheme.primary,
-            isHighlight: true,
-          ),
-        );
-      }
-    }
-
-    // Combos
-    final combos = _parseList(service['combos']);
-    if (combos.isNotEmpty) {
-      priceWidgets.add(
-        _buildPriceListSection(
-          theme,
-          colorScheme,
-          isDark,
-          'Gói Combo',
-          CupertinoIcons.square_stack_3d_up_fill,
-          combos,
-          currencyFormatter,
-        ),
-      );
-    }
-
-    // Tickets
+    
+    // Chỉ hiển thị Tickets - bỏ pricingType và pricePerHour
     final tickets = _parseList(service['tickets']);
-    if (tickets.isNotEmpty) {
-      priceWidgets.add(
-        _buildPriceListSection(
-          theme,
-          colorScheme,
-          isDark,
-          'Loại Vé',
-          CupertinoIcons.ticket,
-          tickets,
-          currencyFormatter,
-        ),
-      );
-    }
-
-    // Options
-    final options = _parseList(service['options']);
-    if (options.isNotEmpty) {
-      priceWidgets.add(
-        _buildPriceListSection(
-          theme,
-          colorScheme,
-          isDark,
-          'Tùy chọn bổ sung',
-          CupertinoIcons.add_circled,
-          options,
-          currencyFormatter,
-        ),
-      );
-    }
-
-    if (priceWidgets.isEmpty) {
+    if (tickets.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Bảng giá',
-          style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: colorScheme.primary,
-              ) ??
-              TextStyle(
-                fontWeight: FontWeight.w700,
-                color: colorScheme.primary,
-                fontSize: 18,
-              ),
-        ),
-        const SizedBox(height: 16),
-        ...priceWidgets,
-      ],
+    return _buildPriceListSection(
+      theme,
+      colorScheme,
+      isDark,
+      'Loại Vé',
+      CupertinoIcons.ticket,
+      tickets,
+      currencyFormatter,
     );
   }
 
