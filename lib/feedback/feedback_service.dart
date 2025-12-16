@@ -15,6 +15,7 @@ class FeedbackRequest {
     required this.createdAt,
     this.updatedAt,
     this.imagePath,
+    this.serviceBookingId,
   });
 
   final String id;
@@ -28,6 +29,7 @@ class FeedbackRequest {
   final DateTime createdAt;
   final DateTime? updatedAt;
   final String? imagePath;
+  final String? serviceBookingId;
 
   factory FeedbackRequest.fromJson(Map<String, dynamic> json) {
     DateTime? parseDate(String? value) {
@@ -51,6 +53,7 @@ class FeedbackRequest {
       createdAt: parseDate(json['createdAt']?.toString()) ?? DateTime.now(),
       updatedAt: parseDate(json['updatedAt']?.toString()),
       imagePath: json['imagePath']?.toString(),
+      serviceBookingId: json['serviceBookingId']?.toString(),
     );
   }
 }
@@ -173,6 +176,7 @@ class FeedbackService {
     required String priority,
     String status = 'PENDING',
     String? imagePath,
+    String? serviceBookingId,
   }) async {
     try {
       final response = await _dio.post(
@@ -182,7 +186,8 @@ class FeedbackService {
           'content': content,
           'priority': priority,
           'status': status,
-          'imagePath': imagePath,
+          if (imagePath != null && imagePath.isNotEmpty) 'imagePath': imagePath,
+          if (serviceBookingId != null && serviceBookingId.isNotEmpty) 'serviceBookingId': serviceBookingId,
         },
       );
       return FeedbackRequest.fromJson(Map<String, dynamic>.from(response.data as Map));

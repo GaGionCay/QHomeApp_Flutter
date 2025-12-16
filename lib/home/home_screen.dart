@@ -2196,7 +2196,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       _ServiceCardData(
         title: 'Phản ánh',
-        subtitle: 'Gửi yêu cầu hỗ trợ tới ban quản lý',
+        subtitle: 'Phản ánh về tiện ích nội khu sau khi sử dụng',
         icon: Icons.support_agent_outlined,
         accent: AppColors.warning,
         onTap: () {

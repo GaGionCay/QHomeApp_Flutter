@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../auth/asset_maintenance_api_client.dart';
 import '../auth/customer_interaction_api_client.dart';
+import '../service_registration/service_booking_service.dart';
 import '../theme/app_colors.dart';
 import 'feedback_service.dart';
 
@@ -14,16 +16,20 @@ class FeedbackScreen extends StatefulWidget {
 
 class _FeedbackScreenState extends State<FeedbackScreen> {
   late final FeedbackService _feedbackService;
+  late final ServiceBookingService _bookingService;
   final ScrollController _scrollController = ScrollController();
 
   final List<FeedbackRequest> _requests = [];
+  List<Map<String, dynamic>> _paidBookings = [];
   Map<String, int> _statusCounts = const {};
 
   bool _loading = true;
   bool _loadingMore = false;
   bool _countsLoading = true;
+  bool _loadingBookings = true;
   String? _error;
   String? _countsError;
+  String? _bookingsError;
 
   int _currentPage = 0;
   bool _isLastPage = false;
@@ -35,9 +41,11 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   void initState() {
     super.initState();
     _feedbackService = FeedbackService(CustomerInteractionApiClient());
+    _bookingService = ServiceBookingService(AssetMaintenanceApiClient());
     _scrollController.addListener(_onScroll);
     _loadCounts();
     _loadRequests(reset: true);
+    _loadPaidBookings();
   }
 
   @override
@@ -124,11 +132,6 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     }
   }
 
-  Future<void> _refresh() async {
-    await _loadCounts();
-    await _loadRequests(reset: true);
-  }
-
   void _onStatusSelected(String? status) {
     setState(() {
       _statusFilter = status;
@@ -145,13 +148,38 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     _loadCounts();
   }
 
-  Future<void> _openCreateDialog() async {
+  Future<void> _loadPaidBookings() async {
+    setState(() {
+      _loadingBookings = true;
+      _bookingsError = null;
+    });
+    try {
+      final bookings = await _bookingService.getPaidBookings();
+      if (!mounted) return;
+      setState(() {
+        _paidBookings = bookings;
+        _loadingBookings = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _bookingsError = e.toString();
+        _loadingBookings = false;
+      });
+    }
+  }
+
+  Future<void> _openCreateDialog({String? bookingId}) async {
     final result = await showModalBottomSheet<FeedbackRequest>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => FeedbackFormSheet(service: _feedbackService),
+      builder: (_) => FeedbackFormSheet(
+        service: _feedbackService,
+        bookingService: _bookingService,
+        selectedBookingId: bookingId,
+      ),
     );
 
     if (result != null && mounted) {
@@ -161,7 +189,16 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
         ),
       );
       await _refresh();
+      await _loadPaidBookings(); // Reload bookings sau khi gửi feedback
     }
+  }
+
+  Future<void> _refresh() async {
+    await Future.wait([
+      _loadCounts(),
+      _loadRequests(reset: true),
+      _loadPaidBookings(),
+    ]);
   }
 
   @override
@@ -173,11 +210,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
         backgroundColor: AppColors.primaryEmerald,
         foregroundColor: Colors.white,
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openCreateDialog,
-        icon: const Icon(Icons.add_comment_outlined),
-        label: const Text('Gửi phản ánh'),
-      ),
+      floatingActionButton: null, // Bỏ FAB vì sẽ click vào booking để gửi feedback
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: CustomScrollView(
@@ -190,6 +223,12 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildHeader(theme),
+                    const SizedBox(height: 16),
+                    // Section: Dịch vụ đã sử dụng
+                    _buildPaidBookingsSection(theme),
+                    const SizedBox(height: 16),
+                    // Section: Phản ánh của tôi
+                    _buildMyFeedbacksHeader(theme),
                     const SizedBox(height: 12),
                     _buildFilters(theme),
                     const SizedBox(height: 12),
@@ -225,7 +264,10 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                         right: 16,
                         bottom: index == _requests.length - 1 ? 24 : 12,
                       ),
-                      child: _FeedbackCard(request: request),
+                      child: _FeedbackCard(
+                        request: request,
+                        bookingService: _bookingService,
+                      ),
                     );
                   },
                   childCount: _requests.length,
@@ -252,8 +294,96 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
         const SizedBox(width: 12),
         Expanded(
           child: Text(
-            'Theo dõi phản ánh của bạn và tương tác với ban quản lý.',
+            'Phản ánh về tiện ích nội khu sau khi sử dụng dịch vụ.',
             style: theme.textTheme.bodyMedium,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaidBookingsSection(ThemeData theme) {
+    if (_loadingBookings) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24.0),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_bookingsError != null) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.red.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          'Không thể tải danh sách dịch vụ: ${_bookingsError!.replaceFirst('Exception: ', '')}',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: Colors.red,
+          ),
+        ),
+      );
+    }
+
+    if (_paidBookings.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, color: theme.colorScheme.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Bạn chưa có dịch vụ nào đã thanh toán. Sau khi thanh toán dịch vụ, bạn có thể phản ánh tại đây.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Dịch vụ đã sử dụng',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: theme.colorScheme.primary,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ..._paidBookings.map((booking) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _PaidBookingCard(
+              booking: booking,
+              onTap: () => _openCreateDialog(bookingId: booking['id']?.toString()),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildMyFeedbacksHeader(ThemeData theme) {
+    return Row(
+      children: [
+        Icon(Icons.history, color: theme.colorScheme.primary),
+        const SizedBox(width: 12),
+        Text(
+          'Phản ánh của tôi',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: theme.colorScheme.primary,
           ),
         ),
       ],
@@ -466,10 +596,54 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
-class _FeedbackCard extends StatelessWidget {
-  const _FeedbackCard({required this.request});
+class _FeedbackCard extends StatefulWidget {
+  const _FeedbackCard({
+    required this.request,
+    this.bookingService,
+  });
 
   final FeedbackRequest request;
+  final ServiceBookingService? bookingService;
+
+  @override
+  State<_FeedbackCard> createState() => _FeedbackCardState();
+}
+
+class _FeedbackCardState extends State<_FeedbackCard> {
+  Map<String, dynamic>? _bookingDetails;
+  bool _loadingBooking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.request.serviceBookingId != null &&
+        widget.request.serviceBookingId!.isNotEmpty &&
+        widget.bookingService != null) {
+      _loadBookingDetails();
+    }
+  }
+
+  Future<void> _loadBookingDetails() async {
+    if (widget.request.serviceBookingId == null ||
+        widget.request.serviceBookingId!.isEmpty ||
+        widget.bookingService == null) {
+      return;
+    }
+
+    setState(() => _loadingBooking = true);
+    try {
+      final booking = await widget.bookingService!
+          .getBookingById(widget.request.serviceBookingId!);
+      if (!mounted) return;
+      setState(() {
+        _bookingDetails = booking;
+        _loadingBooking = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingBooking = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -490,14 +664,14 @@ class _FeedbackCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        request.title,
+                        widget.request.title,
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        '#${request.requestCode}',
+                        '#${widget.request.requestCode}',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.primary,
                           letterSpacing: 0.4,
@@ -509,16 +683,22 @@ class _FeedbackCard extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    _buildStatusBadge(request.status, theme),
+                    _buildStatusBadge(widget.request.status, theme),
                     const SizedBox(height: 6),
-                    _buildPriorityBadge(request.priority, theme),
+                    _buildPriorityBadge(widget.request.priority, theme),
                   ],
                 ),
               ],
             ),
+            // Hiển thị thông tin dịch vụ nếu có
+            if (widget.request.serviceBookingId != null &&
+                widget.request.serviceBookingId!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _buildServiceInfo(theme),
+            ],
             const SizedBox(height: 12),
             Text(
-              request.content,
+              widget.request.content,
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 12),
@@ -527,13 +707,115 @@ class _FeedbackCard extends StatelessWidget {
                 Icon(Icons.schedule, size: 16, color: theme.colorScheme.outline),
                 const SizedBox(width: 6),
                 Text(
-                  formatter.format(request.createdAt.toLocal()),
+                  formatter.format(widget.request.createdAt.toLocal()),
                   style: theme.textTheme.bodySmall,
                 ),
               ],
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildServiceInfo(ThemeData theme) {
+    if (_loadingBooking) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Đang tải thông tin dịch vụ...',
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_bookingDetails == null) {
+      return const SizedBox.shrink();
+    }
+
+    final serviceName =
+        _bookingDetails!['serviceName']?.toString() ?? 'Dịch vụ';
+    final bookingDate = _bookingDetails!['bookingDate']?.toString();
+    final bookingCode = _bookingDetails!['bookingCode']?.toString() ?? '';
+
+    String dateText = '';
+    if (bookingDate != null) {
+      try {
+        final date = DateTime.parse(bookingDate);
+        dateText = DateFormat('dd/MM/yyyy').format(date);
+      } catch (_) {
+        dateText = bookingDate;
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.event_available,
+            color: theme.colorScheme.primary,
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Về dịch vụ: $serviceName',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                if (dateText.isNotEmpty || bookingCode.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 12,
+                    children: [
+                      if (dateText.isNotEmpty)
+                        Text(
+                          'Ngày: $dateText',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      if (bookingCode.isNotEmpty)
+                        Text(
+                          'Mã: $bookingCode',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -578,9 +860,16 @@ class _FeedbackCard extends StatelessWidget {
 }
 
 class FeedbackFormSheet extends StatefulWidget {
-  const FeedbackFormSheet({super.key, required this.service});
+  const FeedbackFormSheet({
+    super.key,
+    required this.service,
+    required this.bookingService,
+    this.selectedBookingId,
+  });
 
   final FeedbackService service;
+  final ServiceBookingService bookingService;
+  final String? selectedBookingId;
 
   @override
   State<FeedbackFormSheet> createState() => _FeedbackFormSheetState();
@@ -593,6 +882,32 @@ class _FeedbackFormSheetState extends State<FeedbackFormSheet> {
 
   String _priority = 'MEDIUM';
   bool _submitting = false;
+  bool _loadingBooking = false;
+  Map<String, dynamic>? _selectedBooking;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.selectedBookingId != null) {
+      _loadBookingDetails();
+    }
+  }
+
+  Future<void> _loadBookingDetails() async {
+    if (widget.selectedBookingId == null) return;
+    setState(() => _loadingBooking = true);
+    try {
+      final booking = await widget.bookingService.getBookingById(widget.selectedBookingId!);
+      if (!mounted) return;
+      setState(() {
+        _selectedBooking = booking;
+        _loadingBooking = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingBooking = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -609,6 +924,7 @@ class _FeedbackFormSheetState extends State<FeedbackFormSheet> {
         title: _titleController.text.trim(),
         content: _contentController.text.trim(),
         priority: _priority,
+        serviceBookingId: widget.selectedBookingId,
       );
       if (!mounted) return;
       Navigator.pop(context, request);
@@ -629,6 +945,7 @@ class _FeedbackFormSheetState extends State<FeedbackFormSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return DraggableScrollableSheet(
       initialChildSize: 0.8,
       minChildSize: 0.5,
@@ -636,7 +953,7 @@ class _FeedbackFormSheetState extends State<FeedbackFormSheet> {
       builder: (context, controller) {
         return Container(
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
+            color: theme.colorScheme.surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -659,15 +976,30 @@ class _FeedbackFormSheetState extends State<FeedbackFormSheet> {
                     ),
                   ),
                   Text(
-                    'Gửi phản ánh mới',
+                    widget.selectedBookingId != null
+                        ? 'Phản ánh về dịch vụ'
+                        : 'Gửi phản ánh mới',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 16),
+                  // Hiển thị thông tin booking nếu đã chọn
+                  if (widget.selectedBookingId != null) ...[
+                    if (_loadingBooking)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    else if (_selectedBooking != null)
+                      _buildSelectedBookingInfo(_selectedBooking!, theme),
+                    const SizedBox(height: 16),
+                  ],
                   TextFormField(
                     controller: _titleController,
                     decoration: const InputDecoration(
                       labelText: 'Tiêu đề',
-                      hintText: 'Ví dụ: Tiếng ồn từ căn hộ tầng trên',
+                      hintText: 'Hãy ghi tiêu đề rõ ràng để ban quản lý phân loại yêu cầu dễ dàng hơn',
                     ),
                     textInputAction: TextInputAction.next,
                     maxLength: 255,
@@ -769,4 +1101,212 @@ const Map<String, Color> _priorityColors = <String, Color>{
   'HIGH': Color(0xFFFF7043),
   'URGENT': Color(0xFFD32F2F),
 };
+
+// Widget hiển thị thông tin booking đã chọn trong form
+Widget _buildSelectedBookingInfo(
+  Map<String, dynamic> booking,
+  ThemeData theme,
+) {
+  final serviceName = booking['serviceName']?.toString() ?? 'Dịch vụ';
+  final bookingDate = booking['bookingDate']?.toString();
+  final bookingCode = booking['bookingCode']?.toString() ?? '';
+  final totalAmount = booking['totalAmount'];
+
+  String dateText = '';
+  if (bookingDate != null) {
+    try {
+      final date = DateTime.parse(bookingDate);
+      dateText = DateFormat('dd/MM/yyyy').format(date);
+    } catch (_) {
+      dateText = bookingDate;
+    }
+  }
+
+  return Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(
+        color: theme.colorScheme.primary.withValues(alpha: 0.3),
+      ),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.event_available,
+              color: theme.colorScheme.primary,
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Dịch vụ đã chọn',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          serviceName,
+          style: theme.textTheme.bodyLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        if (dateText.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Ngày sử dụng: $dateText',
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
+        if (bookingCode.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Mã đặt: $bookingCode',
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
+        if (totalAmount != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Tổng tiền: ${NumberFormat.currency(locale: 'vi_VN', symbol: '₫').format(totalAmount)}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+// Widget hiển thị paid booking card
+class _PaidBookingCard extends StatelessWidget {
+  const _PaidBookingCard({
+    required this.booking,
+    required this.onTap,
+  });
+
+  final Map<String, dynamic> booking;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    final serviceName = booking['serviceName']?.toString() ?? 'Dịch vụ';
+    final bookingDate = booking['bookingDate']?.toString();
+    final bookingCode = booking['bookingCode']?.toString() ?? '';
+    final totalAmount = booking['totalAmount'];
+
+    String dateText = '';
+    if (bookingDate != null) {
+      try {
+        final date = DateTime.parse(bookingDate);
+        dateText = DateFormat('dd/MM/yyyy').format(date);
+      } catch (_) {
+        dateText = bookingDate;
+      }
+    }
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: colorScheme.outline.withValues(alpha: 0.1),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.event_available,
+                color: colorScheme.primary,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    serviceName,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : AppColors.textPrimary,
+                    ),
+                  ),
+                  if (dateText.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      dateText,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: isDark
+                            ? Colors.white70
+                            : AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                  if (bookingCode.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'Mã: $bookingCode',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: isDark
+                            ? Colors.white70
+                            : AppColors.textSecondary,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (totalAmount != null) ...[
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    NumberFormat.currency(locale: 'vi_VN', symbol: '₫')
+                        .format(totalAmount),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(width: 8),
+            Icon(
+              Icons.chevron_right,
+              color: isDark ? Colors.white70 : AppColors.textSecondary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
