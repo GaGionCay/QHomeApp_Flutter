@@ -230,12 +230,15 @@ class _HouseholdMemberRegistrationScreenState
                         )
                       : _members.isEmpty
                           ? ListView(
-                              children: const [
+                              children: [
                                 Padding(
-                                  padding: EdgeInsets.all(24.0),
+                                  padding: const EdgeInsets.all(24.0),
                                   child: Text(
                                     'Tất cả thành viên trong căn hộ đã có tài khoản.',
-                                    style: TextStyle(color: Colors.black54),
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                    ),
+                                    textAlign: TextAlign.center,
                                   ),
                                 ),
                               ],
