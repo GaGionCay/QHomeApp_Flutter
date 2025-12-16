@@ -17,6 +17,7 @@ import '../models/invoice_line.dart';
 import '../models/unit_info.dart';
 import '../theme/app_colors.dart';
 import 'invoice_service.dart';
+import 'invoice_detail_screen.dart';
 import 'paid_invoices_screen.dart';
 
 class InvoiceListScreen extends StatefulWidget {
@@ -1118,8 +1119,20 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: _InvoicesGlassCard(
-        padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => InvoiceDetailScreen(
+                invoiceLine: invoice,
+                invoiceService: _service,
+              ),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(28),
+        child: _InvoicesGlassCard(
+          padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1362,6 +1375,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
             ),
           ],
         ),
+      ),
       ),
     );
   }
