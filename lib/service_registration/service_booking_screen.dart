@@ -618,9 +618,18 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                               if (_bookingType == 'COMBO_BASED') _buildCombosSection(),
                               if (_bookingType == 'TICKET_BASED')
                                 _buildTicketsSection(),
-                              if (_bookingType == 'OPTION_BASED' ||
-                                  _bookingType == 'STANDARD')
-                                _buildOptionsSection(),
+                              // Hiển thị options section:
+                              // - Nếu OPTION_BASED hoặc STANDARD: hiển thị như booking type chính
+                              // - Nếu TICKET_BASED hoặc COMBO_BASED: hiển thị như additional options
+                              if (_options.isNotEmpty) ...[
+                                if (_bookingType == 'OPTION_BASED' ||
+                                    _bookingType == 'STANDARD')
+                                  _buildOptionsSection()
+                                else ...[
+                                  // Additional options cho TICKET_BASED và COMBO_BASED
+                                  _buildOptionsSection(),
+                                ],
+                              ],
                               const SizedBox(height: 16),
                               _buildPurposeField(),
                               const SizedBox(height: 16),
