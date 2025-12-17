@@ -94,6 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _selectedUnitPrefsKey = 'selected_unit_id';
 
   bool _loading = true;
+  bool _isLoadingData = false; // Prevent duplicate API calls
   // Cleaning request removed - no longer used
   // CleaningRequestSummary? _pendingCleaningRequest;
   // Timer? _resendVisibilityTimer;
@@ -296,6 +297,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadAllData() async {
+    // Prevent duplicate API calls
+    if (_isLoadingData) {
+      return;
+    }
+    _isLoadingData = true;
+    
     setState(() => _loading = true);
 
     final invoiceService = InvoiceService(_apiClient);
@@ -309,23 +316,28 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     } catch (e) {
-      debugPrint('⚠️ Load profile error: $e');
-      // Continue even if profile fails
+      // Continue even if profile fails - not critical
     }
 
-    await Future.wait([
-      _loadUnpaidServices(),
-      _loadUnpaidInvoices(invoiceService),
-      _loadUnreadNotifications(),
-      _loadGroupChatActivity(),
-    ]);
+    try {
+      // DEV LOCAL mode: Load APIs sequentially to avoid backend overload
+      // Critical APIs must not be called in parallel
+      await _loadUnpaidServices();
+      await _loadUnpaidInvoices(invoiceService);
+      await _loadUnreadNotifications();
+      await _loadGroupChatActivity();
 
-    if (mounted) {
-      setState(() => _loading = false);
+      // Check for contract renewal reminders after loading
+      await _checkContractReminders();
+    } finally {
+      // Always reset loading flag, even if error occurs
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _isLoadingData = false;
+        });
+      }
     }
-
-    // Check for contract renewal reminders after loading
-    await _checkContractReminders();
 
     // Cleaning request removed - no longer used
     // await _loadCleaningRequestState();
@@ -891,15 +903,12 @@ class _HomeScreenState extends State<HomeScreen> {
         addCandidate(placemark.country);
 
         if (ordered.isNotEmpty) {
-          debugPrint(
-              'ℹ️ Reverse geocode resolved to: ${ordered.take(4).join(' • ')}');
           final display = ordered.take(3).join(', ');
           return display;
         }
       }
-    } catch (e, stack) {
-      debugPrint('⚠️ Failed to reverse geocode position: $e');
-      debugPrint('↪ Reverse geocode stack trace: $stack');
+    } catch (e) {
+      // Failed to reverse geocode - silent fail
     }
     return null;
   }

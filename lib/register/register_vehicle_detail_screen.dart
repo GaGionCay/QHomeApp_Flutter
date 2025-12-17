@@ -168,8 +168,9 @@ class _RegisterServiceDetailScreenState
     if (_servicesCardDio == null) {
       _servicesCardDio = Dio(BaseOptions(
       baseUrl: ApiClient.buildServiceBase(port: 8083, path: '/api'),
-        connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
-        receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+        connectTimeout: const Duration(seconds: ApiClient.connectTimeoutSeconds),
+        receiveTimeout: const Duration(seconds: ApiClient.receiveTimeoutSeconds),
+        sendTimeout: const Duration(seconds: ApiClient.sendTimeoutSeconds),
       ));
       _servicesCardDio!.interceptors.add(LogInterceptor(
         request: true,

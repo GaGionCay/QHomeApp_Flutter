@@ -37,13 +37,15 @@ class CustomerInteractionApiClient {
     final storage = TokenStorage();
     final dio = Dio(BaseOptions(
       baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
-      receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+      connectTimeout: const Duration(seconds: ApiClient.connectTimeoutSeconds),
+      receiveTimeout: const Duration(seconds: ApiClient.receiveTimeoutSeconds),
+      sendTimeout: const Duration(seconds: ApiClient.sendTimeoutSeconds),
     ));
     final authDio = Dio(BaseOptions(
       baseUrl: ApiClient.activeBaseUrl,
-      connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
-      receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+      connectTimeout: const Duration(seconds: ApiClient.connectTimeoutSeconds),
+      receiveTimeout: const Duration(seconds: ApiClient.receiveTimeoutSeconds),
+      sendTimeout: const Duration(seconds: ApiClient.sendTimeoutSeconds),
     ));
     final authService = AuthService(authDio, storage);
     return CustomerInteractionApiClient._(dio, storage, authService);

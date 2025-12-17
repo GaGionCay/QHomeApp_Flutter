@@ -119,6 +119,11 @@ class AuthProvider extends ChangeNotifier {
       await authService.loginViaIam(username, password);
       _isAuthenticated = true;
       await _syncPushContext();
+      
+      // DEV LOCAL mode: Connect WebSocket only after successful login + profile loaded
+      // Profile is loaded in _syncPushContext(), so WebSocket can connect now
+      AppEventBus().emit('user_logged_in', {'username': username});
+      
       notifyListeners();
       return true;
     } catch (e) {
@@ -277,7 +282,7 @@ Future<void> logout(BuildContext context) async {
 
       await PushNotificationService.instance.refreshRegistration();
     } catch (e) {
-      debugPrint('⚠️ Unable to sync push context: $e');
+      // Silent fail - push context sync error not critical
     }
   }
 

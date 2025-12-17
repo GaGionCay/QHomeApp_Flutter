@@ -21,18 +21,14 @@ class InvoiceService {
     final baseUrl = ApiClient.buildServiceBase();
     final dio = Dio(BaseOptions(
       baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
-      receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+      connectTimeout: const Duration(seconds: ApiClient.connectTimeoutSeconds),
+      receiveTimeout: const Duration(seconds: ApiClient.receiveTimeoutSeconds),
+      sendTimeout: const Duration(seconds: ApiClient.sendTimeoutSeconds),
+      // Accept 404 as valid status (user may not have invoices yet)
+      // Only throw for server errors (5xx)
+      validateStatus: (status) => status != null && status < 500,
     ));
-    dio.interceptors.add(LogInterceptor(
-      request: true,
-      requestHeader: true,
-      requestBody: true,
-      responseHeader: true,
-      responseBody: true,
-      error: true,
-      logPrint: (obj) => debugPrint('🔍 FINANCE DIO: $obj'),
-    ));
+    // Production-ready: No LogInterceptor - errors logged only after final failure
     return dio;
   }
 
@@ -65,6 +61,12 @@ class InvoiceService {
         queryParameters: queryParameters,
       );
       
+      // Handle 404 gracefully (user may not have invoices yet)
+      if (res.statusCode == 404) {
+        debugPrint('ℹ️ [InvoiceService] Không tìm thấy invoices (404) - coi như không có');
+        return [];
+      }
+      
       if (res.statusCode != 200) {
         debugPrint('⚠️ [InvoiceService] API trả mã ${res.statusCode}: ${res.data}');
         return [];
@@ -84,8 +86,16 @@ class InvoiceService {
       
       return invoices;
     } catch (e, s) {
-      debugPrint('ℹ️ [InvoiceService] Không lấy được invoices (coi như đã thanh toán): $e');
-      debugPrint('Chi tiết stacktrace: $s');
+      // Suppress verbose stack traces for expected errors (404, etc.)
+      final errorStr = e.toString();
+      if (errorStr.contains('404') || errorStr.contains('bad response')) {
+        debugPrint('ℹ️ [InvoiceService] Không lấy được invoices (coi như không có)');
+      } else {
+        debugPrint('ℹ️ [InvoiceService] Không lấy được invoices: $e');
+        if (kDebugMode) {
+          debugPrint('Chi tiết stacktrace: $s');
+        }
+      }
       return [];
     }
   }
@@ -108,6 +118,12 @@ class InvoiceService {
         queryParameters: queryParameters,
       );
 
+      // Handle 404 gracefully (user may not have unpaid invoices)
+      if (res.statusCode == 404) {
+        debugPrint('ℹ️ [InvoiceService] Không tìm thấy hóa đơn chưa thanh toán (404) - coi như đã thanh toán hết');
+        return [];
+      }
+
       if (res.statusCode != 200) {
         debugPrint('⚠️ [InvoiceService] API trả mã ${res.statusCode}: ${res.data}');
         return [];
@@ -128,8 +144,16 @@ class InvoiceService {
       debugPrint('✅ [InvoiceService] Có ${categories.length} nhóm hóa đơn chưa thanh toán');
       return categories;
     } catch (e, s) {
-      debugPrint('ℹ️ [InvoiceService] Không lấy được hóa đơn chưa thanh toán (coi như đã thanh toán hết): $e');
-      debugPrint('Chi tiết stacktrace: $s');
+      // Suppress verbose stack traces for expected errors (404, etc.)
+      final errorStr = e.toString();
+      if (errorStr.contains('404') || errorStr.contains('bad response')) {
+        debugPrint('ℹ️ [InvoiceService] Không lấy được hóa đơn chưa thanh toán (coi như đã thanh toán hết)');
+      } else {
+        debugPrint('ℹ️ [InvoiceService] Không lấy được hóa đơn chưa thanh toán: $e');
+        if (kDebugMode) {
+          debugPrint('Chi tiết stacktrace: $s');
+        }
+      }
       return [];
     }
   }
@@ -152,6 +176,12 @@ class InvoiceService {
         queryParameters: queryParameters,
       );
 
+      // Handle 404 gracefully (user may not have paid invoices yet)
+      if (res.statusCode == 404) {
+        debugPrint('ℹ️ [InvoiceService] Không tìm thấy hóa đơn đã thanh toán (404) - coi như chưa có');
+        return [];
+      }
+
       if (res.statusCode != 200) {
         debugPrint('⚠️ [InvoiceService] API trả mã ${res.statusCode}: ${res.data}');
         return [];
@@ -172,8 +202,16 @@ class InvoiceService {
       debugPrint('✅ [InvoiceService] Có ${categories.length} nhóm hóa đơn đã thanh toán');
       return categories;
     } catch (e, s) {
-      debugPrint('ℹ️ [InvoiceService] Không lấy được hóa đơn đã thanh toán: $e');
-      debugPrint('Chi tiết stacktrace: $s');
+      // Suppress verbose stack traces for expected errors (404, etc.)
+      final errorStr = e.toString();
+      if (errorStr.contains('404') || errorStr.contains('bad response')) {
+        debugPrint('ℹ️ [InvoiceService] Không lấy được hóa đơn đã thanh toán (coi như chưa có)');
+      } else {
+        debugPrint('ℹ️ [InvoiceService] Không lấy được hóa đơn đã thanh toán: $e');
+        if (kDebugMode) {
+          debugPrint('Chi tiết stacktrace: $s');
+        }
+      }
       return [];
     }
   }
@@ -216,6 +254,12 @@ class InvoiceService {
       final client = await _prepareFinanceClient();
       final res = await client.get('/invoices/$invoiceId');
       
+      // Handle 404 gracefully (invoice may not exist)
+      if (res.statusCode == 404) {
+        log('ℹ️ [InvoiceService] Không tìm thấy invoice (404): $invoiceId');
+        return null;
+      }
+      
       if (res.statusCode != 200) {
         log('⚠️ [InvoiceService] API trả mã ${res.statusCode}: ${res.data}');
         return null;
@@ -229,7 +273,16 @@ class InvoiceService {
 
       return Map<String, dynamic>.from(data);
     } catch (e, s) {
-      log('❌ [InvoiceService] Lỗi getInvoiceDetailById($invoiceId): $e\n$s');
+      // Suppress verbose stack traces for expected errors (404, etc.)
+      final errorStr = e.toString();
+      if (errorStr.contains('404') || errorStr.contains('bad response')) {
+        log('ℹ️ [InvoiceService] Không tìm thấy invoice detail (404): $invoiceId');
+      } else {
+        log('❌ [InvoiceService] Lỗi getInvoiceDetailById($invoiceId): $e');
+        if (kDebugMode) {
+          log('Chi tiết stacktrace: $s');
+        }
+      }
       return null;
     }
   }
@@ -289,6 +342,12 @@ class InvoiceService {
         queryParameters: unitId != null ? {'unitId': unitId} : null,
       );
       
+      // Handle 404 gracefully (user may not have electricity data yet)
+      if (res.statusCode == 404) {
+        log('ℹ️ [InvoiceService] Không tìm thấy dữ liệu tiền điện (404) - coi như không có');
+        return [];
+      }
+      
       if (res.statusCode != 200) {
         log('⚠️ API tiền điện trả mã ${res.statusCode}: ${res.data}');
         return [];
@@ -308,8 +367,16 @@ class InvoiceService {
       
       return monthlyData;
     } catch (e, s) {
-      log('ℹ️ [InvoiceService] Không nhận được dữ liệu tiền điện (coi như đã thanh toán): $e');
-      log('Chi tiết stacktrace: $s');
+      // Suppress verbose stack traces for expected errors (404, etc.)
+      final errorStr = e.toString();
+      if (errorStr.contains('404') || errorStr.contains('bad response')) {
+        log('ℹ️ [InvoiceService] Không nhận được dữ liệu tiền điện (coi như không có)');
+      } else {
+        log('ℹ️ [InvoiceService] Không nhận được dữ liệu tiền điện: $e');
+        if (kDebugMode) {
+          log('Chi tiết stacktrace: $s');
+        }
+      }
       return [];
     }
   }

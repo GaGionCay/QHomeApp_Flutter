@@ -11,20 +11,25 @@ class ProfileService {
   ProfileService(this.dio) : _imageKitService = ImageKitService(ApiClient());
 
   Future<Map<String, dynamic>> getProfile() async {
-    final res = await dio.get('/users/me');
-    final data = Map<String, dynamic>.from(res.data);
+    try {
+      final res = await dio.get('/users/me');
+      final data = Map<String, dynamic>.from(res.data);
 
-    // ✅ Ép kiểu id sang String để tránh lỗi type
-    if (data['id'] != null) {
-      data['id'] = data['id'].toString();
-    }
+      // Ép kiểu id sang String để tránh lỗi type
+      if (data['id'] != null) {
+        data['id'] = data['id'].toString();
+      }
 
-    if (data['avatarUrl'] != null &&
-        !data['avatarUrl'].toString().startsWith('http')) {
-      data['avatarUrl'] =
-          ApiClient.activeFileBaseUrl + data['avatarUrl'];
+      if (data['avatarUrl'] != null &&
+          !data['avatarUrl'].toString().startsWith('http')) {
+        data['avatarUrl'] =
+            ApiClient.activeFileBaseUrl + data['avatarUrl'];
+      }
+      return data;
+    } on DioException catch (e) {
+      // Error already logged by ApiClient - just rethrow
+      rethrow;
     }
-    return data;
   }
 
   Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> data) async {
@@ -57,12 +62,10 @@ class ProfileService {
       String avatarUrl = res.data['avatarUrl'] ?? imageUrl;
       return avatarUrl;
     } on DioException catch (e) {
-      print('DioError: ${e.response?.statusCode}');
-      print('DioError data: ${e.response?.data}');
-      print('DioError message: ${e.message}');
+      // Error already logged by ApiClient - just rethrow
       rethrow;
     } catch (e) {
-      print('Unexpected error: $e');
+      // Error already logged by ApiClient - just rethrow
       rethrow;
     }
   }
@@ -73,7 +76,7 @@ class ProfileService {
       final res = await dio.get('/household-members/residents/$residentId/household-info');
       return Map<String, dynamic>.from(res.data);
     } catch (e) {
-      debugPrint('⚠️ Lỗi tải thông tin household: $e');
+      // Error already logged by ApiClient - return null gracefully
       return null;
     }
   }

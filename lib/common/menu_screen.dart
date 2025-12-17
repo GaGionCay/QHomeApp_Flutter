@@ -57,7 +57,7 @@ class _MenuScreenState extends State<MenuScreen> {
         _loading = false;
       });
     } catch (e) {
-      debugPrint('❌ Lỗi tải thông tin người dùng: $e');
+      // Error loading user info - handled by ApiClient error logging
       setState(() => _loading = false);
     }
   }

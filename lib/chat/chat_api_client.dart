@@ -37,8 +37,9 @@ class ChatApiClient {
     final storage = TokenStorage();
     final dio = Dio(BaseOptions(
       baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
-      receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+      connectTimeout: const Duration(seconds: ApiClient.connectTimeoutSeconds),
+      receiveTimeout: const Duration(seconds: ApiClient.receiveTimeoutSeconds),
+      sendTimeout: const Duration(seconds: ApiClient.sendTimeoutSeconds),
     ));
     
     // Configure SSL certificate validation for development
@@ -47,7 +48,6 @@ class ChatApiClient {
         final client = HttpClient();
         // Allow bad certificates in debug mode (development only)
         client.badCertificateCallback = (X509Certificate cert, String host, int port) {
-          print('⚠️ [ChatApiClient] SSL Certificate validation bypassed for $host:$port (DEBUG MODE ONLY)');
           return true; // Accept all certificates in debug mode
         };
         return client;
@@ -56,8 +56,9 @@ class ChatApiClient {
     
     final authDio = Dio(BaseOptions(
       baseUrl: ApiClient.activeBaseUrl,
-      connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
-      receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+      connectTimeout: const Duration(seconds: ApiClient.connectTimeoutSeconds),
+      receiveTimeout: const Duration(seconds: ApiClient.receiveTimeoutSeconds),
+      sendTimeout: const Duration(seconds: ApiClient.sendTimeoutSeconds),
     ));
     
     // Configure SSL certificate validation for development
@@ -66,7 +67,6 @@ class ChatApiClient {
         final client = HttpClient();
         // Allow bad certificates in debug mode (development only)
         client.badCertificateCallback = (X509Certificate cert, String host, int port) {
-          print('⚠️ [ChatApiClient] SSL Certificate validation bypassed for $host:$port (DEBUG MODE ONLY)');
           return true; // Accept all certificates in debug mode
         };
         return client;
@@ -90,16 +90,11 @@ class ChatApiClient {
           options.headers['ngrok-skip-browser-warning'] = 'true';
         }
         
-        print('📤 [ChatApiClient] ${options.method} ${options.path}');
         return handler.next(options);
       },
       onError: (err, handler) async {
         final options = err.requestOptions;
         final statusCode = err.response?.statusCode;
-        final path = options.path;
-        
-        // Log error for debugging
-        print('❌ [ChatApiClient] Error ${statusCode ?? 'unknown'} on ${options.method} $path');
         
         if (statusCode == 401) {
           final refreshToken = await _storage.readRefreshToken();
@@ -109,25 +104,19 @@ class ChatApiClient {
           }
           try {
             isRefreshing = true;
-            print('🔄 [ChatApiClient] Refreshing token for 401 error...');
             await _authService.refreshToken();
             final newAccessToken = await _storage.readAccessToken();
             if (newAccessToken != null) {
               options.headers['Authorization'] = 'Bearer $newAccessToken';
-              print('✅ [ChatApiClient] Token refreshed, retrying request...');
               final cloned = await dio.fetch(options);
               return handler.resolve(cloned);
             }
           } on DioException catch (e) {
-            print('❌ [ChatApiClient] Token refresh failed: ${e.message}');
             await _storage.deleteSessionData();
             return handler.next(e);
           } finally {
             isRefreshing = false;
           }
-        } else if (statusCode == 404) {
-          // Log 404 for debugging (might be service not ready or endpoint doesn't exist)
-          print('⚠️ [ChatApiClient] 404 on $path - Service might not be ready or endpoint not found');
         }
         
         return handler.next(err);

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import '../auth/api_client.dart';
+import '../core/app_config.dart';
 import '../models/chat/direct_message.dart';
 import '../models/chat/web_socket_message.dart';
 
@@ -265,8 +266,9 @@ class DirectChatWebSocketService {
           if (wsUrl.contains('ngrok') || wsUrl.contains('ngrok-free.app'))
             'ngrok-skip-browser-warning': 'true',
         },
-        // Use exponential backoff with max delay of 30s
-        reconnectDelay: const Duration(seconds: 10),
+        // DEV LOCAL mode: Disable auto-reconnect to prevent reconnect loops
+        // WebSocket should only connect after successful health check
+        reconnectDelay: const Duration(seconds: 0), // 0 = disable auto-reconnect
         heartbeatIncoming: const Duration(seconds: 10),
         heartbeatOutgoing: const Duration(seconds: 10),
       ),
@@ -352,11 +354,9 @@ class DirectChatWebSocketService {
   }
 
   String _buildWebSocketUrl() {
-    // Build WebSocket URL - use chat-service directly or through API Gateway
-    // API Gateway port is 8989, but WebSocket might need direct connection to chat-service (8090)
-    // Try API Gateway first, fallback to direct chat-service if needed
-    
-    final baseUrl = ApiClient.buildServiceBase(path: '/ws');
+    // Build WebSocket URL - use apiBaseUrl (without /api) and add /ws path
+    // IMPORTANT: Use AppConfig.apiBaseUrl directly to avoid double /api issue
+    final baseUrl = '${AppConfig.apiBaseUrl}/ws';
     
     // Convert HTTP/HTTPS to WS/WSS
     String wsUrl = baseUrl;

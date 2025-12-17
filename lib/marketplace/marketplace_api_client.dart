@@ -37,28 +37,21 @@ class MarketplaceApiClient {
     final storage = TokenStorage();
     final dio = Dio(BaseOptions(
       baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
-      receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+      connectTimeout: const Duration(seconds: ApiClient.connectTimeoutSeconds),
+      receiveTimeout: const Duration(seconds: ApiClient.receiveTimeoutSeconds),
+      sendTimeout: const Duration(seconds: ApiClient.sendTimeoutSeconds),
     ));
     final authDio = Dio(BaseOptions(
       baseUrl: ApiClient.activeBaseUrl,
-      connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
-      receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+      connectTimeout: const Duration(seconds: ApiClient.connectTimeoutSeconds),
+      receiveTimeout: const Duration(seconds: ApiClient.receiveTimeoutSeconds),
+      sendTimeout: const Duration(seconds: ApiClient.sendTimeoutSeconds),
     ));
     final authService = AuthService(authDio, storage);
     return MarketplaceApiClient._(dio, storage, authService);
   }
 
   void _setupInterceptors() {
-    dio.interceptors.add(LogInterceptor(
-      request: true,
-      requestHeader: true,
-      requestBody: true,
-      responseHeader: true,
-      responseBody: true,
-      error: true,
-      logPrint: (obj) => print('🔍 MARKETPLACE API LOG: $obj'),
-    ));
     dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
         final token = await _storage.readAccessToken();

@@ -6,11 +6,13 @@ import 'dart:io' show Platform;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
 
 import '../core/event_bus.dart';
+import '../core/app_config.dart';
 import '../home/home_screen.dart';
 import '../auth/api_client.dart';
 import '../contracts/contract_service.dart';
@@ -73,7 +75,15 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _selectedIndex = widget.initialIndex;
+    // DEV LOCAL mode: WebSocket only connects after successful login + profile loaded
+    // Listen for login event to connect WebSocket
+    AppEventBus().on('user_logged_in', (_) async {
+      // Wait a bit for profile to be fully loaded
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (mounted) {
     _connectWebSocket();
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final message = widget.initialSnackMessage;
@@ -108,27 +118,51 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   void _connectWebSocket() async {
     final token = await _api.storage.readAccessToken();
     if (token == null) {
-      debugPrint('⚠️ Không có access token, bỏ qua kết nối WebSocket.');
       return;
     }
 
     await _prepareRealtimeContext();
 
+    // DEV LOCAL mode: Use native WebSocket (not SockJS) for better performance
+    // URL should be ws://host:port/ws (not /api/ws since Gateway routes /ws/** directly)
+    final wsUrl = '${AppConfig.apiBaseUrl.replaceFirst('http://', 'ws://')}/ws';
+
     _stompClient = StompClient(
-      config: StompConfig.sockJS(
-        url: ApiClient.buildServiceBase(port: 8086, path: '/ws'),
-        onConnect: (_) => _onStompConnected(),
-        onStompError: (frame) =>
-            debugPrint('❌ STOMP error: ${frame.body ?? frame.headers}'),
-        onDisconnect: (_) => debugPrint('ℹ️ WebSocket disconnected'),
-        onWebSocketError: (error) => debugPrint('❌ WS error: $error'),
+      config: StompConfig(
+        url: wsUrl,
+        onConnect: (_) {
+          _onStompConnected();
+        },
+        onStompError: (frame) {
+          // Only log critical STOMP errors
+          print('❌ [WebSocket] STOMP error: ${frame.body ?? frame.headers}');
+        },
+        onDisconnect: (_) {
+          // Silent disconnect
+        },
+        onWebSocketError: (error) {
+          // Production-ready: Only log critical connection failures
+          final errorStr = error.toString();
+          if (errorStr.contains('Connection timed out') || 
+              errorStr.contains('Connection refused') ||
+              errorStr.contains('HandshakeException')) {
+            print('❌ [WebSocket] Connection failed: $errorStr');
+          }
+        },
         stompConnectHeaders: {'Authorization': 'Bearer $token'},
         webSocketConnectHeaders: {'Authorization': 'Bearer $token'},
-        reconnectDelay: const Duration(seconds: 5),
+        // DEV LOCAL mode: Disable auto-reconnect to prevent reconnect loops
+        reconnectDelay: const Duration(seconds: 0), // 0 = disable auto-reconnect
+        // Add connection timeout
+        connectionTimeout: const Duration(seconds: 10),
       ),
     );
 
-    _stompClient?.activate();
+    try {
+      _stompClient?.activate();
+    } catch (e) {
+      print('❌ [WebSocket] Failed to activate: $e');
+    }
   }
 
   Future<void> _prepareRealtimeContext() async {
@@ -140,7 +174,6 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
       final residentId = _asString(profile['residentId']);
       if (residentId != null && residentId.isNotEmpty) {
         _userResidentId = residentId;
-        debugPrint('ℹ️ ResidentId for realtime: $_userResidentId');
       }
 
       final profileBuildingId = _asString(profile['buildingId']);
@@ -153,7 +186,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
         buildingIds.add(defaultBuildingId.toLowerCase());
       }
     } catch (e) {
-      debugPrint('⚠️ Không lấy được profile cho realtime: $e');
+      // Silent fail - profile loading error not critical for WebSocket
     }
 
     if (buildingIds.isEmpty) {
@@ -166,16 +199,14 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
           }
         }
       } catch (e) {
-        debugPrint('⚠️ Không lấy được danh sách căn hộ cho realtime: $e');
+        // Silent fail - units loading error not critical for WebSocket
       }
     }
 
     _userBuildingIds = buildingIds;
-    debugPrint('ℹ️ BuildingIds realtime: $_userBuildingIds');
   }
 
   void _onStompConnected() {
-    debugPrint('✅ WebSocket connected');
     _subscribeToNewsTopic();
     _subscribeToNotificationTopics();
     _subscribeToMarketplaceTopics();

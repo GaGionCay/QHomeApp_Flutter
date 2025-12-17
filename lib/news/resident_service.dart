@@ -33,20 +33,14 @@ class ResidentService {
         queryParams['dateTo'] = dateTo.toIso8601String();
       }
 
-      print('🔍 [ResidentService] Gọi API với residentId=$residentId, page=$page, size=$size, dateFrom=$dateFrom, dateTo=$dateTo');
-      print('🔍 [ResidentService] Query params: $queryParams');
       final response = await _publicDio.get(
         '/news/resident',
         queryParameters: queryParams,
       );
-      print('🔍 [ResidentService] Response status: ${response.statusCode}');
-      print('🔍 [ResidentService] Response type: ${response.data.runtimeType}');
-      print('🔍 [ResidentService] Response data: ${response.data}');
 
       if (response.data is Map && response.data['content'] != null) {
         // Paginated response from backend
         final pagedResponse = NewsPagedResponse.fromJson(response.data as Map<String, dynamic>);
-        print('✅ [ResidentService] Paginated response: ${pagedResponse.content.length} items, page ${pagedResponse.currentPage + 1}/${pagedResponse.totalPages}');
         return pagedResponse;
       } else if (response.data is List) {
         // Legacy list response - convert to paged response
@@ -96,7 +90,6 @@ class ResidentService {
         );
       }
 
-      print('⚠️ [ResidentService] Response format không hỗ trợ, trả về empty paged response');
       return NewsPagedResponse(
         content: [],
         currentPage: page,
@@ -109,7 +102,6 @@ class ResidentService {
         isLast: true,
       );
     } on DioException catch (e) {
-      print('❌ Lỗi lấy resident news: ${e.message}');
       return NewsPagedResponse(
         content: [],
         currentPage: page,
@@ -122,7 +114,6 @@ class ResidentService {
         isLast: true,
       );
     } catch (e) {
-      print('❌ Lỗi lấy resident news: $e');
       return NewsPagedResponse(
         content: [],
         currentPage: page,
@@ -191,7 +182,6 @@ class ResidentService {
       }
     }
 
-    print('✅ [ResidentService] Fetched ${allNews.length} news items across ${currentPage + 1} pages (pageSize: $actualPageSize)');
     return allNews;
   }
 
@@ -210,7 +200,6 @@ class ResidentService {
 
       if (response.data is Map && response.data['totalElements'] != null) {
         final total = response.data['totalElements'] as int;
-        print('✅ [ResidentService] Total từ API Page object: $total');
         return total;
       }
 
@@ -224,17 +213,14 @@ class ResidentService {
 
         if (fullResponse.data is List) {
           final total = (fullResponse.data as List).length;
-          print('✅ [ResidentService] Total từ List response: $total');
           return total;
         }
       }
 
       return 0;
     } on DioException catch (e) {
-      print('❌ Lỗi lấy total count: ${e.message}');
       return 0;
     } catch (e) {
-      print('❌ Lỗi lấy total count: $e');
       return 0;
     }
   }
@@ -296,7 +282,6 @@ class ResidentService {
       }
     }
 
-    print('✅ [ResidentService] Fetched ${allNotifications.length} notifications across ${currentPage + 1} pages (pageSize: $actualPageSize)');
     return allNotifications;
   }
 
@@ -324,21 +309,16 @@ class ResidentService {
         queryParams['dateTo'] = dateTo.toIso8601String();
       }
 
-      print('🔍 [ResidentService] Gọi API notifications/resident với page=$page, size=$size, dateFrom=$dateFrom, dateTo=$dateTo');
       final response = await _publicDio.get(
         '/notifications/resident',
         queryParameters: queryParams,
       );
 
-      print('🔍 [ResidentService] Response type: ${response.data.runtimeType}');
-
       if (response.data is Map) {
         final pagedResponse = NotificationPagedResponse.fromJson(response.data);
-        print('✅ [ResidentService] Paginated response: ${pagedResponse.content.length} items, totalPages: ${pagedResponse.totalPages}');
         return pagedResponse;
       }
 
-      print('⚠️ [ResidentService] Response format không hỗ trợ, trả về empty NotificationPagedResponse');
       return NotificationPagedResponse(
         content: [],
         currentPage: 0,
@@ -350,12 +330,9 @@ class ResidentService {
         isFirst: true,
         isLast: true,
       );
+    } on DioException catch (e) {
+      rethrow;
     } catch (e) {
-      print('❌ [ResidentService] Lỗi lấy resident notifications: $e');
-      if (e is DioException) {
-        print('❌ [ResidentService] DioException status: ${e.response?.statusCode}');
-        print('❌ [ResidentService] DioException data: ${e.response?.data}');
-      }
       rethrow;
     }
   }
@@ -382,7 +359,6 @@ class ResidentService {
 
         if (response.data is Map && response.data['totalCount'] != null) {
           final total = response.data['totalCount'] as int;
-          print('✅ [ResidentService] Total notifications count from count endpoint: $total');
           
           // If date filters are provided, we need to get the full list and filter
           if (dateFrom != null || dateTo != null) {
@@ -398,7 +374,7 @@ class ResidentService {
           return total;
         }
       } catch (countError) {
-        print('⚠️ [ResidentService] Count endpoint failed, using paginated endpoint as fallback: $countError');
+        // Count endpoint failed, using paginated endpoint as fallback
       }
 
       // Fallback: use paginated endpoint to get totalElements
@@ -422,10 +398,8 @@ class ResidentService {
         return allNotifications.length;
       }
       
-      print('✅ [ResidentService] Total notifications count from paginated endpoint: ${pagedResponse.totalElements}');
       return pagedResponse.totalElements;
     } catch (e) {
-      print('❌ [ResidentService] Lỗi lấy count: $e');
       return 0;
     }
   }
@@ -433,30 +407,18 @@ class ResidentService {
   Future<NotificationDetailResponse> getNotificationDetailById(
       String notificationId) async {
     try {
-      print(
-          '🔍 [ResidentService] Gọi API notification detail với id=$notificationId');
       final response = await _publicDio.get(
         '/notifications/$notificationId',
       );
 
-      print('🔍 [ResidentService] Response status: ${response.statusCode}');
-      print('🔍 [ResidentService] Response data: ${response.data}');
-
       if (response.data is Map) {
         final detail = NotificationDetailResponse.fromJson(
             response.data as Map<String, dynamic>);
-        print('✅ [ResidentService] Parsed notification detail');
         return detail;
       }
 
       throw Exception('Invalid response format');
     } catch (e) {
-      print('❌ [ResidentService] Lỗi lấy notification detail: $e');
-      if (e is DioException) {
-        print(
-            '❌ [ResidentService] DioException status: ${e.response?.statusCode}');
-        print('❌ [ResidentService] DioException data: ${e.response?.data}');
-      }
       rethrow;
     }
   }

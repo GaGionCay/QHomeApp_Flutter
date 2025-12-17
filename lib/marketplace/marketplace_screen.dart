@@ -58,7 +58,6 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
     
     // Ensure listener is setup for realtime updates
     // This is already done in initialize(), but we ensure it's set up here too
-    print('✅ [MarketplaceScreen] MarketplaceViewModel initialized with listener setup');
   }
 
 

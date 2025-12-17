@@ -2,6 +2,7 @@ import 'package:stomp_dart_client/stomp_dart_client.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 
 import '../auth/api_client.dart';
+import '../core/app_config.dart';
 
 class WebSocketService {
   StompClient? client;
@@ -9,9 +10,10 @@ class WebSocketService {
 
   /// Build WebSocket URL from base URL
   /// Converts HTTP -> WS, HTTPS -> WSS
-  /// Removes port for ngrok URLs (ngrok handles routing)
+  /// IMPORTANT: Use apiBaseUrl (without /api) and add /ws path manually
   String _buildWebSocketUrl() {
-    final baseUrl = ApiClient.buildServiceBase(path: '/ws');
+    // Use apiBaseUrl directly (without /api) and add /ws path
+    final baseUrl = '${AppConfig.apiBaseUrl}/ws';
     
     // Convert HTTP/HTTPS to WS/WSS
     String wsUrl = baseUrl;
@@ -31,10 +33,6 @@ class WebSocketService {
       wsUrl = wsUrl.replaceAll(RegExp(r':\d+/'), '/');
     }
     
-    if (kDebugMode) {
-      print('🔌 WebSocket URL: $wsUrl');
-    }
-    
     return wsUrl;
   }
 
@@ -47,13 +45,6 @@ class WebSocketService {
 
     final wsUrl = _buildWebSocketUrl();
     
-    // Check if this is an ngrok URL - ngrok free plan may not support WebSocket well
-    final isNgrokUrl = wsUrl.contains('ngrok') || wsUrl.contains('ngrok-free.app');
-    
-    if (isNgrokUrl && kDebugMode) {
-      print('⚠️ WebSocket over ngrok may not work with free plan');
-      print('   Consider using ngrok paid plan or alternative tunnel for WebSocket');
-    }
 
     // Try native WebSocket first (better for ngrok), fallback to SockJS if needed
     // Note: base-service doesn't have .withSockJS(), so use native WebSocket
@@ -64,13 +55,10 @@ class WebSocketService {
         // If backend has SockJS, change to StompConfig.sockJS()
         onConnect: (StompFrame frame) {
           _connected = true;
-          print('✅ WebSocket connected: $frame');
-
           client?.subscribe(
             destination: '/topic/notifications/$userId',
             callback: (frame) {
               if (frame.body != null) {
-                print('📩 Notification: ${frame.body}');
                 onNotification(frame.body);
               }
             },
@@ -78,27 +66,17 @@ class WebSocketService {
         },
         onDisconnect: (frame) {
           _connected = false;
-          print('🔌 WebSocket disconnected.');
         },
-        onStompError: (frame) =>
-            print('⚠️ STOMP error: ${frame.body ?? 'Unknown'}'),
+        onStompError: (frame) {
+          // Only log critical STOMP errors
+        },
         onWebSocketError: (error) {
-          print('❌ WS error: $error');
-          if (kDebugMode) {
-            print('   WebSocket URL: $wsUrl');
-            print('   Error type: ${error.runtimeType}');
-            if (error.toString().contains('HandshakeException') || 
-                error.toString().contains('Connection terminated')) {
-              print('   ⚠️ Handshake failed - possible causes:');
-              print('      1. Ngrok free plan may not support WebSocket');
-              print('      2. Backend WebSocket endpoint not accessible');
-              print('      3. CORS or security configuration issue');
-              print('   💡 Solutions:');
-              print('      - Use ngrok paid plan for WebSocket support');
-              print('      - Or disable WebSocket and use polling/SSE instead');
-              print('      - Or use alternative tunnel (Cloudflare Tunnel, localtunnel)');
-              print('      - Or test with localhost first to verify WebSocket works');
-            }
+          // Only log critical WebSocket errors (connection failures)
+          final errorStr = error.toString();
+          if (errorStr.contains('Connection timed out') || 
+              errorStr.contains('Connection refused') ||
+              errorStr.contains('HandshakeException')) {
+            print('❌ [WebSocket] Connection failed: $errorStr');
           }
         },
         stompConnectHeaders: {
@@ -113,7 +91,9 @@ class WebSocketService {
           if (wsUrl.contains('ngrok') || wsUrl.contains('ngrok-free.app'))
             'ngrok-skip-browser-warning': 'true',
         },
-        reconnectDelay: const Duration(seconds: 5),
+        // DEV LOCAL mode: Disable auto-reconnect to prevent reconnect loops
+        // WebSocket should only connect after successful health check
+        reconnectDelay: const Duration(seconds: 0), // 0 = disable auto-reconnect
         heartbeatIncoming: const Duration(seconds: 10),
         heartbeatOutgoing: const Duration(seconds: 10),
       ),
@@ -122,7 +102,7 @@ class WebSocketService {
     try {
       client?.activate();
     } catch (e) {
-      print('❗ Failed to activate WebSocket: $e');
+      print('❌ [WebSocket] Failed to activate: $e');
     }
   }
 
@@ -130,9 +110,8 @@ class WebSocketService {
     try {
       client?.deactivate();
       _connected = false;
-      print('🔌 WebSocket manually disconnected.');
     } catch (e) {
-      print('⚠️ Error on disconnect: $e');
+      // Silent disconnect error
     }
   }
 }

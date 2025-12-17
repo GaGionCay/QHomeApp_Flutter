@@ -1547,8 +1547,9 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
     final baseUrl = ApiClient.buildServiceBase(port: 8083, path: '/api');
     final dio = Dio(BaseOptions(
       baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
-      receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+      connectTimeout: const Duration(seconds: ApiClient.connectTimeoutSeconds),
+      receiveTimeout: const Duration(seconds: ApiClient.receiveTimeoutSeconds),
+      sendTimeout: const Duration(seconds: ApiClient.sendTimeoutSeconds),
     ));
 
     final token = await _apiClient.storage.readAccessToken();

@@ -25,8 +25,9 @@ class ContractService {
     final baseUrl = ApiClient.activeBaseUrl;
     return Dio(BaseOptions(
       baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
-      receiveTimeout: const Duration(seconds: ApiClient.timeoutSeconds),
+      connectTimeout: const Duration(seconds: ApiClient.connectTimeoutSeconds),
+      receiveTimeout: const Duration(seconds: ApiClient.receiveTimeoutSeconds),
+      sendTimeout: const Duration(seconds: ApiClient.sendTimeoutSeconds),
     ));
   }
 
@@ -365,13 +366,20 @@ class ContractService {
       print('⚠️ [ContractService] Response data is not a List: ${response.data.runtimeType}');
       return [];
     } on DioException catch (e) {
+      // Suppress verbose timeout logs
+      if (e.type == DioExceptionType.receiveTimeout || 
+          e.type == DioExceptionType.connectionTimeout) {
+        print('⏱️ [ContractService] Timeout loading contracts popup');
+        print('   Backend is taking too long to respond.');
+      } else {
       print('❌ [ContractService] DioException getContractsNeedingPopup: ${e.message}');
-      print('❌ [ContractService] DioException response: ${e.response?.data}');
-      print('❌ [ContractService] DioException request: ${e.requestOptions.uri}');
+        if (e.response != null) {
+          print('   Status: ${e.response?.statusCode}');
+        }
+      }
       return [];
     } catch (e) {
       print('❌ [ContractService] Lỗi getContractsNeedingPopup: $e');
-      print('❌ [ContractService] Stack trace: ${StackTrace.current}');
       return [];
     }
   }

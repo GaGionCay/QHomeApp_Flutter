@@ -139,24 +139,23 @@ void main() async {
   // await tokenStorage.deleteSessionData();
   // print('🗑️ Cleared all session data - user will need to login again');
   
-  // If manual ngrok URL is set in config, use it immediately
-  if (AppConfig.manualNgrokUrl != null && AppConfig.manualNgrokUrl!.isNotEmpty) {
-    try {
-      final discoveryService = ApiClient.discoveryService;
-      if (discoveryService != null) {
-        final success = await discoveryService.setManualBackendUrl(AppConfig.manualNgrokUrl!);
-        if (success) {
-          print('✅ Using manual ngrok URL from config: ${AppConfig.manualNgrokUrl}');
-          // Force refresh to use new URL
-          ApiClient.forceRefreshDiscovery();
-        } else {
-          print('⚠️ Failed to set manual ngrok URL from config');
-        }
-      }
-    } catch (e) {
-      print('⚠️ Error setting manual ngrok URL: $e');
-    }
+  // DEV LOCAL mode: Using fixed baseUrl from AppConfig
+  print('');
+  print('═══════════════════════════════════════════════════════════');
+  print('🚀 [DEV LOCAL] Flutter App Starting');
+  print('═══════════════════════════════════════════════════════════');
+  print('   Base URL: ${AppConfig.apiBaseUrl}');
+  print('   Full API URL: ${AppConfig.fullApiBaseUrl}');
+  print('═══════════════════════════════════════════════════════════');
+  print('');
+  
+  // Validate baseUrl configuration (will log warnings/errors)
+  AppConfig.validateBaseUrl();
+  
+  if (kDebugMode) {
+    print('   Note: VNPay callbacks are handled by backend via VNPAY_BASE_URL environment variable');
   }
+  print('');
   
   await _configurePreferredRefreshRate();
   final tokenStorage = TokenStorage();
