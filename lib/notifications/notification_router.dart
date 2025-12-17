@@ -99,11 +99,19 @@ class NotificationRouter {
       case 'ELECTRICITY':
       case 'WATER':
         // Notification về hóa đơn/thanh toán
+        // Nếu có referenceType = "INVOICE_REMINDER" hoặc "INVOICE_UNPAID" và có referenceId,
+        // navigate đến invoice list (invoice detail sẽ được mở từ list nếu cần)
         final navigator = Navigator.of(context);
         try {
           final apiClient = ApiClient();
           final contractService = ContractService(apiClient);
           final units = await contractService.getMyUnits();
+
+          // Nếu có referenceType là INVOICE_REMINDER hoặc INVOICE_UNPAID,
+          // có thể highlight invoice trong list (future enhancement)
+          final referenceType = notification.referenceType?.toUpperCase();
+          final isInvoiceNotification = referenceType == 'INVOICE_REMINDER' || 
+                                       referenceType == 'INVOICE_UNPAID';
 
           navigator.push(MaterialPageRoute(
             builder: (_) => InvoiceListScreen(
@@ -111,6 +119,11 @@ class NotificationRouter {
               initialUnits: units,
             ),
           ));
+          
+          // TODO: Future enhancement - highlight invoice với referenceId nếu có
+          // if (isInvoiceNotification && notification.referenceId != null) {
+          //   // Scroll to invoice hoặc open detail
+          // }
         } catch (e) {
           debugPrint('⚠️ Lỗi khi điều hướng đến InvoiceListScreen: $e');
           navigator.push(MaterialPageRoute(

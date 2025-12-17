@@ -343,73 +343,41 @@ class _HomeScreenState extends State<HomeScreen> {
     // await _loadCleaningRequestState();
   }
 
-  /// Check if popup has been shown for this contract reminder
-  Future<bool> _hasShownPopupForContract(ContractDto contract) async {
-    if (contract.renewalReminderSentAt == null) {
-      return false;
-    }
-    
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final key = 'contract_reminder_shown_${contract.id}_${contract.renewalReminderSentAt!.millisecondsSinceEpoch}';
-      final shownTimestamp = prefs.getString(key);
-      
-      return shownTimestamp != null;
-    } catch (e) {
-      debugPrint('⚠️ [ContractReminder] Error checking popup status: $e');
-      return false; // If error, show popup to be safe
-    }
-  }
+  // REMOVED: _hasShownPopupForContract and _markPopupAsShown
+  // Reminder state is now managed entirely by backend contract status.
+  // No caching in SharedPreferences - always refetch from backend.
+  // Final reminders will persist until contract status changes (RENEWED or CANCELLED).
 
-  /// Mark popup as shown for this contract reminder
-  Future<void> _markPopupAsShown(ContractDto contract) async {
-    if (contract.renewalReminderSentAt == null) {
-      return;
-    }
-    
-    final prefs = await SharedPreferences.getInstance();
-    final key = 'contract_reminder_shown_${contract.id}_${contract.renewalReminderSentAt!.millisecondsSinceEpoch}';
-    await prefs.setString(key, DateTime.now().toIso8601String());
-    debugPrint('✅ [ContractReminder] Marked popup as shown for contract: ${contract.contractNumber}');
-  }
-
+  /// Check and show contract reminders
+  /// IMPORTANT: This method ALWAYS refetches from backend - no caching of reminder state.
+  /// Reminder will only disappear when backend confirms contract status has changed
+  /// (RENEWED or CANCELLED). Final reminders persist until status changes.
   Future<void> _checkContractReminders() async {
     if (_selectedUnitId == null) {
       debugPrint('⚠️ [ContractReminder] _selectedUnitId is null, skipping check');
       return;
     }
 
-    debugPrint('🔍 [ContractReminder] Checking reminders for unitId: $_selectedUnitId');
+    debugPrint('🔍 [ContractReminder] Checking reminders for unitId: $_selectedUnitId (always refetching from backend)');
 
     try {
+      // ALWAYS refetch from backend - no cache, no SharedPreferences check
+      // Backend will only return contracts with status=ACTIVE and renewalStatus=REMINDED
+      // If contract status changed to RENEWED or CANCELLED, it won't be in this list
       final contractsNeedingPopup = await _contractService.getContractsNeedingPopup(_selectedUnitId!);
       debugPrint('🔍 [ContractReminder] Found ${contractsNeedingPopup.length} contract(s) needing popup');
       
       if (contractsNeedingPopup.isNotEmpty) {
         for (var contract in contractsNeedingPopup) {
-          debugPrint('📋 [ContractReminder] Contract: ${contract.contractNumber}, renewalStatus: ${contract.renewalStatus}, reminderSentAt: ${contract.renewalReminderSentAt}, isFinalReminder: ${contract.isFinalReminder}');
+          debugPrint('📋 [ContractReminder] Contract: ${contract.contractNumber}, status: ${contract.status}, renewalStatus: ${contract.renewalStatus}, reminderSentAt: ${contract.renewalReminderSentAt}, isFinalReminder: ${contract.isFinalReminder}');
         }
       }
       
-      // Filter contracts that haven't been shown yet
-      final contractsToShow = <ContractDto>[];
-      for (var contract in contractsNeedingPopup) {
-        final hasShown = await _hasShownPopupForContract(contract);
-        if (!hasShown) {
-          contractsToShow.add(contract);
-          debugPrint('✅ [ContractReminder] Contract ${contract.contractNumber} needs popup (not shown yet)');
-        } else {
-          debugPrint('⏭️ [ContractReminder] Contract ${contract.contractNumber} already shown, skipping');
-        }
-      }
-      
-      if (contractsToShow.isNotEmpty && mounted) {
-        // Show popup for first contract needing reminder
-        final contract = contractsToShow.first;
-        debugPrint('✅ [ContractReminder] Showing popup for contract: ${contract.contractNumber}');
-        
-        // Mark as shown immediately to prevent duplicate popups
-        await _markPopupAsShown(contract);
+      // Show popup for first contract needing reminder
+      // No filtering by "shown" state - backend status is source of truth
+      if (contractsNeedingPopup.isNotEmpty && mounted) {
+        final contract = contractsNeedingPopup.first;
+        debugPrint('✅ [ContractReminder] Showing popup for contract: ${contract.contractNumber} (isFinalReminder: ${contract.isFinalReminder})');
         
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
@@ -425,7 +393,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     contractService: _contractService,
                     onDismiss: () {
                       debugPrint('🎯 [ContractReminder] Popup dismissed for contract: ${contract.contractNumber}');
-                      // After dismissing, check if there are more contracts
+                      // After dismissing, refetch from backend to check if status changed
+                      // If status changed (RENEWED/CANCELLED), reminder won't show again
+                      // If status unchanged, reminder will show again (especially for final reminders)
                       _checkContractReminders();
                     },
                   );
@@ -445,7 +415,7 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         });
       } else {
-        debugPrint('⚠️ [ContractReminder] No contracts needing popup or widget not mounted');
+        debugPrint('⚠️ [ContractReminder] No contracts needing popup (all contracts either renewed/cancelled or not in reminder phase)');
       }
     } catch (e) {
       debugPrint('❌ [ContractReminder] Error checking contract reminders: $e');

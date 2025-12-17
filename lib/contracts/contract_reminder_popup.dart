@@ -3,7 +3,6 @@ import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/contract.dart';
 import '../theme/app_colors.dart';
 import 'contract_service.dart';
@@ -69,24 +68,9 @@ class _ContractReminderPopupState extends State<ContractReminderPopup>
     await _animationController.reverse();
     if (mounted) {
       Navigator.of(context).pop();
-      // Mark popup as shown when dismissed
-      await _markPopupAsShown();
-    }
-  }
-
-  /// Mark popup as shown in SharedPreferences
-  Future<void> _markPopupAsShown() async {
-    if (widget.contract.renewalReminderSentAt == null) {
-      return;
-    }
-    
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final key = 'contract_reminder_shown_${widget.contract.id}_${widget.contract.renewalReminderSentAt!.millisecondsSinceEpoch}';
-      await prefs.setString(key, DateTime.now().toIso8601String());
-      debugPrint('✅ [ContractReminderPopup] Marked popup as shown for contract: ${widget.contract.contractNumber}');
-    } catch (e) {
-      debugPrint('⚠️ [ContractReminderPopup] Error marking popup as shown: $e');
+      // DO NOT mark popup as shown - reminder state is managed by backend contract status
+      // If contract status hasn't changed (still ACTIVE with renewalStatus=REMINDED),
+      // reminder will show again when screen refetches from backend
     }
   }
 
@@ -432,8 +416,11 @@ class _ContractReminderPopupState extends State<ContractReminderPopup>
   }
 
   Future<void> _handleRenew(BuildContext context) async {
-    // Mark popup as shown before navigating
-    await _markPopupAsShown();
+    // DO NOT mark popup as shown - backend status is source of truth
+    // Navigate to renewal screen - user can complete or cancel
+    // After returning, backend will be checked again:
+    // - If status changed to RENEWED: reminder won't show
+    // - If status still ACTIVE: reminder will show again (especially final reminders)
     await _dismissDialog();
     if (mounted) {
       Navigator.push(
@@ -444,13 +431,17 @@ class _ContractReminderPopupState extends State<ContractReminderPopup>
             contractService: widget.contractService,
           ),
         ),
-      );
+      ).then((_) {
+        // When user returns from renewal screen, callback will trigger refetch
+        // Reminder will only disappear if backend confirms status changed
+        widget.onDismiss?.call();
+      });
     }
   }
 
   void _handleCancel(BuildContext context) async {
-    // Mark popup as shown before navigating
-    await _markPopupAsShown();
+    // DO NOT mark popup as shown - backend status is source of truth
+    // Navigate to cancel screen - user can complete or cancel
     await _dismissDialog();
     
     if (!mounted) return;
@@ -466,10 +457,11 @@ class _ContractReminderPopupState extends State<ContractReminderPopup>
       ),
     );
     
-    // If cancellation was successful, call onDismiss
-    if (result == true) {
-      widget.onDismiss?.call();
-    }
+    // After returning from cancel screen:
+    // - If cancellation successful (status changed to CANCELLED): reminder won't show
+    // - If cancellation not completed (status still ACTIVE): reminder will show again (especially final reminders)
+    // Call onDismiss to trigger refetch from backend
+    widget.onDismiss?.call();
   }
 }
 
