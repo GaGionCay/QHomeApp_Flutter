@@ -3017,20 +3017,9 @@ class _DirectVideoMessageWidgetState extends State<_DirectVideoMessageWidget> {
         _error = null;
       });
 
-      // Skip ImageKit videos - ImageKit is out of storage and blocking requests
+      // Video URLs are now always from backend (never ImageKit)
+      // No need to check for ImageKit URLs - all videos are hosted on backend
       String videoUrl = widget.videoUrl;
-      if (_isImageKitUrl(videoUrl)) {
-        debugPrint('⚠️ [DirectChatVideo] Skipping ImageKit video (out of storage): $videoUrl');
-        if (mounted) {
-          setState(() {
-            _error = 'Video ImageKit không khả dụng do hết dung lượng';
-            _isLoading = false;
-          });
-        }
-        return;
-      }
-      
-      // Use database video URL directly
       _controller = VideoPlayerController.networkUrl(
         Uri.parse(videoUrl),
       );
@@ -3076,11 +3065,7 @@ class _DirectVideoMessageWidgetState extends State<_DirectVideoMessageWidget> {
     return '$minutes:$seconds';
   }
 
-  /// Check if URL is from ImageKit
-  bool _isImageKitUrl(String url) {
-    if (url.isEmpty) return false;
-    return url.contains('ik.imagekit.io') || url.contains('imagekit.io');
-  }
+  // REMOVED: _isImageKitUrl - videos no longer use ImageKit
 
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';

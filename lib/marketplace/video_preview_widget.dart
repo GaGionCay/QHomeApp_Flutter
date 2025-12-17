@@ -81,19 +81,8 @@ class _VideoPreviewWidgetState extends State<VideoPreviewWidget> {
     try {
       String videoUrl = widget.videoUrl!;
       
-      // Skip ImageKit videos - ImageKit is out of storage and blocking requests
-      if (_isImageKitUrl(videoUrl)) {
-        debugPrint('⚠️ [VideoPreview] Skipping ImageKit video (out of storage): $videoUrl');
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-            _hasError = true;
-          });
-        }
-        return;
-      }
-      
-      // Use database video URL directly
+      // Video URLs are now always from backend (never ImageKit)
+      // Use backend video URL directly
       videoUrl = videoUrl.startsWith('http://') || videoUrl.startsWith('https://')
           ? videoUrl
           : 'https://$videoUrl';
@@ -361,7 +350,7 @@ class _VideoPreviewWidgetState extends State<VideoPreviewWidget> {
   }
 
   Widget _buildErrorWidget(ThemeData theme) {
-    final isImageKit = widget.videoUrl != null && _isImageKitUrl(widget.videoUrl!);
+    // Videos are always from backend, never ImageKit
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -373,9 +362,7 @@ class _VideoPreviewWidgetState extends State<VideoPreviewWidget> {
           ),
           const SizedBox(height: 8),
           Text(
-            isImageKit 
-                ? 'Video ImageKit không khả dụng'
-                : 'Không thể tải video',
+            'Không thể tải video',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
             ),
@@ -393,10 +380,6 @@ class _VideoPreviewWidgetState extends State<VideoPreviewWidget> {
     return '$minutes:$seconds';
   }
 
-  /// Check if URL is from ImageKit
-  bool _isImageKitUrl(String url) {
-    if (url.isEmpty) return false;
-    return url.contains('ik.imagekit.io') || url.contains('imagekit.io');
-  }
+  // REMOVED: _isImageKitUrl - videos no longer use ImageKit
 }
 

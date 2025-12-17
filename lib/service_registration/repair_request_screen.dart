@@ -605,8 +605,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
                   }
                 }
               } catch (e) {
-                debugPrint('⚠️ Không thể lấy video metadata: $e');
-                // Vẫn tiếp tục upload nếu không lấy được metadata
+                // Metadata extraction failed - continue without it, no logging needed
               }
               
               // Upload video lên backend
@@ -622,7 +621,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
               );
               
               url = videoData['fileUrl'] as String;
-              debugPrint('✅ Video uploaded to backend: $url');
+              // Success - no logging needed (too frequent)
             } catch (e) {
               if (!mounted) return;
               _showMessage('Lỗi khi upload video "${attachment.fileName}": ${e.toString()}', color: Colors.red);

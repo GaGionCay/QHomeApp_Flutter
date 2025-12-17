@@ -972,9 +972,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           // Nén video trước khi upload
           final compressedFile = await VideoCompressionService.instance.compressVideo(
             videoPath: _selectedVideo!.path,
-            onProgress: (message) {
-              print('Video compression: $message');
-            },
+            // No progress logging - only log errors
           );
           
           final videoFileToUpload = compressedFile ?? File(_selectedVideo!.path);
@@ -1006,7 +1004,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               }
             }
           } catch (e) {
-            print('⚠️ Không thể lấy video metadata: $e');
+            // Metadata extraction failed - continue without it, no logging needed
           }
           
           // Upload video lên data-docs-service
@@ -1022,14 +1020,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           );
           
           videoUrl = videoData['fileUrl'] as String;
-          print('✅ [PostDetailScreen] Video comment uploaded to backend: $videoUrl');
+          // Success - no logging needed (too frequent)
           
           // Xóa file nén nếu khác file gốc
           if (compressedFile != null && compressedFile.path != _selectedVideo!.path) {
             try {
               await compressedFile.delete();
             } catch (e) {
-              print('⚠️ Không thể xóa file nén: $e');
+              // Failed to delete compressed file - not critical, no logging needed
             }
           }
         } catch (e) {
@@ -3742,20 +3740,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       VideoPlayerController controller;
       
       try {
-        // Check if video URL is from ImageKit (old videos) - skip if ImageKit is blocked
-        if (videoUrl.contains('ik.imagekit.io') || videoUrl.contains('imagekit.io')) {
-          if (context.mounted) {
-            Navigator.of(context).pop(); // Close loading dialog
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Video này đang được lưu trữ trên ImageKit và hiện không khả dụng. Vui lòng thử lại sau.'),
-                duration: Duration(seconds: 3),
-              ),
-            );
-          }
-          return;
-        }
-        
+        // Video URLs are now always from backend (never ImageKit)
         // Use network URL directly (videoUrl is already absolute URL from model)
         final fullUrl = videoUrl.startsWith('http://') || videoUrl.startsWith('https://')
             ? videoUrl
@@ -3794,9 +3779,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           String errorMessage = 'Không thể tải video';
           if (e.toString().contains('403') || e.toString().contains('Forbidden')) {
             errorMessage = 'Video không khả dụng. Vui lòng thử lại sau.';
-          } else if (e.toString().contains('imagekit') || e.toString().contains('ImageKit')) {
-            errorMessage = 'Video này đang được lưu trữ trên ImageKit và hiện không khả dụng.';
-          }
+          // Video errors handled generically (videos are always from backend, never ImageKit)
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(errorMessage),

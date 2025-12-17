@@ -192,9 +192,7 @@ class MarketplaceService {
           // Nén video trước khi upload
           final compressedFile = await VideoCompressionService.instance.compressVideo(
             videoPath: video.path,
-            onProgress: (message) {
-              print('Video compression: $message');
-            },
+            // No progress logging - only log errors
           );
           
           final videoFileToUpload = compressedFile ?? File(video.path);
@@ -242,18 +240,18 @@ class MarketplaceService {
           );
           
           videoUrl = videoData['fileUrl'] as String;
-          print('✅ [MarketplaceService] Video uploaded to backend: $videoUrl');
+          // Success - no logging needed (too frequent)
           
           // Xóa file nén nếu khác file gốc
           if (compressedFile != null && compressedFile.path != video.path) {
             try {
               await compressedFile.delete();
             } catch (e) {
-              print('⚠️ Không thể xóa file nén: $e');
+              // Failed to delete compressed file - not critical, no logging needed
             }
           }
         } catch (e) {
-          print('❌ [MarketplaceService] Error uploading video: $e');
+          // Error logging handled by uploadVideo method - just rethrow
           throw Exception('Lỗi khi upload video: ${e.toString()}');
         }
       }
@@ -366,9 +364,7 @@ class MarketplaceService {
           // Nén video trước khi upload
           final compressedFile = await VideoCompressionService.instance.compressVideo(
             videoPath: video.path,
-            onProgress: (message) {
-              print('Video compression: $message');
-            },
+            // No progress logging - only log errors
           );
           
           final videoFileToUpload = compressedFile ?? File(video.path);
@@ -416,18 +412,18 @@ class MarketplaceService {
           );
           
           videoUrl = videoData['fileUrl'] as String;
-          print('✅ [MarketplaceService] Video uploaded to backend: $videoUrl');
+          // Success - no logging needed (too frequent)
           
           // Xóa file nén nếu khác file gốc
           if (compressedFile != null && compressedFile.path != video.path) {
             try {
               await compressedFile.delete();
             } catch (e) {
-              print('⚠️ Không thể xóa file nén: $e');
+              // Failed to delete compressed file - not critical, no logging needed
             }
           }
         } catch (e) {
-          print('❌ [MarketplaceService] Error uploading video: $e');
+          // Error logging handled by uploadVideo method - just rethrow
           throw Exception('Lỗi khi upload video: ${e.toString()}');
         }
       }

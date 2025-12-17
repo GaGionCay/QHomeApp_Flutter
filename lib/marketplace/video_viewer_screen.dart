@@ -49,20 +49,10 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
         // Local file
         controller = VideoPlayerController.file(File(widget.videoPath!));
       } else if (widget.videoUrl != null) {
-        // Network URL - skip ImageKit videos (out of storage)
+        // Video URLs are now always from backend (never ImageKit)
         String videoUrl = widget.videoUrl!;
         
-        // Skip ImageKit videos - ImageKit is out of storage and blocking requests
-        if (_isImageKitUrl(videoUrl)) {
-          debugPrint('⚠️ [VideoViewer] Skipping ImageKit video (out of storage): $videoUrl');
-          setState(() {
-            _errorMessage = 'Video này đang được lưu trữ trên ImageKit và hiện không khả dụng do hết dung lượng.';
-            _isLoading = false;
-          });
-          return;
-        }
-        
-        // For database video URLs, use directly
+        // For backend video URLs, use directly
         videoUrl = videoUrl.startsWith('http://') || videoUrl.startsWith('https://')
             ? videoUrl
             : 'https://$videoUrl';
@@ -191,10 +181,7 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
   }
 
   /// Check if URL is from ImageKit
-  bool _isImageKitUrl(String url) {
-    if (url.isEmpty) return false;
-    return url.contains('ik.imagekit.io') || url.contains('imagekit.io');
-  }
+  // REMOVED: _isImageKitUrl - videos no longer use ImageKit
 
   @override
   void dispose() {

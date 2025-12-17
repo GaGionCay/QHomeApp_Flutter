@@ -174,7 +174,10 @@ class ImageKitService {
     }
   }
 
-  /// Upload a video file to backend database (not ImageKit)
+  /// Upload a video file to backend (NOT ImageKit - videos are self-hosted)
+  /// 
+  /// NOTE: This method uploads to backend /api/videos/upload endpoint.
+  /// Videos are NEVER uploaded to ImageKit - only images use ImageKit.
   /// 
   /// [file] - The video file to upload (XFile or File)
   /// [category] - Category of video: 'repair_request', 'marketplace_post', 'direct_chat', 'group_chat', 'marketplace_comment'
@@ -184,7 +187,7 @@ class ImageKitService {
   /// [durationSeconds] - Optional video duration in seconds
   /// [width] - Optional video width in pixels
   /// [height] - Optional video height in pixels
-  /// Returns the video URL and metadata
+  /// Returns the video URL and metadata (URL points to backend stream endpoint)
   Future<Map<String, dynamic>> uploadVideo({
     required dynamic file, // XFile or File
     required String category,
@@ -196,7 +199,8 @@ class ImageKitService {
     int? height,
   }) async {
     try {
-      AppLogger.debug('[ImageKitService] Uploading video: category=$category, ownerId=$ownerId');
+      // Minimal logging - only log errors
+      // Video uploads are frequent, don't spam logs
       
       final filePath = file is XFile ? file.path : (file as File).path;
       final fileName = file is XFile ? file.name : (file as File).path.split('/').last;
@@ -221,7 +225,7 @@ class ImageKitService {
       if (response.statusCode == 201 && response.data != null) {
         final videoData = response.data as Map<String, dynamic>;
         final videoUrl = videoData['fileUrl'] as String;
-        AppLogger.success('[ImageKitService] ✅ Video uploaded successfully: $videoUrl');
+        // Success - no logging needed (too frequent)
         return videoData;
       } else {
         final errorMsg = response.data?['error']?.toString() ?? 'Response không có dữ liệu';
