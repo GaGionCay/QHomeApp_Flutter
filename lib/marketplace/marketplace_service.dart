@@ -126,63 +126,7 @@ class MarketplaceService {
     String? scope,
   }) async {
     try {
-      // Tạo JSON data cho CreatePostRequest
-      final requestData = {
-        'buildingId': buildingId,
-        'title': title,
-        'description': description,
-        if (price != null) 'price': price,
-        'category': category,
-        if (location != null) 'location': location,
-        if (contactInfo != null) 'contactInfo': contactInfo.toJson(),
-        if (scope != null) 'scope': scope,
-      };
-      
-      // Debug logging
-      print('📞 [MarketplaceService] Creating post with contactInfo:');
-      print('   - contactInfo: $contactInfo');
-      if (contactInfo != null) {
-        print('   - phone: ${contactInfo.phone}');
-        print('   - email: ${contactInfo.email}');
-        print('   - showPhone: ${contactInfo.showPhone}');
-        print('   - showEmail: ${contactInfo.showEmail}');
-        print('   - contactInfo.toJson(): ${contactInfo.toJson()}');
-      }
-      print('   - requestData: $requestData');
-
-      // Convert to JSON string
-      final jsonString = jsonEncode(requestData);
-
-      // Tạo FormData với part "data" chứa JSON
-      final formData = FormData();
-
-      // Thêm part "data" với JSON content
-      formData.files.add(
-        MapEntry(
-          'data',
-          MultipartFile.fromString(
-            jsonString,
-            filename: 'data.json',
-          ),
-        ),
-      );
-
-      // Thêm images (nếu có)
-      if (images.isNotEmpty) {
-        for (int i = 0; i < images.length; i++) {
-          formData.files.add(
-            MapEntry(
-              'images',
-              await MultipartFile.fromFile(
-                images[i].path,
-                filename: 'image_$i.jpg',
-              ),
-            ),
-          );
-        }
-      }
-
-      // Upload video to data-docs-service first if provided
+      // Upload video FIRST to get videoUrl before creating requestData
       String? videoUrl;
       if (video != null) {
         try {
@@ -245,7 +189,7 @@ class MarketplaceService {
           );
           
           videoUrl = videoData['streamingUrl'] as String;
-          // Success - no logging needed (too frequent)
+          print('✅ [MarketplaceService] Video uploaded, videoUrl: $videoUrl');
           
           // Xóa file nén nếu khác file gốc
           if (compressedFile != null && compressedFile.path != video.path) {
@@ -261,9 +205,51 @@ class MarketplaceService {
         }
       }
       
-      // Thêm videoUrl vào requestData nếu đã upload thành công
-      if (videoUrl != null) {
-        requestData['videoUrl'] = videoUrl;
+      // Tạo JSON data cho CreatePostRequest - videoUrl đã có sẵn nếu có video
+      final requestData = {
+        'buildingId': buildingId,
+        'title': title,
+        'description': description,
+        if (price != null) 'price': price,
+        'category': category,
+        if (location != null) 'location': location,
+        if (contactInfo != null) 'contactInfo': contactInfo.toJson(),
+        if (scope != null) 'scope': scope,
+        if (videoUrl != null) 'videoUrl': videoUrl, // ✅ Add videoUrl BEFORE serializing
+      };
+      
+      print('📤 [MarketplaceService] Creating post with requestData: $requestData');
+
+      // Convert to JSON string
+      final jsonString = jsonEncode(requestData);
+
+      // Tạo FormData với part "data" chứa JSON
+      final formData = FormData();
+
+      // Thêm part "data" với JSON content
+      formData.files.add(
+        MapEntry(
+          'data',
+          MultipartFile.fromString(
+            jsonString,
+            filename: 'data.json',
+          ),
+        ),
+      );
+
+      // Thêm images (nếu có)
+      if (images.isNotEmpty) {
+        for (int i = 0; i < images.length; i++) {
+          formData.files.add(
+            MapEntry(
+              'images',
+              await MultipartFile.fromFile(
+                images[i].path,
+                filename: 'image_$i.jpg',
+              ),
+            ),
+          );
+        }
       }
 
       print('📤 [MarketplaceService] Sending POST request to /posts');
@@ -309,54 +295,7 @@ class MarketplaceService {
     String? videoToDelete, // ID của video cần xóa
   }) async {
     try {
-      // Tạo JSON data cho UpdatePostRequest
-      final requestData = <String, dynamic>{};
-      if (title != null) requestData['title'] = title;
-      if (description != null) requestData['description'] = description;
-      if (price != null) requestData['price'] = price;
-      if (category != null) requestData['category'] = category;
-      if (location != null) requestData['location'] = location;
-      if (contactInfo != null) requestData['contactInfo'] = contactInfo.toJson();
-      if (imagesToDelete != null && imagesToDelete.isNotEmpty) {
-        requestData['imagesToDelete'] = imagesToDelete;
-      }
-      if (videoToDelete != null && videoToDelete.isNotEmpty) {
-        requestData['videoToDelete'] = videoToDelete;
-      }
-
-      // Convert to JSON string
-      final jsonString = jsonEncode(requestData);
-
-      // Tạo FormData với part "data" chứa JSON
-      final formData = FormData();
-
-      // Thêm part "data" với JSON content
-      formData.files.add(
-        MapEntry(
-          'data',
-          MultipartFile.fromString(
-            jsonString,
-            filename: 'data.json',
-          ),
-        ),
-      );
-
-      // Thêm images mới
-      if (newImages != null && newImages.isNotEmpty) {
-        for (int i = 0; i < newImages.length; i++) {
-          formData.files.add(
-            MapEntry(
-              'images',
-              await MultipartFile.fromFile(
-                newImages[i].path,
-                filename: 'image_$i.jpg',
-              ),
-            ),
-          );
-        }
-      }
-
-      // Upload video to data-docs-service first if provided
+      // Upload video FIRST to get videoUrl before creating requestData
       String? videoUrl;
       if (video != null) {
         try {
@@ -419,7 +358,7 @@ class MarketplaceService {
           );
           
           videoUrl = videoData['streamingUrl'] as String;
-          // Success - no logging needed (too frequent)
+          print('✅ [MarketplaceService] Video uploaded for update, videoUrl: $videoUrl');
           
           // Xóa file nén nếu khác file gốc
           if (compressedFile != null && compressedFile.path != video.path) {
@@ -435,9 +374,54 @@ class MarketplaceService {
         }
       }
       
-      // Thêm videoUrl vào requestData nếu đã upload thành công
-      if (videoUrl != null) {
-        requestData['videoUrl'] = videoUrl;
+      // Tạo JSON data cho UpdatePostRequest - videoUrl đã có sẵn nếu có video
+      final requestData = <String, dynamic>{};
+      if (title != null) requestData['title'] = title;
+      if (description != null) requestData['description'] = description;
+      if (price != null) requestData['price'] = price;
+      if (category != null) requestData['category'] = category;
+      if (location != null) requestData['location'] = location;
+      if (contactInfo != null) requestData['contactInfo'] = contactInfo.toJson();
+      if (imagesToDelete != null && imagesToDelete.isNotEmpty) {
+        requestData['imagesToDelete'] = imagesToDelete;
+      }
+      if (videoToDelete != null && videoToDelete.isNotEmpty) {
+        requestData['videoToDelete'] = videoToDelete;
+      }
+      if (videoUrl != null) requestData['videoUrl'] = videoUrl; // ✅ Add videoUrl BEFORE serializing
+
+      print('📤 [MarketplaceService] Updating post with requestData: $requestData');
+
+      // Convert to JSON string
+      final jsonString = jsonEncode(requestData);
+
+      // Tạo FormData với part "data" chứa JSON
+      final formData = FormData();
+
+      // Thêm part "data" với JSON content
+      formData.files.add(
+        MapEntry(
+          'data',
+          MultipartFile.fromString(
+            jsonString,
+            filename: 'data.json',
+          ),
+        ),
+      );
+
+      // Thêm images mới
+      if (newImages != null && newImages.isNotEmpty) {
+        for (int i = 0; i < newImages.length; i++) {
+          formData.files.add(
+            MapEntry(
+              'images',
+              await MultipartFile.fromFile(
+                newImages[i].path,
+                filename: 'image_$i.jpg',
+              ),
+            ),
+          );
+        }
       }
 
       final response = await _apiClient.dio.put(

@@ -517,6 +517,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                     viewCount: updatedPost.viewCount,
                     commentCount: calculatedCount, // Use calculated count
                     images: updatedPost.images,
+                    videoUrl: updatedPost.videoUrl,
                     author: updatedPost.author,
                     createdAt: updatedPost.createdAt,
                     updatedAt: updatedPost.updatedAt,
@@ -1882,50 +1883,26 @@ class _PostDetailScreenState extends State<PostDetailScreen>
               ),
             ],
             
-            // Separate images and video
+            // Video and Images
             Builder(
               builder: (context) {
-                final allMedia = post.images;
-                final images = <MarketplacePostImage>[];
-                MarketplacePostImage? video;
-                
-                for (var media in allMedia) {
-                  final url = media.imageUrl.toLowerCase();
-                  final isVideo = url.contains('.mp4') || 
-                                 url.contains('.mov') || 
-                                 url.contains('.avi') || 
-                                 url.contains('.webm') ||
-                                 url.contains('.mkv') ||
-                                 url.contains('video/') ||
-                                 (media.thumbnailUrl == null && 
-                                  !url.contains('.jpg') && 
-                                  !url.contains('.jpeg') && 
-                                  !url.contains('.png') && 
-                                  !url.contains('.webp') &&
-                                  !url.contains('.gif'));
-                  
-                  if (isVideo) {
-                    video = media;
-                  } else {
-                    images.add(media);
-                  }
-                }
+                final images = post.images; // All images now, video is separate
                 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Video (if exists)
-                    if (video != null) ...[
+                    // Video from post.videoUrl (stored in database)
+                    if (post.videoUrl != null && post.videoUrl!.isNotEmpty) ...[
                       const SizedBox(height: 16),
                       VideoPreviewWidget(
-                        videoUrl: video.imageUrl,
+                        videoUrl: post.videoUrl!,
                         height: 300,
                         onTap: () {
                           Navigator.push(
                             context,
                             SmoothPageRoute(
                               page: VideoViewerScreen(
-                                videoUrl: video!.imageUrl,
+                                videoUrl: post.videoUrl!,
                                 title: post.title,
                               ),
                             ),
@@ -1936,7 +1913,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                     
                     // Images
                     if (images.isNotEmpty) ...[
-                      SizedBox(height: video != null ? 16 : 0),
+                      SizedBox(height: (post.videoUrl != null && post.videoUrl!.isNotEmpty) ? 16 : 0),
                       SizedBox(
                         height: 300,
                         child: ListView.builder(
@@ -3892,7 +3869,8 @@ class _CommentVideoPlayerDialogState extends State<_CommentVideoPlayerDialog>
   void dispose() {
     _hideControlsTimer?.cancel();
     widget.controller.removeListener(_videoListener);
-    widget.controller.pause(); // Pause video when dialog closes
+    // ✅ FIXED: Don't pause after removing listener - controller may be disposed
+    // Parent widget will handle controller disposal
     super.dispose();
   }
 

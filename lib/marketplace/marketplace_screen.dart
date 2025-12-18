@@ -13,6 +13,7 @@ import 'post_detail_screen.dart';
 import 'image_viewer_screen.dart';
 import 'video_preview_widget.dart';
 import 'video_viewer_screen.dart';
+import 'inline_video_player.dart';
 import '../chat/chat_service.dart';
 import '../chat/group_list_screen.dart';
 import '../chat/group_list_screen.dart';
@@ -1040,10 +1041,6 @@ class _MarketplaceScreenState extends State<MarketplaceScreen>
                   }
 
                   final post = posts[index];
-                  
-                  // Debug log to verify post is updated
-                  debugPrint('📋 [MarketplaceScreen] Building post card for post ${post.id}, commentCount: ${post.commentCount}');
-                  
                   // Filter out posts from blocked users
                   String? authorUserId = post.author?.userId;
                   
@@ -1589,51 +1586,26 @@ class _PostCard extends StatelessWidget {
                     ],
                   ),
                 ],
-                // Separate images and video, then display
+                // ✅ Video and Images display (NEW: video from post.videoUrl)
                 Builder(
                   builder: (context) {
-                    final allMedia = post.images;
-                    final images = <MarketplacePostImage>[];
-                    MarketplacePostImage? video;
-                    
-                    for (var media in allMedia) {
-                      final url = media.imageUrl.toLowerCase();
-                      final isVideo = url.contains('.mp4') || 
-                                     url.contains('.mov') || 
-                                     url.contains('.avi') || 
-                                     url.contains('.webm') ||
-                                     url.contains('.mkv') ||
-                                     url.contains('video/') ||
-                                     (media.thumbnailUrl == null && 
-                                      !url.contains('.jpg') && 
-                                      !url.contains('.jpeg') && 
-                                      !url.contains('.png') && 
-                                      !url.contains('.webp') &&
-                                      !url.contains('.gif'));
-                      
-                      if (isVideo) {
-                        video = media;
-                      } else {
-                        images.add(media);
-                      }
-                    }
+                    final images = post.images; // All images now (video separate)
                     
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Video (if exists) - show first
-                        if (video != null) ...[
+                        // ✅ Video from post.videoUrl (stored in database)
+                        if (post.videoUrl != null && post.videoUrl!.isNotEmpty) ...[
                           const SizedBox(height: 12),
-                          VideoPreviewWidget(
-                            videoUrl: video.imageUrl,
-                            height: 200,
-                            width: double.infinity,
+                          InlineVideoPlayer(
+                            videoUrl: post.videoUrl!,
+                            height: 220,
                             onTap: () {
                               Navigator.push(
                                 context,
                                 SmoothPageRoute(
                                   page: VideoViewerScreen(
-                                    videoUrl: video!.imageUrl,
+                                    videoUrl: post.videoUrl!,
                                     title: post.title,
                                   ),
                                 ),
@@ -1644,7 +1616,7 @@ class _PostCard extends StatelessWidget {
                         
                         // Images - Only show first 3 images, click to view all
                         if (images.isNotEmpty) ...[
-                          SizedBox(height: video != null ? 12 : 0),
+                          SizedBox(height: (post.videoUrl != null && post.videoUrl!.isNotEmpty) ? 12 : 0),
                           SizedBox(
                             height: 200,
                             child: ListView.builder(

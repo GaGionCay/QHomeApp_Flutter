@@ -74,11 +74,13 @@ class VideoUploadService {
       );
 
       if (response.statusCode == 201 && response.data != null) {
-        final videoId = response.data['videoId'] as String?;
+        // Backend returns 'id' not 'videoId'
+        final videoId = response.data['id'] as String?;
         final fileUrl = response.data['fileUrl'] as String?;
         
         if (videoId == null || fileUrl == null) {
-          throw Exception('Response thiếu videoId hoặc fileUrl');
+          AppLogger.error('[VideoUploadService] ❌ Response thiếu id hoặc fileUrl. Response: ${response.data}');
+          throw Exception('Response thiếu id hoặc fileUrl');
         }
         
         // Construct streaming URL
