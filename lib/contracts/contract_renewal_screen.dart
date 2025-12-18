@@ -16,12 +16,14 @@ class ContractRenewalScreen extends StatefulWidget {
   final ContractDto contract;
   final ContractService contractService;
   final UnitInfo? unit;
+  final bool isFinalReminder;
 
   const ContractRenewalScreen({
     Key? key,
     required this.contract,
     required this.contractService,
     this.unit,
+    this.isFinalReminder = false,
   }) : super(key: key);
 
   @override
@@ -625,10 +627,29 @@ class _ContractRenewalScreenState extends State<ContractRenewalScreen>
     final currencyFormat = NumberFormat('#,###', 'vi_VN');
     final totalRent = _calculateTotalRent();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Gia hạn hợp đồng'),
-      ),
+    return PopScope(
+      canPop: !widget.isFinalReminder,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && widget.isFinalReminder) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Bạn BẮT BUỘC phải hoàn tất gia hạn hợp đồng'),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          );
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(widget.isFinalReminder 
+              ? 'Gia hạn hợp đồng (BẮT BUỘC)' 
+              : 'Gia hạn hợp đồng'),
+          automaticallyImplyLeading: !widget.isFinalReminder, // ✅ Hide back button nếu final reminder
+        ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -784,6 +805,7 @@ class _ContractRenewalScreenState extends State<ContractRenewalScreen>
           ],
         ),
       ),
+    ),
     );
   }
 

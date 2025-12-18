@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/core/safe_state_mixin.dart';
+import '../core/safe_state_mixin.dart';
 import '../theme/app_colors.dart';
 
 class AppLuxeTextField extends StatefulWidget {

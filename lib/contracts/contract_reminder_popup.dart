@@ -13,12 +13,14 @@ class ContractReminderPopup extends StatefulWidget {
   final ContractDto contract;
   final ContractService contractService;
   final VoidCallback? onDismiss;
+  final Function({bool skipRenewalReminder})? onDismissWithSkip;
 
   const ContractReminderPopup({
     Key? key,
     required this.contract,
     required this.contractService,
     this.onDismiss,
+    this.onDismissWithSkip,
   }) : super(key: key);
 
   @override
@@ -122,9 +124,11 @@ class _ContractReminderPopupState extends State<ContractReminderPopup>
               ),
             ),
           );
-        } else if (didPop) {
-          widget.onDismiss?.call();
         }
+        // ❌ REMOVED: Don't call onDismiss here - it will be called by specific button handlers
+        // else if (didPop) {
+        //   widget.onDismiss?.call();
+        // }
       },
       child: FadeTransition(
         opacity: _fadeAnimation,
@@ -335,7 +339,22 @@ class _ContractReminderPopupState extends State<ContractReminderPopup>
     bool isDark,
   ) {
     return OutlinedButton(
-      onPressed: () => _dismissDialog().then((_) => widget.onDismiss?.call()),
+      onPressed: () async {
+        debugPrint('⚪ [ContractReminderPopup] Dismiss button clicked');
+        
+        // Call API to dismiss reminder
+        try {
+          await widget.contractService.dismissReminder(widget.contract.id);
+          debugPrint('✅ [ContractReminderPopup] Reminder dismissed successfully');
+        } catch (e) {
+          debugPrint('⚠️ [ContractReminderPopup] Failed to dismiss reminder: $e');
+          // Continue anyway - user experience is more important
+        }
+        
+        await _dismissDialog();
+        debugPrint('⚪ [ContractReminderPopup] Calling onDismiss (user clicked Dismiss button)');
+        widget.onDismiss?.call();
+      },
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 14),
         shape: RoundedRectangleBorder(
@@ -416,6 +435,9 @@ class _ContractReminderPopupState extends State<ContractReminderPopup>
   }
 
   Future<void> _handleRenew(BuildContext context) async {
+    debugPrint('🔵 [ContractReminderPopup] _handleRenew() called for contract: ${widget.contract.contractNumber}');
+    debugPrint('🔵 [ContractReminderPopup] onDismissWithSkip is null: ${widget.onDismissWithSkip == null}');
+    
     // DO NOT mark popup as shown - backend status is source of truth
     // Navigate to renewal screen - user can complete or cancel
     // After returning, backend will be checked again:
@@ -423,29 +445,42 @@ class _ContractReminderPopupState extends State<ContractReminderPopup>
     // - If status still ACTIVE: reminder will show again (especially final reminders)
     await _dismissDialog();
     if (mounted) {
+      debugPrint('🔵 [ContractReminderPopup] Navigating to ContractRenewalScreen... (isFinalReminder: ${widget.contract.isFinalReminder})');
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => ContractRenewalScreen(
             contract: widget.contract,
             contractService: widget.contractService,
+            isFinalReminder: widget.contract.isFinalReminder == true,
           ),
         ),
       ).then((_) {
-        // When user returns from renewal screen, callback will trigger refetch
-        // Reminder will only disappear if backend confirms status changed
-        widget.onDismiss?.call();
+        debugPrint('🔵 [ContractReminderPopup] Returned from ContractRenewalScreen');
+        // ✅ Skip renewal reminder check when returning from renew screen
+        // User is already handling the contract, no need to show reminder again
+        if (widget.onDismissWithSkip != null) {
+          debugPrint('✅ [ContractReminderPopup] Calling onDismissWithSkip(skipRenewalReminder: true)');
+          widget.onDismissWithSkip!(skipRenewalReminder: true);
+        } else {
+          debugPrint('⚠️ [ContractReminderPopup] onDismissWithSkip is null, calling onDismiss instead');
+          widget.onDismiss?.call();
+        }
       });
     }
   }
 
   void _handleCancel(BuildContext context) async {
+    debugPrint('🔴 [ContractReminderPopup] _handleCancel() called for contract: ${widget.contract.contractNumber}');
+    debugPrint('🔴 [ContractReminderPopup] onDismissWithSkip is null: ${widget.onDismissWithSkip == null}');
+    
     // DO NOT mark popup as shown - backend status is source of truth
     // Navigate to cancel screen - user can complete or cancel
     await _dismissDialog();
     
     if (!mounted) return;
     
+    debugPrint('🔴 [ContractReminderPopup] Navigating to ContractCancelScreen... (isFinalReminder: ${widget.contract.isFinalReminder})');
     // Navigate to cancel screen to select inspection date
     final result = await Navigator.push(
       context,
@@ -453,15 +488,21 @@ class _ContractReminderPopupState extends State<ContractReminderPopup>
         builder: (context) => ContractCancelScreen(
           contract: widget.contract,
           contractService: widget.contractService,
+          isFinalReminder: widget.contract.isFinalReminder == true,
         ),
       ),
     );
     
-    // After returning from cancel screen:
-    // - If cancellation successful (status changed to CANCELLED): reminder won't show
-    // - If cancellation not completed (status still ACTIVE): reminder will show again (especially final reminders)
-    // Call onDismiss to trigger refetch from backend
-    widget.onDismiss?.call();
+    debugPrint('🔴 [ContractReminderPopup] Returned from ContractCancelScreen');
+    // ✅ Skip renewal reminder check when returning from cancel screen
+    // User is already handling the contract, no need to show reminder again
+    if (widget.onDismissWithSkip != null) {
+      debugPrint('✅ [ContractReminderPopup] Calling onDismissWithSkip(skipRenewalReminder: true)');
+      widget.onDismissWithSkip!(skipRenewalReminder: true);
+    } else {
+      debugPrint('⚠️ [ContractReminderPopup] onDismissWithSkip is null, calling onDismiss instead');
+      widget.onDismiss?.call();
+    }
   }
 }
 

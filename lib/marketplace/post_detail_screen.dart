@@ -19,6 +19,7 @@ import '../models/comment_paged_response.dart';
 import '../auth/token_storage.dart';
 import '../auth/api_client.dart';
 import '../services/imagekit_service.dart';
+import '../services/video_upload_service.dart';
 import 'marketplace_view_model.dart';
 import 'marketplace_service.dart';
 import '../core/event_bus.dart';
@@ -56,6 +57,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
   final ApiClient _apiClient = ApiClient();
   final MarketplaceService _marketplaceService = MarketplaceService();
   final ImageKitService _imageKitService = ImageKitService(ApiClient());
+  final VideoUploadService _videoUploadService = VideoUploadService(ApiClient());
   bool _commentsLoaded = false; // Track if comments have been loaded
   List<MarketplaceComment> _comments = [];
   MarketplacePost? _currentPost; // Cache current post for comment count
@@ -1015,8 +1017,8 @@ class _PostDetailScreenState extends State<PostDetailScreen>
             // Metadata extraction failed - continue without it, no logging needed
           }
           
-          // Upload video lên data-docs-service
-          final videoData = await _imageKitService.uploadVideo(
+          // Upload video lên data-docs-service VideoStorageService
+          final videoData = await _videoUploadService.uploadVideo(
             file: videoFileToUpload,
             category: 'marketplace_comment',
             ownerId: widget.post.id, // Sử dụng postId làm ownerId
@@ -1027,7 +1029,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
             height: height,
           );
           
-          videoUrl = videoData['fileUrl'] as String;
+          videoUrl = videoData['streamingUrl'] as String;
           // Success - no logging needed (too frequent)
           
           // Xóa file nén nếu khác file gốc

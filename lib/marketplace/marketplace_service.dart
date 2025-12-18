@@ -9,6 +9,7 @@ import '../models/marketplace_category.dart';
 import '../models/marketplace_paged_response.dart';
 import '../models/comment_paged_response.dart';
 import '../services/imagekit_service.dart';
+import '../services/video_upload_service.dart';
 import '../service_registration/video_compression_service.dart';
 import '../auth/api_client.dart';
 import 'marketplace_api_client.dart';
@@ -16,11 +17,13 @@ import 'marketplace_api_client.dart';
 class MarketplaceService {
   final MarketplaceApiClient _apiClient;
   final ImageKitService _imageKitService;
+  final VideoUploadService _videoUploadService;
   final ApiClient _baseApiClient;
 
   MarketplaceService() 
       : _apiClient = MarketplaceApiClient(),
         _imageKitService = ImageKitService(ApiClient()),
+        _videoUploadService = VideoUploadService(ApiClient()),
         _baseApiClient = ApiClient();
 
   /// Lấy danh sách posts với pagination và filter
@@ -229,8 +232,8 @@ class MarketplaceService {
             print('⚠️ Không thể lấy video metadata: $e');
           }
           
-          // Upload video lên data-docs-service
-          final videoData = await _imageKitService.uploadVideo(
+          // Upload video lên data-docs-service VideoStorageService
+          final videoData = await _videoUploadService.uploadVideo(
             file: videoFileToUpload,
             category: 'marketplace_post',
             ownerId: null, // Sẽ được set sau khi tạo post
@@ -241,7 +244,7 @@ class MarketplaceService {
             height: height,
           );
           
-          videoUrl = videoData['fileUrl'] as String;
+          videoUrl = videoData['streamingUrl'] as String;
           // Success - no logging needed (too frequent)
           
           // Xóa file nén nếu khác file gốc
@@ -403,8 +406,8 @@ class MarketplaceService {
             print('⚠️ Không thể lấy video metadata: $e');
           }
           
-          // Upload video lên data-docs-service
-          final videoData = await _imageKitService.uploadVideo(
+          // Upload video lên data-docs-service VideoStorageService
+          final videoData = await _videoUploadService.uploadVideo(
             file: videoFileToUpload,
             category: 'marketplace_post',
             ownerId: postId, // Sử dụng postId làm ownerId khi update
@@ -415,7 +418,7 @@ class MarketplaceService {
             height: height,
           );
           
-          videoUrl = videoData['fileUrl'] as String;
+          videoUrl = videoData['streamingUrl'] as String;
           // Success - no logging needed (too frequent)
           
           // Xóa file nén nếu khác file gốc

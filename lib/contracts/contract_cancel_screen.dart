@@ -11,11 +11,13 @@ import 'contract_service.dart';
 class ContractCancelScreen extends StatefulWidget {
   final ContractDto contract;
   final ContractService contractService;
+  final bool isFinalReminder;
 
   const ContractCancelScreen({
     Key? key,
     required this.contract,
     required this.contractService,
+    this.isFinalReminder = false,
   }) : super(key: key);
 
   @override
@@ -407,14 +409,33 @@ class _ContractCancelScreenState extends State<ContractCancelScreen>
 
     final days = _getDaysInMonth();
 
-    return Scaffold(
-      backgroundColor: isDark ? AppColors.navySurface : Colors.white,
-      appBar: AppBar(
-        title: const Text('Chọn ngày kiểm tra'),
+    return PopScope(
+      canPop: !widget.isFinalReminder,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && widget.isFinalReminder) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Bạn BẮT BUỘC phải hoàn tất hủy hợp đồng hoặc chọn ngày kiểm tra'),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          );
+        }
+      },
+      child: Scaffold(
         backgroundColor: isDark ? AppColors.navySurface : Colors.white,
-        foregroundColor: isDark ? Colors.white : AppColors.textPrimary,
-        elevation: 0,
-      ),
+        appBar: AppBar(
+          title: Text(widget.isFinalReminder 
+              ? 'Hủy hợp đồng (BẮT BUỘC)' 
+              : 'Chọn ngày kiểm tra'),
+          backgroundColor: isDark ? AppColors.navySurface : Colors.white,
+          foregroundColor: isDark ? Colors.white : AppColors.textPrimary,
+          elevation: 0,
+          automaticallyImplyLeading: !widget.isFinalReminder, // ✅ Hide back button nếu final reminder
+        ),
       body: SafeArea(
         child: _isLoading
             ? Center(
@@ -703,6 +724,7 @@ class _ContractCancelScreenState extends State<ContractCancelScreen>
                   ],
                 ),
               ),
+        ),
       ),
     );
   }

@@ -132,7 +132,10 @@ class ContractService {
     }
   }
 
-  Future<ContractDto?> getContractById(String contractId) async {
+  Future<ContractDto?> getContractById(
+    String contractId, {
+    bool skipRenewalReminder = false,
+  }) async {
     try {
       final client = _contractsClient();
       final token = await apiClient.storage.readAccessToken();
@@ -140,7 +143,10 @@ class ContractService {
         client.options.headers['Authorization'] = 'Bearer $token';
       }
 
-      final response = await client.get('/contracts/$contractId');
+      final url = skipRenewalReminder
+          ? '/contracts/$contractId?skipRenewalReminder=true'
+          : '/contracts/$contractId';
+      final response = await client.get(url);
       if (response.statusCode != 200) {
         print('⚠️ [ContractService] API trả mã ${response.statusCode}: ${response.data}');
         return null;
@@ -332,16 +338,24 @@ class ContractService {
   }
 
   /// Get contracts that need to show popup to resident (renewal reminders)
-  Future<List<ContractDto>> getContractsNeedingPopup(String unitId) async {
+  /// 
+  /// [skipRenewalReminder] - Set to true when user is in cancel/renew contract screen
+  /// to prevent reminder popup from showing
+  Future<List<ContractDto>> getContractsNeedingPopup(
+    String unitId, {
+    bool skipRenewalReminder = false,
+  }) async {
     try {
-      print('🔍 [ContractService] getContractsNeedingPopup called with unitId: $unitId');
+      print('🔍 [ContractService] getContractsNeedingPopup called with unitId: $unitId, skipRenewalReminder: $skipRenewalReminder');
       final client = _contractsClient();
       final token = await apiClient.storage.readAccessToken();
       if (token != null) {
         client.options.headers['Authorization'] = 'Bearer $token';
       }
 
-      final url = '/contracts/unit/$unitId/popup';
+      final url = skipRenewalReminder
+          ? '/contracts/unit/$unitId/popup?skipRenewalReminder=true'
+          : '/contracts/unit/$unitId/popup';
       print('🔍 [ContractService] Calling API: ${client.options.baseUrl}$url');
       
       final response = await client.get(url);
@@ -553,6 +567,32 @@ class ContractService {
         rethrow;
       }
       throw Exception('Lỗi không xác định: $e');
+    }
+  }
+
+  /// Dismiss renewal reminder - user won't see this reminder again until next reminder
+  Future<void> dismissReminder(String contractId) async {
+    try {
+      final client = _contractsClient();
+      final token = await apiClient.storage.readAccessToken();
+      if (token != null) {
+        client.options.headers['Authorization'] = 'Bearer $token';
+      }
+
+      final response = await client.put('/contracts/$contractId/dismiss-reminder');
+
+      if (response.statusCode != 200) {
+        print('⚠️ [ContractService] Failed to dismiss reminder: ${response.statusCode}');
+        throw Exception('Failed to dismiss reminder');
+      }
+      
+      print('✅ [ContractService] Reminder dismissed successfully for contract: $contractId');
+    } on DioException catch (e) {
+      print('❌ [ContractService] DioException dismissReminder: ${e.message}');
+      rethrow;
+    } catch (e) {
+      print('❌ [ContractService] Lỗi dismissReminder: $e');
+      rethrow;
     }
   }
 

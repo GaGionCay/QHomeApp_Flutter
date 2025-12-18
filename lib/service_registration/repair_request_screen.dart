@@ -11,6 +11,7 @@ import '../contracts/contract_service.dart';
 import '../models/unit_info.dart';
 import '../profile/profile_service.dart';
 import '../services/imagekit_service.dart';
+import '../services/video_upload_service.dart';
 import 'maintenance_request_service.dart';
 import 'video_recorder_screen.dart';
 import 'video_compression_service.dart';
@@ -62,6 +63,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> with SafeStat
   late final ProfileService _profileService;
   late final ContractService _contractService;
   late final ImageKitService _imageKitService;
+  late final VideoUploadService _videoUploadService;
 
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -108,6 +110,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> with SafeStat
     _profileService = ProfileService(_apiClient.dio);
     _contractService = ContractService(_apiClient);
     _imageKitService = ImageKitService(_apiClient);
+    _videoUploadService = VideoUploadService(_apiClient);
     _loadUnitContext();
     _loadProfile();
   }
@@ -609,8 +612,8 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> with SafeStat
                 // Metadata extraction failed - continue without it, no logging needed
               }
               
-              // Upload video lên backend
-              final videoData = await _imageKitService.uploadVideo(
+              // Upload video lên backend VideoStorageService
+              final videoData = await _videoUploadService.uploadVideo(
                 file: tempFile,
                 category: 'repair_request',
                 ownerId: null, // Sẽ được set sau khi tạo request
@@ -621,7 +624,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> with SafeStat
                 height: height,
               );
               
-              url = videoData['fileUrl'] as String;
+              url = videoData['streamingUrl'] as String;
               // Success - no logging needed (too frequent)
             } catch (e) {
               if (!mounted) return;

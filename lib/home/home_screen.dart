@@ -353,19 +353,25 @@ class _HomeScreenState extends State<HomeScreen> with SafeStateMixin<HomeScreen>
   /// IMPORTANT: This method ALWAYS refetches from backend - no caching of reminder state.
   /// Reminder will only disappear when backend confirms contract status has changed
   /// (RENEWED or CANCELLED). Final reminders persist until status changes.
-  Future<void> _checkContractReminders() async {
+  /// 
+  /// [skipRenewalReminder] - Set to true when user is in cancel/renew contract screen
+  /// to prevent reminder popup from showing
+  Future<void> _checkContractReminders({bool skipRenewalReminder = false}) async {
     if (_selectedUnitId == null) {
       debugPrint('⚠️ [ContractReminder] _selectedUnitId is null, skipping check');
       return;
     }
 
-    debugPrint('🔍 [ContractReminder] Checking reminders for unitId: $_selectedUnitId (always refetching from backend)');
+    debugPrint('🔍 [ContractReminder] Checking reminders for unitId: $_selectedUnitId (always refetching from backend), skipRenewalReminder: $skipRenewalReminder');
 
     try {
       // ALWAYS refetch from backend - no cache, no SharedPreferences check
       // Backend will only return contracts with status=ACTIVE and renewalStatus=REMINDED
       // If contract status changed to RENEWED or CANCELLED, it won't be in this list
-      final contractsNeedingPopup = await _contractService.getContractsNeedingPopup(_selectedUnitId!);
+      final contractsNeedingPopup = await _contractService.getContractsNeedingPopup(
+        _selectedUnitId!,
+        skipRenewalReminder: skipRenewalReminder,
+      );
       debugPrint('🔍 [ContractReminder] Found ${contractsNeedingPopup.length} contract(s) needing popup');
       
       if (contractsNeedingPopup.isNotEmpty) {
@@ -398,6 +404,11 @@ class _HomeScreenState extends State<HomeScreen> with SafeStateMixin<HomeScreen>
                       // If status changed (RENEWED/CANCELLED), reminder won't show again
                       // If status unchanged, reminder will show again (especially for final reminders)
                       _checkContractReminders();
+                    },
+                    onDismissWithSkip: ({bool skipRenewalReminder = false}) {
+                      debugPrint('✅✅✅ [ContractReminder] onDismissWithSkip CALLED! skipRenewalReminder=$skipRenewalReminder for contract: ${contract.contractNumber}');
+                      // ✅ Skip renewal reminder when returning from cancel/renew screen
+                      _checkContractReminders(skipRenewalReminder: skipRenewalReminder);
                     },
                   );
                 },

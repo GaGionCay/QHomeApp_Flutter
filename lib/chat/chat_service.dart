@@ -14,6 +14,7 @@ import '../models/chat/friend.dart';
 import '../models/marketplace_post.dart';
 import '../auth/api_client.dart';
 import '../services/imagekit_service.dart';
+import '../services/video_upload_service.dart';
 import '../service_registration/video_compression_service.dart';
 import 'package:video_compress/video_compress.dart';
 import 'chat_api_client.dart';
@@ -21,10 +22,12 @@ import 'chat_api_client.dart';
 class ChatService {
   final ChatApiClient _apiClient;
   final ImageKitService _imageKitService;
+  final VideoUploadService _videoUploadService;
 
   ChatService() 
       : _apiClient = ChatApiClient(),
-        _imageKitService = ImageKitService(ApiClient());
+        _imageKitService = ImageKitService(ApiClient()),
+        _videoUploadService = VideoUploadService(ApiClient());
 
   /// Get my groups
   /// Retries up to 2 times on 404 errors (service might not be ready)
@@ -532,8 +535,8 @@ class ChatService {
         // Cannot get video metadata - silent fail
       }
       
-      // Upload video lên data-docs-service
-      final videoData = await _imageKitService.uploadVideo(
+      // Upload video lên data-docs-service VideoStorageService
+      final videoData = await _videoUploadService.uploadVideo(
         file: videoFileToUpload,
         category: 'group_chat',
         ownerId: groupId,
@@ -544,7 +547,7 @@ class ChatService {
         height: height,
       );
       
-      final videoUrl = videoData['fileUrl'] as String;
+      final videoUrl = videoData['streamingUrl'] as String;
       
       // Xóa file nén nếu khác file gốc
       if (compressedFile != null && compressedFile.path != videoFile.path) {
@@ -983,7 +986,7 @@ class ChatService {
       }
       
       // Upload video lên data-docs-service
-      final videoData = await _imageKitService.uploadVideo(
+      final videoData = await _videoUploadService.uploadVideo(
         file: videoFileToUpload,
         category: 'direct_chat',
         ownerId: conversationId,
@@ -994,7 +997,7 @@ class ChatService {
         height: height,
       );
       
-      final videoUrl = videoData['fileUrl'] as String;
+      final videoUrl = videoData['streamingUrl'] as String;
       
       // Xóa file nén nếu khác file gốc
       if (compressedFile != null && compressedFile.path != videoFile.path) {
