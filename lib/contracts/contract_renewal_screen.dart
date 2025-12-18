@@ -644,12 +644,12 @@ class _ContractRenewalScreenState extends State<ContractRenewalScreen>
         }
       },
       child: Scaffold(
-        appBar: AppBar(
+      appBar: AppBar(
           title: Text(widget.isFinalReminder 
               ? 'Gia hạn hợp đồng (BẮT BUỘC)' 
               : 'Gia hạn hợp đồng'),
           automaticallyImplyLeading: !widget.isFinalReminder, // ✅ Hide back button nếu final reminder
-        ),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -804,8 +804,8 @@ class _ContractRenewalScreenState extends State<ContractRenewalScreen>
             ),
           ],
         ),
+        ),
       ),
-    ),
     );
   }
 

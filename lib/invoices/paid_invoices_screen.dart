@@ -196,167 +196,105 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
 
       final String unitIdForRequest = unitFilter ?? '';
 
-      final categoriesFuture = unitIdForRequest.isNotEmpty
-          ? _invoiceService.getPaidInvoicesByCategory(unitId: unitIdForRequest)
-          : Future.value(<InvoiceCategory>[]);
+      // ✅ Use new API: getPaidInvoicesForCurrentMonth (includes all paid invoices in current month)
+      final paidInvoicesFuture = unitIdForRequest.isNotEmpty
+          ? _invoiceService.getPaidInvoicesForCurrentMonth(unitId: unitIdForRequest)
+          : Future.value(<dynamic>[]);
       final bookingsFuture = _bookingService.getPaidBookings();
       // Cleaning request removed - no longer used
-      // final cleaningRequestsFuture = _cleaningRequestService.getPaidRequests();
       final cleaningRequestsFuture = Future.value(<dynamic>[]);
       final maintenanceRequestsFuture = _maintenanceRequestService.getPaidRequests();
 
-      final categories = await categoriesFuture;
+      final paidInvoices = await paidInvoicesFuture;
       final bookings = await bookingsFuture;
-      // Cleaning request removed - no longer used
-      await cleaningRequestsFuture; // Just await to avoid unused variable warning
+      await cleaningRequestsFuture;
       final maintenanceRequests = await maintenanceRequestsFuture;
 
-      debugPrint('🔍 [PaidInvoices] Loaded ${categories.length} categories');
-      for (final category in categories) {
-        debugPrint('   - Category: ${category.categoryCode} (${category.categoryName}) - ${category.invoices.length} invoices');
-      }
+      debugPrint('🔍 [PaidInvoices] Loaded ${paidInvoices.length} paid invoices from API');
 
       final List<PaidItem> items = [];
-      final List<String> invoiceIds = []; // Collect invoice IDs for batch loading paidAt
 
-      // Process invoice categories
-      for (final category in categories) {
-        for (final invoice in category.invoices) {
-          if (!invoice.isPaid) {
-            debugPrint('⚠️ [PaidInvoices] Skipping unpaid invoice: ${invoice.invoiceId}');
-            continue;
-          }
-          
-          debugPrint('🔍 [PaidInvoices] Processing invoice: ${invoice.invoiceId}, serviceCode: ${invoice.serviceCode}');
+      // ✅ Process paid invoices from new API (already includes paidAt)
+      for (final invoice in paidInvoices) {
+        debugPrint('🔍 [PaidInvoices] Processing invoice: ${invoice.invoiceId}, serviceCode: ${invoice.serviceCode}');
 
-          PaidItemType? type;
-          IconData icon;
-          Color iconColor;
+        PaidItemType? type;
+        IconData icon;
+        Color iconColor;
 
-          final serviceCodeUpper = invoice.serviceCode.toUpperCase();
-          debugPrint('   - ServiceCode (upper): $serviceCodeUpper');
-          
-          switch (serviceCodeUpper) {
-            case 'ELECTRIC':
-            case 'ELECTRICITY':
-              type = PaidItemType.electricity;
-              icon = Icons.bolt;
-              iconColor = const Color(0xFFFFD700);
-              debugPrint('   - Mapped to: electricity');
-            case 'WATER':
-              type = PaidItemType.water;
-              icon = Icons.water_drop;
-              iconColor = const Color(0xFF4A90E2);
-              debugPrint('   - Mapped to: water');
-            case 'CONTRACT_RENEWAL':
-            case 'CONTRACT':
-              type = PaidItemType.contractRenewal;
-              icon = Icons.description;
-              iconColor = const Color(0xFF9B59B6);
-              debugPrint('   - Mapped to: contractRenewal');
-            case 'VEHICLE_CARD':
-            case 'ELEVATOR_CARD':
-            case 'RESIDENT_CARD':
-              // Card payments - map to utility category
-              type = PaidItemType.utility;
-              if (serviceCodeUpper.contains('VEHICLE')) {
-                icon = Icons.directions_car;
-              } else if (serviceCodeUpper.contains('ELEVATOR')) {
-                icon = Icons.elevator;
-              } else if (serviceCodeUpper.contains('RESIDENT')) {
-                icon = Icons.badge;
-              } else {
-                icon = Icons.credit_card;
-              }
-              iconColor = const Color(0xFF7EC8E3);
-              debugPrint('   - Mapped to: utility (card payment)');
-            default:
-              type = PaidItemType.utility;
-              icon = Icons.home;
-              iconColor = const Color(0xFF7EC8E3);
-              debugPrint('   - Mapped to: utility (default)');
-          }
-
-          final paymentDate = _parsePaymentDate(invoice.serviceDate);
-          debugPrint('   - serviceDate: ${invoice.serviceDate}, parsed paymentDate: $paymentDate');
-          if (paymentDate != null) {
-            // Map serviceCode to display name
-            final displayName = _mapServiceCodeToDisplayName(
-              invoice.serviceCode,
-              invoice.serviceCodeDisplay,
-            );
-            
-            debugPrint('   - Adding item: $displayName (${type.name}) - ${invoice.lineTotal} VND');
-            invoiceIds.add(invoice.invoiceId);
-            
-            items.add(PaidItem(
-              id: invoice.invoiceId,
-              type: type,
-              name: displayName,
-              amount: invoice.lineTotal,
-              paymentDate: paymentDate,
-              description: invoice.description,
-              icon: icon,
-              iconColor: iconColor,
-              unitId: unitIdForRequest.isNotEmpty ? unitIdForRequest : null,
-            ));
-          } else {
-            debugPrint('⚠️ [PaidInvoices] Skipping invoice ${invoice.invoiceId} - paymentDate is null (serviceDate: ${invoice.serviceDate})');
-          }
-        }
-      }
-      
-      // Batch load paidAt for all invoices to enable accurate sorting by date and time
-      final Map<String, DateTime> paidAtMap = {};
-      if (invoiceIds.isNotEmpty) {
-        AppLogger.debug('[PaidInvoices] Đang batch load paidAt cho ${invoiceIds.length} invoices...');
-        try {
-          // Load paidAt in parallel for better performance
-          final results = await Future.wait(
-            invoiceIds.map((invoiceId) async {
-              try {
-                final invoiceDetail = await _invoiceService.getInvoiceDetailById(invoiceId);
-                if (invoiceDetail?['paidAt'] != null) {
-                  return MapEntry(invoiceId, DateTime.parse(invoiceDetail!['paidAt'].toString()));
-                }
-              } catch (e) {
-                // Ignore errors for individual invoices
-              }
-              return null;
-            }),
-          );
-          
-          for (final result in results) {
-            if (result != null) {
-              paidAtMap[result.key] = result.value;
+        final serviceCodeUpper = invoice.serviceCode.toUpperCase();
+        debugPrint('   - ServiceCode (upper): $serviceCodeUpper');
+        
+        switch (serviceCodeUpper) {
+          case 'ELECTRIC':
+          case 'ELECTRICITY':
+            type = PaidItemType.electricity;
+            icon = Icons.bolt;
+            iconColor = const Color(0xFFFFD700);
+            debugPrint('   - Mapped to: electricity');
+          case 'WATER':
+            type = PaidItemType.water;
+            icon = Icons.water_drop;
+            iconColor = const Color(0xFF4A90E2);
+            debugPrint('   - Mapped to: water');
+          case 'CONTRACT_RENEWAL':
+          case 'CONTRACT':
+            type = PaidItemType.contractRenewal;
+            icon = Icons.description;
+            iconColor = const Color(0xFF9B59B6);
+            debugPrint('   - Mapped to: contractRenewal');
+          case 'VEHICLE_CARD':
+          case 'ELEVATOR_CARD':
+          case 'RESIDENT_CARD':
+            // Card payments - map to utility category
+            type = PaidItemType.utility;
+            if (serviceCodeUpper.contains('VEHICLE')) {
+              icon = Icons.directions_car;
+            } else if (serviceCodeUpper.contains('ELEVATOR')) {
+              icon = Icons.elevator;
+            } else if (serviceCodeUpper.contains('RESIDENT')) {
+              icon = Icons.badge;
+            } else {
+              icon = Icons.credit_card;
             }
-          }
+            iconColor = const Color(0xFF7EC8E3);
+            debugPrint('   - Mapped to: utility (card payment)');
+          default:
+            type = PaidItemType.utility;
+            icon = Icons.home;
+            iconColor = const Color(0xFF7EC8E3);
+            debugPrint('   - Mapped to: utility (default)');
+        }
+
+        // Use paidAt from invoice (already included in new API)
+        final paidAt = invoice.paidAt;
+        final paymentDate = paidAt ?? _parsePaymentDate(invoice.serviceDate);
+        
+        if (paymentDate != null) {
+          // Map serviceCode to display name
+          final displayName = _mapServiceCodeToDisplayName(
+            invoice.serviceCode,
+            invoice.serviceCodeDisplay,
+          );
           
-          AppLogger.debug('[PaidInvoices] Đã load paidAt cho ${paidAtMap.length}/${invoiceIds.length} invoices');
-        } catch (e) {
-          AppLogger.warning('[PaidInvoices] Lỗi khi batch load paidAt: $e');
+          debugPrint('   - Adding item: $displayName (${type.name}) - ${invoice.totalAfterTax ?? invoice.lineTotal} VND');
+          
+          items.add(PaidItem(
+            id: invoice.invoiceId,
+            type: type,
+            name: displayName,
+            amount: invoice.totalAfterTax ?? invoice.lineTotal,
+            paymentDate: paymentDate,
+            description: invoice.description,
+            icon: icon,
+            iconColor: iconColor,
+            unitId: unitIdForRequest.isNotEmpty ? unitIdForRequest : null,
+            paidAt: paidAt, // Accurate payment timestamp from API
+          ));
+        } else {
+          debugPrint('⚠️ [PaidInvoices] Skipping invoice ${invoice.invoiceId} - paymentDate is null');
         }
       }
-      
-      // Update items with paidAt for accurate sorting
-      final List<PaidItem> itemsWithPaidAt = items.map((item) {
-        final paidAt = paidAtMap[item.id];
-        if (paidAt != null) {
-          return PaidItem(
-            id: item.id,
-            type: item.type,
-            name: item.name,
-            amount: item.amount,
-            paymentDate: item.paymentDate,
-            description: item.description,
-            icon: item.icon,
-            iconColor: item.iconColor,
-            unitId: item.unitId,
-            paidAt: paidAt, // Accurate payment timestamp
-          );
-        }
-        return item;
-      }).toList();
 
       // Cleaning request removed - no longer used
       // Process cleaning requests
@@ -429,15 +367,15 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
 
       // Sort by payment date/time (newest first) by default
       // Use effectivePaymentDate which prefers paidAt (accurate time) over paymentDate
-      itemsWithPaidAt.sort((a, b) => b.effectivePaymentDate.compareTo(a.effectivePaymentDate));
+      items.sort((a, b) => b.effectivePaymentDate.compareTo(a.effectivePaymentDate));
 
-      debugPrint('✅ [PaidInvoices] Total items after processing: ${itemsWithPaidAt.length}');
-      for (final item in itemsWithPaidAt) {
+      debugPrint('✅ [PaidInvoices] Total items after processing: ${items.length}');
+      for (final item in items) {
         debugPrint('   - Item: ${item.name} (${item.type.name}) - ${item.amount} VND');
       }
 
-      _allItems = itemsWithPaidAt;
-      return itemsWithPaidAt;
+      _allItems = items;
+      return items;
     } catch (e) {
       debugPrint('Error loading paid items: $e');
       return [];

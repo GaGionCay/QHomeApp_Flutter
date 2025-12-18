@@ -426,16 +426,16 @@ class _ContractCancelScreenState extends State<ContractCancelScreen>
         }
       },
       child: Scaffold(
-        backgroundColor: isDark ? AppColors.navySurface : Colors.white,
-        appBar: AppBar(
+      backgroundColor: isDark ? AppColors.navySurface : Colors.white,
+      appBar: AppBar(
           title: Text(widget.isFinalReminder 
               ? 'Hủy hợp đồng (BẮT BUỘC)' 
               : 'Chọn ngày kiểm tra'),
-          backgroundColor: isDark ? AppColors.navySurface : Colors.white,
-          foregroundColor: isDark ? Colors.white : AppColors.textPrimary,
-          elevation: 0,
+        backgroundColor: isDark ? AppColors.navySurface : Colors.white,
+        foregroundColor: isDark ? Colors.white : AppColors.textPrimary,
+        elevation: 0,
           automaticallyImplyLeading: !widget.isFinalReminder, // ✅ Hide back button nếu final reminder
-        ),
+      ),
       body: SafeArea(
         child: _isLoading
             ? Center(
@@ -723,8 +723,8 @@ class _ContractCancelScreenState extends State<ContractCancelScreen>
                     ),
                   ],
                 ),
+                ),
               ),
-        ),
       ),
     );
   }

@@ -380,6 +380,42 @@ class InvoiceService {
       return [];
     }
   }
+
+  /// ✅ Lấy các hóa đơn đã thanh toán trong tháng hiện tại
+  /// Dùng để hiển thị trên homescreen "Đã thanh toán"
+  /// Bao gồm: điện, nước, gửi xe, service maintenance, etc.
+  Future<List<InvoiceLineResponseDto>> getPaidInvoicesForCurrentMonth({
+    required String unitId,
+  }) async {
+    try {
+      final client = await _prepareFinanceClient();
+      final response = await client.get(
+        '/invoices/me/paid-current-month',
+        queryParameters: {'unitId': unitId},
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        if (data is Map && data['data'] is List) {
+          final List<dynamic> invoicesList = data['data'] as List<dynamic>;
+          final invoices = invoicesList
+              .map((json) => InvoiceLineResponseDto.fromJson(json as Map<String, dynamic>))
+              .toList();
+          
+          if (kDebugMode) {
+            log('✅ [InvoiceService] Found ${invoices.length} paid invoices for current month');
+          }
+          return invoices;
+        }
+      }
+      return [];
+    } catch (e) {
+      if (kDebugMode) {
+        log('❌ [InvoiceService] Error fetching paid invoices: $e');
+      }
+      return [];
+    }
+  }
 }
 
 
