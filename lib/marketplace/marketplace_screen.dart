@@ -25,6 +25,7 @@ import 'select_group_dialog.dart';
 import 'create_group_dialog.dart';
 import 'package:flutter/services.dart';
 import '../widgets/animations/smooth_animations.dart';
+import '../core/safe_state_mixin.dart';
 
 class MarketplaceScreen extends StatefulWidget {
   const MarketplaceScreen({super.key});
@@ -33,7 +34,8 @@ class MarketplaceScreen extends StatefulWidget {
   State<MarketplaceScreen> createState() => _MarketplaceScreenState();
 }
 
-class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindingObserver {
+class _MarketplaceScreenState extends State<MarketplaceScreen> 
+    with WidgetsBindingObserver, SafeStateMixin<MarketplaceScreen> {
   late final MarketplaceViewModel _viewModel;
   final ScrollController _scrollController = ScrollController();
   final TokenStorage _tokenStorage = TokenStorage();
@@ -85,14 +87,14 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
 
   Future<void> _loadCurrentUser() async {
     _currentResidentId = await _tokenStorage.readResidentId();
-    if (mounted) setState(() {});
+    if (mounted) safeSetState(() {});
   }
 
   Future<void> _loadBlockedUsers() async {
     try {
       final blockedUserIds = await _chatService.getBlockedUsers();
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _blockedUserIds = blockedUserIds.toSet();
         });
       }
@@ -108,7 +110,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
       // Refresh posts to show/hide posts from unblocked users
       // setState will trigger rebuild and re-filter posts based on updated _blockedUserIds
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           // Trigger rebuild to refresh filtered posts
           print('✅ [MarketplaceScreen] Blocked users reloaded, refreshing UI. Blocked count: ${_blockedUserIds.length}');
         });
@@ -1130,7 +1132,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                     TextButton(
                       onPressed: () {
                         // Clear all filters
-                        setState(() {
+                        safeSetState(() {
                           selectedCategory = null;
                           selectedSortBy = null;
                         });
@@ -1160,7 +1162,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                       label: const Text('Tất cả'),
                       selected: selectedCategory == null,
                       onSelected: (selected) {
-                        setState(() {
+                        safeSetState(() {
                           selectedCategory = null;
                         });
                         viewModel.setCategoryFilter(null);
@@ -1173,7 +1175,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                               label: Text(category.name),
                               selected: selectedCategory == category.code,
                               onSelected: (selected) {
-                                setState(() {
+                                safeSetState(() {
                                   selectedCategory = selected ? category.code : null;
                                 });
                                 viewModel.setCategoryFilter(selected ? category.code : null);
@@ -1199,7 +1201,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                       label: const Text('Mặc định'),
                       selected: selectedSortBy == null,
                       onSelected: (selected) {
-                        setState(() {
+                        safeSetState(() {
                           selectedSortBy = null;
                         });
                         viewModel.setSortBy(null);
@@ -1209,7 +1211,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                       label: const Text('Giá: Thấp → Cao'),
                       selected: selectedSortBy == 'price_asc',
                       onSelected: (selected) {
-                        setState(() {
+                        safeSetState(() {
                           selectedSortBy = selected ? 'price_asc' : null;
                         });
                         viewModel.setSortBy(selected ? 'price_asc' : null);
@@ -1219,7 +1221,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> with WidgetsBindi
                       label: const Text('Giá: Cao → Thấp'),
                       selected: selectedSortBy == 'price_desc',
                       onSelected: (selected) {
-                        setState(() {
+                        safeSetState(() {
                           selectedSortBy = selected ? 'price_desc' : null;
                         });
                         viewModel.setSortBy(selected ? 'price_desc' : null);
@@ -1837,5 +1839,6 @@ class _PostCard extends StatelessWidget {
     return '';
   }
 }
+
 
 

@@ -6,6 +6,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../core/safe_state_mixin.dart';
 import '../models/contract.dart';
 import '../models/unit_info.dart';
 import '../theme/app_colors.dart';
@@ -27,7 +28,8 @@ class ContractRenewalScreen extends StatefulWidget {
   State<ContractRenewalScreen> createState() => _ContractRenewalScreenState();
 }
 
-class _ContractRenewalScreenState extends State<ContractRenewalScreen> {
+class _ContractRenewalScreenState extends State<ContractRenewalScreen> 
+    with SafeStateMixin<ContractRenewalScreen> {
   DateTime? _selectedStartDate;
   DateTime? _selectedEndDate;
   bool _isLoading = false;

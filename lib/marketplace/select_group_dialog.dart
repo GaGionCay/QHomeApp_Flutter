@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import '../models/chat/group.dart';
 
+import '../core/safe_state_mixin.dart';
 class SelectGroupDialog extends StatefulWidget {
   final List<ChatGroup> groups;
   final bool allowCreateNew;
@@ -20,7 +21,8 @@ class SelectGroupDialog extends StatefulWidget {
   State<SelectGroupDialog> createState() => _SelectGroupDialogState();
 }
 
-class _SelectGroupDialogState extends State<SelectGroupDialog> {
+class _SelectGroupDialogState extends State<SelectGroupDialog> 
+    with SafeStateMixin<SelectGroupDialog> {
   ChatGroup? _selectedGroup;
   bool _createNewGroup = false;
 
@@ -54,7 +56,7 @@ class _SelectGroupDialogState extends State<SelectGroupDialog> {
                       groupValue: _createNewGroup ? true : null,
                       // ignore: deprecated_member_use
                       onChanged: (value) {
-                        setState(() {
+                        safeSetState(() {
                           _createNewGroup = true;
                           _selectedGroup = null;
                         });
@@ -105,7 +107,7 @@ class _SelectGroupDialogState extends State<SelectGroupDialog> {
                     groupValue: _createNewGroup ? null : _selectedGroup,
                     // ignore: deprecated_member_use
                     onChanged: targetUserInGroup ? null : (value) {
-                      setState(() {
+                      safeSetState(() {
                         _selectedGroup = value;
                         _createNewGroup = false;
                       });
@@ -130,5 +132,7 @@ class _SelectGroupDialogState extends State<SelectGroupDialog> {
     );
   }
 }
+
+
 
 

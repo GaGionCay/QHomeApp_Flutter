@@ -18,6 +18,7 @@ import 'package:video_player/video_player.dart';
 import 'package:video_compress/video_compress.dart';
 import 'dart:io';
 
+import '../core/safe_state_mixin.dart';
 class RepairRequestScreen extends StatefulWidget {
   const RepairRequestScreen({super.key});
 
@@ -54,7 +55,7 @@ class _AttachmentFile {
   }
 }
 
-class _RepairRequestScreenState extends State<RepairRequestScreen> {
+class _RepairRequestScreenState extends State<RepairRequestScreen> with SafeStateMixin<RepairRequestScreen> {
   final _formKey = GlobalKey<FormState>();
   late final ApiClient _apiClient;
   late final MaintenanceRequestService _service;
@@ -121,7 +122,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
       // allow manual overrides if needed
     } finally {
       if (mounted) {
-        setState(() => _loadingProfile = false);
+        safeSetState(() => _loadingProfile = false);
       }
     }
   }
@@ -153,7 +154,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
       }
 
       if (mounted) {
-        setState(() => _selectedUnit = unit);
+        safeSetState(() => _selectedUnit = unit);
       }
     } catch (e) {
       if (mounted) {
@@ -161,7 +162,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _loadingUnit = false);
+        safeSetState(() => _loadingUnit = false);
       }
     }
   }
@@ -234,7 +235,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
       final mime = _detectMimeType(finalVideoPath, isVideo: true);
       
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         // Thêm vào cuối theo thứ tự người dùng chọn (giữ nguyên thứ tự)
         _attachments.add(
           _AttachmentFile(
@@ -296,7 +297,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
     }
     
     final mime = _detectMimeType(pickedFile.path, isVideo: isVideo);
-    setState(() {
+    safeSetState(() {
       final newAttachment = _AttachmentFile(
           bytes: bytes,
           mimeType: mime,
@@ -339,7 +340,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
   }
 
   void _removeAttachment(int index) {
-    setState(() {
+    safeSetState(() {
       _attachments.removeAt(index);
     });
   }
@@ -385,7 +386,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
       lastDate: now.add(const Duration(days: 30)),
     );
     if (date == null) return;
-    setState(() {
+    safeSetState(() {
       _preferredDate = date;
       _preferredDateError = null;
       _preferredTimeError = _preferredTime == null
@@ -401,7 +402,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
       initialTime: initial,
     );
     if (time == null) return;
-    setState(() {
+    safeSetState(() {
       _preferredTime = time;
       _preferredTimeError = _validatePreferredDateTime(_preferredDate, time);
     });
@@ -436,7 +437,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final scheduleError = _validatePreferredDateTime(_preferredDate, _preferredTime);
-    setState(() {
+    safeSetState(() {
       _preferredDateError = _preferredDate == null ? 'Vui lòng chọn ngày xử lý' : null;
       _preferredTimeError = scheduleError;
     });
@@ -449,7 +450,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
 
     if (_submitting) return;
     
-    setState(() => _submitting = true);
+    safeSetState(() => _submitting = true);
     try {
       // Upload attachments to ImageKit
       final List<String> attachmentUrls = [];
@@ -691,7 +692,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
       _showMessage(error.toString().replaceFirst('Exception: ', ''), color: Colors.red);
     } finally {
       if (mounted) {
-        setState(() => _submitting = false);
+        safeSetState(() => _submitting = false);
       }
     }
   }
@@ -904,7 +905,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
             items: _categories
                 .map((category) => DropdownMenuItem(value: category, child: Text(category)))
                 .toList(),
-            onChanged: (value) => setState(() => _selectedCategory = value),
+            onChanged: (value) => safeSetState(() => _selectedCategory = value),
             validator: (value) => value == null || value.isEmpty ? 'Vui lòng chọn loại yêu cầu' : null,
           ),
           const SizedBox(height: 16),
@@ -1388,7 +1389,7 @@ class _VideoPreviewWidget extends StatefulWidget {
   State<_VideoPreviewWidget> createState() => _VideoPreviewWidgetState();
 }
 
-class _VideoPreviewWidgetState extends State<_VideoPreviewWidget> {
+class _VideoPreviewWidgetState extends State<_VideoPreviewWidget> with SafeStateMixin<_VideoPreviewWidget> {
   VideoPlayerController? _controller;
   bool _isInitialized = false;
 
@@ -1411,7 +1412,7 @@ class _VideoPreviewWidgetState extends State<_VideoPreviewWidget> {
       await _controller!.initialize();
       // Chỉ hiển thị frame đầu tiên (thumbnail), không play video
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isInitialized = true;
         });
       }
@@ -1584,7 +1585,7 @@ class _FullscreenAttachmentViewer extends StatefulWidget {
   State<_FullscreenAttachmentViewer> createState() => _FullscreenAttachmentViewerState();
 }
 
-class _FullscreenAttachmentViewerState extends State<_FullscreenAttachmentViewer> {
+class _FullscreenAttachmentViewerState extends State<_FullscreenAttachmentViewer> with SafeStateMixin<_FullscreenAttachmentViewer> {
   VideoPlayerController? _videoController;
   bool _isVideoInitialized = false;
   bool _isVideoPlaying = false;
@@ -1613,7 +1614,7 @@ class _FullscreenAttachmentViewerState extends State<_FullscreenAttachmentViewer
       _videoController!.addListener(_videoListener);
       
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isVideoInitialized = true;
         });
         // Tự động play video khi khởi tạo xong
@@ -1632,7 +1633,7 @@ class _FullscreenAttachmentViewerState extends State<_FullscreenAttachmentViewer
     
     final isPlaying = _videoController!.value.isPlaying;
     if (isPlaying != _isVideoPlaying && mounted) {
-      setState(() {
+      safeSetState(() {
         _isVideoPlaying = isPlaying;
       });
     }
@@ -1641,7 +1642,7 @@ class _FullscreenAttachmentViewerState extends State<_FullscreenAttachmentViewer
     if (_videoController!.value.position >= _videoController!.value.duration &&
         _videoController!.value.duration > Duration.zero) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isVideoPlaying = false;
         });
       }
@@ -1660,7 +1661,7 @@ class _FullscreenAttachmentViewerState extends State<_FullscreenAttachmentViewer
   }
 
   void _toggleControls() {
-    setState(() {
+    safeSetState(() {
       _showControls = !_showControls;
     });
     if (_showControls) {
@@ -1674,7 +1675,7 @@ class _FullscreenAttachmentViewerState extends State<_FullscreenAttachmentViewer
     _controlsTimer?.cancel();
     _controlsTimer = Timer(const Duration(seconds: 3), () {
       if (mounted && _isVideoPlaying) {
-        setState(() {
+        safeSetState(() {
           _showControls = false;
         });
       }
@@ -1949,4 +1950,5 @@ class _FullscreenAttachmentViewerState extends State<_FullscreenAttachmentViewer
     return '$minutes:$seconds';
   }
 }
+
 

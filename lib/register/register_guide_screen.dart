@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../widgets/app_primary_button.dart';
 
+import '../core/safe_state_mixin.dart';
 class RegisterGuideScreen extends StatefulWidget {
   const RegisterGuideScreen({super.key});
 
@@ -9,7 +10,7 @@ class RegisterGuideScreen extends StatefulWidget {
   State<RegisterGuideScreen> createState() => _RegisterGuideScreenState();
 }
 
-class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
+class _RegisterGuideScreenState extends State<RegisterGuideScreen> with SafeStateMixin<RegisterGuideScreen> {
   final PageController _pageCtrl = PageController();
   int _pageIndex = 0;
 
@@ -82,7 +83,7 @@ class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
               Expanded(
                 child: PageView.builder(
                   controller: _pageCtrl,
-                  onPageChanged: (i) => setState(() => _pageIndex = i),
+                  onPageChanged: (i) => safeSetState(() => _pageIndex = i),
                   itemCount: _steps.length,
                   itemBuilder: (context, i) {
                     final step = _steps[i];
@@ -157,4 +158,5 @@ class _RegisterGuideScreenState extends State<RegisterGuideScreen> {
     );
   }
 }
+
 

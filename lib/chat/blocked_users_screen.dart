@@ -4,6 +4,7 @@ import '../auth/api_client.dart';
 import '../core/event_bus.dart';
 import 'chat_service.dart';
 
+import '../core/safe_state_mixin.dart';
 class BlockedUsersScreen extends StatefulWidget {
   const BlockedUsersScreen({super.key});
 
@@ -11,7 +12,7 @@ class BlockedUsersScreen extends StatefulWidget {
   State<BlockedUsersScreen> createState() => _BlockedUsersScreenState();
 }
 
-class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
+class _BlockedUsersScreenState extends State<BlockedUsersScreen> with SafeStateMixin<BlockedUsersScreen> {
   final ChatService _chatService = ChatService();
   final ApiClient _apiClient = ApiClient();
   
@@ -26,7 +27,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
   }
 
   Future<void> _loadBlockedUsers() async {
-    setState(() {
+    safeSetState(() {
       _isLoading = true;
       _error = null;
     });
@@ -72,7 +73,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
       }
 
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _blockedUsers = users;
           _isLoading = false;
         });
@@ -80,7 +81,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
     } catch (e) {
       print('❌ [BlockedUsersScreen] Error loading blocked users: $e');
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _error = 'Lỗi khi tải danh sách người dùng đã chặn: ${e.toString()}';
           _isLoading = false;
         });
@@ -248,5 +249,6 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
     );
   }
 }
+
 
 

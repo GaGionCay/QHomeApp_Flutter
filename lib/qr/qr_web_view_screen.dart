@@ -6,6 +6,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_colors.dart';
 
+import '../core/safe_state_mixin.dart';
 class QrWebViewScreen extends StatefulWidget {
   const QrWebViewScreen({
     super.key,
@@ -18,7 +19,7 @@ class QrWebViewScreen extends StatefulWidget {
   State<QrWebViewScreen> createState() => _QrWebViewScreenState();
 }
 
-class _QrWebViewScreenState extends State<QrWebViewScreen> {
+class _QrWebViewScreenState extends State<QrWebViewScreen> with SafeStateMixin<QrWebViewScreen> {
   late final WebViewController _controller;
   bool _isLoading = true;
   String? _error;
@@ -37,32 +38,32 @@ class _QrWebViewScreenState extends State<QrWebViewScreen> {
         NavigationDelegate(
           onPageStarted: (String url) {
             log('🌐 WebView: Page started loading: $url');
-            setState(() {
+            safeSetState(() {
               _isLoading = true;
               _error = null;
             });
           },
           onPageFinished: (String url) {
             log('🌐 WebView: Page finished loading: $url');
-            setState(() {
+            safeSetState(() {
               _isLoading = false;
             });
             // Get page title
             _controller.getTitle().then((title) {
               if (mounted && title != null && title.isNotEmpty) {
-                setState(() {
+                safeSetState(() {
                   _pageTitle = title;
                 });
               }
             });
             // Refresh navigation buttons after page finishes
             Future.microtask(() {
-              if (mounted) setState(() {});
+              if (mounted) safeSetState(() {});
             });
           },
           onWebResourceError: (WebResourceError error) {
             log('❌ WebView error: ${error.description}');
-            setState(() {
+            safeSetState(() {
               _isLoading = false;
               _error = error.description;
             });
@@ -238,7 +239,7 @@ class _QrWebViewScreenState extends State<QrWebViewScreen> {
                             if (await _controller.canGoBack()) {
                               _controller.goBack();
                             }
-                            setState(() {}); // Refresh buttons
+                            safeSetState(() {}); // Refresh buttons
                           }
                         : null,
                     tooltip: 'Quay lại',
@@ -256,7 +257,7 @@ class _QrWebViewScreenState extends State<QrWebViewScreen> {
                             if (await _controller.canGoForward()) {
                               _controller.goForward();
                             }
-                            setState(() {}); // Refresh buttons
+                            safeSetState(() {}); // Refresh buttons
                           }
                         : null,
                     tooltip: 'Tiến tới',
@@ -295,5 +296,6 @@ class _QrWebViewScreenState extends State<QrWebViewScreen> {
     );
   }
 }
+
 
 

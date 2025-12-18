@@ -29,6 +29,7 @@ import '../marketplace/marketplace_service.dart';
 import 'linkable_text_widget.dart';
 import '../widgets/animations/smooth_animations.dart';
 import 'package:dio/dio.dart';
+import '../core/safe_state_mixin.dart';
 // Reuse widgets from ChatScreen - import only what we need
 
 class DirectChatScreen extends StatefulWidget {
@@ -45,7 +46,8 @@ class DirectChatScreen extends StatefulWidget {
   State<DirectChatScreen> createState() => _DirectChatScreenState();
 }
 
-class _DirectChatScreenState extends State<DirectChatScreen> {
+class _DirectChatScreenState extends State<DirectChatScreen>
+    with SafeStateMixin<DirectChatScreen> {
   late final DirectChatViewModel _viewModel;
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
@@ -69,6 +71,10 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // Register TextEditingController
+    registerController(_messageController);
+    
     final service = ChatService();
     _viewModel = DirectChatViewModel(service);
     _viewModel.addListener(_onViewModelChanged);

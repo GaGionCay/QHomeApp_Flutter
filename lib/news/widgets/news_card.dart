@@ -8,6 +8,7 @@ import '../../auth/api_client.dart';
 import '../../models/resident_news.dart';
 import '../news_detail_screen.dart';
 
+import '../../core/safe_state_mixin.dart';
 class NewsCard extends StatefulWidget {
   final ResidentNews news;
   final bool isRead;
@@ -24,7 +25,8 @@ class NewsCard extends StatefulWidget {
   State<NewsCard> createState() => _NewsCardState();
 }
 
-class _NewsCardState extends State<NewsCard> {
+class _NewsCardState extends State<NewsCard> 
+    with SafeStateMixin<NewsCard> {
   bool _isPressed = false;
 
   @override
@@ -89,7 +91,7 @@ class _NewsCardState extends State<NewsCard> {
               onTap: openContainer,
               onHighlightChanged: (value) {
                 if (_isPressed != value) {
-                  setState(() => _isPressed = value);
+                  safeSetState(() => _isPressed = value);
                 }
               },
               child: Stack(
@@ -400,4 +402,6 @@ class _CoverImage extends StatelessWidget {
     );
   }
 }
+
+
 

@@ -7,6 +7,7 @@ import 'chat_service.dart';
 import 'direct_chat_screen.dart';
 import 'package:flutter/widgets.dart';
 
+import '../core/safe_state_mixin.dart';
 class InvitationsScreen extends StatefulWidget {
   const InvitationsScreen({super.key});
 
@@ -14,7 +15,7 @@ class InvitationsScreen extends StatefulWidget {
   State<InvitationsScreen> createState() => _InvitationsScreenState();
 }
 
-class _InvitationsScreenState extends State<InvitationsScreen> {
+class _InvitationsScreenState extends State<InvitationsScreen> with SafeStateMixin<InvitationsScreen> {
   final ChatService _service = ChatService();
   List<GroupInvitationResponse> _groupInvitations = [];
   List<DirectInvitation> _directInvitations = [];
@@ -28,7 +29,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
   }
 
   Future<void> _loadInvitations() async {
-    setState(() {
+    safeSetState(() {
       _isLoading = true;
       _error = null;
     });
@@ -76,7 +77,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
       print('⚠️ [InvitationsScreen] Some errors occurred but ${totalCount} invitations loaded');
     }
     
-    setState(() {
+    safeSetState(() {
       _groupInvitations = groupInvitations;
       _directInvitations = directInvitations;
       _isLoading = false;
@@ -388,7 +389,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
                                     icon: const Icon(CupertinoIcons.xmark, size: 18),
                                     color: theme.colorScheme.onErrorContainer,
                                     onPressed: () {
-                                      setState(() {
+                                      safeSetState(() {
                                         _error = null;
                                       });
                                     },
@@ -720,6 +721,7 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
     return '${diff.inDays} ngày nữa';
   }
 }
+
 
 
 

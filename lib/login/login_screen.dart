@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_application_1/core/safe_state_mixin.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:local_auth/local_auth.dart';
@@ -16,7 +17,7 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen> with SafeStateMixin<LoginScreen> {
   final usernameCtrl = TextEditingController(); // Đổi từ email sang username
   final passCtrl = TextEditingController();
   final FocusNode _usernameFocus = FocusNode();
@@ -32,6 +33,10 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // Register TextEditingControllers
+    registerControllers([usernameCtrl, passCtrl]);
+    
     Future.microtask(_refreshBiometricState);
   }
 
@@ -60,7 +65,7 @@ class _LoginScreenState extends State<LoginScreen> {
       
       if (!mounted) return;
       
-      setState(() {
+      safeSetState(() {
         _supportsBiometrics = supported && (canCheck || available.isNotEmpty);
         _hasStoredBiometrics = fingerprintEnabled;
         _supportsFingerprint = supportsFingerprint;
@@ -69,7 +74,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } on PlatformException catch (e) {
       debugPrint('❌ Biometric availability check failed: $e');
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _supportsBiometrics = false;
         _hasStoredBiometrics = false;
         _supportsFingerprint = false;
@@ -106,9 +111,9 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       if (!didAuthenticate) return;
 
-      setState(() => loading = true);
+      safeSetState(() => loading = true);
       final ok = await auth.tryBiometricLogin();
-      setState(() => loading = false);
+      safeSetState(() => loading = false);
 
       if (!mounted) return;
 
@@ -303,7 +308,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       : Icons.visibility_outlined,
                                 ),
                                 onPressed: () {
-                                  setState(() {
+                                  safeSetState(() {
                                     _obscurePassword = !_obscurePassword;
                                   });
                                 },
@@ -375,7 +380,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _submit(AuthProvider auth) async {
     FocusScope.of(context).unfocus();
-    setState(() => loading = true);
+    safeSetState(() => loading = true);
 
     final username = usernameCtrl.text.trim();
     final password = passCtrl.text.trim();
@@ -385,7 +390,7 @@ class _LoginScreenState extends State<LoginScreen> {
       password,
     );
 
-    setState(() => loading = false);
+    safeSetState(() => loading = false);
 
     if (!mounted) return;
 
@@ -443,4 +448,6 @@ class _SecurityFooter extends StatelessWidget {
     );
   }
 }
+
+
 

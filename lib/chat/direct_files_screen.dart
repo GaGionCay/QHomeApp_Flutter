@@ -9,6 +9,7 @@ import '../chat/chat_service.dart';
 import '../chat/public_file_storage_service.dart';
 import '../auth/api_client.dart';
 
+import '../core/safe_state_mixin.dart';
 class DirectFilesScreen extends StatefulWidget {
   final String conversationId;
   final String otherParticipantName;
@@ -23,7 +24,7 @@ class DirectFilesScreen extends StatefulWidget {
   State<DirectFilesScreen> createState() => _DirectFilesScreenState();
 }
 
-class _DirectFilesScreenState extends State<DirectFilesScreen> with SingleTickerProviderStateMixin {
+class _DirectFilesScreenState extends State<DirectFilesScreen> with SingleTickerProviderStateMixin , SafeStateMixin<DirectFilesScreen> {
   final ChatService _chatService = ChatService();
   final ScrollController _scrollController = ScrollController();
   late TabController _tabController;
@@ -122,7 +123,7 @@ class _DirectFilesScreenState extends State<DirectFilesScreen> with SingleTicker
 
   Future<void> _loadFiles({bool refresh = false}) async {
     if (refresh) {
-      setState(() {
+      safeSetState(() {
         _currentPage = 0;
         _allFiles = [];
         _imageFiles = [];
@@ -133,7 +134,7 @@ class _DirectFilesScreenState extends State<DirectFilesScreen> with SingleTicker
       });
     } else {
       if (_isLoadingMore || !_hasMore) return;
-      setState(() {
+      safeSetState(() {
         _isLoadingMore = true;
       });
     }
@@ -151,7 +152,7 @@ class _DirectFilesScreenState extends State<DirectFilesScreen> with SingleTicker
         print('📄 [DirectFilesScreen] File: ${file.fileName}, mimeType: ${file.mimeType}, fileType: ${file.fileType}, size: ${file.fileSize}');
       }
 
-      setState(() {
+      safeSetState(() {
         if (refresh) {
           _allFiles = response.content;
         } else {
@@ -168,7 +169,7 @@ class _DirectFilesScreenState extends State<DirectFilesScreen> with SingleTicker
       // Debug: Print categorized files
       print('🖼️ [DirectFilesScreen] Images: ${_imageFiles.length}, Documents: ${_documentFiles.length}');
     } catch (e) {
-      setState(() {
+      safeSetState(() {
         _isLoading = false;
         _isLoadingMore = false;
         _error = 'Lỗi khi tải danh sách file: ${e.toString()}';
@@ -1001,7 +1002,7 @@ class _FullScreenImageViewer extends StatefulWidget {
   State<_FullScreenImageViewer> createState() => _FullScreenImageViewerState();
 }
 
-class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
+class _FullScreenImageViewerState extends State<_FullScreenImageViewer> with SafeStateMixin<_FullScreenImageViewer> {
   late PageController _pageController;
   late int _currentIndex;
 
@@ -1048,7 +1049,7 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
         controller: _pageController,
         itemCount: widget.images.length,
         onPageChanged: (index) {
-          setState(() {
+          safeSetState(() {
             _currentIndex = index;
           });
         },
@@ -1093,5 +1094,6 @@ class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
     );
   }
 }
+
 
 

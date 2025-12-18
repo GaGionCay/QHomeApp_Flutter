@@ -17,6 +17,7 @@ import 'package:go_router/go_router.dart';
 import '../auth/api_client.dart';
 import '../contracts/contract_service.dart';
 import '../core/app_router.dart';
+import '../core/safe_state_mixin.dart';
 import '../models/unit_info.dart';
 import '../profile/profile_service.dart';
 import '../services/card_pricing_service.dart';
@@ -32,7 +33,7 @@ class RegisterElevatorCardScreen extends StatefulWidget {
 }
 
 class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SafeStateMixin<RegisterElevatorCardScreen> {
   final ApiClient api = ApiClient();
   final _formKey = GlobalKey<FormState>();
   static const _storageKey = 'register_elevator_card_draft';
@@ -80,7 +81,7 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   Future<Dio> _servicesCardClient() async {
     if (_servicesCardDio == null) {
       _servicesCardDio = Dio(BaseOptions(
-        baseUrl: ApiClient.buildServiceBase(port: 8083, path: '/api'),
+        baseUrl: ApiClient.buildServiceBase(port: 8083),
         connectTimeout: const Duration(seconds: ApiClient.connectTimeoutSeconds),
         receiveTimeout: const Duration(seconds: ApiClient.receiveTimeoutSeconds),
         sendTimeout: const Duration(seconds: ApiClient.sendTimeoutSeconds),
@@ -112,6 +113,15 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    
+    // Register all TextEditingControllers with SafeStateMixin
+    registerControllers([
+      _apartmentNumberCtrl,
+      _buildingNameCtrl,
+      _phoneNumberCtrl,
+      _noteCtrl,
+    ]);
+    
     _contractService = ContractService(api);
     _cardPricingService = CardPricingService(api.dio);
     _initialize();
@@ -176,20 +186,22 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   }
 
   Future<void> _loadCardPrice() async {
-    setState(() => _loadingPrice = true);
+    if (!mounted) return;
+    safeSetState(() => _loadingPrice = true);
+    
     try {
       final price = await _cardPricingService.getCardPrice('ELEVATOR');
-      if (mounted) {
-        setState(() {
-          _registrationFee = price;
-          _loadingPrice = false;
-        });
-      }
+      if (!mounted) return;
+      
+      safeSetState(() {
+        _registrationFee = price;
+        _loadingPrice = false;
+      });
     } catch (e) {
       debugPrint('❌ [ElevatorCard] Lỗi tải giá thẻ: $e');
-      if (mounted) {
-        setState(() => _loadingPrice = false);
-      }
+      if (!mounted) return;
+      
+      safeSetState(() => _loadingPrice = false);
     }
   }
 
@@ -197,11 +209,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _paymentSub?.cancel();
-
-    _apartmentNumberCtrl.dispose();
-    _buildingNameCtrl.dispose();
-    _phoneNumberCtrl.dispose();
-    _noteCtrl.dispose();
+    
+    // SafeStateMixin will automatically dispose all registered controllers
     super.dispose();
   }
 
@@ -297,7 +306,9 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       if (saved == null) return;
 
       final data = jsonDecode(saved) as Map<String, dynamic>;
-      setState(() {
+      if (!mounted) return;
+      
+      safeSetState(() {
         // Chỉ load các field không phải thông tin cá nhân
         // Không tự động điền: apartmentNumber, buildingName, phoneNumber
         _noteCtrl.text = data['note'] ?? '';
@@ -332,7 +343,7 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
         return;
       }
 
-      setState(() {
+      safeSetState(() {
         _selectedUnitId = selectedUnit?.id;
       });
 
@@ -374,14 +385,20 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       return;
     }
     
-    setState(() => _loadingMaxCards = true);
+    if (!mounted) return;
+    safeSetState(() => _loadingMaxCards = true);
+    
     try {
       final client = await _servicesCardClient();
+      if (!mounted) return;
+      
       debugPrint('🔍 [ElevatorCard] Đang gọi API max-cards với unitId: $_selectedUnitId');
       
       final res = await client.get('/elevator-card/max-cards', queryParameters: {
         'unitId': _selectedUnitId,
       });
+      
+      if (!mounted) return;
       
       debugPrint('✅ [ElevatorCard] Response từ API max-cards: ${res.data}');
       
@@ -399,7 +416,7 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
           return;
         }
         
-        setState(() {
+        safeSetState(() {
           _maxCards = maxCards;
           _registeredCards = registeredCards;
         });
@@ -409,24 +426,20 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
         debugPrint('⚠️ [ElevatorCard] Response không phải Map: ${res.data.runtimeType}');
       }
     } catch (e, stackTrace) {
+      if (!mounted) return;
+      
       debugPrint('❌ [ElevatorCard] Lỗi tải thông tin số lượng thẻ tối đa: $e');
       debugPrint('❌ [ElevatorCard] Stack trace: $stackTrace');
       
       // Không set fallback 999 nữa, để user biết có lỗi
       // Chỉ reset về giá trị mặc định hợp lý (0 hoặc giữ nguyên giá trị cũ)
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('⚠️ Không thể tải thông tin số lượng thẻ tối đa. Vui lòng thử lại.'),
-            duration: Duration(seconds: 3),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
+      safeShowSnackBar(
+        '⚠️ Không thể tải thông tin số lượng thẻ tối đa. Vui lòng thử lại.',
+        backgroundColor: Colors.orange,
+        duration: const Duration(seconds: 3),
+      );
     } finally {
-      if (mounted) {
-        setState(() => _loadingMaxCards = false);
-      }
+      safeSetState(() => _loadingMaxCards = false);
     }
   }
 
@@ -436,7 +449,7 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       return false;
     }
     
-    setState(() => _loadingHouseholdMembers = true);
+    safeSetState(() => _loadingHouseholdMembers = true);
     
     try {
       final client = await _servicesCardClient();
@@ -446,7 +459,7 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       );
       
       if (res.statusCode == 200 && res.data is List) {
-        setState(() {
+        safeSetState(() {
           _householdMembers = List<Map<String, dynamic>>.from(res.data);
           _isOwner = true; // User là OWNER
         });
@@ -458,7 +471,7 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       if (e.response?.statusCode == 403) {
         // User không phải OWNER
         debugPrint('⚠️ [ElevatorCard] User không phải OWNER, không thể xem danh sách thành viên');
-        setState(() {
+        safeSetState(() {
           _isOwner = false;
         });
         // Không hiển thị snackbar nữa vì đây là behavior mong muốn
@@ -486,9 +499,7 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       }
       return false;
     } finally {
-      if (mounted) {
-        setState(() => _loadingHouseholdMembers = false);
-      }
+      safeSetState(() => _loadingHouseholdMembers = false);
     }
   }
 
@@ -625,7 +636,7 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
 
     if (!mounted) return;
     if (result != null) {
-      setState(() {
+      safeSetState(() {
         _selectedResidents = result;
         _hasUnsavedChanges = true;
       });
@@ -655,7 +666,9 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       final profileCitizenId = profile['citizenId']?.toString() ?? 
                                profile['identityNumber']?.toString() ?? '';
 
-      setState(() {
+      if (!mounted) return;
+      
+      safeSetState(() {
         _defaultPhoneNumber = profilePhone;
         if ((_phoneNumberCtrl.text.isEmpty) &&
             (_defaultPhoneNumber?.isNotEmpty ?? false)) {
@@ -668,10 +681,12 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
 
       if (_residentId == null || _residentId!.isEmpty) {
         final units = await _contractService.getMyUnits();
+        if (!mounted) return;
+        
         for (final unit in units) {
           final candidate = unit.primaryResidentId?.toString();
           if (candidate != null && candidate.isNotEmpty) {
-            setState(() {
+            safeSetState(() {
               _residentId = candidate;
             });
             break;
@@ -684,7 +699,8 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
       if (!_isOwner && candidateResidentId != null && candidateResidentId.isNotEmpty) {
         // Tự động set selectedResidents với chính user
         if (_selectedResidents.isEmpty) {
-          setState(() {
+          if (!mounted) return;
+          safeSetState(() {
             _selectedResidents = [{
               'residentId': candidateResidentId,
               'fullName': profileFullName,
@@ -830,7 +846,7 @@ class _RegisterElevatorCardScreenState extends State<RegisterElevatorCardScreen>
   }
 
   void _clearForm() {
-    setState(() {
+    safeSetState(() {
       _phoneNumberCtrl.clear();
       _noteCtrl.clear();
       _confirmed = false;
@@ -910,7 +926,7 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
       );
 
       if (confirm == true) {
-        setState(() {
+        safeSetState(() {
           _confirmed = true;
           _editingField = null;
         });
@@ -951,7 +967,7 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
       );
 
       if (confirmAgain == true) {
-        setState(() {
+        safeSetState(() {
           _hasEditedAfterConfirm = false;
           _editingField = null;
         });
@@ -1017,7 +1033,7 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
     );
 
     if (wantEdit == true) {
-      setState(() {
+      safeSetState(() {
         _editingField = field;
         _hasEditedAfterConfirm = true;
       });
@@ -1052,18 +1068,17 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
     // Nếu không phải OWNER, _selectedResidents đã được tự động set với chính user
     if (_selectedResidents.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_isOwner 
-              ? 'Vui lòng chọn ít nhất một cư dân để đăng ký thẻ'
-              : 'Vui lòng kiểm tra lại thông tin cá nhân'),
-          backgroundColor: Colors.red,
-        ),
+      safeShowSnackBar(
+        _isOwner 
+            ? 'Vui lòng chọn ít nhất một cư dân để đăng ký thẻ'
+            : 'Vui lòng kiểm tra lại thông tin cá nhân',
+        backgroundColor: Colors.red,
       );
       return;
     }
 
-    setState(() => _submitting = true);
+    if (!mounted) return;
+    safeSetState(() => _submitting = true);
     String? registrationId;
     List<String> registrationIds = [];
     String? paymentUrl;
@@ -1082,6 +1097,8 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
         
         final payload = _collectPayload(resident);
         final res = await client.post('/elevator-card/vnpay-url', data: payload);
+        if (!mounted) return;
+        
         registrationId = res.data['registrationId']?.toString();
         paymentUrl = res.data['paymentUrl']?.toString();
         
@@ -1103,6 +1120,8 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
           
           // Tạo registration trước (không thanh toán)
           final res = await client.post('/elevator-card', data: payload);
+          if (!mounted) return;
+          
           final regId = res.data['id']?.toString();
           
           if (regId != null) {
@@ -1124,6 +1143,8 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
         };
         
         final batchRes = await client.post('/elevator-card/batch-payment', data: batchPayload);
+        if (!mounted) return;
+        
         paymentUrl = batchRes.data['paymentUrl']?.toString();
         
         if (paymentUrl == null || paymentUrl.isEmpty) {
@@ -1147,6 +1168,7 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
               data: paymentUrl,
             );
             await intent.launchChooser('Chọn trình duyệt để thanh toán');
+            if (!mounted) return;
             launched = true;
           } catch (e) {
             debugPrint('⚠️ Không thể mở chooser, fallback url_launcher: $e');
@@ -1155,17 +1177,17 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
         if (!launched) {
           if (await canLaunchUrl(uri)) {
             await launchUrl(uri, mode: LaunchMode.externalApplication);
+            if (!mounted) return;
             launched = true;
           }
         }
         if (!launched) {
           await prefs.remove(_pendingPaymentKey);
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Không thể mở trình duyệt thanh toán'),
-              backgroundColor: Colors.red,
-            ),
+          
+          safeShowSnackBar(
+            'Không thể mở trình duyệt thanh toán',
+            backgroundColor: Colors.red,
           );
         }
       }
@@ -1183,25 +1205,17 @@ Sau khi xác nhận, các thông tin sẽ không thể chỉnh sửa trừ khi b
       }
 
       if (!mounted) return;
+      
       // Hiển thị thông báo với duration dài hơn nếu là lỗi về việc chưa được duyệt
       final isApprovalError = message.contains('chưa được duyệt') || 
                               message.contains('đợi admin duyệt');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Lỗi: $message'),
-          backgroundColor: isApprovalError ? Colors.orange.shade700 : Colors.red,
-          duration: isApprovalError ? const Duration(seconds: 6) : const Duration(seconds: 4),
-          action: isApprovalError ? SnackBarAction(
-            label: 'Đóng',
-            textColor: Colors.white,
-            onPressed: () {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            },
-          ) : null,
-        ),
+      safeShowSnackBar(
+        'Lỗi: $message',
+        backgroundColor: isApprovalError ? Colors.orange.shade700 : Colors.red,
+        duration: isApprovalError ? const Duration(seconds: 6) : const Duration(seconds: 4),
       );
     } finally {
-      setState(() => _submitting = false);
+      safeSetState(() => _submitting = false);
     }
   }
 

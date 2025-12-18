@@ -17,6 +17,7 @@ import '../settings/settings_screen.dart';
 import '../theme/app_colors.dart';
 import 'layout_insets.dart';
 
+import '../core/safe_state_mixin.dart';
 class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key});
 
@@ -24,7 +25,7 @@ class MenuScreen extends StatefulWidget {
   State<MenuScreen> createState() => _MenuScreenState();
 }
 
-class _MenuScreenState extends State<MenuScreen> {
+class _MenuScreenState extends State<MenuScreen> with SafeStateMixin<MenuScreen> {
   late Dio _dio;
   late ProfileService _profileService;
 
@@ -45,20 +46,20 @@ class _MenuScreenState extends State<MenuScreen> {
       await _loadProfile();
     } catch (e) {
       debugPrint('❌ Lỗi khởi tạo service: $e');
-      setState(() => _loading = false);
+      safeSetState(() => _loading = false);
     }
   }
 
   Future<void> _loadProfile() async {
     try {
       final data = await _profileService.getProfile();
-      setState(() {
+      safeSetState(() {
         _profile = data;
         _loading = false;
       });
     } catch (e) {
       // Error loading user info - handled by ApiClient error logging
-      setState(() => _loading = false);
+      safeSetState(() => _loading = false);
     }
   }
 
@@ -641,4 +642,5 @@ class _QuickActionChip extends StatelessWidget {
     );
   }
 }
+
 

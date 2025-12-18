@@ -8,6 +8,7 @@ import '../models/account_creation_request.dart';
 import '../models/unit_info.dart';
 import 'resident_account_service.dart';
 
+import '../core/safe_state_mixin.dart';
 class AccountRequestStatusScreen extends StatefulWidget {
   const AccountRequestStatusScreen({
     super.key,
@@ -22,7 +23,8 @@ class AccountRequestStatusScreen extends StatefulWidget {
 }
 
 class _AccountRequestStatusScreenState
-    extends State<AccountRequestStatusScreen> {
+    extends State<AccountRequestStatusScreen> 
+    with SafeStateMixin<AccountRequestStatusScreen> {
   late final ResidentAccountService _service;
   List<AccountCreationRequest> _requests = [];
   bool _loading = true;
@@ -39,26 +41,26 @@ class _AccountRequestStatusScreenState
   }
 
   Future<void> _loadRequests() async {
-    setState(() {
+    safeSetState(() {
       _loading = true;
       _error = null;
     });
     try {
       final data = await _service.getMyAccountRequests();
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _requests = data;
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _error = e.toString();
         });
       }
     } finally {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _loading = false;
         });
       }
@@ -91,7 +93,7 @@ class _AccountRequestStatusScreenState
   }
 
   Future<void> _cancelRequest(AccountCreationRequest request) async {
-    setState(() {
+    safeSetState(() {
       _cancellingRequestId = request.id;
     });
     try {
@@ -114,7 +116,7 @@ class _AccountRequestStatusScreenState
       );
     } finally {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _cancellingRequestId = null;
         });
       }
@@ -549,6 +551,7 @@ class _AccountRequestStatusScreenState
     );
   }
 }
+
 
 
 

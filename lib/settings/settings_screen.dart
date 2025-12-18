@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_application_1/core/safe_state_mixin.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -264,7 +265,8 @@ class _FingerprintSettingsSection extends StatefulWidget {
       _FingerprintSettingsSectionState();
 }
 
-class _FingerprintSettingsSectionState extends State<_FingerprintSettingsSection> {
+class _FingerprintSettingsSectionState extends State<_FingerprintSettingsSection> 
+    with SafeStateMixin<_FingerprintSettingsSection> {
   final LocalAuthentication _localAuth = LocalAuthentication();
   bool _loading = true;
   bool _supportsFingerprint = false;
@@ -292,7 +294,7 @@ class _FingerprintSettingsSectionState extends State<_FingerprintSettingsSection
       
       debugPrint('🔐 Fingerprint Check - Available: $available, Supports: $supportsFingerprint');
       
-      setState(() {
+      safeSetState(() {
         _supportsFingerprint = supportsFingerprint;
         _fingerprintEnabled = enabled;
         _loading = false;
@@ -300,7 +302,7 @@ class _FingerprintSettingsSectionState extends State<_FingerprintSettingsSection
     } on PlatformException catch (e) {
       debugPrint('❌ Fingerprint Check - Error: $e');
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _supportsFingerprint = false;
         _fingerprintEnabled = false;
         _loading = false;
@@ -321,21 +323,21 @@ class _FingerprintSettingsSectionState extends State<_FingerprintSettingsSection
       return;
     }
 
-    setState(() => _processing = true);
+    safeSetState(() => _processing = true);
 
     final available = await _localAuth.getAvailableBiometrics();
     final supportsFingerprint = available.contains(BiometricType.fingerprint) ||
                                 available.contains(BiometricType.strong) ||
                                 available.contains(BiometricType.weak);
     if (!supportsFingerprint) {
-      setState(() => _processing = false);
+      safeSetState(() => _processing = false);
       _showSnack('Thiết bị của bạn không hỗ trợ đăng nhập bằng vân tay.');
       return;
     }
 
     final reauthOk = await auth.reauthenticateForBiometrics(password);
     if (!reauthOk) {
-      setState(() => _processing = false);
+      safeSetState(() => _processing = false);
       _showSnack('Mật khẩu không chính xác. Vui lòng thử lại.');
       return;
     }
@@ -350,18 +352,18 @@ class _FingerprintSettingsSectionState extends State<_FingerprintSettingsSection
       );
 
       if (!didAuthenticate) {
-        setState(() => _processing = false);
+        safeSetState(() => _processing = false);
         return;
       }
     } on PlatformException catch (e) {
-      setState(() => _processing = false);
+      safeSetState(() => _processing = false);
       _showSnack('Không thể xác thực vân tay: ${e.message ?? e.code}');
       return;
     }
 
     await auth.enableFingerprintLogin(username, password);
     if (!mounted) return;
-    setState(() {
+    safeSetState(() {
       _fingerprintEnabled = true;
       _processing = false;
     });
@@ -371,10 +373,10 @@ class _FingerprintSettingsSectionState extends State<_FingerprintSettingsSection
   Future<void> _disableFingerprint() async {
     if (_processing) return;
     final auth = context.read<AuthProvider>();
-    setState(() => _processing = true);
+    safeSetState(() => _processing = true);
     await auth.disableFingerprintLogin();
     if (!mounted) return;
-    setState(() {
+    safeSetState(() {
       _fingerprintEnabled = false;
       _processing = false;
     });
@@ -532,7 +534,8 @@ class _FingerprintSettingsSectionState extends State<_FingerprintSettingsSection
 }
 
 // Face Settings Section
-class _UnitSwitcherSectionState extends State<_UnitSwitcherSection> {
+class _UnitSwitcherSectionState extends State<_UnitSwitcherSection> 
+    with SafeStateMixin<_UnitSwitcherSection> {
   late final ContractService _contractService;
   List<UnitInfo> _units = [];
   String? _selectedUnitId;
@@ -548,7 +551,7 @@ class _UnitSwitcherSectionState extends State<_UnitSwitcherSection> {
   }
 
   Future<void> _loadUnits() async {
-    setState(() {
+    safeSetState(() {
       _loading = true;
       _errorMessage = null;
     });
@@ -568,14 +571,14 @@ class _UnitSwitcherSectionState extends State<_UnitSwitcherSection> {
       }
 
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _units = units;
         _selectedUnitId = selected;
         _loading = false;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _errorMessage =
             'Không thể tải danh sách căn hộ. Vui lòng thử lại sau.';
         _loading = false;
@@ -586,7 +589,7 @@ class _UnitSwitcherSectionState extends State<_UnitSwitcherSection> {
   Future<void> _onUnitChanged(String? unitId) async {
     if (unitId == null || unitId == _selectedUnitId) return;
 
-    setState(() {
+    safeSetState(() {
       _saving = true;
     });
 
@@ -595,7 +598,7 @@ class _UnitSwitcherSectionState extends State<_UnitSwitcherSection> {
     AppEventBus().emit('unit_context_changed', unitId);
 
     if (!mounted) return;
-    setState(() {
+    safeSetState(() {
       _selectedUnitId = unitId;
       _saving = false;
     });
@@ -826,6 +829,7 @@ class _SettingsGlassCard extends StatelessWidget {
     );
   }
 }
+
 
 
 

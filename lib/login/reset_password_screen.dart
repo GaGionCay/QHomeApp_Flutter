@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/core/safe_state_mixin.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../auth/auth_provider.dart';
@@ -18,7 +19,7 @@ class ResetPasswordScreen extends StatefulWidget {
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
 }
 
-class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
+class _ResetPasswordScreenState extends State<ResetPasswordScreen> with SafeStateMixin<ResetPasswordScreen> {
   final passCtrl = TextEditingController();
   final FocusNode _passFocus = FocusNode();
   bool loading = false;
@@ -170,7 +171,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                                       : Icons.visibility_outlined,
                                 ),
                                 onPressed: () =>
-                                    setState(() => obscure = !obscure),
+                                    safeSetState(() => obscure = !obscure),
                               ),
                             ),
                             const SizedBox(height: 24),
@@ -238,7 +239,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       return;
     }
     
-    setState(() => loading = true);
+    safeSetState(() => loading = true);
     try {
       await auth.confirmReset(
         widget.email,
@@ -287,7 +288,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       );
     } finally {
       if (mounted) {
-        setState(() => loading = false);
+        safeSetState(() => loading = false);
       }
     }
   }
@@ -299,4 +300,6 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     super.dispose();
   }
 }
+
+
 

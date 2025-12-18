@@ -15,6 +15,7 @@ import 'package:go_router/go_router.dart';
 import '../auth/api_client.dart';
 import '../contracts/contract_service.dart';
 import '../core/app_router.dart';
+import '../core/safe_state_mixin.dart';
 import '../models/unit_info.dart';
 import '../profile/profile_service.dart';
 import '../services/card_pricing_service.dart';
@@ -30,7 +31,7 @@ class RegisterResidentCardScreen extends StatefulWidget {
 }
 
 class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SafeStateMixin<RegisterResidentCardScreen> {
   final ApiClient api = ApiClient();
   final _formKey = GlobalKey<FormState>();
   static const _storageKey = 'register_resident_card_draft';
@@ -72,7 +73,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   Future<Dio> _servicesCardClient() async {
     if (_servicesCardDio == null) {
       _servicesCardDio = Dio(BaseOptions(
-        baseUrl: ApiClient.buildServiceBase(port: 8083, path: '/api'),
+        baseUrl: ApiClient.buildServiceBase(port: 8083),
         connectTimeout: const Duration(seconds: ApiClient.connectTimeoutSeconds),
         receiveTimeout: const Duration(seconds: ApiClient.receiveTimeoutSeconds),
         sendTimeout: const Duration(seconds: ApiClient.sendTimeoutSeconds),
@@ -107,6 +108,17 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    
+    // Register all TextEditingControllers with SafeStateMixin
+    registerControllers([
+      _fullNameCtrl,
+      _apartmentNumberCtrl,
+      _buildingNameCtrl,
+      _citizenIdCtrl,
+      _phoneNumberCtrl,
+      _noteCtrl,
+    ]);
+    
     _contractService = ContractService(api);
     _cardPricingService = CardPricingService(api.dio);
     _initialize();
@@ -171,20 +183,22 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   }
 
   Future<void> _loadCardPrice() async {
-    setState(() => _loadingPrice = true);
+    if (!mounted) return;
+    safeSetState(() => _loadingPrice = true);
+    
     try {
       final price = await _cardPricingService.getCardPrice('RESIDENT');
-      if (mounted) {
-        setState(() {
-          _registrationFee = price;
-          _loadingPrice = false;
-        });
-      }
+      if (!mounted) return;
+      
+      safeSetState(() {
+        _registrationFee = price;
+        _loadingPrice = false;
+      });
     } catch (e) {
       debugPrint('❌ [ResidentCard] Lỗi tải giá thẻ: $e');
-      if (mounted) {
-        setState(() => _loadingPrice = false);
-      }
+      if (!mounted) return;
+      
+      safeSetState(() => _loadingPrice = false);
     }
   }
 
@@ -192,14 +206,11 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _paymentSub?.cancel();
-
-    _fullNameCtrl.dispose();
-    _apartmentNumberCtrl.dispose();
-    _buildingNameCtrl.dispose();
-    _citizenIdCtrl.dispose();
-    _phoneNumberCtrl.dispose();
-    _noteCtrl.dispose();
-    super.dispose();
+    
+    // SafeStateMixin will automatically dispose all registered controllers
+    // and cancel any registered subscriptions/timers
+    
+    super.dispose(); // This will call SafeStateMixin.dispose() which handles cleanup
   }
 
   @override
@@ -293,7 +304,9 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       if (saved == null) return;
 
       final data = jsonDecode(saved) as Map<String, dynamic>;
-      setState(() {
+      if (!mounted) return;
+      
+      safeSetState(() {
         // Chỉ load các field không phải thông tin cá nhân
         // Không tự động điền: apartmentNumber, buildingName, phoneNumber
         _noteCtrl.text = data['note'] ?? _noteCtrl.text;
@@ -328,7 +341,9 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         return;
       }
 
-      setState(() {
+      if (!mounted) return;
+      
+      safeSetState(() {
         _selectedUnitId = selectedUnit?.id;
       });
 
@@ -369,7 +384,9 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
                                profile['identityNumber']?.toString() ?? '';
       final profileResidentId = profile['residentId']?.toString();
 
-      setState(() {
+      if (!mounted) return;
+      
+      safeSetState(() {
         _defaultPhoneNumber = profilePhone;
         if ((_phoneNumberCtrl.text.isEmpty) &&
             (_defaultPhoneNumber?.isNotEmpty ?? false)) {
@@ -389,7 +406,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         
         // Tự động set selectedResidents với chính user
         if (_selectedResidents.isEmpty) {
-          setState(() {
+          if (!mounted) return;
+          safeSetState(() {
             _selectedResidents = [{
               'residentId': profileResidentId,
               'fullName': profileFullName,
@@ -409,7 +427,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       return false;
     }
     
-    setState(() => _loadingHouseholdMembers = true);
+    if (!mounted) return false;
+    safeSetState(() => _loadingHouseholdMembers = true);
     
     try {
       final client = await _servicesCardClient();
@@ -418,8 +437,10 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         queryParameters: {'unitId': _selectedUnitId},
       );
       
+      if (!mounted) return false;
+      
       if (res.statusCode == 200 && res.data is List) {
-        setState(() {
+        safeSetState(() {
           _householdMembers = List<Map<String, dynamic>>.from(res.data);
           _isOwner = true; // User là OWNER
         });
@@ -428,40 +449,35 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       }
       return false;
     } on DioException catch (e) {
+      if (!mounted) return false;
+      
       if (e.response?.statusCode == 403) {
         // User không phải OWNER
         debugPrint('⚠️ [ResidentCard] User không phải OWNER, không thể xem danh sách thành viên');
-        setState(() {
+        safeSetState(() {
           _isOwner = false;
         });
         // Không hiển thị snackbar nữa vì đây là behavior mong muốn
         return false; // User không phải OWNER
       }
       debugPrint('❌ [ResidentCard] Lỗi tải danh sách thành viên: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Không thể tải danh sách thành viên: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      safeShowSnackBar(
+        'Không thể tải danh sách thành viên: ${e.toString()}',
+        backgroundColor: Colors.red,
+      );
       return false;
     } catch (e) {
+      if (!mounted) return false;
+      
       debugPrint('❌ [ResidentCard] Lỗi tải danh sách thành viên: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Không thể tải danh sách thành viên: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      safeShowSnackBar(
+        'Không thể tải danh sách thành viên: ${e.toString()}',
+        backgroundColor: Colors.red,
+      );
       return false;
     } finally {
-      if (mounted) {
-        setState(() => _loadingHouseholdMembers = false);
-      }
+      // Don't use return in finally - just call safeSetState which handles mounted check
+      safeSetState(() => _loadingHouseholdMembers = false);
     }
   }
 
@@ -598,7 +614,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
 
     if (!mounted) return;
     if (result != null) {
-      setState(() {
+      safeSetState(() {
         _selectedResidents = result;
         _hasUnsavedChanges = true;
       });
@@ -834,7 +850,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       );
 
       if (confirm == true) {
-        setState(() {
+        safeSetState(() {
           _confirmed = true;
           _editingField = null;
         });
@@ -875,7 +891,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       );
 
       if (confirmAgain == true) {
-        setState(() {
+        safeSetState(() {
           _hasEditedAfterConfirm = false;
           _editingField = null;
         });
@@ -941,7 +957,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     );
 
     if (wantEdit == true) {
-      setState(() {
+      safeSetState(() {
         _editingField = field;
         _hasEditedAfterConfirm = true;
       });
@@ -975,13 +991,16 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   }
 
   Future<void> _saveAndPay() async {
-    setState(() => _submitting = true);
+    if (!mounted) return;
+    safeSetState(() => _submitting = true);
+    
     String? registrationId;
     List<String> registrationIds = [];
     String? paymentUrl;
 
     try {
       final client = await _servicesCardClient();
+      if (!mounted) return;
       
       // Nếu chỉ có 1 cư dân, sử dụng flow cũ (tạo và thanh toán ngay)
       if (_selectedResidents.length == 1) {
@@ -994,6 +1013,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         
         final payload = _collectPayload(resident);
         final res = await client.post('/resident-card/vnpay-url', data: payload);
+        if (!mounted) return;
+        
         registrationId = res.data['registrationId']?.toString();
         paymentUrl = res.data['paymentUrl']?.toString();
         
@@ -1014,6 +1035,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
           
           // Tạo registration trước (không thanh toán)
           final res = await client.post('/resident-card', data: payload);
+          if (!mounted) return;
+          
           final regId = res.data['id']?.toString();
           
           if (regId != null) {
@@ -1035,6 +1058,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         };
         
         final batchRes = await client.post('/resident-card/batch-payment', data: batchPayload);
+        if (!mounted) return;
+        
         paymentUrl = batchRes.data['paymentUrl']?.toString();
         
         if (paymentUrl == null || paymentUrl.isEmpty) {
@@ -1065,22 +1090,22 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
             debugPrint('⚠️ Không thể mở chooser, fallback url_launcher: $e');
           }
         }
-        if (!launched) {
-          if (await canLaunchUrl(uri)) {
-            await launchUrl(uri, mode: LaunchMode.externalApplication);
-            launched = true;
+          if (!launched) {
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+              if (!mounted) return;
+              launched = true;
+            }
           }
-        }
-        if (!launched) {
-          await prefs.remove(_pendingPaymentKey);
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Không thể mở trình duyệt thanh toán'),
+          if (!launched) {
+            await prefs.remove(_pendingPaymentKey);
+            if (!mounted) return;
+            
+            safeShowSnackBar(
+              'Không thể mở trình duyệt thanh toán',
               backgroundColor: Colors.red,
-            ),
-          );
-        }
+            );
+          }
       }
     } catch (e) {
       final message = _resolveErrorMessage(e);
@@ -1094,27 +1119,19 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
         }
       }
 
-      if (mounted) {
-        // Hiển thị thông báo với duration dài hơn nếu là lỗi về việc chưa được duyệt
-        final isApprovalError = message.contains('chưa được duyệt') || 
-                                message.contains('đợi admin duyệt');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Lỗi: $message'),
-            backgroundColor: isApprovalError ? Colors.orange.shade700 : Colors.red,
-            duration: isApprovalError ? const Duration(seconds: 6) : const Duration(seconds: 4),
-            action: isApprovalError ? SnackBarAction(
-              label: 'Đóng',
-              textColor: Colors.white,
-              onPressed: () {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              },
-            ) : null,
-          ),
-        );
-      }
+      if (!mounted) return;
+      
+      // Hiển thị thông báo với duration dài hơn nếu là lỗi về việc chưa được duyệt
+      final isApprovalError = message.contains('chưa được duyệt') || 
+                              message.contains('đợi admin duyệt');
+      safeShowSnackBar(
+        'Lỗi: $message',
+        backgroundColor: isApprovalError ? Colors.orange.shade700 : Colors.red,
+        duration: isApprovalError ? const Duration(seconds: 6) : const Duration(seconds: 4),
+      );
     } finally {
-      setState(() => _submitting = false);
+      // Don't use return in finally - just call safeSetState which handles mounted check
+      safeSetState(() => _submitting = false);
     }
   }
 
@@ -1130,7 +1147,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   }
 
   void _clearForm() {
-    setState(() {
+    safeSetState(() {
       _phoneNumberCtrl.clear();
       _noteCtrl.clear();
       _confirmed = false;

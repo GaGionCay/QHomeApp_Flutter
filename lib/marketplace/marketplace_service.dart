@@ -192,7 +192,9 @@ class MarketplaceService {
           // Nén video trước khi upload
           final compressedFile = await VideoCompressionService.instance.compressVideo(
             videoPath: video.path,
-            // No progress logging - only log errors
+            onProgress: (message) {
+              // No progress logging - only log errors
+            },
           );
           
           final videoFileToUpload = compressedFile ?? File(video.path);
@@ -364,7 +366,9 @@ class MarketplaceService {
           // Nén video trước khi upload
           final compressedFile = await VideoCompressionService.instance.compressVideo(
             videoPath: video.path,
-            // No progress logging - only log errors
+            onProgress: (message) {
+              // No progress logging - only log errors
+            },
           );
           
           final videoFileToUpload = compressedFile ?? File(video.path);

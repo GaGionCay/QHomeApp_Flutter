@@ -18,6 +18,7 @@ import '../models/unit_info.dart';
 import '../services/card_registration_service.dart';
 import '../core/app_router.dart';
 
+import '../core/safe_state_mixin.dart';
 enum _CardCategory { vehicle, resident, elevator }
 
 enum _StatusFilter { all, approved, paid, pending }
@@ -43,7 +44,7 @@ class CardRegistrationsScreen extends StatefulWidget {
       _CardRegistrationsScreenState();
 }
 
-class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
+class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> with SafeStateMixin<CardRegistrationsScreen> {
   static const List<_CardCategory> _categoryOrder = [
     _CardCategory.vehicle,
     _CardCategory.resident,
@@ -108,7 +109,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
   }
 
   Future<void> _fetchData() async {
-    setState(() {
+    safeSetState(() {
       _isLoading = true;
       _error = null;
     });
@@ -118,13 +119,13 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
         unitId: widget.unitId,
       );
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _cards = result;
         _isLoading = false;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _error = e.toString();
         _isLoading = false;
       });
@@ -386,7 +387,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
       final stored = prefs.getString(_statusFilterPrefKey);
       final filter = _statusFilterFromStorage(stored);
       if (!mounted || filter == _statusFilter) return;
-      setState(() => _statusFilter = filter);
+      safeSetState(() => _statusFilter = filter);
     } catch (e) {
       debugPrint('⚠️ [CardRegistrations] Không thể tải bộ lọc trạng thái: $e');
     }
@@ -565,7 +566,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
           child: GestureDetector(
             onTap: () {
               if (_selectedCategory != category) {
-                setState(() => _selectedCategory = category);
+                safeSetState(() => _selectedCategory = category);
               }
             },
             child: Container(
@@ -650,7 +651,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
 
   void _onStatusFilterChanged(_StatusFilter filter) {
     if (_statusFilter == filter) return;
-    setState(() => _statusFilter = filter);
+    safeSetState(() => _statusFilter = filter);
     unawaited(_saveStatusFilterPreference(filter));
   }
 
@@ -999,7 +1000,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
                   lastDate: DateTime(2100, 12, 31),
                 );
                 if (picked != null) {
-                  setState(() {
+                  safeSetState(() {
                     _fromDate = picked;
                     if (_toDate != null && _toDate!.isBefore(_fromDate!)) {
                       _toDate = _fromDate;
@@ -1026,7 +1027,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
                   lastDate: DateTime(2100, 12, 31),
                 );
                 if (picked != null) {
-                  setState(() {
+                  safeSetState(() {
                     _toDate = picked;
                     if (_fromDate != null && _toDate!.isBefore(_fromDate!)) {
                       _fromDate = _toDate;
@@ -1046,7 +1047,7 @@ class _CardRegistrationsScreenState extends State<CardRegistrationsScreen> {
             IconButton(
               tooltip: 'Xóa lọc',
               onPressed: () {
-                setState(() {
+                safeSetState(() {
                   _fromDate = null;
                   _toDate = null;
                 });
@@ -1361,7 +1362,7 @@ class _CardDetailSheet extends StatefulWidget {
   State<_CardDetailSheet> createState() => _CardDetailSheetState();
 }
 
-class _CardDetailSheetState extends State<_CardDetailSheet> {
+class _CardDetailSheetState extends State<_CardDetailSheet> with SafeStateMixin<_CardDetailSheet> {
   final ApiClient _apiClient = ApiClient();
   bool _isProcessingPayment = false;
   bool _isCancelling = false;
@@ -1438,7 +1439,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
   Future<void> _resumePayment() async {
     if (_isProcessingPayment) return;
 
-    setState(() => _isProcessingPayment = true);
+    safeSetState(() => _isProcessingPayment = true);
 
     try {
       final client = await _getServicesCardClient();
@@ -1484,7 +1485,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isProcessingPayment = false);
+        safeSetState(() => _isProcessingPayment = false);
       }
     }
   }
@@ -1492,7 +1493,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
   Future<void> _renewCard() async {
     if (_isProcessingPayment) return;
 
-    setState(() => _isProcessingPayment = true);
+    safeSetState(() => _isProcessingPayment = true);
 
     try {
       final client = await _getServicesCardClient();
@@ -1538,13 +1539,13 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isProcessingPayment = false);
+        safeSetState(() => _isProcessingPayment = false);
       }
     }
   }
 
   Future<Dio> _getServicesCardClient() async {
-    final baseUrl = ApiClient.buildServiceBase(port: 8083, path: '/api');
+    final baseUrl = ApiClient.buildServiceBase(port: 8083);
     final dio = Dio(BaseOptions(
       baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: ApiClient.connectTimeoutSeconds),
@@ -1598,7 +1599,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
 
     if (confirm != true) return;
 
-    setState(() => _isRequestingReplacement = true);
+    safeSetState(() => _isRequestingReplacement = true);
 
     try {
       final cardType = widget.card.cardType.trim().toUpperCase();
@@ -1618,7 +1619,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
       );
     } finally {
       if (mounted) {
-        setState(() => _isRequestingReplacement = false);
+        safeSetState(() => _isRequestingReplacement = false);
       }
     }
   }
@@ -1657,7 +1658,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
 
     if (confirm != true) return;
 
-    setState(() => _isCancelling = true);
+    safeSetState(() => _isCancelling = true);
 
     try {
       final client = await _getServicesCardClient();
@@ -1696,7 +1697,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
       );
     } finally {
       if (mounted) {
-        setState(() => _isCancelling = false);
+        safeSetState(() => _isCancelling = false);
       }
     }
   }
@@ -2146,7 +2147,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
   Future<void> _loadVehicleImages() async {
     if (_isLoadingImages) return;
     
-    setState(() => _isLoadingImages = true);
+    safeSetState(() => _isLoadingImages = true);
     
     try {
       final client = await _getServicesCardClient();
@@ -2184,7 +2185,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
                 final resolvedUrl = ApiClient.fileUrl(urlStr);
                 // If URL doesn't contain /api and starts with /uploads, add /api prefix
                 if (!resolvedUrl.contains('/api') && urlStr.startsWith('/uploads')) {
-                  final baseUrl = ApiClient.buildServiceBase(port: 8083, path: '/api');
+                  final baseUrl = ApiClient.buildServiceBase(port: 8083);
                   return '$baseUrl$urlStr';
                 }
                 return resolvedUrl;
@@ -2223,7 +2224,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
                 final resolvedUrl = ApiClient.fileUrl(urlStr);
                 // If URL doesn't contain /api and starts with /uploads, add /api prefix
                 if (!resolvedUrl.contains('/api') && urlStr.startsWith('/uploads')) {
-                  final baseUrl = ApiClient.buildServiceBase(port: 8083, path: '/api');
+                  final baseUrl = ApiClient.buildServiceBase(port: 8083);
                   return '$baseUrl$urlStr';
                 }
                 return resolvedUrl;
@@ -2242,7 +2243,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
         debugPrint('🖼️ [CardDetail] Final images list: $images');
         
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _vehicleImages = images;
             _isLoadingImages = false;
           });
@@ -2250,7 +2251,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
       } else {
         debugPrint('🖼️ [CardDetail] Invalid response: status=${detailRes.statusCode}, data type=${detailRes.data.runtimeType}');
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _isLoadingImages = false;
           });
         }
@@ -2259,7 +2260,7 @@ class _CardDetailSheetState extends State<_CardDetailSheet> {
       debugPrint('⚠️ [CardDetail] Error loading vehicle images: $e');
       debugPrint('⚠️ [CardDetail] Stack trace: $stackTrace');
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isLoadingImages = false;
         });
       }
@@ -2763,7 +2764,7 @@ class _ImageFullScreenViewer extends StatefulWidget {
   State<_ImageFullScreenViewer> createState() => _ImageFullScreenViewerState();
 }
 
-class _ImageFullScreenViewerState extends State<_ImageFullScreenViewer> {
+class _ImageFullScreenViewerState extends State<_ImageFullScreenViewer> with SafeStateMixin<_ImageFullScreenViewer> {
   late PageController _pageController;
   late int _currentIndex;
 
@@ -2798,7 +2799,7 @@ class _ImageFullScreenViewerState extends State<_ImageFullScreenViewer> {
         controller: _pageController,
         itemCount: widget.images.length,
         onPageChanged: (index) {
-          setState(() {
+          safeSetState(() {
             _currentIndex = index;
           });
         },
@@ -2852,5 +2853,6 @@ class _ImageFullScreenViewerState extends State<_ImageFullScreenViewer> {
     );
   }
 }
+
 
 

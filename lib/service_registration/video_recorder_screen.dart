@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
+import '../core/safe_state_mixin.dart';
 /// Màn hình quay video với khả năng tự động dừng khi đạt 50MB hoặc 2 phút
 class VideoRecorderScreen extends StatefulWidget {
   const VideoRecorderScreen({super.key});
@@ -11,7 +12,7 @@ class VideoRecorderScreen extends StatefulWidget {
   State<VideoRecorderScreen> createState() => _VideoRecorderScreenState();
 }
 
-class _VideoRecorderScreenState extends State<VideoRecorderScreen> {
+class _VideoRecorderScreenState extends State<VideoRecorderScreen> with SafeStateMixin<VideoRecorderScreen> {
   CameraController? _controller;
   bool _isRecording = false;
   bool _isInitialized = false;
@@ -51,7 +52,7 @@ class _VideoRecorderScreenState extends State<VideoRecorderScreen> {
 
       await _controller!.initialize();
       if (mounted) {
-        setState(() => _isInitialized = true);
+        safeSetState(() => _isInitialized = true);
       }
     } catch (e) {
       if (mounted) {
@@ -68,7 +69,7 @@ class _VideoRecorderScreenState extends State<VideoRecorderScreen> {
     try {
       await _controller!.startVideoRecording();
       
-      setState(() {
+      safeSetState(() {
         _isRecording = true;
         _recordedDuration = 0;
       });
@@ -76,7 +77,7 @@ class _VideoRecorderScreenState extends State<VideoRecorderScreen> {
       // Bắt đầu đếm thời gian
       _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _recordedDuration++;
           });
           
@@ -136,7 +137,7 @@ class _VideoRecorderScreenState extends State<VideoRecorderScreen> {
 
       final XFile videoFile = await _controller!.stopVideoRecording();
       
-      setState(() {
+      safeSetState(() {
         _isRecording = false;
       });
 
@@ -312,5 +313,6 @@ class _VideoRecorderScreenState extends State<VideoRecorderScreen> {
     );
   }
 }
+
 
 

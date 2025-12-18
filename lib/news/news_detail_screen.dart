@@ -18,6 +18,7 @@ import '../theme/app_colors.dart';
 import 'news_read_store.dart';
 import 'resident_service.dart';
 
+import '../core/safe_state_mixin.dart';
 class NewsDetailScreen extends StatefulWidget {
   final Map<String, dynamic>? news;
   final ResidentNews? residentNews;
@@ -37,7 +38,7 @@ class NewsDetailScreen extends StatefulWidget {
   State<NewsDetailScreen> createState() => _NewsDetailScreenState();
 }
 
-class _NewsDetailScreenState extends State<NewsDetailScreen> {
+class _NewsDetailScreenState extends State<NewsDetailScreen> with SafeStateMixin<NewsDetailScreen> {
   ResidentNews? _residentNews;
   bool _loading = true;
   String? _residentId;
@@ -74,7 +75,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
 
   Future<void> _fetchById(String id) async {
     if (mounted) {
-      setState(() => _loading = true);
+      safeSetState(() => _loading = true);
     } else {
       _loading = true;
     }
@@ -108,7 +109,7 @@ class _NewsDetailScreenState extends State<NewsDetailScreen> {
       );
     } finally {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _residentNews = loadedNews;
           _loading = false;
         });
@@ -925,6 +926,7 @@ class _NewsDetailSkeleton extends StatelessWidget {
     );
   }
 }
+
 
 
 

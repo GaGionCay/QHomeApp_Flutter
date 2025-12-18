@@ -31,6 +31,7 @@ import '../chat/direct_chat_screen.dart';
 import 'select_group_dialog.dart';
 import 'create_group_dialog.dart';
 import '../widgets/animations/smooth_animations.dart';
+import '../core/safe_state_mixin.dart';
 
 class PostDetailScreen extends StatefulWidget {
   final MarketplacePost post;
@@ -46,7 +47,8 @@ class PostDetailScreen extends StatefulWidget {
   State<PostDetailScreen> createState() => _PostDetailScreenState();
 }
 
-class _PostDetailScreenState extends State<PostDetailScreen> {
+class _PostDetailScreenState extends State<PostDetailScreen>
+    with SafeStateMixin<PostDetailScreen> {
   final TextEditingController _commentController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final TokenStorage _tokenStorage = TokenStorage();
@@ -254,7 +256,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       final isRootComment = comment.parentCommentId == null;
       
       // Start deletion animation
-      setState(() {
+      safeSetState(() {
         _deletingCommentIds.add(comment.id);
       });
       
@@ -269,7 +271,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       
       if (mounted) {
         // Remove comment from local list first
-        setState(() {
+        safeSetState(() {
           if (isRootComment) {
             // Remove root comment (entire sub-tree)
             _comments.removeWhere((c) => c.id == comment.id);
@@ -328,7 +330,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         // Remove moved flags after animation completes
         Future.delayed(const Duration(milliseconds: 500), () {
           if (mounted) {
-            setState(() {
+            safeSetState(() {
               _movedCommentIds.clear();
             });
           }
@@ -373,6 +375,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // Register TextEditingController
+    registerController(_commentController);
+    
     _loadCurrentUser();
     _loadBlockedUsers();
     _setupBlockedUsersListener();
@@ -433,14 +439,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     );
     
     // Highlight the comment briefly
-    setState(() {
+    safeSetState(() {
       _newCommentIds.add(commentId);
     });
     
     // Remove highlight after animation
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _newCommentIds.remove(commentId);
         });
       }
@@ -467,7 +473,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     try {
       final updatedPost = await _marketplaceService.getPostById(widget.post.id);
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           final currentPost = _currentPost ?? widget.post;
           
           // Calculate comment count from loaded comments if available
@@ -556,7 +562,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       // This prevents unnecessary updates if the immediate event was already correct
       if (updatedCount != currentCount) {
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _currentPost = updatedPost;
           });
         }
@@ -573,7 +579,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       } else {
         // Still update local state to ensure consistency, but don't emit event
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _currentPost = updatedPost;
           });
         }
@@ -589,7 +595,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     try {
       final blockedUserIds = await _chatService.getBlockedUsers();
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _blockedUserIds = blockedUserIds.toSet();
         });
       }
@@ -603,7 +609,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       await _loadBlockedUsers();
       // Refresh comments to show/hide comments from unblocked users
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           // Trigger rebuild to refresh filtered comments
         });
       }
@@ -612,7 +618,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   Future<void> _loadCurrentUser() async {
     _currentResidentId = await _tokenStorage.readResidentId();
-    if (mounted) setState(() {});
+    if (mounted) safeSetState(() {});
   }
 
   @override
@@ -779,7 +785,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           final viewCount = (data['viewCount'] as num?)?.toInt();
           
           if (commentCount != null || viewCount != null) {
-            setState(() {
+            safeSetState(() {
               // Always update _currentPost, even if it's null (use widget.post as base)
               final currentPost = _currentPost ?? widget.post;
               
@@ -819,9 +825,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   Future<void> _loadComments({bool loadMore = false}) async {
     if (loadMore) {
       if (_isLoadingMoreComments || !_hasMoreComments) return;
-      setState(() => _isLoadingMoreComments = true);
+      safeSetState(() => _isLoadingMoreComments = true);
     } else {
-      setState(() {
+      safeSetState(() {
         _isLoadingComments = true;
         _currentPage = 0;
         _comments = [];
@@ -850,7 +856,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       }
       
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           // Filter out deleted comments (backend should already filter, but defensive check)
           final filteredComments = pagedResponse.content.where((comment) => !comment.isDeleted).toList();
           
@@ -914,7 +920,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isLoadingComments = false;
           _isLoadingMoreComments = false;
         });
@@ -929,7 +935,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   void _toggleCommentExpand(String commentId) {
-    setState(() {
+    safeSetState(() {
       _expandedComments[commentId] = !(_expandedComments[commentId] ?? false);
     });
   }
@@ -938,7 +944,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     final content = _commentController.text.trim();
     if (content.isEmpty && _selectedImage == null && _selectedVideo == null) return;
 
-    setState(() => _isPostingComment = true);
+    safeSetState(() => _isPostingComment = true);
     try {
       String? imageUrl;
       String? videoUrl;
@@ -972,7 +978,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           // Nén video trước khi upload
           final compressedFile = await VideoCompressionService.instance.compressVideo(
             videoPath: _selectedVideo!.path,
-            // No progress logging - only log errors
+            onProgress: (message) {
+              // No progress logging - only log errors
+            },
           );
           
           final videoFileToUpload = compressedFile ?? File(_selectedVideo!.path);
@@ -1077,7 +1085,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             : 0.0;
         
         // Insert comment into local list with animation
-        setState(() {
+        safeSetState(() {
           if (newComment != null) {
             _newCommentIds.add(newComment.id);
             
@@ -1097,7 +1105,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         
         // Update comment count from loaded comments (more accurate than +1)
         // This ensures count is accurate even if comments were loaded from backend
-        setState(() {
+        safeSetState(() {
           final currentPost = _currentPost ?? widget.post;
           // Calculate count from loaded comments if available, otherwise use +1
           final calculatedCount = _comments.isNotEmpty ? _calculateCommentCount() : null;
@@ -1160,7 +1168,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         final commentId = newComment.id;
         Future.delayed(const Duration(milliseconds: 500), () {
           if (mounted) {
-            setState(() {
+            safeSetState(() {
               _newCommentIds.remove(commentId);
             });
           }
@@ -1174,13 +1182,13 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isPostingComment = false);
+        safeSetState(() => _isPostingComment = false);
       }
     }
   }
 
   void _startReply(MarketplaceComment comment) {
-    setState(() {
+    safeSetState(() {
       _replyingToCommentId = comment.id;
       _replyingToComment = comment;
     });
@@ -1488,7 +1496,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                           ),
                             GestureDetector(
                               onTap: () {
-                                setState(() {
+                                safeSetState(() {
                                   _replyingToComment = null;
                                   _replyingToCommentId = null;
                                 });
@@ -1550,7 +1558,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                           child: IconButton(
                                             icon: const Icon(CupertinoIcons.xmark_circle_fill, color: Colors.red),
                                             onPressed: () {
-                                              setState(() {
+                                              safeSetState(() {
                                                 _selectedImage = null;
                                               });
                                             },
@@ -1582,7 +1590,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                           child: IconButton(
                                             icon: const Icon(CupertinoIcons.xmark_circle_fill, color: Colors.red),
                                             onPressed: () {
-                                              setState(() {
+                                              safeSetState(() {
                                                 _selectedVideo = null;
                                               });
                                             },
@@ -1706,7 +1714,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         imageQuality: 85,
       );
       if (image != null) {
-        setState(() {
+        safeSetState(() {
           _selectedImage = image;
           _selectedVideo = null; // Clear video if image is selected
         });
@@ -1726,7 +1734,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         source: source,
       );
       if (video != null) {
-        setState(() {
+        safeSetState(() {
           _selectedVideo = video;
           _selectedImage = null; // Clear image if video is selected
         });
@@ -2425,7 +2433,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       return _updateCommentInTreeRecursive(comment, commentId, newContent);
     }).toList();
     
-    setState(() {
+    safeSetState(() {
       _comments = updatedComments;
     });
   }
@@ -3779,6 +3787,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           String errorMessage = 'Không thể tải video';
           if (e.toString().contains('403') || e.toString().contains('Forbidden')) {
             errorMessage = 'Video không khả dụng. Vui lòng thử lại sau.';
+          }
           // Video errors handled generically (videos are always from backend, never ImageKit)
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -3814,7 +3823,8 @@ class _CommentVideoPlayerDialog extends StatefulWidget {
   State<_CommentVideoPlayerDialog> createState() => _CommentVideoPlayerDialogState();
 }
 
-class _CommentVideoPlayerDialogState extends State<_CommentVideoPlayerDialog> {
+class _CommentVideoPlayerDialogState extends State<_CommentVideoPlayerDialog> 
+    with SafeStateMixin<_CommentVideoPlayerDialog> {
   bool _isPlaying = false;
   bool _showControls = true;
   Duration _duration = Duration.zero;
@@ -3833,7 +3843,7 @@ class _CommentVideoPlayerDialogState extends State<_CommentVideoPlayerDialog> {
 
   void _videoListener() {
     if (mounted) {
-      setState(() {
+      safeSetState(() {
         _isPlaying = widget.controller.value.isPlaying;
         _duration = widget.controller.value.duration;
         _position = widget.controller.value.position;
@@ -3845,7 +3855,7 @@ class _CommentVideoPlayerDialogState extends State<_CommentVideoPlayerDialog> {
     _hideControlsTimer?.cancel();
     _hideControlsTimer = Timer(const Duration(seconds: 3), () {
       if (mounted && _isPlaying) {
-        setState(() {
+        safeSetState(() {
           _showControls = false;
         });
       }
@@ -3853,7 +3863,7 @@ class _CommentVideoPlayerDialogState extends State<_CommentVideoPlayerDialog> {
   }
 
   void _togglePlayPause() {
-    setState(() {
+    safeSetState(() {
       if (_isPlaying) {
         widget.controller.pause();
       } else {
@@ -3897,7 +3907,7 @@ class _CommentVideoPlayerDialogState extends State<_CommentVideoPlayerDialog> {
           Center(
             child: GestureDetector(
               onTap: () {
-                setState(() {
+                safeSetState(() {
                   _showControls = !_showControls;
                 });
                 if (_showControls) {
@@ -3988,5 +3998,6 @@ class _CommentVideoPlayerDialogState extends State<_CommentVideoPlayerDialog> {
     );
   }
 }
+
 
 

@@ -12,6 +12,7 @@ import '../models/marketplace_post.dart';
 import 'number_formatter.dart';
 import 'video_viewer_screen.dart';
 import 'video_preview_widget.dart';
+import '../core/safe_state_mixin.dart';
 
 class EditPostScreen extends StatefulWidget {
   final MarketplacePost post;
@@ -27,7 +28,7 @@ class EditPostScreen extends StatefulWidget {
   State<EditPostScreen> createState() => _EditPostScreenState();
 }
 
-class _EditPostScreenState extends State<EditPostScreen> {
+class _EditPostScreenState extends State<EditPostScreen> with SafeStateMixin<EditPostScreen> {
   late final EditPostViewModel _viewModel;
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -866,5 +867,6 @@ class _EditPostScreenState extends State<EditPostScreen> {
     return formatted;
   }
 }
+
 
 

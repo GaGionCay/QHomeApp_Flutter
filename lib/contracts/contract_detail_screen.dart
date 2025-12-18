@@ -12,6 +12,7 @@ import '../models/contract.dart';
 import '../theme/app_colors.dart';
 import 'contract_service.dart';
 
+import '../core/safe_state_mixin.dart';
 class ContractDetailScreen extends StatefulWidget {
   final String contractId;
 
@@ -24,7 +25,7 @@ class ContractDetailScreen extends StatefulWidget {
   State<ContractDetailScreen> createState() => _ContractDetailScreenState();
 }
 
-class _ContractDetailScreenState extends State<ContractDetailScreen> {
+class _ContractDetailScreenState extends State<ContractDetailScreen> with SafeStateMixin<ContractDetailScreen> {
   ContractService? _contractService;
   ContractDto? _contract;
   bool _loading = true;
@@ -46,7 +47,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
       await _loadContractDetail();
     } catch (e) {
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _error = 'Không thể khởi tạo dịch vụ: $e';
         _loading = false;
       });
@@ -57,7 +58,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
     final service = _contractService;
     if (service == null) return;
 
-    setState(() {
+    safeSetState(() {
       _loading = true;
       _error = null;
     });
@@ -65,7 +66,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
     try {
       final contract = await service.getContractById(widget.contractId);
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _contract = contract;
         _loading = false;
         if (contract == null) {
@@ -74,7 +75,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _error = e.toString();
         _loading = false;
       });
@@ -883,7 +884,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
     if (_contract == null || _contractService == null) return;
     if (_downloadingFiles[file.id] == true) return; // Already downloading
 
-    setState(() {
+    safeSetState(() {
       _downloadingFiles[file.id] = true;
       _downloadProgress[file.id] = 0;
     });
@@ -896,7 +897,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
         (received, total) {
           if (mounted && total > 0) {
             final progress = ((received / total) * 100).round();
-            setState(() {
+            safeSetState(() {
               _downloadProgress[file.id] = progress;
             });
           }
@@ -906,7 +907,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
       if (!mounted) return;
 
       if (filePath != null) {
-        setState(() {
+        safeSetState(() {
           _downloadingFiles[file.id] = false;
           _downloadProgress[file.id] = 100;
         });
@@ -940,13 +941,13 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
         // Clear progress after a short delay
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted) {
-            setState(() {
+            safeSetState(() {
               _downloadProgress.remove(file.id);
             });
           }
         });
       } else {
-        setState(() {
+        safeSetState(() {
           _downloadingFiles[file.id] = false;
           _downloadProgress.remove(file.id);
         });
@@ -960,7 +961,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _downloadingFiles[file.id] = false;
         _downloadProgress.remove(file.id);
       });
@@ -991,7 +992,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
     if (_contract!.files.isEmpty) return;
     if (_downloadingAll) return;
 
-    setState(() {
+    safeSetState(() {
       _downloadingAll = true;
     });
 
@@ -1004,7 +1005,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
         // Skip if already downloading
         if (_downloadingFiles[file.id] == true) continue;
 
-        setState(() {
+        safeSetState(() {
           _downloadingFiles[file.id] = true;
           _downloadProgress[file.id] = 0;
         });
@@ -1017,7 +1018,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
             (received, total) {
               if (mounted && total > 0) {
                 final progress = ((received / total) * 100).round();
-                setState(() {
+                safeSetState(() {
                   _downloadProgress[file.id] = progress;
                 });
               }
@@ -1026,13 +1027,13 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
 
           if (filePath != null) {
             successCount++;
-            setState(() {
+            safeSetState(() {
               _downloadingFiles[file.id] = false;
               _downloadProgress[file.id] = 100;
             });
           } else {
             failCount++;
-            setState(() {
+            safeSetState(() {
               _downloadingFiles[file.id] = false;
               _downloadProgress.remove(file.id);
             });
@@ -1040,7 +1041,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
         } catch (e) {
           failCount++;
           if (mounted) {
-            setState(() {
+            safeSetState(() {
               _downloadingFiles[file.id] = false;
               _downloadProgress.remove(file.id);
             });
@@ -1053,7 +1054,7 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
 
       if (!mounted) return;
 
-      setState(() {
+      safeSetState(() {
         _downloadingAll = false;
       });
 
@@ -1078,14 +1079,14 @@ class _ContractDetailScreenState extends State<ContractDetailScreen> {
       // Clear progress after delay
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _downloadProgress.clear();
           });
         }
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _downloadingAll = false;
       });
 
@@ -1129,5 +1130,6 @@ class _DetailGlassCard extends StatelessWidget {
     );
   }
 }
+
 
 

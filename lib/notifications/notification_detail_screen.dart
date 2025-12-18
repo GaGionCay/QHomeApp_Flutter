@@ -13,6 +13,7 @@ import 'notification_read_store.dart';
 import 'package:provider/provider.dart';
 import '../auth/auth_provider.dart';
 
+import '../core/safe_state_mixin.dart';
 class NotificationDetailScreen extends StatefulWidget {
   final String notificationId;
   final String? residentId;
@@ -30,7 +31,7 @@ class NotificationDetailScreen extends StatefulWidget {
       _NotificationDetailScreenState();
 }
 
-class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
+class _NotificationDetailScreenState extends State<NotificationDetailScreen> with SafeStateMixin<NotificationDetailScreen> {
   final ResidentService _residentService = ResidentService();
   ContractService? _contractService;
   NotificationDetailResponse? _notification;
@@ -60,7 +61,7 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
     if (contractService == null) return;
     try {
       final units = await contractService.getMyUnits();
-      setState(() {
+      safeSetState(() {
         _units = units;
       });
     } catch (e) {
@@ -86,7 +87,7 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
   }
 
   Future<void> _loadNotificationDetail() async {
-    setState(() {
+    safeSetState(() {
       _loading = true;
       _error = null;
     });
@@ -94,12 +95,12 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
     try {
       final detail = await _residentService
           .getNotificationDetailById(widget.notificationId);
-      setState(() {
+      safeSetState(() {
         _notification = detail;
         _loading = false;
       });
     } catch (e) {
-      setState(() {
+      safeSetState(() {
         _error = e.toString();
         _loading = false;
       });
@@ -779,4 +780,5 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
     );
   }
 }
+
 

@@ -7,6 +7,7 @@ import 'chat_service.dart';
 import 'direct_chat_screen.dart';
 import '../auth/api_client.dart';
 
+import '../core/safe_state_mixin.dart';
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
 
@@ -14,7 +15,7 @@ class FriendsScreen extends StatefulWidget {
   State<FriendsScreen> createState() => _FriendsScreenState();
 }
 
-class _FriendsScreenState extends State<FriendsScreen> {
+class _FriendsScreenState extends State<FriendsScreen> with SafeStateMixin<FriendsScreen> {
   final ChatService _service = ChatService();
   final ApiClient _apiClient = ApiClient();
   List<Friend> _friends = [];
@@ -49,7 +50,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
     
     // Only search if at least 3 digits
     if (normalizedPhone.length < 3) {
-      setState(() {
+      safeSetState(() {
         _phoneSuggestions = [];
         _isSearchingPhone = false;
       });
@@ -59,7 +60,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
     
     // Debounce: wait 500ms before searching
     _phoneSearchDebounce = Timer(const Duration(milliseconds: 500), () async {
-      setState(() {
+      safeSetState(() {
         _isSearchingPhone = true;
       });
       onUpdate?.call();
@@ -72,7 +73,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
         
         if (mounted) {
           final List<dynamic> data = response.data ?? [];
-          setState(() {
+          safeSetState(() {
             _phoneSuggestions = data.map((item) => {
               'id': item['id']?.toString() ?? '',
               'fullName': item['fullName']?.toString() ?? '',
@@ -85,7 +86,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
       } catch (e) {
         print('⚠️ [FriendsScreen] Error searching residents by phone: $e');
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _phoneSuggestions = [];
             _isSearchingPhone = false;
           });
@@ -138,7 +139,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
   
   void _showInviteByPhoneDialog() {
     _phoneController.clear();
-    setState(() {
+    safeSetState(() {
       _phoneSuggestions = [];
       _isSearchingPhone = false;
     });
@@ -269,7 +270,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
   }
 
   Future<void> _loadFriends() async {
-    setState(() {
+    safeSetState(() {
       _isLoading = true;
       _error = null;
     });
@@ -277,14 +278,14 @@ class _FriendsScreenState extends State<FriendsScreen> {
     try {
       final friends = await _service.getFriends();
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _friends = friends;
           _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _error = 'Lỗi khi tải danh sách bạn bè: ${e.toString()}';
           _isLoading = false;
         });
@@ -484,6 +485,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
     );
   }
 }
+
 
 
 

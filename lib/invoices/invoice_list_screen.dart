@@ -20,6 +20,7 @@ import 'invoice_service.dart';
 import 'invoice_detail_screen.dart';
 import 'paid_invoices_screen.dart';
 
+import '../core/safe_state_mixin.dart';
 class InvoiceListScreen extends StatefulWidget {
   final String? initialUnitId;
   final List<UnitInfo>? initialUnits;
@@ -75,7 +76,7 @@ class _InvoicesGlassCard extends StatelessWidget {
 }
 
 class _InvoiceListScreenState extends State<InvoiceListScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SafeStateMixin<InvoiceListScreen> {
   late final ApiClient _apiClient;
   late final InvoiceService _service;
   late Future<List<InvoiceCategory>> _futureCategories;
@@ -207,7 +208,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
       if (invoice.status == 'PAID') {
         await prefs.remove(_pendingInvoicePaymentKey);
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _futureCategories = _loadCategories();
           });
           debugPrint('🧾 [InvoiceList] Thanh toán xong, reload dữ liệu');
@@ -880,7 +881,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
 
           return GestureDetector(
             onTap: () {
-              setState(() {
+              safeSetState(() {
                 _selectedCategoryCode = category.categoryCode;
               });
             },
@@ -1479,7 +1480,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                           const SizedBox(height: 20),
                           FilledButton(
                             onPressed: () {
-                              setState(() {
+                              safeSetState(() {
                                 _futureCategories = _loadCategories();
                               });
                             },
@@ -1500,7 +1501,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                           (c) => c.categoryCode != _selectedCategoryCode))) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (!mounted) return;
-                  setState(() {
+                  safeSetState(() {
                     _selectedCategoryCode = categories.first.categoryCode;
                   });
                 });
@@ -1570,7 +1571,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                 edgeOffset: topOffset,
                 color: theme.colorScheme.primary,
                 onRefresh: () async {
-                  setState(() {
+                  safeSetState(() {
                     _futureCategories = _loadCategories();
                   });
                 },
@@ -1594,6 +1595,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
     );
   }
 }
+
 
 
 

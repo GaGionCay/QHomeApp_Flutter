@@ -12,7 +12,7 @@ class ImageKitService {
 
   Future<Dio> _getDio() async {
     // Use data-docs-service base URL for ImageKit uploads
-    final baseUrl = ApiClient.buildServiceBase(port: 8082, path: '/api');
+    final baseUrl = ApiClient.buildServiceBase(port: 8082);
     final dio = Dio(BaseOptions(
       baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: 120), // Longer timeout for uploads

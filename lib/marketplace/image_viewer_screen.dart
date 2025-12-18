@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import '../models/marketplace_post.dart';
+import '../core/safe_state_mixin.dart';
 
 class ImageViewerScreen extends StatefulWidget {
   final List<MarketplacePostImage> images;
@@ -17,7 +18,7 @@ class ImageViewerScreen extends StatefulWidget {
   State<ImageViewerScreen> createState() => _ImageViewerScreenState();
 }
 
-class _ImageViewerScreenState extends State<ImageViewerScreen> {
+class _ImageViewerScreenState extends State<ImageViewerScreen> with SafeStateMixin<ImageViewerScreen> {
   late PageController _pageController;
   late int _currentIndex;
 
@@ -66,7 +67,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
             controller: _pageController,
             itemCount: widget.images.length,
             onPageChanged: (index) {
-              setState(() {
+              safeSetState(() {
                 _currentIndex = index;
               });
             },
@@ -151,5 +152,6 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
     );
   }
 }
+
 
 

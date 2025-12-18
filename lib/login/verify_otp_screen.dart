@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/core/safe_state_mixin.dart';
 import 'package:provider/provider.dart';
 import '../auth/auth_provider.dart';
 import '../theme/app_colors.dart';
@@ -15,7 +16,7 @@ class VerifyOtpScreen extends StatefulWidget {
   State<VerifyOtpScreen> createState() => _VerifyOtpScreenState();
 }
 
-class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
+class _VerifyOtpScreenState extends State<VerifyOtpScreen> with SafeStateMixin<VerifyOtpScreen> {
   final otpCtrl = TextEditingController();
   final FocusNode _otpFocus = FocusNode();
   bool loading = false;
@@ -186,7 +187,7 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
 
   Future<void> _submit(AuthProvider auth) async {
     FocusScope.of(context).unfocus();
-    setState(() => loading = true);
+    safeSetState(() => loading = true);
     try {
       await auth.verifyOtp(widget.email, otpCtrl.text.trim());
       if (!mounted) return;
@@ -226,7 +227,7 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
       );
     } finally {
       if (mounted) {
-        setState(() => loading = false);
+        safeSetState(() => loading = false);
       }
     }
   }
@@ -238,4 +239,6 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
     super.dispose();
   }
 }
+
+
 

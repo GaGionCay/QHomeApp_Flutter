@@ -15,6 +15,7 @@ import '../services/cccd_ocr_service.dart';
 import '../services/imagekit_service.dart';
 import 'household_member_request_service.dart';
 
+import '../core/safe_state_mixin.dart';
 class HouseholdMemberRequestScreen extends StatefulWidget {
   const HouseholdMemberRequestScreen({
     super.key,
@@ -29,7 +30,8 @@ class HouseholdMemberRequestScreen extends StatefulWidget {
 }
 
 class _HouseholdMemberRequestScreenState
-    extends State<HouseholdMemberRequestScreen> {
+    extends State<HouseholdMemberRequestScreen> 
+    with SafeStateMixin<HouseholdMemberRequestScreen> {
   late final HouseholdMemberRequestService _service;
   late final EmailVerificationService _emailVerificationService;
   final _formKey = GlobalKey<FormState>();
@@ -103,14 +105,14 @@ class _HouseholdMemberRequestScreenState
     // Reset email verified state when email changes and trigger rebuild for OTP button
     _emailCtrl.addListener(() {
       if (_emailVerified) {
-        setState(() {
+        safeSetState(() {
           _emailVerified = false;
           _otpCtrl.clear();
           _otpError = null;
         });
       } else {
         // Trigger rebuild to show/hide OTP button when email is entered/cleared
-        setState(() {});
+        safeSetState(() {});
       }
     });
   }
@@ -135,7 +137,7 @@ class _HouseholdMemberRequestScreenState
   }
 
   Future<void> _loadHousehold(String unitId) async {
-    setState(() {
+    safeSetState(() {
       _loadingHousehold = true;
       _householdError = null;
       _currentHousehold = null;
@@ -143,7 +145,7 @@ class _HouseholdMemberRequestScreenState
     try {
       final household = await _service.getCurrentHousehold(unitId);
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _currentHousehold = household;
         if (household == null) {
           _householdError =
@@ -152,12 +154,12 @@ class _HouseholdMemberRequestScreenState
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _householdError = 'Không thể tải thông tin hộ gia đình: $e';
       });
     } finally {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _loadingHousehold = false;
         });
       }
@@ -176,7 +178,7 @@ class _HouseholdMemberRequestScreenState
       );
       return;
     }
-    setState(() {
+    safeSetState(() {
       _proofImages.add(bytes);
       _proofImageMimeTypes.add(_inferMimeType(picked.path));
     });
@@ -194,7 +196,7 @@ class _HouseholdMemberRequestScreenState
       );
       return;
     }
-    setState(() {
+    safeSetState(() {
       _proofImages.add(bytes);
       _proofImageMimeTypes.add(_inferMimeType(picked.path));
     });
@@ -214,7 +216,7 @@ class _HouseholdMemberRequestScreenState
     final bytes = await picked.readAsBytes();
     if (!mounted) return;
 
-    setState(() {
+    safeSetState(() {
       _cccdFrontImage = bytes;
     });
 
@@ -252,7 +254,7 @@ class _HouseholdMemberRequestScreenState
   Future<void> _scanCccdImage(Uint8List imageBytes, {required bool isFront}) async {
     if (!mounted) return;
 
-    setState(() {
+    safeSetState(() {
       _scanningCccd = true;
     });
 
@@ -268,7 +270,7 @@ class _HouseholdMemberRequestScreenState
             backgroundColor: Colors.orange,
           ),
         );
-        setState(() {
+        safeSetState(() {
           _scanningCccd = false;
         });
         return;
@@ -296,7 +298,7 @@ class _HouseholdMemberRequestScreenState
         hasNewInfo = true;
       }
 
-      setState(() {
+      safeSetState(() {
         _scanningCccd = false;
       });
 
@@ -317,7 +319,7 @@ class _HouseholdMemberRequestScreenState
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _scanningCccd = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -336,7 +338,7 @@ class _HouseholdMemberRequestScreenState
     
     // Validate email format manually (don't use form validator which checks _emailVerified)
     if (email.isEmpty) {
-      setState(() {
+      safeSetState(() {
         _otpError = 'Vui lòng nhập email.';
       });
       _emailFieldKey.currentState?.validate();
@@ -346,7 +348,7 @@ class _HouseholdMemberRequestScreenState
     final emailRegex = RegExp(
         r'^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$');
     if (!emailRegex.hasMatch(email)) {
-      setState(() {
+      safeSetState(() {
         _otpError = 'Email không hợp lệ.';
       });
       _emailFieldKey.currentState?.validate();
@@ -354,14 +356,14 @@ class _HouseholdMemberRequestScreenState
     }
     
     if (email.length > 100) {
-      setState(() {
+      safeSetState(() {
         _otpError = 'Email không được quá 100 ký tự.';
       });
       _emailFieldKey.currentState?.validate();
       return;
     }
     
-    setState(() {
+    safeSetState(() {
       _sendingOtp = true;
       _otpError = null;
     });
@@ -373,7 +375,7 @@ class _HouseholdMemberRequestScreenState
       print('🔍 [HouseholdMemberRequest] Email exists: $emailExists');
       
       if (emailExists) {
-        setState(() {
+        safeSetState(() {
           _sendingOtp = false;
           _otpError = 'Email này đã được sử dụng. Vui lòng sử dụng email khác.';
         });
@@ -387,7 +389,7 @@ class _HouseholdMemberRequestScreenState
       print('✅ [HouseholdMemberRequest] OTP đã được gửi thành công');
       
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _sendingOtp = false;
         _emailVerified = false;
         _otpResendCooldown = 60; // 60 seconds cooldown
@@ -407,7 +409,7 @@ class _HouseholdMemberRequestScreenState
     } catch (e, stackTrace) {
       print('❌ [HouseholdMemberRequest] Lỗi khi gửi OTP: $e');
       print('❌ [HouseholdMemberRequest] Stack trace: $stackTrace');
-      setState(() {
+      safeSetState(() {
         _sendingOtp = false;
         _otpError = e.toString().replaceFirst('Exception: ', '');
       });
@@ -419,13 +421,13 @@ class _HouseholdMemberRequestScreenState
     final otp = _otpCtrl.text.trim();
     
     if (otp.length != 6) {
-      setState(() {
+      safeSetState(() {
         _otpError = 'Mã OTP phải có 6 ký tự';
       });
       return;
     }
     
-    setState(() {
+    safeSetState(() {
       _verifyingOtp = true;
       _otpError = null;
     });
@@ -436,7 +438,7 @@ class _HouseholdMemberRequestScreenState
       if (!mounted) return;
       
       if (verified) {
-        setState(() {
+        safeSetState(() {
           _emailVerified = true;
           _verifyingOtp = false;
         });
@@ -451,7 +453,7 @@ class _HouseholdMemberRequestScreenState
         }
       }
     } catch (e) {
-      setState(() {
+      safeSetState(() {
         _verifyingOtp = false;
         _otpError = e.toString().replaceFirst('Exception: ', '');
       });
@@ -462,7 +464,7 @@ class _HouseholdMemberRequestScreenState
     _otpTimer?.cancel();
     _otpTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_otpResendCooldown > 0) {
-        setState(() {
+        safeSetState(() {
           _otpResendCooldown--;
         });
       } else {
@@ -490,7 +492,7 @@ class _HouseholdMemberRequestScreenState
       );
       return;
     }
-    setState(() {
+    safeSetState(() {
       _dob = result;
     });
   }
@@ -524,7 +526,7 @@ class _HouseholdMemberRequestScreenState
     }
 
     FocusScope.of(context).unfocus();
-    setState(() {
+    safeSetState(() {
       _submitting = true;
     });
 
@@ -596,7 +598,7 @@ class _HouseholdMemberRequestScreenState
       );
     } finally {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _submitting = false;
         });
       }
@@ -700,7 +702,7 @@ class _HouseholdMemberRequestScreenState
                         (suggestion) => ActionChip(
                           label: Text(suggestion),
                           onPressed: () {
-                            setState(() {
+                            safeSetState(() {
                               _relationCtrl.text = suggestion;
                             });
                           },
@@ -955,7 +957,7 @@ class _HouseholdMemberRequestScreenState
                               ),
                               icon: const Icon(Icons.close),
                               onPressed: () {
-                                setState(() {
+                                safeSetState(() {
                                   _proofImages.removeAt(index);
                                   _proofImageMimeTypes.removeAt(index);
                                 });
@@ -1234,7 +1236,7 @@ class _HouseholdMemberRequestScreenState
                         padding: const EdgeInsets.all(4),
                       ),
                       onPressed: () {
-                        setState(() {
+                        safeSetState(() {
                           _cccdFrontImage = null;
                         });
                       },
@@ -1280,6 +1282,7 @@ class _HouseholdMemberRequestScreenState
     );
   }
 }
+
 
 
 

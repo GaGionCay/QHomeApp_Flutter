@@ -6,6 +6,7 @@ import '../models/household_member_request.dart';
 import '../models/unit_info.dart';
 import 'household_member_request_service.dart';
 
+import '../core/safe_state_mixin.dart';
 class HouseholdMemberRequestStatusScreen extends StatefulWidget {
   const HouseholdMemberRequestStatusScreen({
     super.key,
@@ -20,7 +21,8 @@ class HouseholdMemberRequestStatusScreen extends StatefulWidget {
 }
 
 class _HouseholdMemberRequestStatusScreenState
-    extends State<HouseholdMemberRequestStatusScreen> {
+    extends State<HouseholdMemberRequestStatusScreen> 
+    with SafeStateMixin<HouseholdMemberRequestStatusScreen> {
   late final HouseholdMemberRequestService _service;
   List<HouseholdMemberRequest> _requests = [];
   bool _loading = true;
@@ -37,26 +39,26 @@ class _HouseholdMemberRequestStatusScreenState
   }
 
   Future<void> _loadRequests() async {
-    setState(() {
+    safeSetState(() {
       _loading = true;
       _error = null;
     });
     try {
       final data = await _service.getMyRequests();
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _requests = data;
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _error = e.toString();
         });
       }
     } finally {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _loading = false;
         });
       }
@@ -89,7 +91,7 @@ class _HouseholdMemberRequestStatusScreenState
   }
 
   Future<void> _cancelRequest(HouseholdMemberRequest request) async {
-    setState(() {
+    safeSetState(() {
       _cancellingId = request.id;
     });
     try {
@@ -112,7 +114,7 @@ class _HouseholdMemberRequestStatusScreenState
       );
     } finally {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _cancellingId = null;
         });
       }
@@ -447,6 +449,7 @@ class _HouseholdMemberRequestStatusScreenState
     }
   }
 }
+
 
 
 

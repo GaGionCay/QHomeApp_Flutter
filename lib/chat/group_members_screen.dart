@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../models/chat/group.dart';
 import 'chat_service.dart';
 
+import '../core/safe_state_mixin.dart';
 class GroupMembersScreen extends StatefulWidget {
   final String groupId;
 
@@ -13,7 +14,7 @@ class GroupMembersScreen extends StatefulWidget {
   State<GroupMembersScreen> createState() => _GroupMembersScreenState();
 }
 
-class _GroupMembersScreenState extends State<GroupMembersScreen> {
+class _GroupMembersScreenState extends State<GroupMembersScreen> with SafeStateMixin<GroupMembersScreen> {
   final ChatService _service = ChatService();
   ChatGroup? _group;
   bool _isLoading = true;
@@ -26,19 +27,19 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
   }
 
   Future<void> _loadGroupInfo() async {
-    setState(() {
+    safeSetState(() {
       _isLoading = true;
       _error = null;
     });
 
     try {
       final group = await _service.getGroupById(widget.groupId);
-      setState(() {
+      safeSetState(() {
         _group = group;
         _isLoading = false;
       });
     } catch (e) {
-      setState(() {
+      safeSetState(() {
         _error = 'Lỗi khi tải thông tin nhóm: ${e.toString()}';
         _isLoading = false;
       });
@@ -349,6 +350,7 @@ class _MemberListItem extends StatelessWidget {
     );
   }
 }
+
 
 
 

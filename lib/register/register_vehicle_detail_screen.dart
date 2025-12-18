@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:developer';
 import 'package:dio/dio.dart';
 import '../auth/api_client.dart';
+import '../core/safe_state_mixin.dart';
 import 'register_vehicle_request.dart';
 import 'package:app_links/app_links.dart';
 
@@ -25,7 +26,7 @@ class RegisterServiceDetailScreen extends StatefulWidget {
 }
 
 class _RegisterServiceDetailScreenState
-    extends State<RegisterServiceDetailScreen> with WidgetsBindingObserver {
+    extends State<RegisterServiceDetailScreen> with WidgetsBindingObserver, SafeStateMixin<RegisterServiceDetailScreen> {
   final ApiClient api = ApiClient();
   Dio? _servicesCardDio;
   final AppLinks _appLinks = AppLinks();
@@ -167,7 +168,7 @@ class _RegisterServiceDetailScreenState
   Future<Dio> _servicesCardClient() async {
     if (_servicesCardDio == null) {
       _servicesCardDio = Dio(BaseOptions(
-      baseUrl: ApiClient.buildServiceBase(port: 8083, path: '/api'),
+      baseUrl: ApiClient.buildServiceBase(port: 8083),
         connectTimeout: const Duration(seconds: ApiClient.connectTimeoutSeconds),
         receiveTimeout: const Duration(seconds: ApiClient.receiveTimeoutSeconds),
         sendTimeout: const Duration(seconds: ApiClient.sendTimeoutSeconds),

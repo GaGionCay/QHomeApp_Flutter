@@ -30,6 +30,7 @@ import 'linkable_text_widget.dart';
 import '../widgets/animations/smooth_animations.dart';
 import '../core/event_bus.dart';
 import 'package:dio/dio.dart';
+import '../core/safe_state_mixin.dart';
 
 class ChatScreen extends StatefulWidget {
   final String groupId;
@@ -40,7 +41,8 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> 
+    with SafeStateMixin<ChatScreen> {
   late final ChatMessageViewModel _viewModel;
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
@@ -61,6 +63,10 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // Register TextEditingController
+    registerController(_messageController);
+    
     final service = ChatService();
     _viewModel = ChatMessageViewModel(service);
     _viewModel.initialize(widget.groupId);

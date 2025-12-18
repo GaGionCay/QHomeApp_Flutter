@@ -2,6 +2,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../core/safe_state_mixin.dart';
 import '../models/contract.dart';
 import '../theme/app_colors.dart';
 import '../auth/base_service_client.dart';
@@ -21,7 +22,8 @@ class ContractCancelScreen extends StatefulWidget {
   State<ContractCancelScreen> createState() => _ContractCancelScreenState();
 }
 
-class _ContractCancelScreenState extends State<ContractCancelScreen> {
+class _ContractCancelScreenState extends State<ContractCancelScreen>
+    with SafeStateMixin<ContractCancelScreen> {
   DateTime? _selectedDate;
   DateTime? _confirmedDate; // Ngày đã xác nhận (sau khi bấm xác nhận)
   bool _isLoading = false;

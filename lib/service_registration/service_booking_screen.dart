@@ -16,6 +16,7 @@ import '../theme/app_colors.dart';
 import 'service_booking_service.dart';
 import 'unpaid_service_bookings_screen.dart';
 
+import '../core/safe_state_mixin.dart';
 class ServiceBookingScreen extends StatefulWidget {
   const ServiceBookingScreen({
     super.key,
@@ -34,7 +35,7 @@ class ServiceBookingScreen extends StatefulWidget {
   State<ServiceBookingScreen> createState() => _ServiceBookingScreenState();
 }
 
-class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
+class _ServiceBookingScreenState extends State<ServiceBookingScreen> with SafeStateMixin<ServiceBookingScreen> {
   late final ServiceBookingService _bookingService;
   final AppLinks _appLinks = AppLinks();
   StreamSubscription<Uri?>? _paymentSub;
@@ -75,13 +76,13 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
   }
 
   Future<void> _loadService() async {
-    setState(() {
+    safeSetState(() {
       _loading = true;
       _error = null;
     });
     try {
       final detail = await _bookingService.getServiceDetail(widget.serviceId);
-      setState(() {
+      safeSetState(() {
         _service = detail;
         _options = _parseList(detail['options']);
         _combos = _parseList(detail['combos']);
@@ -93,7 +94,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
       });
       // Bỏ reload booked slots vì không cần chọn thời gian nữa
     } catch (e) {
-      setState(() {
+      safeSetState(() {
         _error = e.toString();
         _loading = false;
       });
@@ -384,7 +385,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
       return;
     }
 
-    setState(() {
+    safeSetState(() {
       _submitting = true;
     });
 
@@ -426,7 +427,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _submitting = false;
         });
       }
@@ -932,7 +933,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                 value: combo['id'].toString(),
                 groupValue: _selectedComboId, // ignore: deprecated_member_use
                 onChanged: (value) { // ignore: deprecated_member_use
-                  setState(() {
+                  safeSetState(() {
                     _selectedComboId = value;
                   });
                 },
@@ -1081,7 +1082,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                           icon: const Icon(Icons.remove_circle_outline),
                           onPressed: quantity > 0
                               ? () {
-                                  setState(() {
+                                  safeSetState(() {
                                     if (quantity > 1) {
                                       _selectedTickets[ticketId] = quantity - 1;
                                     } else {
@@ -1121,7 +1122,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                         IconButton(
                           icon: const Icon(Icons.add_circle_outline),
                           onPressed: () {
-                            setState(() {
+                            safeSetState(() {
                               _selectedTickets[ticketId] = (quantity) + 1;
                             });
                           },
@@ -1191,7 +1192,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                       Checkbox(
                         value: isSelected,
                         onChanged: (checked) {
-                          setState(() {
+                          safeSetState(() {
                             if (checked == true) {
                               _selectedOptions[optionId] = max(1, quantity);
                             } else {
@@ -1290,7 +1291,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                               icon: const Icon(Icons.remove_circle_outline),
                               onPressed: quantity > 1
                                   ? () {
-                                      setState(() {
+                                      safeSetState(() {
                                         _selectedOptions[optionId] = quantity - 1;
                                       });
                                     }
@@ -1310,7 +1311,7 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
                             IconButton(
                               icon: const Icon(Icons.add_circle_outline),
                               onPressed: () {
-                                setState(() {
+                                safeSetState(() {
                                   _selectedOptions[optionId] = quantity + 1;
                                 });
                               },
@@ -1521,4 +1522,5 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> {
 }
 
 // Đã xóa _BookedSlot class vì không cần chọn thời gian nữa
+
 

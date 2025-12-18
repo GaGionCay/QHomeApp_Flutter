@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../theme/app_colors.dart';
 
+import '../../core/safe_state_mixin.dart';
 class RegisterGlassPanel extends StatelessWidget {
   const RegisterGlassPanel({
     super.key,
@@ -78,7 +79,8 @@ class RegisterGlassDropdown<T> extends StatefulWidget {
       _RegisterGlassDropdownState<T>();
 }
 
-class _RegisterGlassDropdownState<T> extends State<RegisterGlassDropdown<T>> {
+class _RegisterGlassDropdownState<T> extends State<RegisterGlassDropdown<T>> 
+    with SafeStateMixin<RegisterGlassDropdown<T>> {
   bool _isFocused = false;
 
   @override
@@ -129,7 +131,7 @@ class _RegisterGlassDropdownState<T> extends State<RegisterGlassDropdown<T>> {
                     // Validate the entire form when dropdown loses focus
                     Form.of(context).validate();
                   }
-                  setState(() => _isFocused = focus);
+                  safeSetState(() => _isFocused = focus);
                 }
               },
               child: Container(
@@ -238,7 +240,8 @@ class RegisterGlassTextField extends StatefulWidget {
   State<RegisterGlassTextField> createState() => _RegisterGlassTextFieldState();
 }
 
-class _RegisterGlassTextFieldState extends State<RegisterGlassTextField> {
+class _RegisterGlassTextFieldState extends State<RegisterGlassTextField> 
+    with SafeStateMixin<RegisterGlassTextField> {
   late final FocusNode _focusNode;
 
   @override
@@ -254,7 +257,7 @@ class _RegisterGlassTextFieldState extends State<RegisterGlassTextField> {
       if (!_focusNode.hasFocus) {
         Form.of(context).validate();
       }
-      setState(() {});
+      safeSetState(() {});
     }
   }
 
@@ -374,4 +377,5 @@ class _RegisterGlassTextFieldState extends State<RegisterGlassTextField> {
     );
   }
 }
+
 

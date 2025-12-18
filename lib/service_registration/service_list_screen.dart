@@ -10,6 +10,7 @@ import '../common/layout_insets.dart';
 import 'service_booking_service.dart';
 import 'service_detail_screen.dart';
 
+import '../core/safe_state_mixin.dart';
 class ServiceListScreen extends StatefulWidget {
   final String categoryCode;
   final String? categoryName;
@@ -24,7 +25,7 @@ class ServiceListScreen extends StatefulWidget {
   State<ServiceListScreen> createState() => _ServiceListScreenState();
 }
 
-class _ServiceListScreenState extends State<ServiceListScreen> {
+class _ServiceListScreenState extends State<ServiceListScreen> with SafeStateMixin<ServiceListScreen> {
   late final ServiceBookingService _serviceBookingService;
 
   List<Map<String, dynamic>> _services = [];
@@ -41,7 +42,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   }
 
   Future<void> _loadServices() async {
-    setState(() {
+    safeSetState(() {
       _loading = true;
       _error = null;
     });
@@ -50,12 +51,12 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
       final services = await _serviceBookingService
           .getServicesByCategory(widget.categoryCode);
 
-      setState(() {
+      safeSetState(() {
         _services = services;
         _loading = false;
       });
     } catch (e) {
-      setState(() {
+      safeSetState(() {
         _error = e.toString();
         _loading = false;
       });
@@ -686,4 +687,5 @@ class _HeroTag extends StatelessWidget {
     );
   }
 }
+
 

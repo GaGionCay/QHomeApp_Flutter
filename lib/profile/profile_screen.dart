@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../auth/api_client.dart';
 import '../contracts/contract_service.dart';
+import '../core/safe_state_mixin.dart';
 import '../models/unit_info.dart';
 import '../theme/app_colors.dart';
 import 'profile_service.dart';
@@ -13,7 +14,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, SafeStateMixin<ProfileScreen> {
   Map<String, dynamic>? _profile;
   List<UnitInfo> _units = const [];
   bool _loadingUnits = true;

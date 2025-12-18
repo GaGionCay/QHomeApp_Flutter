@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/core/safe_state_mixin.dart';
 import 'package:provider/provider.dart';
 import '../auth/auth_provider.dart';
 import '../theme/app_colors.dart';
@@ -13,7 +14,7 @@ class ForgotPasswordScreen extends StatefulWidget {
   State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
 }
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> with SafeStateMixin<ForgotPasswordScreen> {
   final emailCtrl = TextEditingController();
   final FocusNode _emailFocus = FocusNode();
   bool loading = false;
@@ -202,7 +203,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       return;
     }
     
-    setState(() => loading = true);
+    safeSetState(() => loading = true);
     try {
       await auth.requestReset(email);
       if (!mounted) return;
@@ -237,7 +238,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       );
     } finally {
       if (mounted) {
-        setState(() => loading = false);
+        safeSetState(() => loading = false);
       }
     }
   }
@@ -249,4 +250,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     super.dispose();
   }
 }
+
+
 

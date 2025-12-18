@@ -20,6 +20,7 @@ import '../theme/app_colors.dart';
 // import 'cleaning_request_service.dart';
 import 'maintenance_request_service.dart';
 
+import '../core/safe_state_mixin.dart';
 class ServiceRequestsOverviewScreen extends StatefulWidget {
   const ServiceRequestsOverviewScreen({super.key});
 
@@ -29,7 +30,8 @@ class ServiceRequestsOverviewScreen extends StatefulWidget {
 }
 
 class _ServiceRequestsOverviewScreenState
-    extends State<ServiceRequestsOverviewScreen> {
+    extends State<ServiceRequestsOverviewScreen> 
+    with SafeStateMixin<ServiceRequestsOverviewScreen> {
   late final ApiClient _apiClient;
   // Cleaning request removed - no longer used
   // late final CleaningRequestService _cleaningService;
@@ -88,14 +90,14 @@ class _ServiceRequestsOverviewScreenState
     try {
       final config = await _maintenanceService.getConfig();
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _maintenanceConfig = config;
         });
       }
     } catch (e) {
       // Use default config on error
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _maintenanceConfig = MaintenanceRequestConfig.defaultConfig();
         });
       }
@@ -103,7 +105,7 @@ class _ServiceRequestsOverviewScreenState
   }
 
   Future<void> _loadData() async {
-    setState(() {
+    safeSetState(() {
       _loading = true;
       _error = null;
       // Cleaning request removed - no longer used
@@ -128,7 +130,7 @@ class _ServiceRequestsOverviewScreenState
       // final cleaningPage = await cleaningFuture;
       final maintenancePage = await maintenanceFuture;
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         // Cleaning request removed - no longer used
         // _cleaningRequests = [];
         _maintenanceRequests = maintenancePage.requests;
@@ -138,7 +140,7 @@ class _ServiceRequestsOverviewScreenState
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _error = e.toString();
         _loading = false;
       });
@@ -153,7 +155,7 @@ class _ServiceRequestsOverviewScreenState
 
   Future<void> _loadMoreMaintenanceRequests() async {
     if (_loadingMoreMaintenance || !_hasMoreMaintenanceRequests) return;
-    setState(() => _loadingMoreMaintenance = true);
+    safeSetState(() => _loadingMoreMaintenance = true);
     try {
       final nextOffset = _maintenanceRequests.length;
       final page = await _maintenanceService.getMyRequests(
@@ -161,7 +163,7 @@ class _ServiceRequestsOverviewScreenState
         offset: nextOffset,
       );
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _maintenanceRequests = [..._maintenanceRequests, ...page.requests];
         _maintenanceTotal = page.total;
       });
@@ -174,7 +176,7 @@ class _ServiceRequestsOverviewScreenState
       );
     } finally {
       if (mounted) {
-        setState(() => _loadingMoreMaintenance = false);
+        safeSetState(() => _loadingMoreMaintenance = false);
       }
     }
   }
@@ -213,7 +215,7 @@ class _ServiceRequestsOverviewScreenState
     if (confirmed != true) return; // User cancelled the confirmation
 
     if (_cancellingRequestIds.contains(requestId)) return;
-    setState(() => _cancellingRequestIds.add(requestId));
+    safeSetState(() => _cancellingRequestIds.add(requestId));
     try {
       await _maintenanceService.cancelRequest(requestId);
       if (!mounted) return;
@@ -239,7 +241,7 @@ class _ServiceRequestsOverviewScreenState
       );
     } finally {
       if (mounted) {
-        setState(() => _cancellingRequestIds.remove(requestId));
+        safeSetState(() => _cancellingRequestIds.remove(requestId));
       }
     }
   }
@@ -271,7 +273,7 @@ class _ServiceRequestsOverviewScreenState
 
   Future<void> _resendMaintenanceRequest(String requestId) async {
     if (_resendingMaintenanceRequestIds.contains(requestId)) return;
-    setState(() => _resendingMaintenanceRequestIds.add(requestId));
+    safeSetState(() => _resendingMaintenanceRequestIds.add(requestId));
     try {
       await _maintenanceService.resendRequest(requestId);
       if (!mounted) return;
@@ -291,14 +293,14 @@ class _ServiceRequestsOverviewScreenState
       );
     } finally {
       if (mounted) {
-        setState(() => _resendingMaintenanceRequestIds.remove(requestId));
+        safeSetState(() => _resendingMaintenanceRequestIds.remove(requestId));
       }
     }
   }
 
   Future<void> _approveMaintenanceResponse(String requestId, {bool closeDetailSheet = false}) async {
     if (_approvingResponseIds.contains(requestId)) return;
-    setState(() => _approvingResponseIds.add(requestId));
+    safeSetState(() => _approvingResponseIds.add(requestId));
     try {
       await _maintenanceService.approveResponse(requestId);
       if (!mounted) return;
@@ -324,14 +326,14 @@ class _ServiceRequestsOverviewScreenState
       );
     } finally {
       if (mounted) {
-        setState(() => _approvingResponseIds.remove(requestId));
+        safeSetState(() => _approvingResponseIds.remove(requestId));
       }
     }
   }
 
   Future<void> _payWithVnpay(String requestId, {bool closeDetailSheet = false}) async {
     if (_approvingResponseIds.contains(requestId)) return;
-    setState(() => _approvingResponseIds.add(requestId));
+    safeSetState(() => _approvingResponseIds.add(requestId));
     try {
       // Create VNPay URL and open browser
       final paymentUrl = await _maintenanceService.createVnpayUrl(requestId);
@@ -392,7 +394,7 @@ class _ServiceRequestsOverviewScreenState
       );
     } finally {
       if (mounted) {
-        setState(() => _approvingResponseIds.remove(requestId));
+        safeSetState(() => _approvingResponseIds.remove(requestId));
       }
     }
   }
@@ -421,7 +423,7 @@ class _ServiceRequestsOverviewScreenState
     );
     if (confirmed != true) return;
     
-    setState(() => _rejectingResponseIds.add(requestId));
+    safeSetState(() => _rejectingResponseIds.add(requestId));
     try {
       await _maintenanceService.rejectResponse(requestId);
       if (!mounted) return;
@@ -447,7 +449,7 @@ class _ServiceRequestsOverviewScreenState
       );
     } finally {
       if (mounted) {
-        setState(() => _rejectingResponseIds.remove(requestId));
+        safeSetState(() => _rejectingResponseIds.remove(requestId));
       }
     }
   }
@@ -1809,7 +1811,8 @@ class _AttachmentFullScreenViewer extends StatefulWidget {
 }
 
 class _AttachmentFullScreenViewerState
-    extends State<_AttachmentFullScreenViewer> {
+    extends State<_AttachmentFullScreenViewer> 
+    with SafeStateMixin<_AttachmentFullScreenViewer> {
   late PageController _pageController;
   late int _currentIndex;
 
@@ -1869,7 +1872,7 @@ class _AttachmentFullScreenViewerState
             controller: _pageController,
             itemCount: widget.attachments.length,
             onPageChanged: (index) {
-              setState(() {
+              safeSetState(() {
                 _currentIndex = index;
               });
             },
@@ -1922,7 +1925,7 @@ class _VideoPlayerDialog extends StatefulWidget {
   State<_VideoPlayerDialog> createState() => _VideoPlayerDialogState();
 }
 
-class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
+class _VideoPlayerDialogState extends State<_VideoPlayerDialog> with SafeStateMixin<_VideoPlayerDialog> {
   bool _isPlaying = false;
   bool _showControls = true;
   Duration _duration = Duration.zero;
@@ -1941,7 +1944,7 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
 
   void _videoListener() {
     if (mounted) {
-      setState(() {
+      safeSetState(() {
         _isPlaying = widget.controller.value.isPlaying;
         _duration = widget.controller.value.duration;
         _position = widget.controller.value.position;
@@ -1953,7 +1956,7 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
     _hideControlsTimer?.cancel();
     _hideControlsTimer = Timer(const Duration(seconds: 3), () {
       if (mounted && _isPlaying) {
-        setState(() {
+        safeSetState(() {
           _showControls = false;
         });
       }
@@ -1961,7 +1964,7 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
   }
 
   void _togglePlayPause() {
-    setState(() {
+    safeSetState(() {
       if (_isPlaying) {
         widget.controller.pause();
       } else {
@@ -2005,7 +2008,7 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
           Center(
             child: GestureDetector(
               onTap: () {
-                setState(() {
+                safeSetState(() {
                   _showControls = !_showControls;
                 });
                 if (_showControls) {
@@ -2138,4 +2141,5 @@ class _HomeGlassContainer extends StatelessWidget {
     );
   }
 }
+
 

@@ -6,6 +6,7 @@ import '../../models/resident_notification.dart';
 import '../../theme/app_colors.dart';
 import '../notification_detail_screen.dart';
 
+import '../../core/safe_state_mixin.dart';
 class NotificationCard extends StatefulWidget {
   final ResidentNotification notification;
   final String? residentId;
@@ -23,7 +24,7 @@ class NotificationCard extends StatefulWidget {
 }
 
 class _NotificationCardState extends State<NotificationCard>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, SafeStateMixin<NotificationCard> {
   late final AnimationController _entryController;
   late final Animation<double> _opacity;
   late final Animation<Offset> _slide;
@@ -121,7 +122,7 @@ class _NotificationCardState extends State<NotificationCard>
                   onTap: openContainer,
                   onHighlightChanged: (value) {
                     if (_isPressed != value) {
-                      setState(() => _isPressed = value);
+                      safeSetState(() => _isPressed = value);
                     }
                   },
                   child: Stack(
@@ -382,4 +383,6 @@ class _NotificationCardState extends State<NotificationCard>
     }
   }
 }
+
+
 

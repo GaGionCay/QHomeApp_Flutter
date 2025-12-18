@@ -6,6 +6,8 @@ import 'core/app_router.dart';
 import 'theme/app_colors.dart';
 import 'auth/auth_provider.dart';
 
+import 'core/safe_state_mixin.dart';
+
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -13,8 +15,8 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
-    with TickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen> 
+    with TickerProviderStateMixin, SafeStateMixin<SplashScreen> {
   late AnimationController _controller;
   late Animation<double> _fadeIn;
   late Animation<double> _scaleUp;
@@ -297,4 +299,5 @@ class _SplashScreenState extends State<SplashScreen>
     );
   }
 }
+
 

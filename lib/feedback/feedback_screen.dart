@@ -7,6 +7,7 @@ import '../service_registration/service_booking_service.dart';
 import '../theme/app_colors.dart';
 import 'feedback_service.dart';
 
+import '../core/safe_state_mixin.dart';
 class FeedbackScreen extends StatefulWidget {
   const FeedbackScreen({super.key});
 
@@ -14,7 +15,7 @@ class FeedbackScreen extends StatefulWidget {
   State<FeedbackScreen> createState() => _FeedbackScreenState();
 }
 
-class _FeedbackScreenState extends State<FeedbackScreen> {
+class _FeedbackScreenState extends State<FeedbackScreen> with SafeStateMixin<FeedbackScreen> {
   late final FeedbackService _feedbackService;
   late final ServiceBookingService _bookingService;
   final ScrollController _scrollController = ScrollController();
@@ -56,7 +57,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   }
 
   Future<void> _loadCounts() async {
-    setState(() {
+    safeSetState(() {
       _countsLoading = true;
       _countsError = null;
     });
@@ -65,13 +66,13 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
         priority: _priorityFilter,
       );
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _statusCounts = counts;
         _countsLoading = false;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _countsError = e.toString();
         _countsLoading = false;
       });
@@ -80,7 +81,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
 
   Future<void> _loadRequests({bool reset = false}) async {
     if (reset) {
-      setState(() {
+      safeSetState(() {
         _loading = true;
         _error = null;
         _currentPage = 0;
@@ -89,7 +90,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
       });
     } else {
       if (_loadingMore || _loading || _isLastPage) return;
-      setState(() => _loadingMore = true);
+      safeSetState(() => _loadingMore = true);
     }
 
     try {
@@ -99,7 +100,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
         priority: _priorityFilter,
       );
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         if (reset) {
           _requests
             ..clear()
@@ -114,7 +115,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _error = e.toString();
         _loading = false;
         _loadingMore = false;
@@ -133,7 +134,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   }
 
   void _onStatusSelected(String? status) {
-    setState(() {
+    safeSetState(() {
       _statusFilter = status;
     });
     _loadRequests(reset: true);
@@ -141,7 +142,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   }
 
   void _onPrioritySelected(String? priority) {
-    setState(() {
+    safeSetState(() {
       _priorityFilter = priority;
     });
     _loadRequests(reset: true);
@@ -149,20 +150,20 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   }
 
   Future<void> _loadPaidBookings() async {
-    setState(() {
+    safeSetState(() {
       _loadingBookings = true;
       _bookingsError = null;
     });
     try {
       final bookings = await _bookingService.getPaidBookings();
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _paidBookings = bookings;
         _loadingBookings = false;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _bookingsError = e.toString();
         _loadingBookings = false;
       });
@@ -609,7 +610,7 @@ class _FeedbackCard extends StatefulWidget {
   State<_FeedbackCard> createState() => _FeedbackCardState();
 }
 
-class _FeedbackCardState extends State<_FeedbackCard> {
+class _FeedbackCardState extends State<_FeedbackCard> with SafeStateMixin<_FeedbackCard> {
   Map<String, dynamic>? _bookingDetails;
   bool _loadingBooking = false;
 
@@ -630,18 +631,18 @@ class _FeedbackCardState extends State<_FeedbackCard> {
       return;
     }
 
-    setState(() => _loadingBooking = true);
+    safeSetState(() => _loadingBooking = true);
     try {
       final booking = await widget.bookingService!
           .getBookingById(widget.request.serviceBookingId!);
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _bookingDetails = booking;
         _loadingBooking = false;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _loadingBooking = false);
+      safeSetState(() => _loadingBooking = false);
     }
   }
 
@@ -875,7 +876,7 @@ class FeedbackFormSheet extends StatefulWidget {
   State<FeedbackFormSheet> createState() => _FeedbackFormSheetState();
 }
 
-class _FeedbackFormSheetState extends State<FeedbackFormSheet> {
+class _FeedbackFormSheetState extends State<FeedbackFormSheet> with SafeStateMixin<FeedbackFormSheet> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _contentController = TextEditingController();
@@ -895,17 +896,17 @@ class _FeedbackFormSheetState extends State<FeedbackFormSheet> {
 
   Future<void> _loadBookingDetails() async {
     if (widget.selectedBookingId == null) return;
-    setState(() => _loadingBooking = true);
+    safeSetState(() => _loadingBooking = true);
     try {
       final booking = await widget.bookingService.getBookingById(widget.selectedBookingId!);
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _selectedBooking = booking;
         _loadingBooking = false;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _loadingBooking = false);
+      safeSetState(() => _loadingBooking = false);
     }
   }
 
@@ -918,7 +919,7 @@ class _FeedbackFormSheetState extends State<FeedbackFormSheet> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _submitting = true);
+    safeSetState(() => _submitting = true);
     try {
       final request = await widget.service.createRequest(
         title: _titleController.text.trim(),
@@ -938,7 +939,7 @@ class _FeedbackFormSheetState extends State<FeedbackFormSheet> {
       );
     } finally {
       if (mounted) {
-        setState(() => _submitting = false);
+        safeSetState(() => _submitting = false);
       }
     }
   }
@@ -1044,7 +1045,7 @@ class _FeedbackFormSheetState extends State<FeedbackFormSheet> {
                     ).toList(),
                     onChanged: (value) {
                       if (value != null) {
-                        setState(() => _priority = value);
+                        safeSetState(() => _priority = value);
                       }
                     },
                   ),
@@ -1309,4 +1310,5 @@ class _PaidBookingCard extends StatelessWidget {
     );
   }
 }
+
 

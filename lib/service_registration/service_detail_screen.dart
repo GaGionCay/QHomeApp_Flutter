@@ -9,6 +9,7 @@ import '../theme/app_colors.dart';
 import 'service_booking_screen.dart';
 import 'service_booking_service.dart';
 
+import '../core/safe_state_mixin.dart';
 class ServiceDetailScreen extends StatefulWidget {
   final String serviceId;
   final String serviceName;
@@ -27,7 +28,7 @@ class ServiceDetailScreen extends StatefulWidget {
   State<ServiceDetailScreen> createState() => _ServiceDetailScreenState();
 }
 
-class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
+class _ServiceDetailScreenState extends State<ServiceDetailScreen> with SafeStateMixin<ServiceDetailScreen> {
   late final ServiceBookingService _bookingService;
   bool _loading = true;
   String? _error;
@@ -41,19 +42,19 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   }
 
   Future<void> _loadService() async {
-    setState(() {
+    safeSetState(() {
       _loading = true;
       _error = null;
     });
 
     try {
       final detail = await _bookingService.getServiceDetail(widget.serviceId);
-      setState(() {
+      safeSetState(() {
         _service = detail;
         _loading = false;
       });
     } catch (e) {
-      setState(() {
+      safeSetState(() {
         _error = e.toString();
         _loading = false;
       });
@@ -1073,4 +1074,5 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     return const [];
   }
 }
+
 

@@ -17,6 +17,7 @@ import 'contract_service.dart';
 import 'contract_renewal_screen.dart';
 import 'contract_cancel_screen.dart';
 
+import '../core/safe_state_mixin.dart';
 class ContractListScreen extends StatefulWidget {
   const ContractListScreen({super.key});
 
@@ -25,7 +26,7 @@ class ContractListScreen extends StatefulWidget {
 }
 
 class _ContractListScreenState extends State<ContractListScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, SafeStateMixin<ContractListScreen> {
   ContractService? _contractService;
   List<UnitInfo> _units = [];
   String? _selectedUnitId;
@@ -51,7 +52,7 @@ class _ContractListScreenState extends State<ContractListScreen>
   }
 
   Future<void> _init() async {
-    setState(() {
+    safeSetState(() {
       _loadingUnits = true;
       _error = null;
     });
@@ -62,7 +63,7 @@ class _ContractListScreenState extends State<ContractListScreen>
       await _loadUnits();
     } catch (e) {
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _error = 'Không thể khởi tạo dịch vụ: $e';
         _loadingUnits = false;
       });
@@ -84,7 +85,7 @@ class _ContractListScreenState extends State<ContractListScreen>
       }
 
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _units = units;
         _selectedUnitId = nextSelected;
         _loadingUnits = false;
@@ -95,7 +96,7 @@ class _ContractListScreenState extends State<ContractListScreen>
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _error = 'Lỗi tải danh sách căn hộ: $e';
         _loadingUnits = false;
       });
@@ -106,7 +107,7 @@ class _ContractListScreenState extends State<ContractListScreen>
     final service = _contractService;
     if (service == null) return;
 
-    setState(() {
+    safeSetState(() {
       _loadingContracts = true;
     });
 
@@ -115,7 +116,7 @@ class _ContractListScreenState extends State<ContractListScreen>
       if (!mounted) return;
       
       // Store all contracts (will be filtered by tabs)
-      setState(() {
+      safeSetState(() {
         _contracts = data;
       });
     } catch (e) {
@@ -126,7 +127,7 @@ class _ContractListScreenState extends State<ContractListScreen>
       );
     } finally {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _loadingContracts = false;
         });
       }
@@ -495,7 +496,7 @@ class _ContractListScreenState extends State<ContractListScreen>
                   icon: const Icon(CupertinoIcons.chevron_down),
                   onSelected: (value) async {
                     if (_selectedUnitId == value) return;
-                    setState(() => _selectedUnitId = value);
+                    safeSetState(() => _selectedUnitId = value);
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.setString(_selectedUnitPrefsKey, value);
                     await _loadContracts(value);
@@ -1637,4 +1638,5 @@ class _AnimatedContractCardState extends State<_AnimatedContractCard>
     );
   }
 }
+
 

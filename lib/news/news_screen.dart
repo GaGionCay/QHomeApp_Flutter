@@ -15,6 +15,7 @@ import 'widgets/news_group_header.dart';
 import 'widgets/news_list_skeleton.dart';
 import 'widgets/news_search_bar.dart';
 
+import '../core/safe_state_mixin.dart';
 class NewsScreen extends StatefulWidget {
   const NewsScreen({super.key});
 
@@ -22,7 +23,7 @@ class NewsScreen extends StatefulWidget {
   State<NewsScreen> createState() => _NewsScreenState();
 }
 
-class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
+class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin , SafeStateMixin<NewsScreen> {
   late final NewsViewModel _viewModel;
   final ScrollController _scrollController = ScrollController();
   final ApiClient _api = ApiClient();
@@ -98,7 +99,7 @@ class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
 
       if (_residentId == null || _residentId!.isEmpty) {
         if (mounted) {
-          setState(() {});
+          safeSetState(() {});
         }
         return;
       }
@@ -111,7 +112,7 @@ class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
     } catch (e) {
       debugPrint('⚠️ Lỗi lấy residentId: $e');
       if (mounted) {
-        setState(() {});
+        safeSetState(() {});
       }
     }
   }
@@ -430,7 +431,7 @@ class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
   }
 
   void _toggleFilters() {
-    setState(() => _filtersCollapsed = !_filtersCollapsed);
+    safeSetState(() => _filtersCollapsed = !_filtersCollapsed);
   }
 
   Widget _buildPaginationControls(BuildContext context, NewsViewModel viewModel) {
@@ -547,4 +548,5 @@ class _NewsScreenState extends State<NewsScreen> with TickerProviderStateMixin {
     );
   }
 }
+
 

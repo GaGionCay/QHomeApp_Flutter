@@ -9,6 +9,7 @@ import '../models/chat/invitation.dart';
 import '../models/chat/friend.dart';
 import '../profile/profile_service.dart';
 
+import '../core/safe_state_mixin.dart';
 class InviteMembersDialog extends StatefulWidget {
   final String groupId;
 
@@ -18,7 +19,8 @@ class InviteMembersDialog extends StatefulWidget {
   State<InviteMembersDialog> createState() => _InviteMembersDialogState();
 }
 
-class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTickerProviderStateMixin {
+class _InviteMembersDialogState extends State<InviteMembersDialog> 
+    with SingleTickerProviderStateMixin, SafeStateMixin<InviteMembersDialog> {
   final _phoneController = TextEditingController();
   final ChatService _service = ChatService();
   final ApiClient _apiClient = ApiClient();
@@ -124,7 +126,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
 
   /// Load invitations for this group (PENDING and ACCEPTED)
   Future<void> _loadInvitations() async {
-    setState(() {
+    safeSetState(() {
       _isLoadingInvitations = true;
     });
 
@@ -147,7 +149,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
       }
 
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _invitedPhones = normalizedPhones;
           _invitationStatusByPhone = statusMap;
           _isLoadingInvitations = false;
@@ -156,7 +158,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
     } catch (e) {
       debugPrint('⚠️ [InviteMembersDialog] Error loading invitations: $e');
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isLoadingInvitations = false;
         });
       }
@@ -165,7 +167,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
 
   /// Load group members to check if already a member
   Future<void> _loadGroupMembers() async {
-    setState(() {
+    safeSetState(() {
       _isLoadingMembers = true;
     });
 
@@ -177,19 +179,19 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
             .map((member) => member.residentId)
             .toSet();
         
-        setState(() {
+        safeSetState(() {
           _memberResidentIds = memberIds;
           _isLoadingMembers = false;
         });
       } else if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isLoadingMembers = false;
         });
       }
     } catch (e) {
       debugPrint('⚠️ [InviteMembersDialog] Error loading group members: $e');
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isLoadingMembers = false;
         });
       }
@@ -205,7 +207,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
     
     // Only search if at least 3 digits
     if (normalizedPhone.length < 3) {
-      setState(() {
+      safeSetState(() {
         _phoneSuggestions = [];
         _isSearchingPhone = false;
       });
@@ -214,7 +216,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
     
     // Debounce: wait 500ms before searching
     _phoneSearchDebounce = Timer(const Duration(milliseconds: 500), () async {
-      setState(() {
+      safeSetState(() {
         _isSearchingPhone = true;
       });
       
@@ -226,7 +228,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
         
         if (mounted) {
           final List<dynamic> data = response.data ?? [];
-          setState(() {
+          safeSetState(() {
             _phoneSuggestions = data.map((item) => {
               'id': item['id']?.toString() ?? '',
               'fullName': item['fullName']?.toString() ?? '',
@@ -238,7 +240,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
       } catch (e) {
         debugPrint('⚠️ [InviteMembersDialog] Error searching residents by phone: $e');
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _phoneSuggestions = [];
             _isSearchingPhone = false;
           });
@@ -301,7 +303,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
 
     // Store phone in original format (as user sees it) for display
     final displayPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
-    setState(() {
+    safeSetState(() {
       _phoneNumbers.add(displayPhone);
       _phoneController.clear();
       _phoneSuggestions = [];
@@ -401,7 +403,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
     }
     
     if (mounted) {
-      setState(() {
+      safeSetState(() {
         _isLoadingFriends = true;
       });
     }
@@ -409,7 +411,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
     try {
       final friends = await _service.getFriends();
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _friends = friends;
           _isLoadingFriends = false;
         });
@@ -418,7 +420,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
     } catch (e) {
       debugPrint('⚠️ [InviteMembersDialog] Error loading friends: $e');
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isLoadingFriends = false;
         });
       }
@@ -429,11 +431,11 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
   void _filterFriends() {
     final query = _friendSearchController.text.toLowerCase().trim();
     if (query.isEmpty) {
-      setState(() {
+      safeSetState(() {
         _filteredFriends = List.from(_friends);
       });
     } else {
-      setState(() {
+      safeSetState(() {
         _filteredFriends = _friends.where((friend) {
           final name = friend.friendName.toLowerCase();
           final phone = friend.friendPhone.toLowerCase();
@@ -450,7 +452,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
       return; // Don't allow selection
     }
     
-    setState(() {
+    safeSetState(() {
       if (_selectedFriendIds.contains(friendId)) {
         _selectedFriendIds.remove(friendId);
       } else {
@@ -490,7 +492,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
 
 
   void _removePhoneNumber(String phone) {
-    setState(() {
+    safeSetState(() {
       _phoneNumbers.remove(phone);
     });
   }
@@ -569,7 +571,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
       return;
     }
 
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
 
     try {
       final result = await _service.inviteMembersByPhone(
@@ -597,7 +599,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
         
         // Update state with new invited phones before reloading
         if (newInvitedPhones.isNotEmpty) {
-          setState(() {
+          safeSetState(() {
             _invitedPhones.addAll(newInvitedPhones);
             // Mark as PENDING since it's skipped due to existing invitation
             for (final phone in newInvitedPhones) {
@@ -649,7 +651,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
       }
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        safeSetState(() => _isLoading = false);
       }
     }
   }
@@ -1023,5 +1025,7 @@ class _InviteMembersDialogState extends State<InviteMembersDialog> with SingleTi
     );
   }
 }
+
+
 
 

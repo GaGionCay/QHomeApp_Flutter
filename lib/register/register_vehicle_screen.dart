@@ -17,6 +17,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../auth/api_client.dart';
 import '../contracts/contract_service.dart';
 import '../core/app_router.dart';
+import '../core/safe_state_mixin.dart';
 import '../models/unit_info.dart';
 import '../services/card_pricing_service.dart';
 import '../services/imagekit_service.dart';
@@ -32,7 +33,7 @@ class RegisterVehicleScreen extends StatefulWidget {
 }
 
 class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SafeStateMixin<RegisterVehicleScreen> {
   final ApiClient api = ApiClient();
   Dio? _servicesCardDio;
   final _formKey = GlobalKey<FormState>();
@@ -74,6 +75,17 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    
+    // Register all TextEditingControllers with SafeStateMixin
+    registerControllers([
+      _licenseCtrl,
+      _brandCtrl,
+      _colorCtrl,
+      _noteCtrl,
+      _apartmentNumberCtrl,
+      _buildingNameCtrl,
+    ]);
+    
     _contractService = ContractService(api);
     _cardPricingService = CardPricingService(api.dio);
     _imageKitService = ImageKitService(api);
@@ -171,7 +183,7 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   Future<Dio> _servicesCardClient() async {
     if (_servicesCardDio == null) {
       _servicesCardDio = Dio(BaseOptions(
-        baseUrl: ApiClient.buildServiceBase(port: 8083, path: '/api'),
+        baseUrl: ApiClient.buildServiceBase(port: 8083),
         connectTimeout: const Duration(seconds: ApiClient.connectTimeoutSeconds),
         receiveTimeout: const Duration(seconds: ApiClient.receiveTimeoutSeconds),
         sendTimeout: const Duration(seconds: ApiClient.sendTimeoutSeconds),
@@ -200,12 +212,8 @@ class _RegisterServiceScreenState extends State<RegisterVehicleScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _paymentSub?.cancel();
-    _licenseCtrl.dispose();
-    _brandCtrl.dispose();
-    _colorCtrl.dispose();
-    _noteCtrl.dispose();
-    _apartmentNumberCtrl.dispose();
-    _buildingNameCtrl.dispose();
+    
+    // SafeStateMixin will automatically dispose all registered controllers
     super.dispose();
   }
 

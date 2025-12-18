@@ -16,6 +16,7 @@ import '../theme/app_colors.dart';
 import '../core/logger.dart';
 import 'invoice_service.dart';
 
+import '../core/safe_state_mixin.dart';
 // Unified model for all paid items
 enum PaidItemType {
   electricity,
@@ -111,7 +112,7 @@ class _PaidInvoicesGlassCard extends StatelessWidget {
 }
 
 class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, SafeStateMixin<PaidInvoicesScreen> {
   late final ApiClient _apiClient;
   late final InvoiceService _invoiceService;
   late final AssetMaintenanceApiClient _assetMaintenanceApiClient;
@@ -147,7 +148,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
     _tabController = TabController(length: 7, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
-        setState(() {
+        safeSetState(() {
           // Trigger rebuild when tab changes
         });
       }
@@ -183,7 +184,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
   }
 
   Future<List<PaidItem>> _loadData() async {
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
     try {
       String? unitFilter = _selectedUnitId;
       if (unitFilter == null || unitFilter.isEmpty) {
@@ -441,7 +442,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
       debugPrint('Error loading paid items: $e');
       return [];
     } finally {
-      setState(() => _isLoading = false);
+      safeSetState(() => _isLoading = false);
     }
   }
 
@@ -466,7 +467,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
   }
 
   void _refresh() {
-    setState(() {
+    safeSetState(() {
       _futureData = _loadData();
     });
   }
@@ -700,7 +701,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
             // Header with toggle button
             InkWell(
               onTap: () {
-                setState(() {
+                safeSetState(() {
                   _isSummaryExpanded = !_isSummaryExpanded;
                 });
               },
@@ -840,7 +841,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
                   ],
                   onChanged: (value) {
                     if (value != null) {
-                      setState(() {
+                      safeSetState(() {
                         _selectedMonth = value;
                       });
                     }
@@ -855,7 +856,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             child: PopupMenuButton<String>(
               onSelected: (value) {
-                setState(() {
+                safeSetState(() {
                   _sortOption = value;
                 });
               },
@@ -1188,7 +1189,7 @@ class _PaidItemDetailSheet extends StatefulWidget {
   State<_PaidItemDetailSheet> createState() => _PaidItemDetailSheetState();
 }
 
-class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
+class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> with SafeStateMixin<_PaidItemDetailSheet> {
   Map<String, dynamic>? _detailData;
   bool _isLoading = true;
   String? _error;
@@ -1202,7 +1203,7 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
   Future<void> _loadDetail() async {
     AppLogger.info('[PaidInvoicesDetail] Bắt đầu load chi tiết cho item: ${widget.item.type.name} (ID: ${widget.item.id})');
     
-    setState(() {
+    safeSetState(() {
       _isLoading = true;
       _error = null;
     });
@@ -1250,7 +1251,7 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
                       AppLogger.warning('   - Payment Date: ${widget.item.paymentDate.toString()} (từ serviceDate, paidAt không có trong response)');
                       AppLogger.warning('   - Invoice Status: ${invoiceDetail?['status']}');
                     }
-                    setState(() {
+                    safeSetState(() {
                       _detailData = {
                         'type': 'invoice',
                         'invoiceId': invoice.invoiceId,
@@ -1297,7 +1298,7 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
             if (booking['startTime'] != null && booking['endTime'] != null) {
               AppLogger.info('   - Time: ${booking['startTime']} - ${booking['endTime']}');
             }
-            setState(() {
+            safeSetState(() {
               _detailData = {
                 'type': 'booking',
                 ...booking,
@@ -1348,7 +1349,7 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
                       } else {
                         AppLogger.warning('   - Payment Date: ${widget.item.paymentDate.toString()} (từ serviceDate, có thể không chính xác về thời gian)');
                       }
-                      setState(() {
+                      safeSetState(() {
                         _detailData = {
                           'type': 'invoice',
                           'invoiceId': invoice.invoiceId,
@@ -1388,7 +1389,7 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
             //   orElse: () => throw Exception('Not found'),
             // );
             throw Exception('Cleaning request feature has been removed');
-            // setState(() {
+            // safeSetState(() {
             //   _detailData = {
             //     'type': 'cleaning',
             //     'id': request.id,
@@ -1427,7 +1428,7 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
             if (request.note != null && request.note!.isNotEmpty) {
               AppLogger.info('   - Note: ${request.note}');
             }
-            setState(() {
+            safeSetState(() {
               _detailData = {
                 'type': 'repair',
                 'id': request.id,
@@ -1446,12 +1447,12 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
       }
     } catch (e) {
       AppLogger.error('[PaidInvoicesDetail] ❌ Lỗi tổng quát khi load detail', e);
-      setState(() {
+      safeSetState(() {
         _error = e.toString();
       });
     } finally {
       AppLogger.info('[PaidInvoicesDetail] Hoàn thành load detail (isLoading: false)');
-      setState(() {
+      safeSetState(() {
         _isLoading = false;
       });
     }
@@ -2006,4 +2007,5 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> {
     );
   }
 }
+
 

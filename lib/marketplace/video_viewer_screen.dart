@@ -5,6 +5,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter/foundation.dart';
 import '../auth/api_client.dart';
+import '../core/safe_state_mixin.dart';
 
 /// Full screen video viewer screen
 /// Supports both local file and network URL
@@ -24,7 +25,7 @@ class VideoViewerScreen extends StatefulWidget {
   State<VideoViewerScreen> createState() => _VideoViewerScreenState();
 }
 
-class _VideoViewerScreenState extends State<VideoViewerScreen> {
+class _VideoViewerScreenState extends State<VideoViewerScreen> with SafeStateMixin<VideoViewerScreen> {
   VideoPlayerController? _controller;
   bool _isInitialized = false;
   bool _isPlaying = false;
@@ -64,7 +65,7 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
           },
         );
       } else {
-        setState(() {
+        safeSetState(() {
           _errorMessage = 'Không có video để phát';
           _isLoading = false;
         });
@@ -81,7 +82,7 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
 
       controller.addListener(_videoListener);
       
-      setState(() {
+      safeSetState(() {
         _controller = controller;
         _isInitialized = true;
         _isLoading = false;
@@ -91,11 +92,11 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
 
       // Auto play
       await controller.play();
-      setState(() {
+      safeSetState(() {
         _isPlaying = true;
       });
     } catch (e) {
-      setState(() {
+      safeSetState(() {
         _errorMessage = 'Lỗi khi tải video: ${e.toString()}';
         _isLoading = false;
       });
@@ -129,7 +130,7 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
 
   void _videoListener() {
     if (_controller != null && mounted) {
-      setState(() {
+      safeSetState(() {
         _position = _controller!.value.position;
         _isPlaying = _controller!.value.isPlaying;
         if (_controller!.value.position >= _controller!.value.duration) {
@@ -147,7 +148,7 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
     } else {
       _controller!.play();
     }
-    setState(() {
+    safeSetState(() {
       _isPlaying = !_isPlaying;
     });
     _resetHideControlsTimer();
@@ -161,12 +162,12 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
 
   void _resetHideControlsTimer() {
     _hideControlsTimer?.cancel();
-    setState(() {
+    safeSetState(() {
       _showControls = true;
     });
     _hideControlsTimer = Timer(const Duration(seconds: 3), () {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _showControls = false;
         });
       }
@@ -209,7 +210,7 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
       ),
       body: GestureDetector(
         onTap: () {
-          setState(() {
+          safeSetState(() {
             _showControls = !_showControls;
           });
           if (_showControls) {
@@ -335,3 +336,4 @@ class _VideoViewerScreenState extends State<VideoViewerScreen> {
     );
   }
 }
+

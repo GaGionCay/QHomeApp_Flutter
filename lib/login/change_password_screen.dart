@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/core/safe_state_mixin.dart';
 import 'package:provider/provider.dart';
 import '../auth/auth_provider.dart';
 import '../profile/profile_service.dart';
@@ -12,7 +13,7 @@ class ChangePasswordScreen extends StatefulWidget {
   State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
 }
 
-class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
+class _ChangePasswordScreenState extends State<ChangePasswordScreen> with SafeStateMixin<ChangePasswordScreen> {
   String? _email;
   bool _loading = false;
   bool _emailLoading = true;
@@ -28,7 +29,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   Future<void> _loadEmail() async {
     final auth = context.read<AuthProvider>();
-    setState(() {
+    safeSetState(() {
       _emailLoading = true;
       _emailError = null;
     });
@@ -37,7 +38,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       final profile = await profileService.getProfile();
       final fetchedEmail = profile['email']?.toString();
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _email = fetchedEmail;
           _emailLoading = false;
           _emailError = fetchedEmail == null || fetchedEmail.isEmpty
@@ -47,7 +48,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _email = null;
           _emailLoading = false;
           _emailError = 'Không thể lấy thông tin email: $e';
@@ -69,7 +70,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       return;
     }
 
-    setState(() => _loading = true);
+    safeSetState(() => _loading = true);
     try {
       await auth.requestReset(_email!);
       if (!mounted) return;
@@ -89,7 +90,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       );
     } finally {
       if (mounted) {
-        setState(() => _loading = false);
+        safeSetState(() => _loading = false);
       }
     }
   }
@@ -306,4 +307,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     );
   }
 }
+
+
 

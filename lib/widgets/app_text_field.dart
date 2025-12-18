@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/core/safe_state_mixin.dart';
 import '../theme/app_colors.dart';
 
 class AppLuxeTextField extends StatefulWidget {
@@ -29,7 +30,8 @@ class AppLuxeTextField extends StatefulWidget {
   State<AppLuxeTextField> createState() => _AppLuxeTextFieldState();
 }
 
-class _AppLuxeTextFieldState extends State<AppLuxeTextField> {
+class _AppLuxeTextFieldState extends State<AppLuxeTextField> 
+    with SafeStateMixin<AppLuxeTextField> {
   bool _isFocused = false;
 
   @override
@@ -46,7 +48,7 @@ class _AppLuxeTextFieldState extends State<AppLuxeTextField> {
 
   void _handleFocusChange() {
     if (mounted) {
-      setState(() => _isFocused = widget.focusNode.hasFocus);
+      safeSetState(() => _isFocused = widget.focusNode.hasFocus);
     }
   }
 
@@ -123,5 +125,6 @@ class _AppLuxeTextFieldState extends State<AppLuxeTextField> {
     );
   }
 }
+
 
 

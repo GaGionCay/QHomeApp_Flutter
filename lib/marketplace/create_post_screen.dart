@@ -10,6 +10,7 @@ import '../auth/token_storage.dart';
 import 'number_formatter.dart';
 import 'video_viewer_screen.dart';
 import 'video_preview_widget.dart';
+import '../core/safe_state_mixin.dart';
 
 class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key});
@@ -18,7 +19,7 @@ class CreatePostScreen extends StatefulWidget {
   State<CreatePostScreen> createState() => _CreatePostScreenState();
 }
 
-class _CreatePostScreenState extends State<CreatePostScreen> {
+class _CreatePostScreenState extends State<CreatePostScreen> with SafeStateMixin<CreatePostScreen> {
   late final CreatePostViewModel _viewModel;
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -647,5 +648,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     );
   }
 }
+
 
 

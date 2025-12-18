@@ -50,6 +50,7 @@ import '../service_registration/service_requests_overview_screen.dart';
 import '../chat/group_list_screen.dart';
 import '../chat/chat_service.dart';
 
+import '../core/safe_state_mixin.dart';
 class HomeScreen extends StatefulWidget {
   final void Function(int)? onNavigateToTab;
   const HomeScreen({super.key, this.onNavigateToTab});
@@ -58,7 +59,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with SafeStateMixin<HomeScreen> {
   late final ApiClient _apiClient;
   late final ContractService _contractService;
   late final AssetMaintenanceApiClient _assetMaintenanceClient;
@@ -144,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final eventData = data is Map<String, dynamic> ? data : <String, dynamic>{};
         final eventType = (eventData['eventType']?.toString() ?? '').toUpperCase();
         
-        setState(() {
+        safeSetState(() {
           if (eventType == 'NOTIFICATION_DELETED') {
             // Decrease count when notification is deleted
             if (_unreadNotificationCount > 0) {
@@ -224,7 +225,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _units = units;
           _selectedUnitId = nextSelected;
         });
@@ -242,7 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
         debugPrint('⚠️ [HomeScreen] Load unit context: 401 Unauthorized - Token expired');
         debugPrint('⚠️ [HomeScreen] ApiClient interceptor should handle this, but if it reaches here, refresh failed');
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _units = [];
             _selectedUnitId = null;
           });
@@ -257,7 +258,7 @@ class _HomeScreenState extends State<HomeScreen> {
         debugPrint('⚠️ [HomeScreen] Load unit context: 403 Forbidden');
         debugPrint('⚠️ [HomeScreen] If all APIs return 403, token may be expired');
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _units = [];
             _selectedUnitId = null;
           });
@@ -275,7 +276,7 @@ class _HomeScreenState extends State<HomeScreen> {
       
       debugPrint('⚠️ Load unit context error: $e');
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _units = [];
           _selectedUnitId = null;
         });
@@ -283,7 +284,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       debugPrint('⚠️ Load unit context error: $e');
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _units = [];
           _selectedUnitId = null;
         });
@@ -303,7 +304,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     _isLoadingData = true;
     
-    setState(() => _loading = true);
+    safeSetState(() => _loading = true);
 
     final invoiceService = InvoiceService(_apiClient);
 
@@ -311,7 +312,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final profile = await ProfileService(_apiClient.dio).getProfile();
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _profile = profile;
         });
       }
@@ -332,7 +333,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       // Always reset loading flag, even if error occurs
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _loading = false;
           _isLoadingData = false;
         });
@@ -471,7 +472,7 @@ class _HomeScreenState extends State<HomeScreen> {
           final status = booking['status']?.toString() ?? '';
           return status.toUpperCase() != 'CANCELLED';
         }).length;
-        setState(() {
+        safeSetState(() {
           _unpaidBookingCount = activeUnpaidCount;
           _unpaidServicesError = null;
         });
@@ -479,7 +480,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       debugPrint('⚠️ Không thể tải dịch vụ chưa thanh toán: $e');
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _unpaidBookingCount = 0;
           _unpaidServicesError = e.toString();
         });
@@ -493,7 +494,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _selectedUnitId ?? (_units.isNotEmpty ? _units.first.id : null);
       if (unitId == null || unitId.isEmpty) {
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _unpaidInvoiceCount = 0;
             _unpaidInvoicesError = null;
           });
@@ -506,7 +507,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final total = categories.fold<int>(
           0, (sum, category) => sum + category.invoiceCount);
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _unpaidInvoiceCount = total;
           _unpaidInvoicesError = null;
         });
@@ -514,7 +515,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       debugPrint('⚠️ Không thể tải hóa đơn chưa thanh toán: $e');
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _unpaidInvoiceCount = 0;
           _unpaidInvoicesError = e.toString();
         });
@@ -555,7 +556,7 @@ class _HomeScreenState extends State<HomeScreen> {
                          directChatPendingInvitations > 0;
 
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _hasGroupChatActivity = hasActivity;
         });
       }
@@ -563,7 +564,7 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint('⚠️ Không thể tải hoạt động group chat: $e');
       // Don't show badge on error
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _hasGroupChatActivity = false;
         });
       }
@@ -574,7 +575,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final residentId = _profile?['residentId']?.toString();
     if (residentId == null || residentId.isEmpty) {
       if (mounted) {
-        setState(() => _unreadNotificationCount = 0);
+        safeSetState(() => _unreadNotificationCount = 0);
       }
       return;
     }
@@ -595,7 +596,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (targetBuildingId == null || targetBuildingId.isEmpty) {
       if (mounted) {
-        setState(() => _unreadNotificationCount = 0);
+        safeSetState(() => _unreadNotificationCount = 0);
       }
       return;
     }
@@ -648,7 +649,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _unreadNotificationCount = unread;
           _notificationsError = null;
         });
@@ -656,7 +657,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       debugPrint('⚠️ Không thể tải thông báo chưa đọc: $e');
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _unreadNotificationCount = 0;
           _notificationsError = e.toString();
         });
@@ -671,7 +672,7 @@ class _HomeScreenState extends State<HomeScreen> {
         DateTime.now().difference(_cachedWeatherFetchedAt!) <
             _weatherRefreshInterval) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _weatherSnapshot = _cachedWeatherSnapshot;
           _weatherError = null;
           _isWeatherLoading = false;
@@ -680,7 +681,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    setState(() {
+    safeSetState(() {
       _isWeatherLoading = true;
       _weatherError = null;
     });
@@ -790,7 +791,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _cachedWeatherFetchedAt = snapshot.fetchedAt;
 
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _weatherSnapshot = snapshot;
           _isWeatherLoading = false;
         });
@@ -799,7 +800,7 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint(
           '⚠️ Weather rate limited by ${e.source}. Using cached data when available.');
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _weatherError =
               'Máy chủ thời tiết đang tạm giới hạn. Thử lại sau ít phút.';
           _isWeatherLoading = false;
@@ -809,7 +810,7 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint('⚠️ Không thể tải thời tiết: $e');
       debugPrint('↪ Weather stack trace: $stack');
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _weatherError = 'Không thể cập nhật thời tiết';
           _isWeatherLoading = false;
         });
@@ -890,7 +891,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await prefs.setString(_selectedUnitPrefsKey, unitId);
 
     if (mounted) {
-      setState(() {
+      safeSetState(() {
         _selectedUnitId = unitId;
       });
     }
@@ -2331,12 +2332,12 @@ class _FeatureGridTile extends StatefulWidget {
   State<_FeatureGridTile> createState() => _FeatureGridTileState();
 }
 
-class _FeatureGridTileState extends State<_FeatureGridTile> {
+class _FeatureGridTileState extends State<_FeatureGridTile> with SafeStateMixin<_FeatureGridTile> {
   bool _hover = false;
   bool _pressed = false;
 
-  void _onEnter(bool hover) => setState(() => _hover = hover);
-  void _onPressed(bool pressed) => setState(() => _pressed = pressed);
+  void _onEnter(bool hover) => safeSetState(() => _hover = hover);
+  void _onPressed(bool pressed) => safeSetState(() => _pressed = pressed);
 
   @override
   Widget build(BuildContext context) {
@@ -2691,4 +2692,5 @@ class _WeatherRateLimitException implements Exception {
 
   final String source;
 }
+
 

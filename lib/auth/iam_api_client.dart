@@ -17,7 +17,7 @@ class IamApiClient {
   }
 
   static String get baseUrl =>
-      ApiClient.buildServiceBase(path: '/api/iam');
+      ApiClient.buildServiceBase(path: '/iam');
 
   static Dio createPublicDio() {
     assert(

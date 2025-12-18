@@ -6,6 +6,7 @@ import 'chat_service.dart';
 import '../models/chat/friend.dart';
 import '../auth/api_client.dart';
 
+import '../core/safe_state_mixin.dart';
 class CreateGroupScreen extends StatefulWidget {
   const CreateGroupScreen({super.key});
 
@@ -13,7 +14,7 @@ class CreateGroupScreen extends StatefulWidget {
   State<CreateGroupScreen> createState() => _CreateGroupScreenState();
 }
 
-class _CreateGroupScreenState extends State<CreateGroupScreen> {
+class _CreateGroupScreenState extends State<CreateGroupScreen> with SafeStateMixin<CreateGroupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -56,7 +57,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     
     // Only search if at least 3 digits
     if (normalizedPhone.length < 3) {
-      setState(() {
+      safeSetState(() {
         _phoneSuggestions = [];
         _isSearchingPhone = false;
       });
@@ -65,7 +66,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     
     // Debounce: wait 500ms before searching
     _phoneSearchDebounce = Timer(const Duration(milliseconds: 500), () async {
-      setState(() {
+      safeSetState(() {
         _isSearchingPhone = true;
       });
       
@@ -77,7 +78,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
         
         if (mounted) {
           final List<dynamic> data = response.data ?? [];
-          setState(() {
+          safeSetState(() {
             _phoneSuggestions = data.map((item) => {
               'id': item['id']?.toString() ?? '',
               'fullName': item['fullName']?.toString() ?? '',
@@ -89,7 +90,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       } catch (e) {
         debugPrint('⚠️ [CreateGroupScreen] Error searching residents by phone: $e');
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _phoneSuggestions = [];
             _isSearchingPhone = false;
           });
@@ -113,7 +114,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       return;
     }
     
-    setState(() {
+    safeSetState(() {
       _phoneNumbers.add(normalizedPhone);
       _phoneController.clear();
       _phoneSuggestions = [];
@@ -121,21 +122,21 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   }
 
   Future<void> _loadFriends() async {
-    setState(() {
+    safeSetState(() {
       _isLoadingFriends = true;
     });
 
     try {
       final friends = await _service.getFriends();
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _friends = friends;
           _isLoadingFriends = false;
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isLoadingFriends = false;
         });
         // Don't show error, just log it - friends list is optional
@@ -145,7 +146,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   }
 
   void _toggleFriendSelection(String friendId) {
-    setState(() {
+    safeSetState(() {
       if (_selectedFriendIds.contains(friendId)) {
         _selectedFriendIds.remove(friendId);
       } else {
@@ -177,14 +178,14 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       return;
     }
 
-    setState(() {
+    safeSetState(() {
       _phoneNumbers.add(phone);
       _phoneController.clear();
     });
   }
 
   void _removePhoneNumber(String phone) {
-    setState(() {
+    safeSetState(() {
       _phoneNumbers.remove(phone);
     });
   }
@@ -199,7 +200,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
 
     try {
       final group = await _service.createGroup(
@@ -259,7 +260,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        safeSetState(() => _isLoading = false);
       }
     }
   }
@@ -521,6 +522,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     );
   }
 }
+
 
 
 

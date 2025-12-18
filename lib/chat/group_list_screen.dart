@@ -16,6 +16,7 @@ import '../auth/token_storage.dart';
 import '../core/event_bus.dart';
 import '../models/marketplace_post.dart';
 
+import '../core/safe_state_mixin.dart';
 class GroupListScreen extends StatefulWidget {
   final MarketplacePost? sharePost;
   
@@ -25,7 +26,7 @@ class GroupListScreen extends StatefulWidget {
   State<GroupListScreen> createState() => _GroupListScreenState();
 }
 
-class _GroupListScreenState extends State<GroupListScreen> {
+class _GroupListScreenState extends State<GroupListScreen> with SafeStateMixin<GroupListScreen> {
   late final ChatViewModel _viewModel;
   final ChatService _chatService = ChatService();
   final TokenStorage _tokenStorage = TokenStorage();
@@ -70,20 +71,20 @@ class _GroupListScreenState extends State<GroupListScreen> {
 
   Future<void> _loadCurrentResidentId() async {
     _currentResidentId = await _tokenStorage.readResidentId();
-    if (mounted) setState(() {});
+    if (mounted) safeSetState(() {});
   }
 
   Future<void> _loadInvitationsCount() async {
     try {
       final invitations = await _chatService.getMyPendingInvitations();
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _pendingInvitationsCount = invitations.length;
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _pendingInvitationsCount = 0;
         });
       }
@@ -94,18 +95,18 @@ class _GroupListScreenState extends State<GroupListScreen> {
     try {
       final count = await _chatService.countPendingDirectInvitations();
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _pendingDirectInvitationsCount = count;
         });
         // Force rebuild to ensure UI updates
         if (mounted) {
-          setState(() {});
+          safeSetState(() {});
         }
       }
     } catch (e) {
       // Error handled silently
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _pendingDirectInvitationsCount = 0;
         });
       }
@@ -122,7 +123,7 @@ class _GroupListScreenState extends State<GroupListScreen> {
       
       if (mounted) {
         print('📋 [GroupListScreen] Widget is mounted, updating state...');
-        setState(() {
+        safeSetState(() {
           _directConversations = conversations;
         });
         print('📋 [GroupListScreen] State updated successfully');
@@ -136,7 +137,7 @@ class _GroupListScreenState extends State<GroupListScreen> {
       print('❌ [GroupListScreen]   Error: $e');
       print('❌ [GroupListScreen]   Stack trace: $stackTrace');
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _directConversations = [];
         });
         print('⚠️ [GroupListScreen] Set _directConversations to empty list due to error');
@@ -1519,6 +1520,7 @@ class _DirectInvitationsSection extends StatelessWidget {
     );
   }
 }
+
 
 
 

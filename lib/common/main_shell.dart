@@ -41,6 +41,7 @@ import '../models/chat/group.dart';
 import '../notifications/realtime_notification_banner.dart';
 import '../widgets/animations/smooth_animations.dart';
 
+import '../core/safe_state_mixin.dart';
 class MainShell extends StatefulWidget {
   final int initialIndex;
   final String? initialSnackMessage;
@@ -55,7 +56,8 @@ class MainShell extends StatefulWidget {
   State<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
+class _MainShellState extends State<MainShell> 
+    with TickerProviderStateMixin, SafeStateMixin<MainShell> {
   int _selectedIndex = 0;
   late final List<Widget> _pages;
   final ApiClient _api = ApiClient();
@@ -1122,7 +1124,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   }
 
   void _onItemTapped(int index) {
-    setState(() => _selectedIndex = index);
+    safeSetState(() => _selectedIndex = index);
   }
 
   @override
@@ -1344,4 +1346,5 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
     );
   }
 }
+
 

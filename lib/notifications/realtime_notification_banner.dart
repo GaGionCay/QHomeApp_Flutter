@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/safe_state_mixin.dart';
 class RealtimeNotificationBanner {
   RealtimeNotificationBanner._();
 
@@ -82,7 +83,7 @@ class _RealtimeNotificationBanner extends StatefulWidget {
 
 class _RealtimeNotificationBannerState
     extends State<_RealtimeNotificationBanner>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, SafeStateMixin<_RealtimeNotificationBanner> {
   late final AnimationController _controller;
   late final Animation<Offset> _slide;
   late final Animation<double> _opacity;
@@ -145,7 +146,7 @@ class _RealtimeNotificationBannerState
   }
 
   void _onVerticalDragUpdate(DragUpdateDetails details) {
-    setState(() {
+    safeSetState(() {
       _dragOffset += details.primaryDelta ?? 0;
     });
   }
@@ -155,7 +156,7 @@ class _RealtimeNotificationBannerState
     if (_dragOffset < -20 || velocity < -500) {
       _dismiss();
     } else {
-      setState(() {
+      safeSetState(() {
         _dragOffset = 0;
       });
     }
@@ -347,6 +348,7 @@ class _DefaultLeadingIcon extends StatelessWidget {
     );
   }
 }
+
 
 
 

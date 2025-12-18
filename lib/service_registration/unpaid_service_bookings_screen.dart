@@ -11,6 +11,7 @@ import '../auth/asset_maintenance_api_client.dart';
 import '../theme/app_colors.dart';
 import 'service_booking_service.dart';
 
+import '../core/safe_state_mixin.dart';
 class UnpaidServiceBookingsScreen extends StatefulWidget {
   const UnpaidServiceBookingsScreen({super.key});
 
@@ -20,7 +21,8 @@ class UnpaidServiceBookingsScreen extends StatefulWidget {
 }
 
 class _UnpaidServiceBookingsScreenState
-    extends State<UnpaidServiceBookingsScreen> {
+    extends State<UnpaidServiceBookingsScreen> 
+    with SafeStateMixin<UnpaidServiceBookingsScreen> {
   late final ServiceBookingService _bookingService;
   final AppLinks _appLinks = AppLinks();
   StreamSubscription<Uri?>? _paymentSub;
@@ -54,7 +56,7 @@ class _UnpaidServiceBookingsScreenState
       debugPrint('⚠️ Không thể khởi tạo dữ liệu ngôn ngữ: $e');
     } finally {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _localeReady = true;
         });
       }
@@ -62,24 +64,24 @@ class _UnpaidServiceBookingsScreenState
   }
 
   Future<void> _loadBookings() async {
-    setState(() {
+    safeSetState(() {
       _loading = true;
       _error = null;
     });
     try {
       final bookings = await _bookingService.getUnpaidBookings();
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _bookings = bookings;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _error = e.toString();
       });
     } finally {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _loading = false;
         });
       }
@@ -438,5 +440,6 @@ class _UnpaidServiceBookingsScreenState
     );
   }
 }
+
 
 

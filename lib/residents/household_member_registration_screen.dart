@@ -6,6 +6,7 @@ import '../models/resident_without_account.dart';
 import '../models/unit_info.dart';
 import 'resident_account_service.dart';
 
+import '../core/safe_state_mixin.dart';
 class HouseholdMemberRegistrationScreen extends StatefulWidget {
   const HouseholdMemberRegistrationScreen({
     super.key,
@@ -20,7 +21,8 @@ class HouseholdMemberRegistrationScreen extends StatefulWidget {
 }
 
 class _HouseholdMemberRegistrationScreenState
-    extends State<HouseholdMemberRegistrationScreen> {
+    extends State<HouseholdMemberRegistrationScreen> 
+    with SafeStateMixin<HouseholdMemberRegistrationScreen> {
   late final ResidentAccountService _service;
   List<ResidentWithoutAccount> _members = [];
   bool _loading = true;
@@ -34,26 +36,26 @@ class _HouseholdMemberRegistrationScreenState
   }
 
   Future<void> _loadMembers() async {
-    setState(() {
+    safeSetState(() {
       _loading = true;
       _error = null;
     });
     try {
       final members = await _service.getResidentsWithoutAccount(widget.unit.id);
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _members = members;
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _error = e.toString();
         });
       }
     } finally {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _loading = false;
         });
       }
@@ -522,6 +524,7 @@ class _HouseholdMemberRegistrationScreenState
   }
 
 }
+
 
 
 

@@ -4,6 +4,7 @@ import '../models/invoice_line.dart';
 import '../theme/app_colors.dart';
 import 'invoice_service.dart';
 
+import '../core/safe_state_mixin.dart';
 class InvoiceDetailScreen extends StatefulWidget {
   final InvoiceLineResponseDto invoiceLine;
   final InvoiceService invoiceService;
@@ -18,7 +19,7 @@ class InvoiceDetailScreen extends StatefulWidget {
   State<InvoiceDetailScreen> createState() => _InvoiceDetailScreenState();
 }
 
-class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
+class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> with SafeStateMixin<InvoiceDetailScreen> {
   Map<String, dynamic>? _invoiceDetail;
   List<dynamic>? _allLines;
   bool _isLoading = true;
@@ -32,26 +33,26 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
 
   Future<void> _loadInvoiceDetail() async {
     try {
-      setState(() {
+      safeSetState(() {
         _isLoading = true;
         _error = null;
       });
 
       final invoiceData = await widget.invoiceService.getInvoiceDetailById(widget.invoiceLine.invoiceId);
       if (invoiceData != null) {
-        setState(() {
+        safeSetState(() {
           _invoiceDetail = invoiceData;
           _allLines = invoiceData['lines'] as List<dynamic>?;
           _isLoading = false;
         });
       } else {
-        setState(() {
+        safeSetState(() {
           _error = 'Không tìm thấy chi tiết hóa đơn';
           _isLoading = false;
         });
       }
     } catch (e) {
-      setState(() {
+      safeSetState(() {
         _error = 'Lỗi khi tải chi tiết hóa đơn: $e';
         _isLoading = false;
       });
@@ -525,3 +526,4 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     );
   }
 }
+

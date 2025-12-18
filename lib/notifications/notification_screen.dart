@@ -15,6 +15,7 @@ import 'widgets/notification_list_skeleton.dart';
 import 'widgets/notification_search_bar.dart';
 import 'widgets/notification_read_status_filter.dart';
 
+import '../core/safe_state_mixin.dart';
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({
     super.key,
@@ -30,7 +31,7 @@ class NotificationScreen extends StatefulWidget {
 }
 
 class _NotificationScreenState extends State<NotificationScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, SafeStateMixin<NotificationScreen> {
   late final NotificationViewModel _viewModel;
   final ScrollController _scrollController = ScrollController();
   final ApiClient _api = ApiClient();
@@ -93,7 +94,7 @@ class _NotificationScreenState extends State<NotificationScreen>
         offset > 24 &&
         !_filtersCollapsed &&
         _viewModel.notifications.isNotEmpty) {
-      setState(() => _filtersCollapsed = true);
+      safeSetState(() => _filtersCollapsed = true);
     }
     _lastScrollOffset = offset;
   }
@@ -135,14 +136,14 @@ class _NotificationScreenState extends State<NotificationScreen>
 
       if (_residentId == null || _residentId!.isEmpty) {
         if (mounted) {
-          setState(() {});
+          safeSetState(() {});
         }
         return;
       }
 
       if (_buildingId == null || _buildingId!.isEmpty) {
         if (mounted) {
-          setState(() {});
+          safeSetState(() {});
         }
         return;
       }
@@ -154,7 +155,7 @@ class _NotificationScreenState extends State<NotificationScreen>
     } catch (e) {
       debugPrint('⚠️ Lỗi lấy residentId/buildingId: $e');
       if (mounted) {
-        setState(() {});
+        safeSetState(() {});
       }
     }
   }
@@ -601,7 +602,7 @@ class _NotificationScreenState extends State<NotificationScreen>
   }
 
   void _toggleFilters() {
-    setState(() => _filtersCollapsed = !_filtersCollapsed);
+    safeSetState(() => _filtersCollapsed = !_filtersCollapsed);
   }
 
   Widget _buildPaginationControls(BuildContext context, NotificationViewModel viewModel) {
@@ -727,4 +728,5 @@ class _NotificationScreenState extends State<NotificationScreen>
     );
   }
 }
+
 

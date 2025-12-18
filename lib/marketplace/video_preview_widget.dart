@@ -7,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import '../auth/api_client.dart';
 
+import '../core/safe_state_mixin.dart';
 /// Widget to display video preview with thumbnail and play button
 /// Supports both local file and network URL
 class VideoPreviewWidget extends StatefulWidget {
@@ -33,7 +34,8 @@ class VideoPreviewWidget extends StatefulWidget {
   State<VideoPreviewWidget> createState() => _VideoPreviewWidgetState();
 }
 
-class _VideoPreviewWidgetState extends State<VideoPreviewWidget> {
+class _VideoPreviewWidgetState extends State<VideoPreviewWidget> 
+    with SafeStateMixin<VideoPreviewWidget> {
   VideoPlayerController? _controller;
   bool _isInitialized = false;
   bool _isLoading = true;
@@ -47,7 +49,7 @@ class _VideoPreviewWidgetState extends State<VideoPreviewWidget> {
     } else if (widget.videoUrl != null) {
       _initializeNetworkVideo();
     } else {
-      setState(() {
+      safeSetState(() {
         _isLoading = false;
         _hasError = true;
       });
@@ -60,7 +62,7 @@ class _VideoPreviewWidgetState extends State<VideoPreviewWidget> {
       await controller.initialize();
       
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _controller = controller;
           _isInitialized = true;
           _isLoading = false;
@@ -69,7 +71,7 @@ class _VideoPreviewWidgetState extends State<VideoPreviewWidget> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isLoading = false;
           _hasError = true;
         });
@@ -99,7 +101,7 @@ class _VideoPreviewWidgetState extends State<VideoPreviewWidget> {
       await _initializeWithRetry(controller, maxRetries: 2);
       
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _controller = controller;
           _isInitialized = true;
           _isLoading = false;
@@ -108,7 +110,7 @@ class _VideoPreviewWidgetState extends State<VideoPreviewWidget> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isLoading = false;
           _hasError = true;
         });
@@ -382,4 +384,6 @@ class _VideoPreviewWidgetState extends State<VideoPreviewWidget> {
 
   // REMOVED: _isImageKitUrl - videos no longer use ImageKit
 }
+
+
 

@@ -14,6 +14,7 @@ import '../service_registration/repair_request_screen.dart';
 import '../service_registration/service_booking_service.dart';
 import '../service_registration/service_list_screen.dart';
 
+import '../core/safe_state_mixin.dart';
 class ServiceCategoryScreen extends StatefulWidget {
   const ServiceCategoryScreen({super.key});
 
@@ -21,7 +22,7 @@ class ServiceCategoryScreen extends StatefulWidget {
   State<ServiceCategoryScreen> createState() => _ServiceCategoryScreenState();
 }
 
-class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
+class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> with SafeStateMixin<ServiceCategoryScreen> {
   late final ServiceBookingService _bookingService;
   final ScrollController _scrollController = ScrollController();
 
@@ -89,18 +90,18 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> {
   }
 
   Future<void> _loadCategories() async {
-    setState(() {
+    safeSetState(() {
       _loadingCategories = true;
       _categoryError = null;
     });
     try {
       final categories = await _bookingService.getActiveCategories();
-      setState(() {
+      safeSetState(() {
         _categories = categories;
         _loadingCategories = false;
       });
     } catch (e) {
-      setState(() {
+      safeSetState(() {
         _categoryError = e.toString();
         _loadingCategories = false;
       });
@@ -1144,4 +1145,5 @@ class _IOSActionButton extends StatelessWidget {
     );
   }
 }
+
 

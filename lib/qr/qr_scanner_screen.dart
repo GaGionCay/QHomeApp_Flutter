@@ -9,6 +9,7 @@ import 'dart:io' show Platform;
 import '../theme/app_colors.dart';
 import 'bank_qr_parser.dart';
 
+import '../core/safe_state_mixin.dart';
 class QrScannerScreen extends StatefulWidget {
   const QrScannerScreen({super.key});
 
@@ -16,7 +17,7 @@ class QrScannerScreen extends StatefulWidget {
   State<QrScannerScreen> createState() => _QrScannerScreenState();
 }
 
-class _QrScannerScreenState extends State<QrScannerScreen> {
+class _QrScannerScreenState extends State<QrScannerScreen> with SafeStateMixin<QrScannerScreen> {
   final MobileScannerController _controller = MobileScannerController(
     detectionSpeed: DetectionSpeed.normal,
     facing: CameraFacing.back,
@@ -967,7 +968,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
 
   void _resetScanner() {
     if (!mounted) return;
-    setState(() {
+    safeSetState(() {
       _isProcessing = false;
       _lastScannedCode = null;
     });
@@ -1007,7 +1008,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                     log('❌ Camera error: $error');
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (mounted) {
-                        setState(() {
+                        safeSetState(() {
                           _hasError = true;
                           _errorMessage = error.toString();
                         });
@@ -1183,7 +1184,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: () {
-                setState(() {
+                safeSetState(() {
                   _hasError = false;
                   _errorMessage = null;
                 });
@@ -1235,6 +1236,7 @@ class _ScannerOverlayPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+
 
 
 
