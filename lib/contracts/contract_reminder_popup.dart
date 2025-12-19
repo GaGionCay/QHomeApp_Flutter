@@ -256,19 +256,20 @@ class _ContractReminderPopupState extends State<ContractReminderPopup>
                         if (widget.contract.isOwner == true)
                           // User là OWNER/TENANT - hiển thị action buttons
                         if (isFinalReminder)
-                          // Final reminder: Only 2 buttons
-                          Row(
+                          // Final reminder: Only 2 buttons - đặt 2 dòng để đảm bảo kích thước đồng đều
+                          Column(
                             children: [
-                              Expanded(
+                              SizedBox(
+                                width: double.infinity,
                                 child: _buildCancelButton(
                                   context,
                                   theme,
                                   isDark,
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                flex: 2,
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
                                 child: _buildRenewButton(
                                   context,
                                   theme,

@@ -156,15 +156,11 @@ class ApiClient {
     await init;
   }
 
-  /// Build service base URL (always returns fixed baseUrl)
-  /// IMPORTANT: _activeBaseUrl already includes /api, so paths should NOT start with /api
-  /// Example: buildServiceBase(path: '/invoices') -> http://host:8989/api/invoices
+ 
   static String buildServiceBase({
     int? port, // Ignored in DEV LOCAL mode
     String path = '',
   }) {
-    // _activeBaseUrl already includes /api (from AppConfig.fullApiBaseUrl)
-    // So we just append the path (which should NOT include /api)
     String normalizedPath = path;
     if (normalizedPath.isNotEmpty && !normalizedPath.startsWith('/')) {
       normalizedPath = '/$normalizedPath';
