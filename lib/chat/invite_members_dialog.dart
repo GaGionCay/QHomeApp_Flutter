@@ -675,15 +675,25 @@ class _InviteMembersDialogState extends State<InviteMembersDialog>
               ],
             ),
             const SizedBox(height: 8),
-            // Tab content
-            SizedBox(
-              height: 400,
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildPhoneInputTab(theme),
-                  _buildFriendsTab(theme),
-                ],
+            // Tab content - reduced height to prevent overflow
+            // Total available height is ~423.5, TabBar is ~48, spacing is 8
+            // So TabBarView should be: 423.5 - 48 - 8 = 367.5, use 365 for safety
+            Flexible(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxHeight: 365,
+                  minHeight: 250,
+                ),
+                child: SizedBox(
+                  height: 365,
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildPhoneInputTab(theme),
+                      _buildFriendsTab(theme),
+                    ],
+                  ),
+                ),
               ),
             ),
           ],
