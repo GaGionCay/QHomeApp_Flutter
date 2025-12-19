@@ -77,28 +77,42 @@ class _MainShellState extends State<MainShell>
   void initState() {
     super.initState();
     _selectedIndex = widget.initialIndex;
-    // DEV LOCAL mode: WebSocket only connects after successful login + profile loaded
-    // Listen for login event to connect WebSocket
+    
+    // Connect WebSocket if user is already logged in (has token)
+    // This handles the case when user navigates from splash screen to MainShell
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      
+      // Check if user has token and connect WebSocket
+      final token = await _api.storage.readAccessToken();
+      if (token != null && token.isNotEmpty) {
+        // Wait a bit for profile to be fully loaded
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted) {
+          _connectWebSocket();
+        }
+      }
+      
+      // Show initial snack message if any
+      final message = widget.initialSnackMessage;
+      if (message != null && message.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    });
+    
+    // Also listen for login event (for when user logs in from MainShell)
     AppEventBus().on('user_logged_in', (_) async {
       // Wait a bit for profile to be fully loaded
       await Future.delayed(const Duration(milliseconds: 500));
       if (mounted) {
-    _connectWebSocket();
+        _connectWebSocket();
       }
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final message = widget.initialSnackMessage;
-      if (message == null || message.isEmpty) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 3),
-        ),
-      );
     });
     _pushSubscription =
         PushNotificationService.instance.notificationClicks.listen(
@@ -136,19 +150,17 @@ class _MainShellState extends State<MainShell>
           _onStompConnected();
         },
         onStompError: (frame) {
-          // Only log critical STOMP errors
-          print('❌ [WebSocket] STOMP error: ${frame.body ?? frame.headers}');
+          debugPrint('❌ [WebSocket] STOMP error: ${frame.body ?? frame.headers}');
         },
         onDisconnect: (_) {
           // Silent disconnect
         },
         onWebSocketError: (error) {
-          // Production-ready: Only log critical connection failures
           final errorStr = error.toString();
           if (errorStr.contains('Connection timed out') || 
               errorStr.contains('Connection refused') ||
               errorStr.contains('HandshakeException')) {
-            print('❌ [WebSocket] Connection failed: $errorStr');
+            debugPrint('❌ [WebSocket] Connection failed: $errorStr');
           }
         },
         stompConnectHeaders: {'Authorization': 'Bearer $token'},
@@ -163,7 +175,7 @@ class _MainShellState extends State<MainShell>
     try {
       _stompClient?.activate();
     } catch (e) {
-      print('❌ [WebSocket] Failed to activate: $e');
+      debugPrint('❌ [WebSocket] Failed to activate: $e');
     }
   }
 
@@ -692,8 +704,6 @@ class _MainShellState extends State<MainShell>
         callback: _handleNotificationFrame,
       );
       debugPrint('✅ Subscribed to /topic/notifications/resident/$_userResidentId');
-    } else {
-      debugPrint('⚠️ Không có residentId, bỏ qua subscribe đến /topic/notifications/resident/{residentId}');
     }
   }
 
@@ -808,18 +818,10 @@ class _MainShellState extends State<MainShell>
   }
 
   void _handleNotificationFrame(StompFrame frame) {
-    debugPrint('🔔 [WebSocket] Received frame, body length: ${frame.body?.length ?? 0}');
-    if (frame.body == null) {
-      debugPrint('⚠️ [WebSocket] Frame body is null');
-      return;
-    }
-    
-    debugPrint('🔔 [WebSocket] Raw frame body: ${frame.body}');
+    if (frame.body == null) return;
     
     try {
       final decoded = json.decode(frame.body!);
-      debugPrint('🔔 [WebSocket] Decoded data type: ${decoded.runtimeType}');
-      debugPrint('🔔 [WebSocket] Decoded data: $decoded');
       
       if (decoded is Map<String, dynamic>) {
         final data = Map<String, dynamic>.from(decoded);
@@ -830,22 +832,13 @@ class _MainShellState extends State<MainShell>
         final eventType = _asString(data['eventType']) ?? _asString(data['action']) ?? 'NOTIFICATION_CREATED';
         final dedupeKey = 'notification:$eventType:$dedupeKeySource';
         
-        debugPrint('🔔 [WebSocket] Parsed: eventType=$eventType, id=$dedupeKeySource');
-        debugPrint('🔔 [WebSocket] Full data keys: ${data.keys.toList()}');
-        
         if (!_markRealtimeKey(dedupeKey)) {
-          debugPrint('ℹ️ Notification đã nhận trước đó, bỏ qua: $dedupeKey');
           return;
         }
 
-        debugPrint('🔔 Received notification via WebSocket: eventType=$eventType, id=$dedupeKeySource');
-
         final shouldDisplay = _shouldDisplayNotification(data);
-        debugPrint('🔔 [WebSocket] Should display: $shouldDisplay, scope: ${data['scope']}, targetBuildingId: ${data['targetBuildingId']}');
         
         if (!shouldDisplay) {
-          debugPrint(
-              'ℹ️ Bỏ qua thông báo không liên quan tới căn hộ của user.');
           return;
         }
 
@@ -871,35 +864,34 @@ class _MainShellState extends State<MainShell>
           _showNotificationBanner(data);
           AppEventBus().emit('notifications_update', data);
           AppEventBus().emit('notifications_incoming', data);
-          debugPrint('✅ Emitted notifications_incoming event');
         } else {
           // For any other event type, still emit notifications_incoming to update count
           AppEventBus().emit('notifications_incoming', data);
-          debugPrint('✅ Emitted notifications_incoming event for eventType: $eventType');
         }
       }
     } catch (e) {
       debugPrint('⚠️ Lỗi parse notification realtime: $e');
-      debugPrint('⚠️ Frame body: ${frame.body}');
     }
   }
 
   bool _shouldDisplayNotification(Map<String, dynamic> data) {
     final scope = _asString(data['scope'])?.toUpperCase();
-    debugPrint('🔔 [WebSocket] Checking display: scope=$scope, userBuildingIds=${_userBuildingIds.toList()}');
+    final targetResidentId = _asString(data['targetResidentId']);
+    final targetBuildingId = _asString(data['targetBuildingId']);
     
+    // PRIVATE notification: If targetResidentId is set, only show to that specific resident
+    if (targetResidentId != null && targetResidentId.isNotEmpty) {
+      return _userResidentId != null && _userResidentId == targetResidentId;
+    }
+    
+    // PUBLIC notification: Check by scope and targetBuildingId
     if (scope == 'EXTERNAL') {
-      final target = _asString(data['targetBuildingId']);
-      debugPrint('🔔 [WebSocket] EXTERNAL notification, targetBuildingId=$target');
-      if (target == null || target.isEmpty) {
-        debugPrint('🔔 [WebSocket] No targetBuildingId, should display: true');
+      if (targetBuildingId == null || targetBuildingId.isEmpty) {
         return true;
       }
-      final shouldDisplay = _userBuildingIds.contains(target.toLowerCase());
-      debugPrint('🔔 [WebSocket] Target building match: $shouldDisplay (target: $target, userBuildings: ${_userBuildingIds.toList()})');
-      return shouldDisplay;
+      return _userBuildingIds.contains(targetBuildingId.toLowerCase());
     }
-    debugPrint('🔔 [WebSocket] Scope is not EXTERNAL, should display: true');
+    
     return true;
   }
 
@@ -1028,6 +1020,7 @@ class _MainShellState extends State<MainShell>
         scope: (data['scope'] ?? 'EXTERNAL').toString(),
         targetRole: data['targetRole']?.toString(),
         targetBuildingId: data['targetBuildingId']?.toString(),
+        targetResidentId: data['targetResidentId']?.toString(),
         referenceId: referenceId,
         referenceType: data['referenceType']?.toString(),
         actionUrl: actionUrl,

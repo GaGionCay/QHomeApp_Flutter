@@ -6,6 +6,7 @@ class ResidentNotification {
   final String scope;
   final String? targetRole;
   final String? targetBuildingId;
+  final String? targetResidentId; // For private notifications (riêng tư)
   final String? referenceId;
   final String? referenceType;
   final String? actionUrl;
@@ -23,6 +24,7 @@ class ResidentNotification {
     required this.scope,
     this.targetRole,
     this.targetBuildingId,
+    this.targetResidentId,
     this.referenceId,
     this.referenceType,
     this.actionUrl,
@@ -42,6 +44,7 @@ class ResidentNotification {
       scope: json['scope'] ?? '',
       targetRole: json['targetRole'],
       targetBuildingId: json['targetBuildingId'],
+      targetResidentId: json['targetResidentId'],
       referenceId: json['referenceId'],
       referenceType: json['referenceType'],
       actionUrl: json['actionUrl'],
@@ -65,6 +68,7 @@ class ResidentNotification {
       scope: scope,
       targetRole: targetRole,
       targetBuildingId: targetBuildingId,
+      targetResidentId: targetResidentId,
       referenceId: referenceId,
       referenceType: referenceType,
       actionUrl: actionUrl,

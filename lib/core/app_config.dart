@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 
 class AppConfig {
   static String get apiBaseUrl {
-    return 'http://10.113.121.236:8989';
+    return 'http://192.168.100.33:8989';
     
   }
   
