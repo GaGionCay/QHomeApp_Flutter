@@ -136,6 +136,13 @@ class _HomeScreenState extends State<HomeScreen> with SafeStateMixin<HomeScreen>
       // Cleaning request removed - no longer used
     // await _loadCleaningRequestState();
     });
+    _eventBus.on('contract_cancelled', (_) async {
+      debugPrint('🔔 HomeScreen nhận event contract_cancelled -> refresh units và data...');
+      // Refresh units to update _ownerUnits (units where user is primary resident)
+      // After contract cancellation, household is deactivated, so unit won't be in _ownerUnits anymore
+      await _loadUnitContext();
+      await _refreshAll();
+    });
     // Listen for new incoming notifications via WebSocket - update count immediately without API call
     _eventBus.on('notifications_incoming', (data) async {
       debugPrint(

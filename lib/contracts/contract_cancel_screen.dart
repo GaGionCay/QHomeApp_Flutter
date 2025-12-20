@@ -7,6 +7,7 @@ import '../models/contract.dart';
 import '../theme/app_colors.dart';
 import '../auth/base_service_client.dart';
 import 'contract_service.dart';
+import '../core/event_bus.dart';
 
 class ContractCancelScreen extends StatefulWidget {
   final ContractDto contract;
@@ -36,6 +37,7 @@ class _ContractCancelScreenState extends State<ContractCancelScreen>
   late DateTime _cancelMonth;
   
   late final BaseServiceClient _baseServiceClient;
+  final _eventBus = AppEventBus();
 
   @override
   void initState() {
@@ -343,6 +345,14 @@ class _ContractCancelScreenState extends State<ContractCancelScreen>
             margin: const EdgeInsets.all(16),
           ),
         );
+        
+        // Emit event to refresh units and household data after contract cancellation
+        // This ensures home screen and other screens refresh to reflect that user is no longer Owner
+        _eventBus.emit('contract_cancelled', {
+          'contractId': widget.contract.id,
+          'unitId': widget.contract.unitId,
+        });
+        
         Navigator.of(context).pop(true); 
       } else {
         setState(() {

@@ -16,6 +16,7 @@ import '../auth/api_client.dart';
 import '../contracts/contract_service.dart';
 import '../core/app_router.dart';
 import '../core/safe_state_mixin.dart';
+import '../core/event_bus.dart';
 import '../models/unit_info.dart';
 import '../profile/profile_service.dart';
 import '../services/card_pricing_service.dart';
@@ -69,6 +70,8 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   List<Map<String, dynamic>> _householdMembers = [];
   bool _loadingHouseholdMembers = false;
   bool _isOwner = false; // Track xem user có phải OWNER không
+  final _eventBus = AppEventBus();
+  StreamSubscription? _contractCancelledSub;
 
   Future<Dio> _servicesCardClient() async {
     if (_servicesCardDio == null) {
@@ -126,6 +129,15 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
     _setupAutoSave();
     _checkPendingPayment();
     _loadCardPrice();
+    
+    // Listen for contract cancellation event to refresh Owner status
+    _contractCancelledSub = _eventBus.on('contract_cancelled', (_) async {
+      debugPrint('🔔 [ResidentCard] Nhận event contract_cancelled -> refresh Owner status...');
+      // Refresh Owner status if unit is selected
+      if (_selectedUnitId != null && _selectedUnitId!.isNotEmpty) {
+        await _loadHouseholdMembers();
+      }
+    });
   }
 
   void _navigateToServicesHome({String? snackMessage}) {
@@ -206,6 +218,7 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _paymentSub?.cancel();
+    _contractCancelledSub?.cancel();
     
     // SafeStateMixin will automatically dispose all registered controllers
     // and cancel any registered subscriptions/timers

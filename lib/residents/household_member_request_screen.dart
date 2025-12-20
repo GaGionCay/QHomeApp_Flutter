@@ -16,6 +16,7 @@ import '../services/imagekit_service.dart';
 import 'household_member_request_service.dart';
 
 import '../core/safe_state_mixin.dart';
+import '../core/event_bus.dart';
 class HouseholdMemberRequestScreen extends StatefulWidget {
   const HouseholdMemberRequestScreen({
     super.key,
@@ -59,6 +60,8 @@ class _HouseholdMemberRequestScreenState
   Household? _currentHousehold;
   bool _loadingHousehold = false;
   String? _householdError;
+  final _eventBus = AppEventBus();
+  StreamSubscription? _contractCancelledSub;
 
   // Email verification state
   bool _emailVerified = false;
@@ -102,6 +105,15 @@ class _HouseholdMemberRequestScreenState
     _imageKitService = ImageKitService(apiClient);
     _loadHousehold(widget.unit.id);
     
+    // Listen for contract cancellation event to refresh household
+    _contractCancelledSub = _eventBus.on('contract_cancelled', (data) async {
+      debugPrint('🔔 [HouseholdMemberRequest] Nhận event contract_cancelled -> refresh household...');
+      // Refresh household if the cancelled contract is for this unit
+      if (data is Map && data['unitId']?.toString() == widget.unit.id) {
+        await _loadHousehold(widget.unit.id);
+      }
+    });
+    
     // Reset email verified state when email changes and trigger rebuild for OTP button
     _emailCtrl.addListener(() {
       if (_emailVerified) {
@@ -120,6 +132,7 @@ class _HouseholdMemberRequestScreenState
   @override
   void dispose() {
     _otpTimer?.cancel();
+    _contractCancelledSub?.cancel();
     _cccdOcrService.dispose();
     _fullNameCtrl.dispose();
     _phoneCtrl.dispose();
