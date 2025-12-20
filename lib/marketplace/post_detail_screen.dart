@@ -186,45 +186,355 @@ class _PostDetailScreenState extends State<PostDetailScreen>
 
   /// Edit a comment
   Future<void> _editComment(BuildContext context, MarketplaceComment comment) async {
-    final textController = TextEditingController(text: comment.content);
+    final textController = TextEditingController(text: comment.content ?? '');
+    XFile? editImage;
+    XFile? editVideo;
+    bool removeImage = false;
+    bool removeVideo = false;
     
-    final result = await showDialog<String>(
+    // Load existing image/video if any
+    String? existingImageUrl = comment.imageUrl;
+    String? existingVideoUrl = comment.videoUrl;
+    
+    final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Chỉnh sửa bình luận'),
-        content: TextField(
-          controller: textController,
-          autofocus: true,
-          maxLines: 5,
-          decoration: const InputDecoration(
-            hintText: 'Nhập nội dung bình luận...',
-            border: OutlineInputBorder(),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Chỉnh sửa bình luận'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: textController,
+                  autofocus: true,
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    hintText: 'Nhập nội dung bình luận...',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Show existing image/video or new selection
+                if (existingImageUrl != null && !removeImage && editImage == null)
+                  Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: CachedNetworkImage(
+                          imageUrl: existingImageUrl,
+                          width: 200,
+                          height: 200,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.black54,
+                            padding: const EdgeInsets.all(4),
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              removeImage = true;
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                if (existingVideoUrl != null && !removeVideo && editVideo == null)
+                  Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: 200,
+                          height: 200,
+                          color: Colors.black,
+                          child: const Center(
+                            child: Icon(Icons.play_circle_outline, color: Colors.white, size: 48),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.black54,
+                            padding: const EdgeInsets.all(4),
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              removeVideo = true;
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                if (editImage != null)
+                  Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(
+                          File(editImage.path),
+                          width: 200,
+                          height: 200,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.black54,
+                            padding: const EdgeInsets.all(4),
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              editImage = null;
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                if (editVideo != null)
+                  Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: 200,
+                          height: 200,
+                          color: Colors.black,
+                          child: const Center(
+                            child: Icon(Icons.play_circle_outline, color: Colors.white, size: 48),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.black54,
+                            padding: const EdgeInsets.all(4),
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              editVideo = null;
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    TextButton.icon(
+                      onPressed: () async {
+                        final image = await _imagePicker.pickImage(source: ImageSource.gallery);
+                        if (image != null) {
+                          setState(() {
+                            editImage = image;
+                            editVideo = null; // Remove video if image is selected
+                            removeImage = false;
+                            removeVideo = true; // Remove existing video
+                          });
+                        }
+                      },
+                      icon: const Icon(Icons.photo_library),
+                      label: const Text('Chọn ảnh'),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      onPressed: () async {
+                        final video = await _imagePicker.pickVideo(source: ImageSource.gallery);
+                        if (video != null) {
+                          setState(() {
+                            editVideo = video;
+                            editImage = null; // Remove image if video is selected
+                            removeVideo = false;
+                            removeImage = true; // Remove existing image
+                          });
+                        }
+                      },
+                      icon: const Icon(Icons.video_library),
+                      label: const Text('Chọn video'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Hủy'),
+            ),
+            TextButton(
+              onPressed: () {
+                final newContent = textController.text.trim();
+                final hasContent = newContent.isNotEmpty;
+                final hasImage = (editImage != null) || (existingImageUrl != null && !removeImage);
+                final hasVideo = (editVideo != null) || (existingVideoUrl != null && !removeVideo);
+                
+                if (hasContent || hasImage || hasVideo) {
+                  Navigator.pop(context, {
+                    'content': newContent,
+                    'editImage': editImage,
+                    'editVideo': editVideo,
+                    'removeImage': removeImage,
+                    'removeVideo': removeVideo,
+                  });
+                }
+              },
+              child: const Text('Lưu'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Hủy'),
-          ),
-          TextButton(
-            onPressed: () {
-              final newContent = textController.text.trim();
-              if (newContent.isNotEmpty) {
-                Navigator.pop(context, newContent);
-              }
-            },
-            child: const Text('Lưu'),
-          ),
-        ],
       ),
     );
 
-    if (result != null && result.isNotEmpty && context.mounted) {
+    if (result != null && context.mounted) {
       try {
-        await _marketplaceService.updateComment(widget.post.id, comment.id, result);
+        String? imageUrl;
+        String? videoUrl;
+        
+        // Upload new image if selected
+        if (result['editImage'] != null) {
+          try {
+            imageUrl = await _imageKitService.uploadImage(
+              file: result['editImage'] as XFile,
+              folder: 'marketplace/comments/${widget.post.id}',
+            );
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Lỗi khi upload ảnh: ${e.toString()}')),
+              );
+            }
+            return;
+          }
+        } else if (result['removeImage'] == true) {
+          // Remove image
+          imageUrl = null;
+        } else if (existingImageUrl != null) {
+          // Keep existing image
+          imageUrl = existingImageUrl;
+        }
+        
+        // Upload new video if selected
+        if (result['editVideo'] != null) {
+          try {
+            final userId = await _apiClient.storage.readUserId();
+            if (userId == null) {
+              throw Exception('Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.');
+            }
+            
+            final videoFile = result['editVideo'] as XFile;
+            
+            // Nén video trước khi upload
+            final compressedFile = await VideoCompressionService.instance.compressVideo(
+              videoPath: videoFile.path,
+              onProgress: (message) {},
+            );
+            
+            final videoFileToUpload = compressedFile ?? File(videoFile.path);
+            
+            // Lấy video metadata
+            String? resolution;
+            int? durationSeconds;
+            int? width;
+            int? height;
+            
+            try {
+              final mediaInfo = await VideoCompress.getMediaInfo(videoFileToUpload.path);
+              if (mediaInfo != null) {
+                if (mediaInfo.width != null && mediaInfo.height != null) {
+                  width = mediaInfo.width;
+                  height = mediaInfo.height;
+                  if (height! <= 360) {
+                    resolution = '360p';
+                  } else if (height! <= 480) {
+                    resolution = '480p';
+                  } else if (height! <= 720) {
+                    resolution = '720p';
+                  } else {
+                    resolution = '1080p';
+                  }
+                }
+                if (mediaInfo.duration != null) {
+                  durationSeconds = (mediaInfo.duration! / 1000).round();
+                }
+              }
+            } catch (e) {
+              // Metadata extraction failed - continue without it
+            }
+            
+            // Upload video
+            final videoData = await _videoUploadService.uploadVideo(
+              file: videoFileToUpload,
+              category: 'marketplace_comment',
+              ownerId: widget.post.id,
+              uploadedBy: userId,
+              resolution: resolution,
+              durationSeconds: durationSeconds,
+              width: width,
+              height: height,
+            );
+            
+            videoUrl = videoData['streamingUrl'] as String;
+            
+            // Xóa file nén nếu khác file gốc
+            if (compressedFile != null && compressedFile.path != videoFile.path) {
+              try {
+                await compressedFile.delete();
+              } catch (e) {
+                // Failed to delete - not critical
+              }
+            }
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Lỗi khi upload video: ${e.toString()}')),
+              );
+            }
+            return;
+          }
+        } else if (result['removeVideo'] == true) {
+          // Remove video
+          videoUrl = null;
+        } else if (existingVideoUrl != null) {
+          // Keep existing video
+          videoUrl = existingVideoUrl;
+        }
+        
+        // Update comment
+        await _marketplaceService.updateComment(
+          postId: widget.post.id,
+          commentId: comment.id,
+          content: result['content'] as String?,
+          imageUrl: imageUrl,
+          videoUrl: videoUrl,
+        );
+        
         if (context.mounted) {
-          // Update comment in local state without reloading
-          _updateCommentInTree(comment.id, result);
+          // Update comment in local state
+          _updateCommentInTree(comment.id, result['content'] as String?, imageUrl, videoUrl);
           
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -2407,9 +2717,9 @@ class _PostDetailScreenState extends State<PostDetailScreen>
   }
 
   /// Update comment content in the comment tree recursively
-  void _updateCommentInTree(String commentId, String newContent) {
+  void _updateCommentInTree(String commentId, String? newContent, [String? newImageUrl, String? newVideoUrl]) {
     final updatedComments = _comments.map((comment) {
-      return _updateCommentInTreeRecursive(comment, commentId, newContent);
+      return _updateCommentInTreeRecursive(comment, commentId, newContent, newImageUrl, newVideoUrl);
     }).toList();
     
     safeSetState(() {
@@ -2418,7 +2728,8 @@ class _PostDetailScreenState extends State<PostDetailScreen>
   }
   
   /// Recursively update comment in tree
-  MarketplaceComment _updateCommentInTreeRecursive(MarketplaceComment comment, String commentId, String newContent) {
+  MarketplaceComment _updateCommentInTreeRecursive(
+      MarketplaceComment comment, String commentId, String? newContent, String? newImageUrl, String? newVideoUrl) {
     if (comment.id == commentId) {
       // Found the comment to update
       return MarketplaceComment(
@@ -2433,13 +2744,13 @@ class _PostDetailScreenState extends State<PostDetailScreen>
         createdAt: comment.createdAt,
         updatedAt: DateTime.now(),
         isDeleted: comment.isDeleted,
-        imageUrl: comment.imageUrl,
-        videoUrl: comment.videoUrl,
+        imageUrl: newImageUrl ?? comment.imageUrl,
+        videoUrl: newVideoUrl ?? comment.videoUrl,
       );
     } else {
       // Recursively update replies
       final updatedReplies = comment.replies.map((reply) {
-        return _updateCommentInTreeRecursive(reply, commentId, newContent);
+        return _updateCommentInTreeRecursive(reply, commentId, newContent, newImageUrl, newVideoUrl);
       }).toList();
       
       return MarketplaceComment(

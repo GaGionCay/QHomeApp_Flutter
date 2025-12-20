@@ -514,11 +514,22 @@ class MarketplaceService {
   }
 
   /// Cập nhật comment
-  Future<MarketplaceComment> updateComment(String postId, String commentId, String content) async {
+  Future<MarketplaceComment> updateComment({
+    required String postId,
+    required String commentId,
+    String? content,
+    String? imageUrl,
+    String? videoUrl,
+  }) async {
     try {
+      final data = <String, dynamic>{};
+      if (content != null) data['content'] = content;
+      if (imageUrl != null) data['imageUrl'] = imageUrl;
+      if (videoUrl != null) data['videoUrl'] = videoUrl;
+      
       final response = await _apiClient.dio.put(
         '/posts/$postId/comments/$commentId',
-        data: {'content': content},
+        data: data,
       );
       return MarketplaceComment.fromJson(response.data);
     } catch (e) {
