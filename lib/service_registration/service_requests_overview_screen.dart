@@ -19,6 +19,7 @@ import '../theme/app_colors.dart';
 // Cleaning request removed - no longer used
 // import 'cleaning_request_service.dart';
 import 'maintenance_request_service.dart';
+import 'common_area_maintenance_request_service.dart';
 
 import '../core/safe_state_mixin.dart';
 class ServiceRequestsOverviewScreen extends StatefulWidget {
@@ -36,12 +37,14 @@ class _ServiceRequestsOverviewScreenState
   // Cleaning request removed - no longer used
   // late final CleaningRequestService _cleaningService;
   late final MaintenanceRequestService _maintenanceService;
+  late final CommonAreaMaintenanceRequestService _commonAreaMaintenanceService;
   late final AppEventBus _eventBus;
 
   // Cleaning request removed - no longer used
   // List<CleaningRequestSummary> _cleaningRequests = const [];
   // List<dynamic> _cleaningRequests = const [];
   List<MaintenanceRequestSummary> _maintenanceRequests = const [];
+  List<CommonAreaMaintenanceRequestSummary> _commonAreaMaintenanceRequests = const [];
   bool _loading = true;
   String? _error;
   // int? _cleaningTotal;
@@ -52,11 +55,14 @@ class _ServiceRequestsOverviewScreenState
   final _dateFormatter = DateFormat('dd/MM/yyyy');
   final _timeFormatter = DateFormat('HH:mm');
   final Set<String> _cancellingRequestIds = {};
+  final Set<String> _cancellingCommonAreaRequestIds = {};
   // Cleaning request removed - no longer used
   // final Set<String> _resendingRequestIds = {};
   final Set<String> _resendingMaintenanceRequestIds = {};
   final Set<String> _approvingResponseIds = {};
   final Set<String> _rejectingResponseIds = {};
+  final Set<String> _approvingCommonAreaResponseIds = {};
+  final Set<String> _rejectingCommonAreaResponseIds = {};
   MaintenanceRequestConfig? _maintenanceConfig;
   static const int _pageSize = 6;
 
@@ -67,6 +73,7 @@ class _ServiceRequestsOverviewScreenState
     // Cleaning request removed - no longer used
     // _cleaningService = CleaningRequestService(_apiClient);
     _maintenanceService = MaintenanceRequestService(_apiClient);
+    _commonAreaMaintenanceService = CommonAreaMaintenanceRequestService(_apiClient);
     _eventBus = AppEventBus();
     _loadData();
     _loadMaintenanceConfig();
@@ -127,13 +134,18 @@ class _ServiceRequestsOverviewScreenState
         limit: _pageSize,
         offset: 0,
       );
+      final commonAreaMaintenanceFuture = _commonAreaMaintenanceService.getMyRequests();
       // final cleaningPage = await cleaningFuture;
       final maintenancePage = await maintenanceFuture;
+      final commonAreaMaintenanceList = await commonAreaMaintenanceFuture;
       if (!mounted) return;
       safeSetState(() {
         // Cleaning request removed - no longer used
         // _cleaningRequests = [];
         _maintenanceRequests = maintenancePage.requests;
+        _commonAreaMaintenanceRequests = commonAreaMaintenanceList
+            .map((json) => CommonAreaMaintenanceRequestSummary.fromJson(json))
+            .toList();
         // _cleaningTotal = 0;
         _maintenanceTotal = maintenancePage.total;
         _loading = false;
@@ -537,18 +549,32 @@ class _ServiceRequestsOverviewScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Yêu cầu dịch vụ'),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Yêu cầu dịch vụ'),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'Sửa chữa trong căn hộ'),
+              Tab(text: 'Bảo trì khu vực chung'),
+            ],
+          ),
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? _ErrorState(
+                    message: _error!,
+                    onRetry: _loadData,
+                  )
+                : TabBarView(
+                    children: [
+                      _buildMaintenanceTab(),
+                      _buildCommonAreaMaintenanceTab(),
+                    ],
+                  ),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? _ErrorState(
-                  message: _error!,
-                  onRetry: _loadData,
-                )
-              : _buildMaintenanceTab(),
     );
   }
 
@@ -616,6 +642,211 @@ class _ServiceRequestsOverviewScreenState
                 return _buildLoadMoreTile(isCleaning: false);
               },
             ),
+    );
+  }
+
+  Widget _buildCommonAreaMaintenanceTab() {
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: _commonAreaMaintenanceRequests.isEmpty
+          ? const _EmptyState(
+              icon: Icons.apartment_outlined,
+              message: 'Bạn chưa có yêu cầu bảo trì khu vực chung nào.',
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.all(16),
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemCount: _commonAreaMaintenanceRequests.length,
+              itemBuilder: (context, index) {
+                final request = _commonAreaMaintenanceRequests[index];
+                final hasPendingResponse = request.hasPendingResponse;
+                return _RequestCard(
+                  icon: Icons.apartment_outlined,
+                  accent: const Color(0xFF5C6BC0),
+                  title: request.title,
+                  subtitle: '${request.areaType} • ${request.location}',
+                  note: request.note,
+                  status: request.status,
+                  createdAt: request.createdAt,
+                  lastResentAt: null,
+                  onCancel: null,
+                  isCanceling: _cancellingCommonAreaRequestIds.contains(request.id),
+                  onResend: null,
+                  isResending: false,
+                  onCall: null,
+                  adminResponse: request.adminResponse,
+                  estimatedCost: request.estimatedCost,
+                  respondedAt: request.respondedAt,
+                  hasPendingResponse: hasPendingResponse,
+                  onApproveResponse: hasPendingResponse
+                      ? () => _approveCommonAreaMaintenanceResponse(request.id)
+                      : null,
+                  onRejectResponse: hasPendingResponse
+                      ? () => _rejectCommonAreaMaintenanceResponse(request.id)
+                      : null,
+                  isApprovingResponse: _approvingCommonAreaResponseIds.contains(request.id),
+                  isRejectingResponse: _rejectingCommonAreaResponseIds.contains(request.id),
+                  onTap: () => _showCommonAreaMaintenanceRequestDetail(context, request),
+                );
+              },
+            ),
+    );
+  }
+
+  Future<void> _approveCommonAreaMaintenanceResponse(String requestId) async {
+    if (_approvingCommonAreaResponseIds.contains(requestId)) return;
+    safeSetState(() => _approvingCommonAreaResponseIds.add(requestId));
+    try {
+      await _commonAreaMaintenanceService.approveResponse(requestId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã xác nhận phản hồi từ admin. Yêu cầu đang được xử lý.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+      await _loadData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể xác nhận phản hồi: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        safeSetState(() => _approvingCommonAreaResponseIds.remove(requestId));
+      }
+    }
+  }
+
+  Future<void> _rejectCommonAreaMaintenanceResponse(String requestId) async {
+    if (_rejectingCommonAreaResponseIds.contains(requestId)) return;
+    safeSetState(() => _rejectingCommonAreaResponseIds.add(requestId));
+    try {
+      await _commonAreaMaintenanceService.rejectResponse(requestId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã từ chối phản hồi từ admin. Yêu cầu đã được hủy.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+      await _loadData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể từ chối phản hồi: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        safeSetState(() => _rejectingCommonAreaResponseIds.remove(requestId));
+      }
+    }
+  }
+
+  Future<void> _cancelCommonAreaMaintenanceRequest(String requestId, {bool closeDetailSheet = false}) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xác nhận hủy yêu cầu'),
+        content: const Text('Bạn có chắc chắn muốn hủy yêu cầu bảo trì khu vực chung này?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Không'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.danger,
+            ),
+            child: const Text('Có, hủy yêu cầu'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    if (_cancellingCommonAreaRequestIds.contains(requestId)) return;
+    safeSetState(() => _cancellingCommonAreaRequestIds.add(requestId));
+    try {
+      await _commonAreaMaintenanceService.cancelRequest(requestId);
+      if (!mounted) return;
+      
+      if (closeDetailSheet) {
+        Navigator.of(context).pop();
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã hủy yêu cầu bảo trì khu vực chung.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+      await _loadData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể hủy yêu cầu: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        safeSetState(() => _cancellingCommonAreaRequestIds.remove(requestId));
+      }
+    }
+  }
+
+  void _showCommonAreaMaintenanceRequestDetail(
+      BuildContext context, CommonAreaMaintenanceRequestSummary request) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.35),
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).maybePop(),
+                ),
+              ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () {},
+                  child: _CommonAreaMaintenanceRequestDetailSheet(
+                    request: request,
+                    onRefresh: _loadData,
+                    onApproveResponse: request.hasPendingResponse
+                        ? () => _approveCommonAreaMaintenanceResponse(request.id)
+                        : null,
+                    onRejectResponse: request.hasPendingResponse
+                        ? () => _rejectCommonAreaMaintenanceResponse(request.id)
+                        : null,
+                    onCancel: _isCancelable(request.status) && !request.hasPendingResponse
+                        ? () => _cancelCommonAreaMaintenanceRequest(request.id, closeDetailSheet: true)
+                        : null,
+                    isApprovingResponse: _approvingCommonAreaResponseIds.contains(request.id),
+                    isRejectingResponse: _rejectingCommonAreaResponseIds.contains(request.id),
+                    isCanceling: _cancellingCommonAreaRequestIds.contains(request.id),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -1738,6 +1969,637 @@ class _MaintenanceRequestDetailSheet extends StatelessWidget {
                     ),
                   ],
 
+                  if (onCancel != null && !hasPendingResponse) ...[
+                    const SizedBox(height: 18),
+                    OutlinedButton.icon(
+                      onPressed: isCanceling ? null : onCancel,
+                      icon: isCanceling
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.cancel_outlined, color: Colors.red),
+                      label: Text(
+                        isCanceling ? 'Đang hủy...' : 'Hủy yêu cầu',
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        side: const BorderSide(color: Colors.red),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 20,
+                            color: theme.colorScheme.error,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Sau khi hủy, yêu cầu này sẽ không thể tiếp tục xử lý.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CommonAreaMaintenanceRequestDetailSheet extends StatelessWidget {
+  _CommonAreaMaintenanceRequestDetailSheet({
+    required this.request,
+    required this.onRefresh,
+    this.onApproveResponse,
+    this.onRejectResponse,
+    this.onCancel,
+    this.isApprovingResponse = false,
+    this.isRejectingResponse = false,
+    this.isCanceling = false,
+  });
+
+  final CommonAreaMaintenanceRequestSummary request;
+  final VoidCallback onRefresh;
+  final VoidCallback? onApproveResponse;
+  final VoidCallback? onRejectResponse;
+  final VoidCallback? onCancel;
+  final bool isApprovingResponse;
+  final bool isRejectingResponse;
+  final bool isCanceling;
+
+  late final DateFormat _dateTimeFmt = DateFormat('dd/MM/yyyy HH:mm');
+  late final DateFormat _dateFmt = DateFormat('dd/MM/yyyy');
+
+  Color _statusColor(BuildContext context) {
+    final normalized = request.status.toUpperCase();
+    if (normalized.contains('APPROVED') ||
+        normalized.contains('COMPLETED') ||
+        normalized.contains('DONE')) {
+      return AppColors.success;
+    }
+    if (normalized.contains('PENDING') ||
+        normalized.contains('PROCESSING') ||
+        normalized.contains('IN_PROGRESS')) {
+      return AppColors.primaryBlue;
+    }
+    if (normalized.contains('CANCEL') || normalized.contains('REJECT')) {
+      return AppColors.danger;
+    }
+    return Theme.of(context).colorScheme.outline;
+  }
+
+  String _friendlyStatus(String status) {
+    final normalized = status.toUpperCase();
+    if (normalized == 'NEW') return 'Mới';
+    if (normalized.contains('PENDING')) return 'Chờ xử lý';
+    if (normalized.contains('IN_PROGRESS')) return 'Đang xử lý';
+    if (normalized.contains('DONE') || normalized.contains('COMPLETED')) return 'Hoàn thành';
+    if (normalized.contains('CANCEL')) return 'Đã hủy';
+    if (normalized.contains('REJECT') || normalized.contains('DENIED')) return 'Bị từ chối';
+    return status;
+  }
+
+  Widget _buildDetailRow(ThemeData theme, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isDataUri(String url) {
+    return url.startsWith('data:');
+  }
+
+  bool _isVideoUrl(String url) {
+    if (_isDataUri(url)) {
+      return url.toLowerCase().contains('video/');
+    }
+    final lowerUrl = url.toLowerCase();
+    return lowerUrl.contains('.mp4') ||
+        lowerUrl.contains('.mov') ||
+        lowerUrl.contains('.avi') ||
+        lowerUrl.contains('.mkv') ||
+        lowerUrl.contains('.webm') ||
+        lowerUrl.contains('video');
+  }
+
+  Widget _buildAttachmentsGrid(BuildContext context, ThemeData theme, List<String> attachments) {
+    final images = <String>[];
+    final videos = <String>[];
+    
+    for (final attachment in attachments) {
+      if (_isVideoUrl(attachment)) {
+        videos.add(attachment);
+      } else {
+        images.add(attachment);
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (images.isNotEmpty) ...[
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1.0,
+            ),
+            itemCount: images.length,
+            itemBuilder: (context, index) {
+              final imageData = images[index];
+              return GestureDetector(
+                onTap: () => _showImageFullScreen(context, images, index),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: _isDataUri(imageData)
+                      ? Image.memory(
+                          _decodeBase64DataUri(imageData),
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              Container(
+                            color: theme.colorScheme.errorContainer,
+                            child: Icon(
+                              Icons.broken_image,
+                              color: theme.colorScheme.onError,
+                            ),
+                          ),
+                        )
+                      : CachedNetworkImage(
+                          imageUrl: _buildFullUrl(imageData),
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => Container(
+                            color: theme.colorScheme.surfaceContainerHighest,
+                            child: const Center(
+                                child: CircularProgressIndicator()),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            color: theme.colorScheme.errorContainer,
+                            child: Icon(
+                              Icons.broken_image,
+                              color: theme.colorScheme.onError,
+                            ),
+                          ),
+                        ),
+                ),
+              );
+            },
+          ),
+        ],
+        if (videos.isNotEmpty) ...[
+          if (images.isNotEmpty) const SizedBox(height: 12),
+          ...videos.map((videoData) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: ListTile(
+                    leading: Icon(
+                      Icons.videocam,
+                      color: theme.colorScheme.primary,
+                    ),
+                    title: Text(
+                      'Video đính kèm',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    trailing: Icon(
+                      Icons.play_circle_outline,
+                      color: theme.colorScheme.primary,
+                    ),
+                    onTap: () => _openVideo(context, videoData),
+                  ),
+                ),
+              )),
+        ],
+      ],
+    );
+  }
+
+  Uint8List _decodeBase64DataUri(String dataUri) {
+    try {
+      final base64Index = dataUri.indexOf('base64,');
+      if (base64Index == -1) {
+        throw FormatException('Invalid data URI format');
+      }
+      final base64String = dataUri.substring(base64Index + 7);
+      return base64Decode(base64String);
+    } catch (e) {
+      throw FormatException('Failed to decode base64 data URI: $e');
+    }
+  }
+
+  String _buildFullUrl(String url) {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    return ApiClient.fileUrl(url);
+  }
+
+  void _showImageFullScreen(
+      BuildContext context, List<String> imageUrls, int initialIndex) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _AttachmentFullScreenViewer(
+          attachments: imageUrls,
+          initialIndex: initialIndex,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openVideo(BuildContext context, String videoData) async {
+    try {
+      if (!context.mounted) return;
+      
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+      
+      VideoPlayerController controller;
+      
+      try {
+        if (_isDataUri(videoData)) {
+          final videoBytes = _decodeBase64DataUri(videoData);
+          final tempDir = await getTemporaryDirectory();
+          final fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+          final filePath = '${tempDir.path}/$fileName';
+          
+          final file = File(filePath);
+          await file.writeAsBytes(videoBytes);
+          
+          controller = VideoPlayerController.file(file);
+        } else {
+          final fullUrl = _buildFullUrl(videoData);
+          controller = VideoPlayerController.networkUrl(Uri.parse(fullUrl));
+        }
+        
+        await controller.initialize();
+        
+        if (!context.mounted) {
+          controller.dispose();
+          return;
+        }
+        
+        Navigator.of(context).pop();
+        
+        await showDialog(
+          context: context,
+          barrierColor: Colors.black87,
+          builder: (context) => _VideoPlayerDialog(
+            controller: controller,
+            videoUrl: videoData,
+          ),
+        );
+        
+        controller.dispose();
+      } catch (e) {
+        if (context.mounted) {
+          Navigator.of(context).pop();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Không thể tải video: $e'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Không thể mở video: $e'),
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasPendingResponse = request.hasPendingResponse;
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.7,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) => Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.all(20),
+                children: [
+                  Text(
+                    request.title,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _statusColor(context).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      _friendlyStatus(request.status),
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: _statusColor(context),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  _buildDetailRow(theme, 'Mã yêu cầu', request.id),
+                  _buildDetailRow(theme, 'Loại khu vực', request.areaType),
+                  _buildDetailRow(theme, 'Vị trí', request.location),
+                  _buildDetailRow(
+                    theme,
+                    'Ngày tạo',
+                    _dateTimeFmt.format(request.createdAt.toLocal()),
+                  ),
+                  if (request.adminResponse != null) ...[
+                    const SizedBox(height: 24),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryBlue.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.primaryBlue.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                size: 20,
+                                color: AppColors.primaryBlue,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Phản hồi từ admin',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  color: AppColors.primaryBlue,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (request.respondedAt != null) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              'Ngày phản hồi: ${_dateTimeFmt.format(request.respondedAt!.toLocal())}',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 12),
+                          Text(
+                            request.adminResponse!,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                            ),
+                          ),
+                          if (request.estimatedCost != null) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryBlue.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.attach_money,
+                                    size: 20,
+                                    color: AppColors.primaryBlue,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Chi phí ước tính: ${NumberFormat.currency(locale: 'vi_VN', symbol: '').format(request.estimatedCost).replaceAll(',', '.')} VNĐ',
+                                      softWrap: true,
+                                      style: theme.textTheme.titleMedium?.copyWith(
+                                        color: AppColors.primaryBlue,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (request.status.toUpperCase() == 'IN_PROGRESS' && 
+                      request.progressNotes != null && 
+                      request.progressNotes!.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.success.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.success.withValues(alpha: 0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.construction,
+                                size: 20,
+                                color: AppColors.success,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Ghi chú tiến độ bảo trì',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: AppColors.success,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            request.progressNotes!,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                              height: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (request.note != null && request.note!.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    _buildDetailRow(theme, 'Ghi chú', request.note!),
+                  ],
+                  if (request.attachments.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    Text(
+                      'Ảnh/Video đính kèm',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildAttachmentsGrid(context, theme, request.attachments),
+                  ],
+                  const SizedBox(height: 24),
+                  if (hasPendingResponse && (onApproveResponse != null || onRejectResponse != null)) ...[
+                    if (onApproveResponse != null)
+                      FilledButton.icon(
+                        onPressed: (isApprovingResponse || isRejectingResponse) ? null : onApproveResponse,
+                        icon: isApprovingResponse
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.check_circle_outline),
+                        label: Text(
+                          isApprovingResponse ? 'Đang xác nhận...' : 'Xác nhận phản hồi',
+                        ),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          backgroundColor: AppColors.success,
+                        ),
+                      ),
+                    if (onApproveResponse != null && onRejectResponse != null)
+                      const SizedBox(height: 12),
+                    if (onRejectResponse != null)
+                      OutlinedButton.icon(
+                        onPressed: (isApprovingResponse || isRejectingResponse) ? null : onRejectResponse,
+                        icon: isRejectingResponse
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.cancel_outlined),
+                        label: Text(
+                          isRejectingResponse ? 'Đang từ chối...' : 'Từ chối phản hồi',
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          foregroundColor: AppColors.danger,
+                          side: const BorderSide(color: AppColors.danger),
+                        ),
+                      ),
+                    if (onRejectResponse != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              size: 20,
+                              color: theme.colorScheme.error,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Nếu bạn từ chối phản hồi, yêu cầu sẽ bị hủy và không thể tiếp tục xử lý.',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
                   if (onCancel != null && !hasPendingResponse) ...[
                     const SizedBox(height: 18),
                     OutlinedButton.icon(

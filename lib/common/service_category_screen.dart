@@ -11,6 +11,7 @@ import '../register/register_vehicle_screen.dart';
 import '../theme/app_colors.dart';
 import 'layout_insets.dart';
 import '../service_registration/repair_request_screen.dart';
+import '../service_registration/common_area_maintenance_request_screen.dart';
 import '../service_registration/service_booking_service.dart';
 import '../service_registration/service_list_screen.dart';
 
@@ -61,10 +62,18 @@ class _ServiceCategoryScreenState extends State<ServiceCategoryScreen> with Safe
     _QuickAction(
       title: 'Yêu cầu sửa chữa',
       description:
-          'Gửi yêu cầu sửa chữa hoặc bảo trì, đính kèm hình ảnh/video minh chứng cho ban quản lý.',
+          'Gửi yêu cầu sửa chữa hoặc bảo trì trong căn hộ, đính kèm hình ảnh/video minh chứng cho ban quản lý.',
       icon: Icons.build_circle_outlined,
       color: const Color(0xFF0097A7),
       builder: (_) => const RepairRequestScreen(),
+    ),
+    _QuickAction(
+      title: 'Bảo trì khu vực chung',
+      description:
+          'Gửi yêu cầu bảo trì các hạng mục ngoài căn hộ như hành lang, thang máy, đèn, bãi xe, cửa ra vào chung...',
+      icon: Icons.apartment_outlined,
+      color: const Color(0xFF5C6BC0),
+      builder: (_) => const CommonAreaMaintenanceRequestScreen(),
     ),
     _QuickAction(
       title: 'Phản ánh cư dân',

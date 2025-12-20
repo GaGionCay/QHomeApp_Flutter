@@ -158,6 +158,77 @@ class MaintenanceRequestSummary {
       responseStatus!.toUpperCase() == 'PENDING_APPROVAL';
 }
 
+class CommonAreaMaintenanceRequestSummary {
+  CommonAreaMaintenanceRequestSummary({
+    required this.id,
+    required this.areaType,
+    required this.title,
+    required this.status,
+    required this.location,
+    required this.createdAt,
+    this.note,
+    this.adminResponse,
+    this.estimatedCost,
+    this.respondedAt,
+    this.responseStatus,
+    this.attachments = const [],
+    this.progressNotes,
+    this.completedAt,
+  });
+
+  final String id;
+  final String areaType;
+  final String title;
+  final String status;
+  final String location;
+  final DateTime createdAt;
+  final String? note;
+  final String? adminResponse;
+  final double? estimatedCost;
+  final DateTime? respondedAt;
+  final String? responseStatus;
+  final List<String> attachments;
+  final String? progressNotes;
+  final DateTime? completedAt;
+
+  factory CommonAreaMaintenanceRequestSummary.fromJson(Map<String, dynamic> json) {
+    List<String> attachments = [];
+    if (json['attachments'] != null) {
+      if (json['attachments'] is List) {
+        attachments = (json['attachments'] as List)
+            .map((item) => item?.toString() ?? '')
+            .where((url) => url.isNotEmpty)
+            .toList();
+      }
+    }
+    
+    return CommonAreaMaintenanceRequestSummary(
+      id: json['id']?.toString() ?? '',
+      areaType: json['areaType']?.toString() ?? 'Khác',
+      title: json['title']?.toString() ?? 'Không xác định',
+      status: json['status']?.toString() ?? 'UNKNOWN',
+      location: json['location']?.toString() ?? '—',
+      createdAt: _parseDateTime(json['createdAt']) ?? DateTime.now(),
+      note: json['note']?.toString(),
+      adminResponse: json['adminResponse']?.toString(),
+      estimatedCost: json['estimatedCost'] != null
+          ? (json['estimatedCost'] is num
+              ? (json['estimatedCost'] as num).toDouble()
+              : double.tryParse(json['estimatedCost'].toString()))
+          : null,
+      respondedAt: _parseDateTime(json['respondedAt']),
+      responseStatus: json['responseStatus']?.toString(),
+      attachments: attachments,
+      progressNotes: json['progressNotes']?.toString(),
+      completedAt: _parseDateTime(json['completedAt']),
+    );
+  }
+
+  bool get hasPendingResponse =>
+      responseStatus != null &&
+      responseStatus!.toUpperCase() == 'PENDING_APPROVAL';
+}
+
 bool _parseBool(Object? value) {
   if (value is bool) return value;
   final text = value?.toString().toLowerCase();
