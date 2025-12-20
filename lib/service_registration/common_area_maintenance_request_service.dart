@@ -67,35 +67,8 @@ class CommonAreaMaintenanceRequestService {
     }
   }
 
-  Future<void> approveResponse(String requestId) async {
-    try {
-      await _dio.post('/common-area-maintenance-requests/$requestId/approve-response');
-    } on DioException catch (dioErr) {
-      final message = dioErr.response?.data is Map<String, dynamic>
-          ? (dioErr.response?.data['message'] as String?)
-          : dioErr.message;
-      throw Exception(
-        message?.isNotEmpty == true
-            ? message
-            : 'Không thể xác nhận phản hồi từ admin.',
-      );
-    }
-  }
-
-  Future<void> rejectResponse(String requestId) async {
-    try {
-      await _dio.post('/common-area-maintenance-requests/$requestId/reject-response');
-    } on DioException catch (dioErr) {
-      final message = dioErr.response?.data is Map<String, dynamic>
-          ? (dioErr.response?.data['message'] as String?)
-          : dioErr.message;
-      throw Exception(
-        message?.isNotEmpty == true
-            ? message
-            : 'Không thể từ chối phản hồi từ admin.',
-      );
-    }
-  }
+  // Removed approveResponse and rejectResponse - không cần resident approve/reject response nữa
+  // Admin/Staff approve/deny trực tiếp, không cần resident xác nhận
 
   Future<void> cancelRequest(String requestId) async {
     try {

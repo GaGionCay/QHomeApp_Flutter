@@ -168,12 +168,7 @@ class CommonAreaMaintenanceRequestSummary {
     required this.createdAt,
     this.note,
     this.adminResponse,
-    this.estimatedCost,
-    this.respondedAt,
-    this.responseStatus,
     this.attachments = const [],
-    this.progressNotes,
-    this.completedAt,
   });
 
   final String id;
@@ -184,12 +179,8 @@ class CommonAreaMaintenanceRequestSummary {
   final DateTime createdAt;
   final String? note;
   final String? adminResponse;
-  final double? estimatedCost;
-  final DateTime? respondedAt;
-  final String? responseStatus;
+  // Removed: estimatedCost, respondedAt, responseStatus, progressNotes, completedAt - đơn giản hóa luồng
   final List<String> attachments;
-  final String? progressNotes;
-  final DateTime? completedAt;
 
   factory CommonAreaMaintenanceRequestSummary.fromJson(Map<String, dynamic> json) {
     List<String> attachments = [];
@@ -211,22 +202,13 @@ class CommonAreaMaintenanceRequestSummary {
       createdAt: _parseDateTime(json['createdAt']) ?? DateTime.now(),
       note: json['note']?.toString(),
       adminResponse: json['adminResponse']?.toString(),
-      estimatedCost: json['estimatedCost'] != null
-          ? (json['estimatedCost'] is num
-              ? (json['estimatedCost'] as num).toDouble()
-              : double.tryParse(json['estimatedCost'].toString()))
-          : null,
-      respondedAt: _parseDateTime(json['respondedAt']),
-      responseStatus: json['responseStatus']?.toString(),
+      // Removed: estimatedCost, respondedAt, responseStatus, progressNotes, completedAt - đơn giản hóa luồng
       attachments: attachments,
-      progressNotes: json['progressNotes']?.toString(),
-      completedAt: _parseDateTime(json['completedAt']),
     );
   }
 
-  bool get hasPendingResponse =>
-      responseStatus != null &&
-      responseStatus!.toUpperCase() == 'PENDING_APPROVAL';
+  // Removed hasPendingResponse - không cần resident approve/reject response nữa
+  // Admin/Staff approve/deny trực tiếp
 }
 
 bool _parseBool(Object? value) {

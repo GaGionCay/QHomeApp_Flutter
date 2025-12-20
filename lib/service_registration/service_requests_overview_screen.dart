@@ -61,8 +61,7 @@ class _ServiceRequestsOverviewScreenState
   final Set<String> _resendingMaintenanceRequestIds = {};
   final Set<String> _approvingResponseIds = {};
   final Set<String> _rejectingResponseIds = {};
-  final Set<String> _approvingCommonAreaResponseIds = {};
-  final Set<String> _rejectingCommonAreaResponseIds = {};
+  // Removed _approvingCommonAreaResponseIds and _rejectingCommonAreaResponseIds - không cần resident approve/reject response nữa
   MaintenanceRequestConfig? _maintenanceConfig;
   static const int _pageSize = 6;
 
@@ -603,7 +602,7 @@ class _ServiceRequestsOverviewScreenState
                 final canResend = _shouldShowResendButtonMaintenance(request);
                 final canCall = _shouldShowCallButtonMaintenance(request);
                 final adminPhone = _maintenanceConfig?.adminPhone ?? '0984000036';
-                final hasPendingResponse = request.hasPendingResponse;
+                final hasPendingResponse = request.hasPendingResponse; // For maintenance requests only
                 return _RequestCard(
                   icon: Icons.handyman_outlined,
                   accent: AppColors.primaryBlue,
@@ -659,7 +658,8 @@ class _ServiceRequestsOverviewScreenState
               itemCount: _commonAreaMaintenanceRequests.length,
               itemBuilder: (context, index) {
                 final request = _commonAreaMaintenanceRequests[index];
-                final hasPendingResponse = request.hasPendingResponse;
+                // Note: Common Area Maintenance Request không có thanh toán VnPay
+                // Admin/Staff sẽ tự xử lý vấn đề tiền mặt vì đây là bảo trì khu vực chung (ngoài căn hộ)
                 return _RequestCard(
                   icon: Icons.apartment_outlined,
                   accent: const Color(0xFF5C6BC0),
@@ -675,17 +675,13 @@ class _ServiceRequestsOverviewScreenState
                   isResending: false,
                   onCall: null,
                   adminResponse: request.adminResponse,
-                  estimatedCost: request.estimatedCost,
-                  respondedAt: request.respondedAt,
-                  hasPendingResponse: hasPendingResponse,
-                  onApproveResponse: hasPendingResponse
-                      ? () => _approveCommonAreaMaintenanceResponse(request.id)
-                      : null,
-                  onRejectResponse: hasPendingResponse
-                      ? () => _rejectCommonAreaMaintenanceResponse(request.id)
-                      : null,
-                  isApprovingResponse: _approvingCommonAreaResponseIds.contains(request.id),
-                  isRejectingResponse: _rejectingCommonAreaResponseIds.contains(request.id),
+                  // Removed: estimatedCost, respondedAt - đơn giản hóa luồng
+                  hasPendingResponse: false, // Không cần resident approve/reject response nữa
+                  onApproveResponse: null, // Removed - không cần nữa
+                  onRejectResponse: null, // Removed - không cần nữa
+                  isApprovingResponse: false,
+                  isRejectingResponse: false,
+                  // onPayWithVnpay: null - không có thanh toán cho Common Area Maintenance Request
                   onTap: () => _showCommonAreaMaintenanceRequestDetail(context, request),
                 );
               },
@@ -693,59 +689,8 @@ class _ServiceRequestsOverviewScreenState
     );
   }
 
-  Future<void> _approveCommonAreaMaintenanceResponse(String requestId) async {
-    if (_approvingCommonAreaResponseIds.contains(requestId)) return;
-    safeSetState(() => _approvingCommonAreaResponseIds.add(requestId));
-    try {
-      await _commonAreaMaintenanceService.approveResponse(requestId);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Đã xác nhận phản hồi từ admin. Yêu cầu đang được xử lý.'),
-          backgroundColor: AppColors.success,
-        ),
-      );
-      await _loadData();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Không thể xác nhận phản hồi: $e'),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        safeSetState(() => _approvingCommonAreaResponseIds.remove(requestId));
-      }
-    }
-  }
-
-  Future<void> _rejectCommonAreaMaintenanceResponse(String requestId) async {
-    if (_rejectingCommonAreaResponseIds.contains(requestId)) return;
-    safeSetState(() => _rejectingCommonAreaResponseIds.add(requestId));
-    try {
-      await _commonAreaMaintenanceService.rejectResponse(requestId);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Đã từ chối phản hồi từ admin. Yêu cầu đã được hủy.'),
-          backgroundColor: AppColors.success,
-        ),
-      );
-      await _loadData();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Không thể từ chối phản hồi: $e'),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        safeSetState(() => _rejectingCommonAreaResponseIds.remove(requestId));
-      }
-    }
-  }
+  // Removed _approveCommonAreaMaintenanceResponse and _rejectCommonAreaMaintenanceResponse
+  // Không cần resident approve/reject response nữa - Admin/Staff approve/deny trực tiếp
 
   Future<void> _cancelCommonAreaMaintenanceRequest(String requestId, {bool closeDetailSheet = false}) async {
     final confirmed = await showDialog<bool>(
@@ -828,17 +773,13 @@ class _ServiceRequestsOverviewScreenState
                   child: _CommonAreaMaintenanceRequestDetailSheet(
                     request: request,
                     onRefresh: _loadData,
-                    onApproveResponse: request.hasPendingResponse
-                        ? () => _approveCommonAreaMaintenanceResponse(request.id)
-                        : null,
-                    onRejectResponse: request.hasPendingResponse
-                        ? () => _rejectCommonAreaMaintenanceResponse(request.id)
-                        : null,
-                    onCancel: _isCancelable(request.status) && !request.hasPendingResponse
+                    onApproveResponse: null, // Removed - không cần resident approve response nữa
+                    onRejectResponse: null, // Removed - không cần resident reject response nữa
+                    onCancel: _isCancelable(request.status)
                         ? () => _cancelCommonAreaMaintenanceRequest(request.id, closeDetailSheet: true)
                         : null,
-                    isApprovingResponse: _approvingCommonAreaResponseIds.contains(request.id),
-                    isRejectingResponse: _rejectingCommonAreaResponseIds.contains(request.id),
+                    isApprovingResponse: false,
+                    isRejectingResponse: false,
                     isCanceling: _cancellingCommonAreaRequestIds.contains(request.id),
                   ),
                 ),
@@ -2041,11 +1982,11 @@ class _CommonAreaMaintenanceRequestDetailSheet extends StatelessWidget {
 
   final CommonAreaMaintenanceRequestSummary request;
   final VoidCallback onRefresh;
-  final VoidCallback? onApproveResponse;
-  final VoidCallback? onRejectResponse;
+  final VoidCallback? onApproveResponse; // Removed - không cần nữa
+  final VoidCallback? onRejectResponse; // Removed - không cần nữa
   final VoidCallback? onCancel;
-  final bool isApprovingResponse;
-  final bool isRejectingResponse;
+  final bool isApprovingResponse; // Removed - không cần nữa
+  final bool isRejectingResponse; // Removed - không cần nữa
   final bool isCanceling;
 
   late final DateFormat _dateTimeFmt = DateFormat('dd/MM/yyyy HH:mm');
@@ -2329,7 +2270,7 @@ class _CommonAreaMaintenanceRequestDetailSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final hasPendingResponse = request.hasPendingResponse;
+    // Removed hasPendingResponse - không cần resident approve/reject response nữa
 
     return DraggableScrollableSheet(
       expand: false,
@@ -2418,15 +2359,7 @@ class _CommonAreaMaintenanceRequestDetailSheet extends StatelessWidget {
                               ),
                             ],
                           ),
-                          if (request.respondedAt != null) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              'Ngày phản hồi: ${_dateTimeFmt.format(request.respondedAt!.toLocal())}',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                              ),
-                            ),
-                          ],
+                          // Removed respondedAt display - đơn giản hóa luồng
                           const SizedBox(height: 12),
                           Text(
                             request.adminResponse!,
@@ -2434,86 +2367,12 @@ class _CommonAreaMaintenanceRequestDetailSheet extends StatelessWidget {
                               color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
                             ),
                           ),
-                          if (request.estimatedCost != null) ...[
-                            const SizedBox(height: 12),
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppColors.primaryBlue.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.attach_money,
-                                    size: 20,
-                                    color: AppColors.primaryBlue,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      'Chi phí ước tính: ${NumberFormat.currency(locale: 'vi_VN', symbol: '').format(request.estimatedCost).replaceAll(',', '.')} VNĐ',
-                                      softWrap: true,
-                                      style: theme.textTheme.titleMedium?.copyWith(
-                                        color: AppColors.primaryBlue,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                          // Removed estimatedCost display - đơn giản hóa luồng
                         ],
                       ),
                     ),
                   ],
-                  if (request.status.toUpperCase() == 'IN_PROGRESS' && 
-                      request.progressNotes != null && 
-                      request.progressNotes!.isNotEmpty) ...[
-                    const SizedBox(height: 24),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.success.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppColors.success.withValues(alpha: 0.3),
-                          width: 1,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.construction,
-                                size: 20,
-                                color: AppColors.success,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Ghi chú tiến độ bảo trì',
-                                style: theme.textTheme.titleSmall?.copyWith(
-                                  color: AppColors.success,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            request.progressNotes!,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
-                              height: 1.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                  // Removed progressNotes display - đơn giản hóa luồng
                   if (request.note != null && request.note!.isNotEmpty) ...[
                     const SizedBox(height: 24),
                     _buildDetailRow(theme, 'Ghi chú', request.note!),
@@ -2530,77 +2389,9 @@ class _CommonAreaMaintenanceRequestDetailSheet extends StatelessWidget {
                     _buildAttachmentsGrid(context, theme, request.attachments),
                   ],
                   const SizedBox(height: 24),
-                  if (hasPendingResponse && (onApproveResponse != null || onRejectResponse != null)) ...[
-                    if (onApproveResponse != null)
-                      FilledButton.icon(
-                        onPressed: (isApprovingResponse || isRejectingResponse) ? null : onApproveResponse,
-                        icon: isApprovingResponse
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.check_circle_outline),
-                        label: Text(
-                          isApprovingResponse ? 'Đang xác nhận...' : 'Xác nhận phản hồi',
-                        ),
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          backgroundColor: AppColors.success,
-                        ),
-                      ),
-                    if (onApproveResponse != null && onRejectResponse != null)
-                      const SizedBox(height: 12),
-                    if (onRejectResponse != null)
-                      OutlinedButton.icon(
-                        onPressed: (isApprovingResponse || isRejectingResponse) ? null : onRejectResponse,
-                        icon: isRejectingResponse
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.cancel_outlined),
-                        label: Text(
-                          isRejectingResponse ? 'Đang từ chối...' : 'Từ chối phản hồi',
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          foregroundColor: AppColors.danger,
-                          side: const BorderSide(color: AppColors.danger),
-                        ),
-                      ),
-                    if (onRejectResponse != null) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(
-                              Icons.warning_amber_rounded,
-                              size: 20,
-                              color: theme.colorScheme.error,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'Nếu bạn từ chối phản hồi, yêu cầu sẽ bị hủy và không thể tiếp tục xử lý.',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                  if (onCancel != null && !hasPendingResponse) ...[
+                  // Removed approve/reject response buttons - không cần resident approve/reject response nữa
+                  // Admin/Staff approve/deny trực tiếp, không cần resident xác nhận
+                  if (onCancel != null) ...[
                     const SizedBox(height: 18),
                     OutlinedButton.icon(
                       onPressed: isCanceling ? null : onCancel,
