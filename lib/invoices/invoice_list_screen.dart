@@ -936,6 +936,18 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
     final accent = _colorForServiceCode(category.categoryCode);
     final icon = _iconForServiceCode(category.categoryCode);
     final secondary = theme.colorScheme.onSurfaceVariant;
+    
+    // Tìm hóa đơn đầu tiên có thể thanh toán được
+    final payableInvoice = category.invoices.firstWhere(
+      (inv) => !inv.isPaid && inv.isOwner == true && inv.canPay == true,
+      orElse: () => category.invoices.firstWhere(
+        (inv) => !inv.isPaid,
+        orElse: () => category.invoices.first,
+      ),
+    );
+    final hasPayableInvoice = !payableInvoice.isPaid && 
+                               payableInvoice.isOwner == true && 
+                               payableInvoice.canPay == true;
 
     return _InvoicesGlassCard(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
@@ -993,20 +1005,38 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
           const SizedBox(height: 12),
           Row(
             children: [
-              Text(
-                'Tổng cần thanh toán',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: secondary,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Tổng cần thanh toán',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: secondary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _formatMoney(category.totalAmount),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: accent,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const Spacer(),
-              Text(
-                _formatMoney(category.totalAmount),
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: accent,
+              if (hasPayableInvoice && category.invoiceCount > 0) ...[
+                const SizedBox(width: 12),
+                FilledButton.icon(
+                  onPressed: () => _handlePayInvoice(payableInvoice),
+                  icon: const Icon(Icons.payment_rounded, size: 18),
+                  label: const Text('Thanh toán'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ],
@@ -1323,27 +1353,8 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const SizedBox(width: 12),
-                if (!isPaid)
-                  Flexible(
-                    child: FilledButton.icon(
-                      onPressed: (invoice.isOwner == true && invoice.canPay == true)
-                          ? () => _handlePayInvoice(invoice)
-                          : null,
-                      icon: const Icon(Icons.payment_rounded, size: 18),
-                      label: const Text('Thanh toán ngay'),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        backgroundColor: (invoice.isOwner == true && invoice.canPay == true)
-                            ? null
-                            : theme.colorScheme.surfaceContainerHighest,
-                        foregroundColor: (invoice.isOwner == true && invoice.canPay == true)
-                            ? null
-                            : theme.colorScheme.onSurface.withValues(alpha: 0.38),
-                      ),
-                    ),
-                  )
-                else
+                if (isPaid) ...[
+                  const SizedBox(width: 12),
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
@@ -1372,6 +1383,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                       ],
                     ),
                   ),
+                ],
               ],
             ),
           ],
