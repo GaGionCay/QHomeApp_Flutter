@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
 
 import '../auth/api_client.dart';
@@ -29,6 +30,7 @@ class _HouseholdMemberRequestStatusScreenState
   late final String _unitId;
   String? _error;
   String? _cancellingId;
+  String? _resendingId;
 
   @override
   void initState() {
@@ -418,6 +420,30 @@ class _HouseholdMemberRequestStatusScreenState
               ),
             ),
           ],
+          if (request.status == 'REJECTED') ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                icon: _resendingId == request.id
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.refresh),
+                label: Text(_resendingId == request.id
+                    ? 'Đang gửi lại...'
+                    : 'Gửi lại yêu cầu'),
+                onPressed: _resendingId == request.id
+                    ? null
+                    : () => _showResendDialog(request),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -446,6 +472,206 @@ class _HouseholdMemberRequestStatusScreenState
         return Icons.highlight_off;
       default:
         return Icons.pending_actions;
+    }
+  }
+
+  Future<void> _showResendDialog(HouseholdMemberRequest request) async {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    // Controllers với giá trị mặc định từ request cũ
+    final fullNameCtrl = TextEditingController(text: request.requestedResidentFullName ?? '');
+    final phoneCtrl = TextEditingController(text: request.requestedResidentPhone ?? '');
+    final emailCtrl = TextEditingController(text: request.requestedResidentEmail ?? '');
+    final nationalIdCtrl = TextEditingController(text: request.requestedResidentNationalId ?? '');
+    final relationCtrl = TextEditingController(text: request.relation ?? '');
+    final noteCtrl = TextEditingController(text: request.note ?? '');
+    DateTime? selectedDob = request.requestedResidentDob;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: isDark
+              ? theme.colorScheme.surface
+              : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text('Gửi lại yêu cầu đăng ký thành viên'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Bạn có thể chỉnh sửa thông tin trước khi gửi lại yêu cầu. Để trống các trường không muốn thay đổi.',
+                  style: TextStyle(fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: fullNameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Họ và tên *',
+                    hintText: 'Nhập họ và tên',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: phoneCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Số điện thoại',
+                    hintText: 'Nhập số điện thoại (10 số, bắt đầu từ 0)',
+                  ),
+                  keyboardType: TextInputType.phone,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: emailCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    hintText: 'Nhập email',
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: nationalIdCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'CCCD',
+                    hintText: 'Nhập số CCCD (12 số)',
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDob ?? DateTime.now().subtract(const Duration(days: 365 * 18)),
+                      firstDate: DateTime(1900),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) {
+                      setDialogState(() {
+                        selectedDob = picked;
+                      });
+                    }
+                  },
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Ngày sinh',
+                      suffixIcon: Icon(Icons.calendar_today),
+                    ),
+                    child: Text(
+                      selectedDob != null
+                          ? DateFormat('dd/MM/yyyy').format(selectedDob!)
+                          : 'Chọn ngày sinh',
+                      style: TextStyle(
+                        color: selectedDob != null
+                            ? theme.colorScheme.onSurface
+                            : theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: relationCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Quan hệ',
+                    hintText: 'Ví dụ: Vợ, Chồng, Con, ...',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: noteCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Ghi chú',
+                    hintText: 'Nhập ghi chú (nếu có)',
+                  ),
+                  maxLines: 3,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Hủy'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Gửi lại yêu cầu'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed == true) {
+      await _resendRequest(
+        request,
+        fullNameCtrl.text.trim().isNotEmpty ? fullNameCtrl.text.trim() : null,
+        phoneCtrl.text.trim().isNotEmpty ? phoneCtrl.text.trim() : null,
+        emailCtrl.text.trim().isNotEmpty ? emailCtrl.text.trim() : null,
+        nationalIdCtrl.text.trim().isNotEmpty ? nationalIdCtrl.text.trim() : null,
+        selectedDob,
+        relationCtrl.text.trim().isNotEmpty ? relationCtrl.text.trim() : null,
+        request.proofOfRelationImageUrl?.isNotEmpty == true ? request.proofOfRelationImageUrl : null,
+        noteCtrl.text.trim().isNotEmpty ? noteCtrl.text.trim() : null,
+      );
+    }
+  }
+
+  Future<void> _resendRequest(
+    HouseholdMemberRequest request,
+    String? residentFullName,
+    String? residentPhone,
+    String? residentEmail,
+    String? residentNationalId,
+    DateTime? residentDob,
+    String? relation,
+    String? proofOfRelationImageUrl,
+    String? note,
+  ) async {
+    safeSetState(() {
+      _resendingId = request.id;
+    });
+    try {
+      await _service.resendRequest(
+        requestId: request.id,
+        residentFullName: residentFullName,
+        residentPhone: residentPhone,
+        residentEmail: residentEmail,
+        residentNationalId: residentNationalId,
+        residentDob: residentDob,
+        relation: relation,
+        proofOfRelationImageUrl: proofOfRelationImageUrl,
+        note: note,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã gửi lại yêu cầu đăng ký thành viên thành công.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      await _loadRequests();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không thể gửi lại yêu cầu: $e'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        safeSetState(() {
+          _resendingId = null;
+        });
+      }
     }
   }
 }

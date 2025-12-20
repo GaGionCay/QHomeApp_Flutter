@@ -127,5 +127,54 @@ class HouseholdMemberRequestService {
       throw Exception('Không thể hủy yêu cầu. Vui lòng thử lại.');
     }
   }
+
+  Future<HouseholdMemberRequest> resendRequest({
+    required String requestId,
+    String? residentFullName,
+    String? residentPhone,
+    String? residentEmail,
+    String? residentNationalId,
+    DateTime? residentDob,
+    String? relation,
+    String? proofOfRelationImageUrl,
+    String? note,
+  }) async {
+    final formatter = DateFormat('yyyy-MM-dd');
+
+    final payload = <String, dynamic>{
+      if (residentFullName != null && residentFullName.isNotEmpty) 'residentFullName': residentFullName,
+      if (residentPhone != null && residentPhone.isNotEmpty) 'residentPhone': residentPhone,
+      if (residentEmail != null && residentEmail.isNotEmpty) 'residentEmail': residentEmail,
+      if (residentNationalId != null && residentNationalId.isNotEmpty) 'residentNationalId': residentNationalId,
+      if (residentDob != null) 'residentDob': formatter.format(residentDob),
+      if (relation != null && relation.isNotEmpty) 'relation': relation,
+      if (proofOfRelationImageUrl != null && proofOfRelationImageUrl.isNotEmpty) 'proofOfRelationImageUrl': proofOfRelationImageUrl,
+      if (note != null && note.isNotEmpty) 'note': note,
+    };
+
+    try {
+      final response = await _apiClient.dio.post(
+        '/household-member-requests/$requestId/resend',
+        data: payload.isEmpty ? null : payload,
+      );
+
+      final data = response.data;
+      if (data is Map<String, dynamic>) {
+        return HouseholdMemberRequest.fromJson(data);
+      }
+      if (data is Map) {
+        return HouseholdMemberRequest.fromJson(Map<String, dynamic>.from(data));
+      }
+      throw Exception('Không thể đọc dữ liệu phản hồi.');
+    } on DioException catch (e) {
+      final responseData = e.response?.data;
+      if (responseData is Map &&
+          responseData['message'] is String &&
+          (responseData['message'] as String).isNotEmpty) {
+        throw Exception(responseData['message']);
+      }
+      throw Exception('Không thể gửi lại yêu cầu. Vui lòng thử lại.');
+    }
+  }
 }
 
