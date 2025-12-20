@@ -159,17 +159,35 @@ class _UnpaidServiceBookingsScreenState
 
       if (uri.scheme == 'qhomeapp' &&
           uri.host == 'vnpay-service-booking-result') {
+        final bookingId = uri.queryParameters['bookingId'];
         final responseCode = uri.queryParameters['responseCode'];
-        final success = uri.queryParameters['success'] == 'true';
+        final successParam = uri.queryParameters['success'];
+        final message = uri.queryParameters['message'];
+        
+        // Decode message if it exists (URL encoded)
+        final decodedMessage = message != null ? Uri.decodeComponent(message) : null;
 
         await _clearPendingPayment();
         if (!mounted) return;
 
-        if (success && responseCode == '00') {
-          _showMessage('Thanh toán dịch vụ thành công!', isError: false);
+        // Determine success status: use 'success' parameter if available, otherwise check responseCode
+        final isSuccess = successParam == 'true' || responseCode == '00';
+
+        if (isSuccess) {
+          // Use message from backend if available, otherwise fallback to default with email notification
+          final successMessage = decodedMessage ?? 
+              (bookingId != null 
+                  ? '✅ Đơn đặt dịch vụ $bookingId đã được thanh toán thành công!\n📧 Email xác nhận đã được gửi đến hộp thư của bạn.'
+                  : '✅ Thanh toán dịch vụ thành công!\n📧 Email xác nhận đã được gửi đến hộp thư của bạn.');
+          _showMessage(successMessage, isError: false);
           await _loadBookings();
         } else {
-          _showMessage('Thanh toán thất bại. Vui lòng thử lại.', isError: true);
+          // Use message from backend if available, otherwise fallback to default
+          final errorMessage = decodedMessage ?? 
+              (bookingId != null 
+                  ? '❌ Thanh toán đơn đặt dịch vụ $bookingId thất bại'
+                  : '❌ Thanh toán thất bại. Vui lòng thử lại.');
+          _showMessage(errorMessage, isError: true);
         }
       }
     }, onError: (err) {

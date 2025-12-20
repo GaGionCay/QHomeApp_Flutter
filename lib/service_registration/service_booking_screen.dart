@@ -119,25 +119,53 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> with SafeSt
   void _listenForPaymentResult() {
     _paymentSub = _appLinks.uriLinkStream.listen((Uri? uri) async {
       if (uri == null) return;
+      debugPrint('🔗 [ServiceBooking] Nhận deep link: $uri');
 
       if (uri.scheme == 'qhomeapp' &&
           uri.host == 'vnpay-service-booking-result') {
+        final bookingId = uri.queryParameters['bookingId'];
         final responseCode = uri.queryParameters['responseCode'];
-        final success = uri.queryParameters['success'] == 'true';
+        final successParam = uri.queryParameters['success'];
+        final message = uri.queryParameters['message'];
+        
+        // Decode message if it exists (URL encoded)
+        final decodedMessage = message != null ? Uri.decodeComponent(message) : null;
 
         await _clearPendingPayment();
         if (!mounted) return;
 
-        if (success && responseCode == '00') {
+        // Determine success status: use 'success' parameter if available, otherwise check responseCode
+        final isSuccess = successParam == 'true' || responseCode == '00';
+        
+        if (isSuccess) {
+          if (!mounted) return;
+          // Use message from backend if available, otherwise fallback to default
+          final successMessage = decodedMessage ?? 
+              (bookingId != null 
+                  ? '✅ Đơn đặt dịch vụ $bookingId đã được thanh toán thành công!\n📧 Email xác nhận đã được gửi đến hộp thư của bạn.'
+                  : '✅ Thanh toán dịch vụ thành công!\n📧 Email xác nhận đã được gửi đến hộp thư của bạn.');
           _navigateToServicesHome(
-            snackMessage: '✅ Thanh toán dịch vụ thành công!',
+            snackMessage: successMessage,
           );
         } else {
-          _showMessage('Thanh toán thất bại. Vui lòng thử lại.', isError: true);
+          if (!mounted) return;
+          // Use message from backend if available, otherwise fallback to default
+          final errorMessage = decodedMessage ?? 
+              (bookingId != null 
+                  ? '❌ Thanh toán đơn đặt dịch vụ $bookingId thất bại'
+                  : '❌ Thanh toán dịch vụ thất bại');
+          _showMessage(errorMessage, isError: true);
         }
       }
     }, onError: (err) {
-      debugPrint('❌ Lỗi khi nhận liên kết thanh toán: $err');
+      debugPrint('❌ [ServiceBooking] Lỗi khi nhận deep link: $err');
+    });
+
+    // Check for initial deep link (when app is opened from deep link)
+    _appLinks.getInitialLink().then((Uri? initialUri) {
+      if (initialUri != null) {
+        debugPrint('🚀 [ServiceBooking] App được mở từ deep link: $initialUri');
+      }
     });
   }
 
