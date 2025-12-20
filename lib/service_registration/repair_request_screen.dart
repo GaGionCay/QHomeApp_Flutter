@@ -692,7 +692,18 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> with SafeStat
       Navigator.pop(context, true);
     } catch (error) {
       if (!mounted) return;
-      _showMessage(error.toString().replaceFirst('Exception: ', ''), color: Colors.red);
+      // Extract error message - handle both Exception and String types
+      String errorMessage;
+      if (error is Exception) {
+        errorMessage = error.toString().replaceFirst('Exception: ', '');
+      } else {
+        errorMessage = error.toString();
+      }
+      // Ensure message is user-friendly
+      if (errorMessage.isEmpty) {
+        errorMessage = 'Không thể gửi yêu cầu sửa chữa. Vui lòng thử lại.';
+      }
+      _showMessage(errorMessage, color: Colors.red);
     } finally {
       if (mounted) {
         safeSetState(() => _submitting = false);
