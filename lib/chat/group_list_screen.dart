@@ -715,11 +715,11 @@ class _GroupListScreenState extends State<GroupListScreen> with SafeStateMixin<G
               ),
             ],
             const Divider(),
-            // Show "Bỏ chặn người dùng" if already blocked, otherwise show "Chặn người dùng"
-            if (conversation.isBlockedByMe == true)
+            // Show "Mở chặn người dùng" if conversation status is BLOCKED, otherwise show "Chặn người dùng"
+            if (conversation.status == 'BLOCKED')
               ListTile(
                 leading: const Icon(CupertinoIcons.check_mark_circled, color: Colors.green),
-                title: const Text('Bỏ chặn người dùng', style: TextStyle(color: Colors.green)),
+                title: const Text('Mở chặn người dùng', style: TextStyle(color: Colors.green)),
                 onTap: () => Navigator.pop(context, 'unblock'),
               )
             else
