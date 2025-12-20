@@ -731,15 +731,17 @@ class _HouseholdMemberRequestScreenState
                         return 'Vui lòng nhập số điện thoại.';
                       }
                       final v = value.trim();
-                      // Chỉ cho phép số, không khoảng trắng, không ký tự đặc biệt
+                      // Validate: không được có dấu cách
+                      if (v.contains(' ')) {
+                        return 'Số điện thoại không được chứa dấu cách.';
+                      }
+                      // Validate: không được có ký tự đặc biệt (chỉ cho phép số)
                       if (!RegExp(r'^[0-9]+$').hasMatch(v)) {
-                        return 'Số điện thoại chỉ gồm chữ số, không có khoảng trắng/ký tự đặc biệt.';
+                        return 'Số điện thoại chỉ được chứa chữ số, không được có ký tự đặc biệt.';
                       }
-                      if (v.length > 10) {
-                        return 'Số điện thoại không được quá 10 số.';
-                      }
-                      if (v.length < 9) {
-                        return 'Số điện thoại tối thiểu 9 số.';
+                      // Validate: phải có đúng 10 số và bắt đầu từ số 0
+                      if (!RegExp(r'^0[0-9]{9}$').hasMatch(v)) {
+                        return 'Số điện thoại phải có đúng 10 số và bắt đầu từ số 0.';
                       }
                       return null;
                     },
@@ -878,8 +880,17 @@ class _HouseholdMemberRequestScreenState
                       if (v.isEmpty) {
                         return 'Vui lòng nhập CMND/CCCD';
                       }
+                      // Validate: không được có dấu cách
+                      if (v.contains(' ')) {
+                        return 'CCCD không được chứa dấu cách.';
+                      }
+                      // Validate: không được có ký tự đặc biệt (chỉ cho phép số)
                       if (!RegExp(r'^[0-9]+$').hasMatch(v)) {
-                        return 'CMND/CCCD chỉ gồm chữ số, không có khoảng trắng/ký tự đặc biệt.';
+                        return 'CCCD chỉ được chứa chữ số, không được có ký tự đặc biệt.';
+                      }
+                      // Validate: phải có đúng 12 chữ số
+                      if (!RegExp(r'^[0-9]{12}$').hasMatch(v)) {
+                        return 'CCCD phải có đúng 12 chữ số.';
                       }
                       return null;
                     },
