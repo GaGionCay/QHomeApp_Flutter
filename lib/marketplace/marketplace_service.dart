@@ -188,7 +188,9 @@ class MarketplaceService {
             height: height,
           );
           
-          videoUrl = videoData['streamingUrl'] as String;
+          // Use fileUrl (relative path) instead of streamingUrl (absolute URL)
+          // Backend expects relative path and will normalize it when returning
+          videoUrl = videoData['fileUrl'] as String? ?? videoData['streamingUrl'] as String;
           print('✅ [MarketplaceService] Video uploaded, videoUrl: $videoUrl');
           
           // Xóa file nén nếu khác file gốc
@@ -357,7 +359,9 @@ class MarketplaceService {
             height: height,
           );
           
-          videoUrl = videoData['streamingUrl'] as String;
+          // Use fileUrl (relative path) instead of streamingUrl (absolute URL)
+          // Backend expects relative path and will normalize it when returning
+          videoUrl = videoData['fileUrl'] as String? ?? videoData['streamingUrl'] as String;
           print('✅ [MarketplaceService] Video uploaded for update, videoUrl: $videoUrl');
           
           // Xóa file nén nếu khác file gốc

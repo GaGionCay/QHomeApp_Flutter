@@ -54,8 +54,42 @@ class MarketplaceComment {
           : null,
       isDeleted: json['isDeleted'] ?? json['deletedAt'] != null,
       imageUrl: json['imageUrl'] != null ? _buildImageUrl(json['imageUrl']!.toString()) : null,
-      videoUrl: json['videoUrl'] != null ? _buildImageUrl(json['videoUrl']!.toString()) : null,
+      videoUrl: json['videoUrl'] != null ? _normalizeVideoUrl(json['videoUrl']!.toString()) : null,
     );
+  }
+
+  // Helper to normalize video URL to absolute URL using API Gateway
+  static String? _normalizeVideoUrl(String? url) {
+    if (url == null || url.isEmpty) {
+      return null;
+    }
+    
+    // If URL is already absolute, return as-is
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    
+    // Backend returns relative path: /api/videos/stream/{videoId}
+    // Normalize it to use API Gateway base URL
+    try {
+      if (url.startsWith('/api/')) {
+        // Remove /api prefix and prepend API Gateway base URL (which already includes /api)
+        final apiGatewayBase = ApiClient.buildServiceBase();
+        final pathWithoutApi = url.substring(4); // Remove /api prefix
+        return '$apiGatewayBase$pathWithoutApi';
+      } else if (url.startsWith('/')) {
+        // Already relative but doesn't start with /api, prepend API Gateway base
+        final apiGatewayBase = ApiClient.buildServiceBase();
+        return '$apiGatewayBase$url';
+      } else {
+        // Not a valid URL format, try to construct from API Gateway
+        final apiGatewayBase = ApiClient.buildServiceBase();
+        return '$apiGatewayBase/$url';
+      }
+    } catch (e) {
+      // If normalization fails, return original URL
+      return url;
+    }
   }
 
   // Helper to build absolute image/video URL

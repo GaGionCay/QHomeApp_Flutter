@@ -503,7 +503,9 @@ class _PostDetailScreenState extends State<PostDetailScreen>
               height: height,
             );
             
-            videoUrl = videoData['streamingUrl'] as String;
+            // Use fileUrl (relative path) instead of streamingUrl (absolute URL)
+            // Backend expects relative path and will normalize it when returning
+            videoUrl = videoData['fileUrl'] as String? ?? videoData['streamingUrl'] as String;
             
             // Xóa file nén nếu khác file gốc
             if (compressedFile != null && videoPath != null && compressedFile.path != videoPath) {

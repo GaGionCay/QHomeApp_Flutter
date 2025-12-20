@@ -83,16 +83,30 @@ class VideoUploadService {
           throw Exception('Response thiếu id hoặc fileUrl');
         }
         
-        // Construct streaming URL
-        final streamingUrl = '${dio.options.baseUrl}/videos/stream/$videoId';
+        // Backend returns fileUrl as relative path: /api/videos/stream/{videoId}
+        // Normalize it to use API Gateway base URL (not direct service URL)
+        // This ensures ExoPlayer can load the video correctly
+        String normalizedUrl = fileUrl;
+        if (normalizedUrl.startsWith('/api/')) {
+          // fileUrl is /api/videos/stream/{videoId}
+          // buildServiceBase() returns base URL with /api already included
+          // So we need to remove /api from fileUrl and prepend base URL
+          final apiGatewayBase = ApiClient.buildServiceBase();
+          final pathWithoutApi = normalizedUrl.substring(4); // Remove /api prefix
+          normalizedUrl = '$apiGatewayBase$pathWithoutApi';
+        } else if (normalizedUrl.startsWith('/')) {
+          // Already relative but doesn't start with /api, prepend API Gateway base
+          final apiGatewayBase = ApiClient.buildServiceBase();
+          normalizedUrl = '$apiGatewayBase$normalizedUrl';
+        }
         
-        AppLogger.success('[VideoUploadService] ✅ Video uploaded successfully: videoId=$videoId');
+        AppLogger.success('[VideoUploadService] ✅ Video uploaded successfully: videoId=$videoId, streamingUrl=$normalizedUrl');
         
         return {
           'videoId': videoId,
-          'streamingUrl': streamingUrl,
-          'fileUrl': fileUrl,
-          'url': streamingUrl,  // For backward compatibility
+          'streamingUrl': normalizedUrl,
+          'fileUrl': fileUrl, // Keep original relative path for reference
+          'url': normalizedUrl,  // For backward compatibility
         };
       } else {
         final errorMsg = response.data?['error']?.toString() ?? 'Response không hợp lệ';
@@ -133,9 +147,11 @@ class VideoUploadService {
   }
 
   /// Get video streaming URL from videoId
+  /// Uses API Gateway base URL (not direct service URL) to ensure ExoPlayer can load videos
   String getStreamingUrl(String videoId) {
-    final baseUrl = ApiClient.buildServiceBase(port: 8082);
-    return '$baseUrl/videos/stream/$videoId';
+    // Use API Gateway base URL and construct relative path
+    final apiGatewayBase = ApiClient.buildServiceBase();
+    return '$apiGatewayBase/videos/stream/$videoId';
   }
 }
 

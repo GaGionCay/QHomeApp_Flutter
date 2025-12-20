@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter_application_1/widgets/animations/smooth_animations.dart';
 import 'video_viewer_screen.dart';
+import '../auth/api_client.dart';
 
 /// 🎯 OPTIMIZED Inline Video Player
 /// 
@@ -51,10 +52,27 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer>
     try {
       String url = widget.videoUrl;
       
+      // Normalize video URL if it's a relative path
+      // Backend returns relative path: /api/videos/stream/{videoId}
+      // Need to normalize with API Gateway base URL
       if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        url = 'https://$url';
+        if (url.startsWith('/api/')) {
+          // Remove /api prefix and prepend API Gateway base URL (which already includes /api)
+          final apiGatewayBase = ApiClient.buildServiceBase();
+          final pathWithoutApi = url.substring(4); // Remove /api prefix
+          url = '$apiGatewayBase$pathWithoutApi';
+        } else if (url.startsWith('/')) {
+          // Already relative but doesn't start with /api, prepend API Gateway base
+          final apiGatewayBase = ApiClient.buildServiceBase();
+          url = '$apiGatewayBase$url';
+        } else {
+          // Not a valid URL format, try to construct from API Gateway
+          final apiGatewayBase = ApiClient.buildServiceBase();
+          url = '$apiGatewayBase/$url';
+        }
       }
       
+      debugPrint('🎬 [InlineVideoPlayer] Loading video from URL: $url');
       final controller = VideoPlayerController.networkUrl(Uri.parse(url));
       
       await controller.initialize();
