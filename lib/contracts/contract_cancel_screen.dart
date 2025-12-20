@@ -285,8 +285,10 @@ class _ContractCancelScreenState extends State<ContractCancelScreen>
 
     try {
       // Nếu đã xác nhận ngày, dùng ngày đã xác nhận
-      // Nếu không chọn ngày (chưa xác nhận), dùng ngày cuối tháng (tháng hủy hợp đồng)
-      final scheduledDate = _confirmedDate ?? _getLastDayOfMonth();
+      // Nếu không chọn ngày (chưa xác nhận), dùng ngày hết hạn hợp đồng (endDate)
+      final scheduledDate = _confirmedDate ?? (widget.contract.endDate != null 
+          ? DateTime.parse(widget.contract.endDate!)
+          : _getLastDayOfMonth()); // Fallback to last day of month only if endDate is null
 
       final result = await widget.contractService.cancelContract(
         widget.contract.id,
@@ -628,7 +630,9 @@ class _ContractCancelScreenState extends State<ContractCancelScreen>
                               // Nếu chưa xác nhận, hiển thị ngày cuối tháng (mặc định)
                               _confirmedDate != null
                                   ? 'Nhân viên sẽ tới kiểm tra vào ngày ${_formatDate(_confirmedDate!)}'
-                                  : 'Nếu không chọn ngày, nhân viên sẽ tới kiểm tra vào ngày cuối tháng (${_formatDate(_getLastDayOfMonth())})',
+                                  : widget.contract.endDate != null
+                                      ? 'Nếu không chọn ngày, nhân viên sẽ tới kiểm tra vào ngày hết hạn hợp đồng (${_formatDate(DateTime.parse(widget.contract.endDate!))})'
+                                      : 'Nếu không chọn ngày, nhân viên sẽ tới kiểm tra vào ngày cuối tháng (${_formatDate(_getLastDayOfMonth())})',
                               style: TextStyle(
                                 fontSize: 14,
                                 color: isDark ? Colors.blue[200] : Colors.blue[900],
