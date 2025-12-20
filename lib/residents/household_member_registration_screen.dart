@@ -153,7 +153,25 @@ class _HouseholdMemberRegistrationScreenState
             } catch (e) {
               setStateDialog(() {
                 submitting = false;
-                errorText = 'Lỗi: $e';
+                // Extract error message from exception
+                String errorMessage = e.toString();
+                // Remove "Exception: " prefix if present
+                if (errorMessage.startsWith('Exception: ')) {
+                  errorMessage = errorMessage.substring(11);
+                }
+                
+                // Check if it's a username already exists error
+                if (errorMessage.contains('Username') && 
+                    (errorMessage.contains('đã được sử dụng') || 
+                     errorMessage.contains('already exists'))) {
+                  // Username already exists error - show on username field
+                  errorText = errorMessage;
+                  usernameError = errorMessage;
+                } else {
+                  // Other errors - show general error
+                  errorText = errorMessage;
+                  usernameError = null;
+                }
               });
             }
           }

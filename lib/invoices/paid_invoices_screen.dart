@@ -224,9 +224,19 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
         
         final firstInvoice = invoiceLines.first;
 
+        // Calculate total amount from lineTotal of each line
+        // totalAfterTax is the same for all lines in the same invoice (it's the invoice total)
+        // So we should sum lineTotal instead of totalAfterTax
         double totalAmount = 0.0;
         for (final line in invoiceLines) {
-          totalAmount += (line.totalAfterTax ?? line.lineTotal ?? 0.0);
+          // Use lineTotal (quantity * unitPrice + taxAmount) for each line
+          totalAmount += (line.lineTotal ?? 0.0);
+        }
+        
+        // Alternative: Use totalAfterTax from first line (since all lines have the same totalAfterTax)
+        // But prefer calculating from lineTotal to ensure accuracy
+        if (totalAmount == 0.0 && firstInvoice.totalAfterTax != null) {
+          totalAmount = firstInvoice.totalAfterTax!;
         }
 
         PaidItemType? type;
@@ -1137,6 +1147,17 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> with SafeSta
                       AppLogger.warning('   - Payment Date: ${widget.item.paymentDate.toString()} (từ serviceDate, paidAt không có trong response)');
                       AppLogger.warning('   - Invoice Status: ${invoiceDetail?['status']}');
                     }
+                    // Parse totalAmount from invoice detail
+                    double? totalAmount;
+                    if (invoiceDetail?['totalAmount'] != null) {
+                      final totalAmountValue = invoiceDetail!['totalAmount'];
+                      if (totalAmountValue is num) {
+                        totalAmount = totalAmountValue.toDouble();
+                      } else if (totalAmountValue is String) {
+                        totalAmount = double.tryParse(totalAmountValue);
+                      }
+                    }
+                    
                     safeSetState(() {
                       _detailData = {
                         'type': 'invoice',
@@ -1145,6 +1166,7 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> with SafeSta
                         'description': invoice.description,
                         'serviceDate': invoice.serviceDate,
                         'lineTotal': invoice.lineTotal,
+                        'totalAmount': totalAmount, // Use totalAmount from invoice detail (sum of all lines)
                         'quantity': invoice.quantity == invoice.quantity.toInt() 
                             ? invoice.quantity.toInt() 
                             : invoice.quantity,
@@ -1212,6 +1234,17 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> with SafeSta
                       } else {
                         AppLogger.warning('   - Payment Date: ${widget.item.paymentDate.toString()} (từ serviceDate, có thể không chính xác về thời gian)');
                       }
+                      // Parse totalAmount from invoice detail
+                      double? totalAmount;
+                      if (invoiceDetail?['totalAmount'] != null) {
+                        final totalAmountValue = invoiceDetail!['totalAmount'];
+                        if (totalAmountValue is num) {
+                          totalAmount = totalAmountValue.toDouble();
+                        } else if (totalAmountValue is String) {
+                          totalAmount = double.tryParse(totalAmountValue);
+                        }
+                      }
+                      
                       safeSetState(() {
                         _detailData = {
                           'type': 'invoice',
@@ -1220,6 +1253,7 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> with SafeSta
                           'description': invoice.description,
                           'serviceDate': invoice.serviceDate,
                           'lineTotal': invoice.lineTotal,
+                          'totalAmount': totalAmount, // Use totalAmount from invoice detail (sum of all lines)
                           'quantity': invoice.quantity == invoice.quantity.toInt() 
                               ? invoice.quantity.toInt() 
                               : invoice.quantity,
@@ -1416,6 +1450,18 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> with SafeSta
     );
   }
 
+  /// Helper method to parse amount from JSON response
+  double? _parseAmount(dynamic amount) {
+    if (amount == null) return null;
+    if (amount is num) {
+      return amount.toDouble();
+    }
+    if (amount is String) {
+      return double.tryParse(amount);
+    }
+    return null;
+  }
+
   /// Helper method to format payment date from detailData or fallback to widget.item.paymentDate
   String _formatQuantity(dynamic quantity) {
     if (quantity == null) return '0';
@@ -1518,7 +1564,7 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> with SafeSta
           Icons.attach_money,
           'Tổng tiền',
           NumberFormat.currency(locale: 'vi_VN', symbol: '₫')
-              .format(data['lineTotal'] ?? widget.item.amount)
+              .format(_parseAmount(data['totalAmount']) ?? widget.item.amount)
               .replaceAll('.', ','),
         ),
         if (data['quantity'] != null && data['unitPrice'] != null) ...[

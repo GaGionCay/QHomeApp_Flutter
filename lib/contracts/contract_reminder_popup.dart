@@ -246,6 +246,46 @@ class _ContractReminderPopupState extends State<ContractReminderPopup>
                                   height: 1.5,
                                 ),
                               ),
+                              if (isFinalReminder) ...[
+                                const SizedBox(height: 12),
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: isDark 
+                                        ? Colors.red.withValues(alpha: 0.2) 
+                                        : Colors.red[100],
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: isDark 
+                                          ? Colors.red.withValues(alpha: 0.4) 
+                                          : Colors.red[300]!,
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Icon(
+                                        CupertinoIcons.exclamationmark_triangle_fill,
+                                        color: isDark ? Colors.red[300] : Colors.red[700],
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          '⚠️ Lưu ý: Nếu bạn không thao tác (gia hạn hoặc hủy hợp đồng) trong vòng 24 giờ kể từ lúc nhận thông báo này, hệ thống sẽ tự động hủy hợp đồng và đặt lịch kiểm tra đồ đạc vào ngày hết hạn hợp đồng.',
+                                          style: TextStyle(
+                                            color: isDark ? Colors.red[200] : Colors.red[900],
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 13,
+                                            height: 1.4,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
