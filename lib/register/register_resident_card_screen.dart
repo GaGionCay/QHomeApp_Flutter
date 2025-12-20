@@ -499,8 +499,9 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Không có thành viên nào trong căn hộ'),
+          content: Text('Không có thành viên nào đã được ban quản lý duyệt trong căn hộ. Vui lòng đợi admin duyệt yêu cầu đăng ký thành viên trước khi đăng ký thẻ.'),
           backgroundColor: Colors.orange,
+          duration: Duration(seconds: 4),
         ),
       );
       return;
@@ -524,12 +525,12 @@ class _RegisterResidentCardScreenState extends State<RegisterResidentCardScreen>
               child: _loadingHouseholdMembers
                   ? const Center(child: CircularProgressIndicator())
                   : _householdMembers.isEmpty
-                      ? const Text('Không có thành viên nào trong căn hộ')
+                      ? const Text('Không có thành viên nào đã được ban quản lý duyệt trong căn hộ. Vui lòng đợi admin duyệt yêu cầu đăng ký thành viên trước khi đăng ký thẻ.')
                       : Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'Chọn các cư dân cần đăng ký thẻ cư dân:',
+                              'Chọn các cư dân cần đăng ký thẻ cư dân:\n(Chỉ hiển thị các thành viên đã được ban quản lý duyệt)',
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
                             const SizedBox(height: 12),
