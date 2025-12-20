@@ -285,7 +285,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: Image.file(
-                          File(editImage.path),
+                          File(editImage?.path ?? ''),
                           width: 200,
                           height: 200,
                           fit: BoxFit.cover,
@@ -447,13 +447,19 @@ class _PostDetailScreenState extends State<PostDetailScreen>
             
             final videoFile = result['editVideo'] as XFile;
             
+            // Check video file path
+            final videoPath = videoFile.path;
+            if (videoPath == null || videoPath.isEmpty) {
+              throw Exception('Đường dẫn video không hợp lệ');
+            }
+            
             // Nén video trước khi upload
             final compressedFile = await VideoCompressionService.instance.compressVideo(
-              videoPath: videoFile.path,
+              videoPath: videoPath,
               onProgress: (message) {},
             );
             
-            final videoFileToUpload = compressedFile ?? File(videoFile.path);
+            final videoFileToUpload = compressedFile ?? File(videoPath);
             
             // Lấy video metadata
             String? resolution;
@@ -500,7 +506,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
             videoUrl = videoData['streamingUrl'] as String;
             
             // Xóa file nén nếu khác file gốc
-            if (compressedFile != null && compressedFile.path != videoFile.path) {
+            if (compressedFile != null && videoPath != null && compressedFile.path != videoPath) {
               try {
                 await compressedFile.delete();
               } catch (e) {
@@ -534,7 +540,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
         
         if (context.mounted) {
           // Update comment in local state
-          _updateCommentInTree(comment.id, result['content'] as String?, imageUrl, videoUrl);
+          _updateCommentInTree(comment.id, result['content'] as String, imageUrl, videoUrl);
           
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -1288,15 +1294,21 @@ class _PostDetailScreenState extends State<PostDetailScreen>
             throw Exception('Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.');
           }
           
+          // Check video file path
+          final videoPath = _selectedVideo!.path;
+          if (videoPath == null || videoPath.isEmpty) {
+            throw Exception('Đường dẫn video không hợp lệ');
+          }
+          
           // Nén video trước khi upload
           final compressedFile = await VideoCompressionService.instance.compressVideo(
-            videoPath: _selectedVideo!.path,
+            videoPath: videoPath,
             onProgress: (message) {
               // No progress logging - only log errors
             },
           );
           
-          final videoFileToUpload = compressedFile ?? File(_selectedVideo!.path);
+          final videoFileToUpload = compressedFile ?? File(videoPath);
           
           // Lấy video metadata nếu có thể
           String? resolution;
@@ -1344,7 +1356,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
           // Success - no logging needed (too frequent)
           
           // Xóa file nén nếu khác file gốc
-          if (compressedFile != null && compressedFile.path != _selectedVideo!.path) {
+          if (compressedFile != null && videoPath != null && compressedFile.path != videoPath) {
             try {
               await compressedFile.delete();
             } catch (e) {
@@ -1859,7 +1871,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                                         ClipRRect(
                                           borderRadius: BorderRadius.circular(8),
                                           child: Image.file(
-                                            File(_selectedImage!.path),
+                                            File(_selectedImage!.path ?? ''),
                                             width: 100,
                                             height: 100,
                                             fit: BoxFit.cover,
@@ -2717,7 +2729,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
   }
 
   /// Update comment content in the comment tree recursively
-  void _updateCommentInTree(String commentId, String? newContent, [String? newImageUrl, String? newVideoUrl]) {
+  void _updateCommentInTree(String commentId, String newContent, [String? newImageUrl, String? newVideoUrl]) {
     final updatedComments = _comments.map((comment) {
       return _updateCommentInTreeRecursive(comment, commentId, newContent, newImageUrl, newVideoUrl);
     }).toList();
@@ -2729,7 +2741,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
   
   /// Recursively update comment in tree
   MarketplaceComment _updateCommentInTreeRecursive(
-      MarketplaceComment comment, String commentId, String? newContent, String? newImageUrl, String? newVideoUrl) {
+      MarketplaceComment comment, String commentId, String newContent, String? newImageUrl, String? newVideoUrl) {
     if (comment.id == commentId) {
       // Found the comment to update
       return MarketplaceComment(
