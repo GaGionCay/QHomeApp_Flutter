@@ -6,18 +6,15 @@ import 'package:intl/intl.dart';
 import '../auth/api_client.dart';
 import '../auth/asset_maintenance_api_client.dart';
 import '../common/layout_insets.dart';
-import '../models/invoice_category.dart';
+import '../models/invoice_line.dart';
 import '../models/unit_info.dart';
 import '../service_registration/service_booking_service.dart';
-// Cleaning request removed - no longer used
-// import '../service_registration/cleaning_request_service.dart';
 import '../service_registration/maintenance_request_service.dart';
 import '../theme/app_colors.dart';
 import '../core/logger.dart';
 import 'invoice_service.dart';
 
 import '../core/safe_state_mixin.dart';
-// Unified model for all paid items
 enum PaidItemType {
   electricity,
   water,
@@ -36,8 +33,8 @@ class PaidItem {
   final String? description;
   final IconData icon;
   final Color iconColor;
-  final String? unitId; // Store unitId for loading invoice details
-  final DateTime? paidAt; // Accurate payment timestamp from API (optional)
+  final String? unitId;
+  final DateTime? paidAt; 
 
   PaidItem({
     required this.id,
@@ -49,11 +46,9 @@ class PaidItem {
     required this.icon,
     required this.iconColor,
     this.unitId,
-    this.paidAt, // Optional: accurate payment timestamp
+    this.paidAt, 
   });
   
-  /// Get the most accurate payment date for sorting
-  /// Prefers paidAt (has accurate time) over paymentDate (may have 00:00 time)
   DateTime get effectivePaymentDate => paidAt ?? paymentDate;
 }
 
@@ -117,8 +112,6 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
   late final InvoiceService _invoiceService;
   late final AssetMaintenanceApiClient _assetMaintenanceApiClient;
   late final ServiceBookingService _bookingService;
-  // Cleaning request removed - no longer used
-  // late final CleaningRequestService _cleaningRequestService;
   late final MaintenanceRequestService _maintenanceRequestService;
   late Future<List<PaidItem>> _futureData;
   late TabController _tabController;
@@ -210,20 +203,37 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
       await cleaningRequestsFuture;
       final maintenanceRequests = await maintenanceRequestsFuture;
 
-      debugPrint('🔍 [PaidInvoices] Loaded ${paidInvoices.length} paid invoices from API');
 
       final List<PaidItem> items = [];
 
-      // ✅ Process paid invoices from new API (already includes paidAt)
+      // ✅ Group invoice lines by invoiceId to avoid duplicates
+      // Map: invoiceId -> List of invoice lines
+      final Map<String, List<InvoiceLineResponseDto>> invoiceGroups = {};
       for (final invoice in paidInvoices) {
-        debugPrint('🔍 [PaidInvoices] Processing invoice: ${invoice.invoiceId}, serviceCode: ${invoice.serviceCode}');
+        final invoiceId = invoice.invoiceId;
+        if (!invoiceGroups.containsKey(invoiceId)) {
+          invoiceGroups[invoiceId] = [];
+        }
+        invoiceGroups[invoiceId]!.add(invoice);
+      }
+
+
+      for (final entry in invoiceGroups.entries) {
+        final invoiceId = entry.key;
+        final invoiceLines = entry.value;
+        
+        final firstInvoice = invoiceLines.first;
+
+        double totalAmount = 0.0;
+        for (final line in invoiceLines) {
+          totalAmount += (line.totalAfterTax ?? line.lineTotal ?? 0.0);
+        }
 
         PaidItemType? type;
         IconData icon;
         Color iconColor;
 
-        final serviceCodeUpper = invoice.serviceCode.toUpperCase();
-        debugPrint('   - ServiceCode (upper): $serviceCodeUpper');
+        final serviceCodeUpper = firstInvoice.serviceCode.toUpperCase();
         
         switch (serviceCodeUpper) {
           case 'ELECTRIC':
@@ -231,22 +241,18 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
             type = PaidItemType.electricity;
             icon = Icons.bolt;
             iconColor = const Color(0xFFFFD700);
-            debugPrint('   - Mapped to: electricity');
           case 'WATER':
             type = PaidItemType.water;
             icon = Icons.water_drop;
             iconColor = const Color(0xFF4A90E2);
-            debugPrint('   - Mapped to: water');
           case 'CONTRACT_RENEWAL':
           case 'CONTRACT':
             type = PaidItemType.contractRenewal;
             icon = Icons.description;
             iconColor = const Color(0xFF9B59B6);
-            debugPrint('   - Mapped to: contractRenewal');
           case 'VEHICLE_CARD':
           case 'ELEVATOR_CARD':
           case 'RESIDENT_CARD':
-            // Card payments - map to utility category
             type = PaidItemType.utility;
             if (serviceCodeUpper.contains('VEHICLE')) {
               icon = Icons.directions_car;
@@ -258,64 +264,52 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
               icon = Icons.credit_card;
             }
             iconColor = const Color(0xFF7EC8E3);
-            debugPrint('   - Mapped to: utility (card payment)');
           default:
             type = PaidItemType.utility;
             icon = Icons.home;
             iconColor = const Color(0xFF7EC8E3);
-            debugPrint('   - Mapped to: utility (default)');
         }
 
-        // Use paidAt from invoice (already included in new API)
-        final paidAt = invoice.paidAt;
-        final paymentDate = paidAt ?? _parsePaymentDate(invoice.serviceDate);
+        final paidAt = firstInvoice.paidAt;
+        final paymentDate = paidAt ?? _parsePaymentDate(firstInvoice.serviceDate);
         
         if (paymentDate != null) {
-          // Map serviceCode to display name
           final displayName = _mapServiceCodeToDisplayName(
-            invoice.serviceCode,
-            invoice.serviceCodeDisplay,
+            firstInvoice.serviceCode,
+            firstInvoice.serviceCodeDisplay,
           );
           
-          debugPrint('   - Adding item: $displayName (${type.name}) - ${invoice.totalAfterTax ?? invoice.lineTotal} VND');
+          // Combine descriptions from all lines if multiple lines exist
+          String? combinedDescription;
+          if (invoiceLines.length > 1) {
+            final descriptions = invoiceLines
+                .map((line) => line.description ?? '')
+                .where((desc) => desc.isNotEmpty)
+                .toSet()
+                .toList();
+            combinedDescription = descriptions.join(', ');
+          } else {
+            combinedDescription = firstInvoice.description;
+          }
+          
           
           items.add(PaidItem(
-            id: invoice.invoiceId,
+            id: invoiceId,
             type: type,
             name: displayName,
-            amount: invoice.totalAfterTax ?? invoice.lineTotal,
+            amount: totalAmount,
             paymentDate: paymentDate,
-            description: invoice.description,
+            description: combinedDescription,
             icon: icon,
             iconColor: iconColor,
             unitId: unitIdForRequest.isNotEmpty ? unitIdForRequest : null,
-            paidAt: paidAt, // Accurate payment timestamp from API
+            paidAt: paidAt,
           ));
         } else {
-          debugPrint('⚠️ [PaidInvoices] Skipping invoice ${invoice.invoiceId} - paymentDate is null');
+          debugPrint('⚠️ [PaidInvoices] Skipping invoice $invoiceId - paymentDate is null');
         }
       }
 
-      // Cleaning request removed - no longer used
-      // Process cleaning requests
-      // for (final request in cleaningRequests) {
-      //   if (request.status.toUpperCase() != 'DONE') continue;
-      //   // Use createdAt as payment date if paymentDate is not available
-      //   final paymentDate = request.createdAt;
-      //     items.add(PaidItem(
-      //       id: request.id,
-      //       type: PaidItemType.cleaning,
-      //       name: 'Dọn dẹp',
-      //       amount: 0.0, // Cleaning requests may not have payment amount
-      //       paymentDate: paymentDate,
-      //       description: request.cleaningType,
-      //       icon: Icons.cleaning_services,
-      //       iconColor: const Color(0xFF24D1C4),
-      //       unitId: unitIdForRequest.isNotEmpty ? unitIdForRequest : null,
-      //     ));
-      // }
-
-      // Process maintenance requests
       for (final request in maintenanceRequests) {
         if (request.paymentStatus?.toUpperCase() != 'PAID') continue;
         final paymentDate = request.paymentDate ?? request.createdAt;
@@ -332,11 +326,9 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
         ));
       }
 
-      // Process bookings (utilities/amenities)
       for (final booking in bookings) {
         final paymentDate = _parseBookingPaymentDate(booking);
         if (paymentDate != null) {
-          // Try multiple fields for amount
           final amount = (booking['totalPrice'] as num?)?.toDouble() ??
                         (booking['amount'] as num?)?.toDouble() ??
                         (booking['totalAmount'] as num?)?.toDouble() ??
@@ -365,14 +357,7 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
         }
       }
 
-      // Sort by payment date/time (newest first) by default
-      // Use effectivePaymentDate which prefers paidAt (accurate time) over paymentDate
       items.sort((a, b) => b.effectivePaymentDate.compareTo(a.effectivePaymentDate));
-
-      debugPrint('✅ [PaidInvoices] Total items after processing: ${items.length}');
-      for (final item in items) {
-        debugPrint('   - Item: ${item.name} (${item.type.name}) - ${item.amount} VND');
-      }
 
       _allItems = items;
       return items;
@@ -412,16 +397,11 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
 
   List<PaidItem> _getFilteredItems() {
     var items = List<PaidItem>.from(_allItems);
-    debugPrint('🔍 [PaidInvoices] _getFilteredItems: Starting with ${items.length} items');
-    debugPrint('   - Tab index: ${_tabController.index}');
-    debugPrint('   - Selected month: $_selectedMonth');
 
     // Filter by category (All = show all, index 0)
     if (_tabController.index != 0) {
       final category = _getCategoryFromIndex(_tabController.index);
-      debugPrint('   - Filtering by category: ${category.name}');
       items = items.where((item) => item.type == category).toList();
-      debugPrint('   - After category filter: ${items.length} items');
     }
 
     // Filter by month
@@ -430,7 +410,6 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
     final lastMonth = DateTime(now.year, now.month - 1);
 
     if (_selectedMonth == 'This month') {
-      debugPrint('   - Filtering by this month: ${thisMonth.year}-${thisMonth.month}');
       items = items.where((item) {
         final itemMonth = DateTime(
           item.effectivePaymentDate.year,
@@ -438,13 +417,10 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
         );
         final matches = itemMonth.isAtSameMomentAs(thisMonth);
         if (!matches) {
-          debugPrint('     - Item ${item.name} (${item.effectivePaymentDate}) does not match this month');
         }
         return matches;
       }).toList();
-      debugPrint('   - After month filter: ${items.length} items');
     } else if (_selectedMonth == 'Last month') {
-      debugPrint('   - Filtering by last month: ${lastMonth.year}-${lastMonth.month}');
       items = items.where((item) {
         final itemMonth = DateTime(
           item.effectivePaymentDate.year,
@@ -452,17 +428,11 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
         );
         final matches = itemMonth.isAtSameMomentAs(lastMonth);
         if (!matches) {
-          debugPrint('     - Item ${item.name} (${item.effectivePaymentDate}) does not match last month');
         }
         return matches;
       }).toList();
-      debugPrint('   - After month filter: ${items.length} items');
     } else if (_selectedMonth == 'All time') {
-      debugPrint('   - Showing all items (no month filter)');
     }
-    // Custom month filtering can be added later
-
-    // Sort by payment date/time (using effectivePaymentDate which prefers paidAt)
     if (_sortOption == 'Newest - Oldest') {
       items.sort((a, b) => b.effectivePaymentDate.compareTo(a.effectivePaymentDate));
     } else if (_sortOption == 'Oldest - Newest') {
@@ -472,12 +442,6 @@ class _PaidInvoicesScreenState extends State<PaidInvoicesScreen>
     } else if (_sortOption == 'Amount low - high') {
       items.sort((a, b) => a.amount.compareTo(b.amount));
     }
-
-    debugPrint('✅ [PaidInvoices] _getFilteredItems: Returning ${items.length} items');
-    for (final item in items) {
-      debugPrint('   - Item: ${item.name} (${item.type.name}) - ${item.amount} VND - ${item.paymentDate}');
-    }
-
     return items;
   }
 
@@ -1151,40 +1115,24 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> with SafeSta
         case PaidItemType.electricity:
         case PaidItemType.water:
         case PaidItemType.contractRenewal:
-          AppLogger.debug('[PaidInvoicesDetail] Đang load invoice detail cho ${widget.item.type.name}...');
           // Load invoice detail for electricity/water
           if (widget.item.unitId != null && widget.item.unitId!.isNotEmpty) {
             try {
-              AppLogger.debug('[PaidInvoicesDetail] Gọi API getPaidInvoicesByCategory (unitId: ${widget.item.unitId})');
               final invoices = await widget.invoiceService.getPaidInvoicesByCategory(
                 unitId: widget.item.unitId!,
               );
-              AppLogger.debug('[PaidInvoicesDetail] Nhận được ${invoices.length} categories, đang tìm invoice với ID: ${widget.item.id}');
               for (final category in invoices) {
                 for (final invoice in category.invoices) {
                   if (invoice.invoiceId == widget.item.id) {
                     // Get full invoice detail to get paidAt
-                    AppLogger.debug('[PaidInvoicesDetail] Đang lấy invoice detail đầy đủ để lấy paidAt...');
                     final invoiceDetail = await widget.invoiceService.getInvoiceDetailById(invoice.invoiceId);
                     
-                    AppLogger.debug('[PaidInvoicesDetail] Invoice detail keys: ${invoiceDetail?.keys.toList()}');
-                    AppLogger.debug('[PaidInvoicesDetail] Invoice detail paidAt: ${invoiceDetail?['paidAt']}');
                     
                     final paidAt = invoiceDetail?['paidAt'];
-                    
-                    AppLogger.success('[PaidInvoicesDetail] ✅ Tìm thấy invoice detail cho ${widget.item.type.name}');
-                    AppLogger.info('[PaidInvoicesDetail] 📄 Invoice Info:');
-                    AppLogger.info('   - Invoice ID: ${invoice.invoiceId}');
-                    AppLogger.info('   - Service Code: ${invoice.serviceCode}');
-                    AppLogger.info('   - Description: ${invoice.description}');
-                    AppLogger.info('   - Amount: ${invoice.lineTotal.toStringAsFixed(0)} VND');
-                    AppLogger.info('   - Service Date: ${invoice.serviceDate}');
+
                     final quantityDisplay = _formatQuantity(invoice.quantity);
-                    AppLogger.info('   - Quantity: $quantityDisplay ${invoice.unit}');
-                    AppLogger.info('   - Unit Price: ${invoice.unitPrice.toStringAsFixed(0)} VND');
                     if (paidAt != null) {
                       final paidAtDate = DateTime.parse(paidAt.toString());
-                      AppLogger.info('   - Payment Date (paidAt): ${paidAtDate.toString()}');
                     } else {
                       AppLogger.warning('   - Payment Date: ${widget.item.paymentDate.toString()} (từ serviceDate, paidAt không có trong response)');
                       AppLogger.warning('   - Invoice Status: ${invoiceDetail?['status']}');
@@ -1218,18 +1166,8 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> with SafeSta
             AppLogger.warning('[PaidInvoicesDetail] ⚠️ unitId không có, không thể load invoice detail');
           }
         case PaidItemType.utility:
-          AppLogger.debug('[PaidInvoicesDetail] Đang load detail cho utility (booking/invoice)...');
-          // Try booking first, then invoice
           try {
-            AppLogger.debug('[PaidInvoicesDetail] Thử load booking detail với ID: ${widget.item.id}');
             final booking = await widget.bookingService.getBookingById(widget.item.id);
-            AppLogger.success('[PaidInvoicesDetail] ✅ Tìm thấy booking detail');
-            AppLogger.info('[PaidInvoicesDetail] 📋 Booking Info:');
-            AppLogger.info('   - Booking ID: ${booking['id'] ?? booking['bookingId'] ?? widget.item.id}');
-            AppLogger.info('   - Service: ${booking['serviceName'] ?? booking['service'] ?? "N/A"}');
-            AppLogger.info('   - Status: ${booking['status'] ?? "N/A"}');
-            AppLogger.info('   - Amount: ${booking['totalAmount'] ?? booking['amount'] ?? widget.item.amount} VND');
-            AppLogger.info('   - Payment Date: ${widget.item.paymentDate.toString()}');
             if (booking['bookingDate'] != null) {
               AppLogger.info('   - Booking Date: ${booking['bookingDate']}');
             }
@@ -1266,24 +1204,11 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> with SafeSta
                 for (final category in invoices) {
                   for (final invoice in category.invoices) {
                     if (invoice.invoiceId == widget.item.id) {
-                      // Get full invoice detail to get paidAt
-                      AppLogger.debug('[PaidInvoicesDetail] Đang lấy invoice detail đầy đủ để lấy paidAt (fallback)...');
                       final invoiceDetail = await widget.invoiceService.getInvoiceDetailById(invoice.invoiceId);
                       final paidAt = invoiceDetail?['paidAt'];
-                      
-                      AppLogger.success('[PaidInvoicesDetail] ✅ Tìm thấy invoice detail (fallback từ booking)');
-                      AppLogger.info('[PaidInvoicesDetail] 📄 Invoice Info (fallback):');
-                      AppLogger.info('   - Invoice ID: ${invoice.invoiceId}');
-                      AppLogger.info('   - Service Code: ${invoice.serviceCode}');
-                      AppLogger.info('   - Description: ${invoice.description}');
-                      AppLogger.info('   - Amount: ${invoice.lineTotal.toStringAsFixed(0)} VND');
-                      AppLogger.info('   - Service Date: ${invoice.serviceDate}');
                       final quantityDisplay = _formatQuantity(invoice.quantity);
-                      AppLogger.info('   - Quantity: $quantityDisplay ${invoice.unit}');
-                      AppLogger.info('   - Unit Price: ${invoice.unitPrice.toStringAsFixed(0)} VND');
                       if (paidAt != null) {
                         final paidAtDate = DateTime.parse(paidAt.toString());
-                        AppLogger.info('   - Payment Date: ${paidAtDate.toString()}');
                       } else {
                         AppLogger.warning('   - Payment Date: ${widget.item.paymentDate.toString()} (từ serviceDate, có thể không chính xác về thời gian)');
                       }
@@ -1318,51 +1243,21 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> with SafeSta
           }
         case PaidItemType.cleaning:
           AppLogger.warning('[PaidInvoicesDetail] ⚠️ Cleaning request feature đã bị gỡ bỏ');
-          // Cleaning request removed - no longer used
-          // Load cleaning request detail
+
           try {
-            // final requests = await widget.cleaningRequestService.getPaidRequests();
-            // final request = requests.firstWhere(
-            //   (r) => r.id == widget.item.id,
-            //   orElse: () => throw Exception('Not found'),
-            // );
             throw Exception('Cleaning request feature has been removed');
-            // safeSetState(() {
-            //   _detailData = {
-            //     'type': 'cleaning',
-            //     'id': request.id,
-            //     'cleaningType': request.cleaningType,
-            //     'note': request.note,
-            //     'location': request.location,
-            //     'createdAt': request.createdAt,
-            //     'status': request.status,
-            //   };
-            // });
           } catch (e) {
             AppLogger.error('[PaidInvoicesDetail] ❌ Lỗi khi load cleaning detail', e);
           }
         case PaidItemType.repair:
-          AppLogger.debug('[PaidInvoicesDetail] Đang load maintenance request detail với ID: ${widget.item.id}');
-          // Load maintenance request detail
           try {
-            AppLogger.debug('[PaidInvoicesDetail] Gọi API getPaidRequests()');
             final requests = await widget.maintenanceRequestService.getPaidRequests();
-            AppLogger.debug('[PaidInvoicesDetail] Nhận được ${requests.length} requests, đang tìm request với ID: ${widget.item.id}');
             final request = requests.firstWhere(
               (r) => r.id == widget.item.id,
               orElse: () => throw Exception('Not found'),
             );
-            AppLogger.success('[PaidInvoicesDetail] ✅ Tìm thấy maintenance request detail');
-            AppLogger.info('[PaidInvoicesDetail] 🔧 Maintenance Request Info:');
-            AppLogger.info('   - Request ID: ${request.id}');
-            AppLogger.info('   - Title: ${request.title}');
-            AppLogger.info('   - Location: ${request.location}');
-            AppLogger.info('   - Status: ${request.status}');
             final paymentAmount = request.paymentAmount ?? widget.item.amount;
-            AppLogger.info('   - Payment Amount: ${paymentAmount.toStringAsFixed(0)} VND');
             final paymentDate = request.paymentDate ?? widget.item.paymentDate;
-            AppLogger.info('   - Payment Date: ${paymentDate.toString()}');
-            AppLogger.info('   - Created At: ${request.createdAt}');
             if (request.note != null && request.note!.isNotEmpty) {
               AppLogger.info('   - Note: ${request.note}');
             }
@@ -1533,17 +1428,14 @@ class _PaidItemDetailSheetState extends State<_PaidItemDetailSheet> with SafeSta
   }
 
   String _formatPaymentDate(Map<String, dynamic> data) {
-    // Try to get paidAt from detailData first (has accurate time)
     if (data['paidAt'] != null) {
       try {
         final paidAtStr = data['paidAt'].toString();
         final paidAtDate = DateTime.parse(paidAtStr);
         return DateFormat('dd/MM/yyyy HH:mm').format(paidAtDate.toLocal());
       } catch (e) {
-        // If parsing fails, fallback to widget.item.paymentDate
       }
     }
-    // Fallback to widget.item.paymentDate (may have 00:00 time)
     return DateFormat('dd/MM/yyyy HH:mm').format(widget.item.paymentDate);
   }
 
