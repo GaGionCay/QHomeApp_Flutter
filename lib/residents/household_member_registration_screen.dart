@@ -77,21 +77,16 @@ class _HouseholdMemberRegistrationScreenState
       return 'Username không được dài quá 20 ký tự.';
     }
     
-    // Check for consecutive spaces (more than 1 space) - không được có "  "
-    if (trimmed.contains('  ')) {
-      return 'Username không được có khoảng trắng cách quá 2 lần liên tiếp.';
+    // Check for spaces - không được có dấu cách
+    if (trimmed.contains(' ')) {
+      return 'Username không được chứa dấu cách.';
     }
     
-    // Check total number of spaces - chỉ được có tối đa 1 khoảng trắng
-    final spaceCount = ' '.allMatches(trimmed).length;
-    if (spaceCount > 1) {
-      return 'Username chỉ được chứa tối đa 1 khoảng trắng.';
-    }
-    
-    // Check for special characters - only allow a-z, A-Z, 0-9, underscore, hyphen, and single space
-    final validPattern = RegExp(r'^[a-zA-Z0-9_ -]+$');
+    // Check for special characters - only allow a-z, A-Z, 0-9, underscore, and hyphen
+    // Không cho phép ký tự đặc biệt và dấu cách
+    final validPattern = RegExp(r'^[a-zA-Z0-9_-]+$');
     if (!validPattern.hasMatch(trimmed)) {
-      return 'Username chỉ được chứa chữ cái (a-z, A-Z), số (0-9), gạch dưới (_), gạch ngang (-) và khoảng trắng (chỉ 1 khoảng trắng).';
+      return 'Username chỉ được chứa chữ cái (a-z, A-Z), số (0-9), gạch dưới (_) và gạch ngang (-). Không được có dấu cách hoặc ký tự đặc biệt.';
     }
     
     return null;
@@ -211,9 +206,9 @@ class _HouseholdMemberRegistrationScreenState
                       decoration: InputDecoration(
                         labelText: 'Username',
                         hintText:
-                            'Nhập username (a-z, 0-9, gạch dưới, gạch ngang, khoảng trắng)',
+                            'Nhập username (a-z, 0-9, gạch dưới, gạch ngang)',
                         errorText: usernameError,
-                        helperText: 'Tối thiểu 3 ký tự, tối đa 20 ký tự, chỉ 1 khoảng trắng',
+                        helperText: 'Tối thiểu 3 ký tự, tối đa 20 ký tự, không có dấu cách hoặc ký tự đặc biệt',
                       ),
                       enabled: !submitting,
                       onChanged: (value) {
