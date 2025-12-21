@@ -12,11 +12,24 @@ class ChatViewModel extends ChangeNotifier {
   String? _error;
   int _currentPage = 0;
   bool _hasMore = true;
+  bool _disposed = false;
 
   List<ChatGroup> get groups => _groups;
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get hasMore => _hasMore;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
+  void _safeNotifyListeners() {
+    if (!_disposed) {
+      notifyListeners();
+    }
+  }
 
   Future<void> initialize() async {
     await loadGroups(refresh: true);
@@ -33,13 +46,16 @@ class ChatViewModel extends ChangeNotifier {
 
     _isLoading = true;
     _error = null;
-    notifyListeners();
+    _safeNotifyListeners();
 
     try {
       final response = await _service.getMyGroups(
         page: _currentPage,
         size: 20,
       );
+
+      // Check if disposed before updating state
+      if (_disposed) return;
 
       if (refresh) {
         _groups = response.content;
@@ -52,8 +68,11 @@ class ChatViewModel extends ChangeNotifier {
 
       _isLoading = false;
       _error = null;
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
+      // Check if disposed before updating state
+      if (_disposed) return;
+
       _isLoading = false;
       // Only show error if it's not a 404 (404 might mean no groups, which is normal)
       final errorStr = e.toString();
@@ -65,7 +84,7 @@ class ChatViewModel extends ChangeNotifier {
       } else {
         _error = 'Lỗi khi tải danh sách nhóm: ${e.toString()}';
       }
-      notifyListeners();
+      _safeNotifyListeners();
     }
   }
 

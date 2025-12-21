@@ -51,7 +51,6 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> with SafeSt
   List<Map<String, dynamic>> _combos = const [];
   List<Map<String, dynamic>> _tickets = const [];
   List<Map<String, dynamic>> _availabilities = const [];
-  // Bỏ các biến booked slots vì không cần chọn thời gian nữa
 
   final Map<String, int> _selectedOptions = {};
   String? _selectedComboId;
@@ -298,8 +297,6 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> with SafeSt
       });
       return total;
     }
-
-    // Fallback cho STANDARD (không dùng nữa nhưng giữ lại để tránh lỗi)
     return 0;
   }
 
@@ -808,12 +805,6 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> with SafeSt
       ),
     );
   }
-
-  // Đã xóa _buildDateSelector và _nextAllowedDate vì không cần chọn thời gian nữa
-
-  // Đã xóa _buildTimeSelector vì không cần chọn thời gian nữa
-
-  // Đã xóa _buildBookedSlotsSection vì không cần chọn thời gian nữa
 
   Widget _glassPanel({
     required Widget child,
@@ -1548,7 +1539,6 @@ class _ServiceBookingScreenState extends State<ServiceBookingScreen> with SafeSt
     );
   }
 }
-
-// Đã xóa _BookedSlot class vì không cần chọn thời gian nữa
+ 
 
 
